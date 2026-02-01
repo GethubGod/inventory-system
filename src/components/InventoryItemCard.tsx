@@ -7,12 +7,13 @@ import { categoryColors, CATEGORY_LABELS } from '@/constants';
 
 interface InventoryItemCardProps {
   item: InventoryItem;
+  locationId: string;
 }
 
-export function InventoryItemCard({ item }: InventoryItemCardProps) {
+export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) {
   const { addToCart, getCartItem, updateCartItem, removeFromCart } =
     useOrderStore();
-  const cartItem = getCartItem(item.id);
+  const cartItem = getCartItem(locationId, item.id);
   const [quantity, setQuantity] = useState(cartItem?.quantity?.toString() || '');
   const [unitType, setUnitType] = useState<UnitType>(cartItem?.unitType || 'base');
 
@@ -21,7 +22,7 @@ export function InventoryItemCard({ item }: InventoryItemCardProps) {
   const handleAddToCart = () => {
     const qty = parseFloat(quantity);
     if (qty > 0) {
-      addToCart(item.id, qty, unitType);
+      addToCart(locationId, item.id, qty, unitType);
     }
   };
 
@@ -29,7 +30,7 @@ export function InventoryItemCard({ item }: InventoryItemCardProps) {
     setQuantity(newQty);
     const qty = parseFloat(newQty);
     if (!isNaN(qty) && qty > 0 && cartItem) {
-      updateCartItem(item.id, qty, unitType);
+      updateCartItem(locationId, item.id, qty, unitType);
     }
   };
 
@@ -38,7 +39,7 @@ export function InventoryItemCard({ item }: InventoryItemCardProps) {
     const newQty = (current + 1).toString();
     setQuantity(newQty);
     if (cartItem) {
-      updateCartItem(item.id, current + 1, unitType);
+      updateCartItem(locationId, item.id, current + 1, unitType);
     }
   };
 
@@ -49,10 +50,10 @@ export function InventoryItemCard({ item }: InventoryItemCardProps) {
       setQuantity(newQty);
       if (cartItem) {
         if (current - 1 <= 0) {
-          removeFromCart(item.id);
+          removeFromCart(locationId, item.id);
           setQuantity('');
         } else {
-          updateCartItem(item.id, current - 1, unitType);
+          updateCartItem(locationId, item.id, current - 1, unitType);
         }
       }
     }
@@ -62,7 +63,7 @@ export function InventoryItemCard({ item }: InventoryItemCardProps) {
     const newUnit = unitType === 'base' ? 'pack' : 'base';
     setUnitType(newUnit);
     if (cartItem) {
-      updateCartItem(item.id, cartItem.quantity, newUnit);
+      updateCartItem(locationId, item.id, cartItem.quantity, newUnit);
     }
   };
 

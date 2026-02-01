@@ -4,24 +4,38 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Order, OrderItem, OrderWithDetails, UnitType } from '@/types';
 import { supabase } from '@/lib/supabase';
 
-interface CartItem {
+export interface CartItem {
   inventoryItemId: string;
   quantity: number;
   unitType: UnitType;
 }
 
+// Cart items organized by location
+type CartByLocation = Record<string, CartItem[]>;
+
 interface OrderState {
-  cart: CartItem[];
+  cartByLocation: CartByLocation;
   orders: Order[];
   currentOrder: OrderWithDetails | null;
   isLoading: boolean;
 
-  // Cart actions
-  addToCart: (inventoryItemId: string, quantity: number, unitType: UnitType) => void;
-  updateCartItem: (inventoryItemId: string, quantity: number, unitType: UnitType) => void;
-  removeFromCart: (inventoryItemId: string) => void;
+  // Cart actions (location-aware)
+  addToCart: (locationId: string, inventoryItemId: string, quantity: number, unitType: UnitType) => void;
+  updateCartItem: (locationId: string, inventoryItemId: string, quantity: number, unitType: UnitType) => void;
+  removeFromCart: (locationId: string, inventoryItemId: string) => void;
+  clearLocationCart: (locationId: string) => void;
+  clearAllCarts: () => void;
+
+  // Cart getters
+  getCartItems: (locationId: string) => CartItem[];
+  getCartItem: (locationId: string, inventoryItemId: string) => CartItem | undefined;
+  getLocationCartTotal: (locationId: string) => number;
+  getTotalCartCount: () => number;
+  getCartLocationIds: () => string[];
+
+  // Legacy support - for backward compatibility
+  cart: CartItem[];
   clearCart: () => void;
-  getCartItem: (inventoryItemId: string) => CartItem | undefined;
   getCartTotal: () => number;
 
   // Order actions
@@ -36,64 +50,129 @@ interface OrderState {
 export const useOrderStore = create<OrderState>()(
   persist(
     (set, get) => ({
-      cart: [],
+      cartByLocation: {},
       orders: [],
       currentOrder: null,
       isLoading: false,
 
-      addToCart: (inventoryItemId, quantity, unitType) => {
-        const { cart } = get();
-        const existing = cart.find((item) => item.inventoryItemId === inventoryItemId);
+      // Legacy cart property - returns flattened cart for backward compatibility
+      get cart() {
+        const { cartByLocation } = get();
+        return Object.values(cartByLocation).flat();
+      },
+
+      addToCart: (locationId, inventoryItemId, quantity, unitType) => {
+        const { cartByLocation } = get();
+        const locationCart = cartByLocation[locationId] || [];
+        const existing = locationCart.find((item) => item.inventoryItemId === inventoryItemId);
 
         if (existing) {
           set({
-            cart: cart.map((item) =>
-              item.inventoryItemId === inventoryItemId
-                ? { ...item, quantity: item.quantity + quantity, unitType }
-                : item
-            ),
+            cartByLocation: {
+              ...cartByLocation,
+              [locationId]: locationCart.map((item) =>
+                item.inventoryItemId === inventoryItemId
+                  ? { ...item, quantity: item.quantity + quantity, unitType }
+                  : item
+              ),
+            },
           });
         } else {
           set({
-            cart: [...cart, { inventoryItemId, quantity, unitType }],
+            cartByLocation: {
+              ...cartByLocation,
+              [locationId]: [...locationCart, { inventoryItemId, quantity, unitType }],
+            },
           });
         }
       },
 
-      updateCartItem: (inventoryItemId, quantity, unitType) => {
-        const { cart } = get();
+      updateCartItem: (locationId, inventoryItemId, quantity, unitType) => {
+        const { cartByLocation } = get();
+        const locationCart = cartByLocation[locationId] || [];
+
         if (quantity <= 0) {
           set({
-            cart: cart.filter((item) => item.inventoryItemId !== inventoryItemId),
+            cartByLocation: {
+              ...cartByLocation,
+              [locationId]: locationCart.filter((item) => item.inventoryItemId !== inventoryItemId),
+            },
           });
         } else {
           set({
-            cart: cart.map((item) =>
-              item.inventoryItemId === inventoryItemId
-                ? { ...item, quantity, unitType }
-                : item
-            ),
+            cartByLocation: {
+              ...cartByLocation,
+              [locationId]: locationCart.map((item) =>
+                item.inventoryItemId === inventoryItemId
+                  ? { ...item, quantity, unitType }
+                  : item
+              ),
+            },
           });
         }
       },
 
-      removeFromCart: (inventoryItemId) => {
-        const { cart } = get();
+      removeFromCart: (locationId, inventoryItemId) => {
+        const { cartByLocation } = get();
+        const locationCart = cartByLocation[locationId] || [];
         set({
-          cart: cart.filter((item) => item.inventoryItemId !== inventoryItemId),
+          cartByLocation: {
+            ...cartByLocation,
+            [locationId]: locationCart.filter((item) => item.inventoryItemId !== inventoryItemId),
+          },
         });
       },
 
-      clearCart: () => set({ cart: [] }),
-
-      getCartItem: (inventoryItemId) => {
-        const { cart } = get();
-        return cart.find((item) => item.inventoryItemId === inventoryItemId);
+      clearLocationCart: (locationId) => {
+        const { cartByLocation } = get();
+        const { [locationId]: _, ...rest } = cartByLocation;
+        set({ cartByLocation: rest });
       },
 
+      clearAllCarts: () => set({ cartByLocation: {} }),
+
+      // Legacy clearCart - clears all carts
+      clearCart: () => set({ cartByLocation: {} }),
+
+      getCartItems: (locationId) => {
+        const { cartByLocation } = get();
+        return cartByLocation[locationId] || [];
+      },
+
+      getCartItem: (locationId, inventoryItemId) => {
+        const { cartByLocation } = get();
+        const locationCart = cartByLocation[locationId] || [];
+        return locationCart.find((item) => item.inventoryItemId === inventoryItemId);
+      },
+
+      getLocationCartTotal: (locationId) => {
+        const { cartByLocation } = get();
+        const locationCart = cartByLocation[locationId] || [];
+        return locationCart.reduce((total, item) => total + item.quantity, 0);
+      },
+
+      getTotalCartCount: () => {
+        const { cartByLocation } = get();
+        return Object.values(cartByLocation).reduce(
+          (total, items) => total + items.length,
+          0
+        );
+      },
+
+      getCartLocationIds: () => {
+        const { cartByLocation } = get();
+        return Object.keys(cartByLocation).filter(
+          (locId) => cartByLocation[locId].length > 0
+        );
+      },
+
+      // Legacy getCartTotal - returns total across all locations
       getCartTotal: () => {
-        const { cart } = get();
-        return cart.reduce((total, item) => total + item.quantity, 0);
+        const { cartByLocation } = get();
+        return Object.values(cartByLocation).reduce(
+          (total, items) => total + items.length,
+          0
+        );
       },
 
       fetchOrders: async (locationId) => {
@@ -144,10 +223,11 @@ export const useOrderStore = create<OrderState>()(
       },
 
       createOrder: async (locationId, userId) => {
-        const { cart, clearCart } = get();
+        const { cartByLocation, clearLocationCart } = get();
+        const locationCart = cartByLocation[locationId] || [];
 
-        if (cart.length === 0) {
-          throw new Error('Cart is empty');
+        if (locationCart.length === 0) {
+          throw new Error('Cart is empty for this location');
         }
 
         set({ isLoading: true });
@@ -166,7 +246,7 @@ export const useOrderStore = create<OrderState>()(
           if (orderError) throw orderError;
 
           // Create order items
-          const orderItems: Omit<OrderItem, 'id' | 'created_at'>[] = cart.map((item) => ({
+          const orderItems: Omit<OrderItem, 'id' | 'created_at'>[] = locationCart.map((item) => ({
             order_id: order.id,
             inventory_item_id: item.inventoryItemId,
             quantity: item.quantity,
@@ -179,7 +259,7 @@ export const useOrderStore = create<OrderState>()(
 
           if (itemsError) throw itemsError;
 
-          clearCart();
+          clearLocationCart(locationId);
           return order;
         } finally {
           set({ isLoading: false });
@@ -236,7 +316,7 @@ export const useOrderStore = create<OrderState>()(
       name: 'order-storage',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
-        cart: state.cart,
+        cartByLocation: state.cartByLocation,
       }),
     }
   )

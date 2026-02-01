@@ -1,9 +1,10 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useOrderStore } from '@/store';
+import { useOrderStore, useDraftStore } from '@/store';
 
 export default function TabsLayout() {
   const cartTotal = useOrderStore((state) => state.getCartTotal());
+  const draftCount = useDraftStore((state) => state.getTotalItemCount());
 
   return (
     <Tabs
@@ -39,6 +40,28 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="add-circle-outline" size={size} color={color} />
           ),
+        }}
+      />
+      <Tabs.Screen
+        name="quick-order"
+        options={{
+          title: 'Quick',
+          headerShown: false,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="flash-outline" size={size} color={color} />
+          ),
+          tabBarBadge: draftCount > 0 ? draftCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#F97316',
+            color: '#FFFFFF',
+            fontSize: 10,
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="draft"
+        options={{
+          href: null, // Hide from tab bar, accessed via Quick Order
         }}
       />
       <Tabs.Screen

@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { InventoryItem, UnitType } from '@/types';
 import { useOrderStore } from '@/store';
@@ -13,9 +13,10 @@ interface CartItem {
 interface CartItemCardProps {
   cartItem: CartItem;
   inventoryItem?: InventoryItem;
+  locationId: string;
 }
 
-export function CartItemCard({ cartItem, inventoryItem }: CartItemCardProps) {
+export function CartItemCard({ cartItem, inventoryItem, locationId }: CartItemCardProps) {
   const { updateCartItem, removeFromCart } = useOrderStore();
 
   if (!inventoryItem) {
@@ -26,6 +27,7 @@ export function CartItemCard({ cartItem, inventoryItem }: CartItemCardProps) {
 
   const handleIncrement = () => {
     updateCartItem(
+      locationId,
       cartItem.inventoryItemId,
       cartItem.quantity + 1,
       cartItem.unitType
@@ -35,22 +37,23 @@ export function CartItemCard({ cartItem, inventoryItem }: CartItemCardProps) {
   const handleDecrement = () => {
     if (cartItem.quantity > 1) {
       updateCartItem(
+        locationId,
         cartItem.inventoryItemId,
         cartItem.quantity - 1,
         cartItem.unitType
       );
     } else {
-      removeFromCart(cartItem.inventoryItemId);
+      removeFromCart(locationId, cartItem.inventoryItemId);
     }
   };
 
   const handleRemove = () => {
-    removeFromCart(cartItem.inventoryItemId);
+    removeFromCart(locationId, cartItem.inventoryItemId);
   };
 
   const toggleUnit = () => {
     const newUnit = cartItem.unitType === 'base' ? 'pack' : 'base';
-    updateCartItem(cartItem.inventoryItemId, cartItem.quantity, newUnit);
+    updateCartItem(locationId, cartItem.inventoryItemId, cartItem.quantity, newUnit);
   };
 
   const unitLabel =
