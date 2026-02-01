@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useAuthStore, useDraftStore } from '@/store';
+import { useAuthStore, useDraftStore, useSettingsStore, FontSize } from '@/store';
 import { colors } from '@/constants';
 
 interface SettingsRowProps {
@@ -69,13 +69,27 @@ function SettingsRow({
   );
 }
 
+const FONT_SIZE_OPTIONS: { value: FontSize; label: string; preview: string }[] = [
+  { value: 'normal', label: 'Normal', preview: 'Aa' },
+  { value: 'large', label: 'Large', preview: 'Aa' },
+  { value: 'xlarge', label: 'Extra Large', preview: 'Aa' },
+];
+
 export default function SettingsScreen() {
   const { user, location, signOut, setViewMode } = useAuthStore();
   const { getTotalItemCount, clearAllDrafts } = useDraftStore();
+  const { fontSize, setFontSize } = useSettingsStore();
 
   const draftCount = getTotalItemCount();
   const firstName = user?.name?.split(' ')[0] || 'User';
   const isManager = user?.role === 'manager';
+
+  const handleFontSizeChange = (size: FontSize) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setFontSize(size);
+  };
 
   const handleSignOut = () => {
     Alert.alert(
@@ -202,6 +216,59 @@ export default function SettingsScreen() {
               subtitle={location?.name || 'Select a location'}
               onPress={() => router.push('/(tabs)' as any)}
             />
+          </View>
+        </View>
+
+        {/* Display Section */}
+        <View className="mt-6">
+          <Text className="px-5 mb-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
+            Display
+          </Text>
+          <View className="bg-white rounded-xl mx-4 overflow-hidden p-4"
+            style={{
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+          >
+            <View className="flex-row items-center mb-3">
+              <View
+                className="w-10 h-10 rounded-xl items-center justify-center mr-4"
+                style={{ backgroundColor: '#E0E7FF' }}
+              >
+                <Ionicons name="text-outline" size={22} color="#4F46E5" />
+              </View>
+              <Text className="text-base font-semibold text-gray-900">Font Size</Text>
+            </View>
+            <View className="flex-row justify-between">
+              {FONT_SIZE_OPTIONS.map((option) => {
+                const isSelected = fontSize === option.value;
+                const previewSize = option.value === 'normal' ? 14 : option.value === 'large' ? 17 : 20;
+                return (
+                  <TouchableOpacity
+                    key={option.value}
+                    onPress={() => handleFontSizeChange(option.value)}
+                    className={`flex-1 mx-1 py-3 rounded-xl items-center border-2 ${
+                      isSelected ? 'border-primary-500 bg-primary-50' : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <Text
+                      style={{ fontSize: previewSize }}
+                      className={`font-bold mb-1 ${isSelected ? 'text-primary-600' : 'text-gray-600'}`}
+                    >
+                      {option.preview}
+                    </Text>
+                    <Text
+                      className={`text-xs ${isSelected ? 'text-primary-600 font-medium' : 'text-gray-500'}`}
+                    >
+                      {option.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         </View>
 

@@ -6,6 +6,8 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -42,6 +44,7 @@ export default function CartScreen() {
     getTotalCartCount,
     updateCartItem,
     removeFromCart,
+    moveCartItem,
     clearLocationCart,
     clearAllCarts,
     createAndSubmitOrder,
@@ -51,6 +54,14 @@ export default function CartScreen() {
 
   // Track expanded items
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+
+  // Move item modal state
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  const [itemToMove, setItemToMove] = useState<{
+    locationId: string;
+    inventoryItemId: string;
+    itemName: string;
+  } | null>(null);
 
   const cartLocationIds = getCartLocationIds();
   const totalCartCount = getTotalCartCount();
@@ -111,6 +122,28 @@ export default function CartScreen() {
       ]
     );
   }, [removeFromCart]);
+
+  // Handle opening move modal
+  const handleOpenMoveModal = useCallback((locationId: string, inventoryItemId: string, itemName: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setItemToMove({ locationId, inventoryItemId, itemName });
+    setShowMoveModal(true);
+  }, []);
+
+  // Handle moving item to another location
+  const handleMoveItem = useCallback((toLocationId: string) => {
+    if (!itemToMove) return;
+
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+
+    moveCartItem(itemToMove.locationId, toLocationId, itemToMove.inventoryItemId);
+    setShowMoveModal(false);
+    setItemToMove(null);
+  }, [itemToMove, moveCartItem]);
 
   // Handle clear location cart
   const handleClearLocationCart = useCallback((locationId: string, locationName: string) => {
@@ -277,13 +310,26 @@ export default function CartScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Remove Button */}
-              <TouchableOpacity
-                onPress={() => handleRemoveItem(locationId, inventoryItem.id, inventoryItem.name)}
-                className="p-2"
-              >
-                <Ionicons name="trash-outline" size={18} color={colors.error} />
-              </TouchableOpacity>
+              {/* Action Buttons */}
+              <View className="flex-row items-center">
+                {/* Move to Another Location Button */}
+                {locations.length > 1 && (
+                  <TouchableOpacity
+                    onPress={() => handleOpenMoveModal(locationId, inventoryItem.id, inventoryItem.name)}
+                    className="p-2 mr-1"
+                  >
+                    <Ionicons name="swap-horizontal" size={18} color={colors.primary[500]} />
+                  </TouchableOpacity>
+                )}
+
+                {/* Remove Button */}
+                <TouchableOpacity
+                  onPress={() => handleRemoveItem(locationId, inventoryItem.id, inventoryItem.name)}
+                  className="p-2"
+                >
+                  <Ionicons name="trash-outline" size={18} color={colors.error} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {/* Pack info */}
@@ -408,6 +454,76 @@ export default function CartScreen() {
           </View>
         </View>
       )}
+
+      {/* Move Item Modal */}
+      <Modal
+        visible={showMoveModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowMoveModal(false)}
+      >
+        <Pressable
+          className="flex-1 bg-black/50 justify-end"
+          onPress={() => setShowMoveModal(false)}
+        >
+          <Pressable
+            className="bg-white rounded-t-3xl"
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Handle bar */}
+            <View className="items-center pt-3 pb-2">
+              <View className="w-10 h-1 bg-gray-300 rounded-full" />
+            </View>
+
+            <View className="px-6 pb-8">
+              <Text className="text-xl font-bold text-gray-900 mb-2">
+                Move Item
+              </Text>
+              <Text className="text-gray-500 mb-4">
+                Move "{itemToMove?.itemName}" to another location
+              </Text>
+
+              {locations
+                .filter((loc) => loc.id !== itemToMove?.locationId)
+                .map((loc) => {
+                  const cartCount = getCartItems(loc.id).length;
+                  return (
+                    <TouchableOpacity
+                      key={loc.id}
+                      className="flex-row items-center p-4 rounded-xl mb-3 border-2 border-gray-200 bg-white"
+                      onPress={() => handleMoveItem(loc.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View className="w-11 h-11 bg-primary-100 rounded-full items-center justify-center">
+                        <Text className="text-primary-600 font-bold text-sm">
+                          {loc.short_code}
+                        </Text>
+                      </View>
+                      <View className="flex-1 ml-4">
+                        <Text className="font-semibold text-base text-gray-900">
+                          {loc.name}
+                        </Text>
+                        {cartCount > 0 && (
+                          <Text className="text-sm text-gray-500">
+                            {cartCount} item{cartCount !== 1 ? 's' : ''} in cart
+                          </Text>
+                        )}
+                      </View>
+                      <Ionicons name="arrow-forward" size={20} color={colors.primary[500]} />
+                    </TouchableOpacity>
+                  );
+                })}
+
+              <TouchableOpacity
+                onPress={() => setShowMoveModal(false)}
+                className="py-4 mt-2"
+              >
+                <Text className="text-gray-500 font-medium text-center">Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }

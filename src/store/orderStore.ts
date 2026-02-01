@@ -23,6 +23,7 @@ interface OrderState {
   addToCart: (locationId: string, inventoryItemId: string, quantity: number, unitType: UnitType) => void;
   updateCartItem: (locationId: string, inventoryItemId: string, quantity: number, unitType: UnitType) => void;
   removeFromCart: (locationId: string, inventoryItemId: string) => void;
+  moveCartItem: (fromLocationId: string, toLocationId: string, inventoryItemId: string) => void;
   clearLocationCart: (locationId: string) => void;
   clearAllCarts: () => void;
 
@@ -123,6 +124,45 @@ export const useOrderStore = create<OrderState>()(
           cartByLocation: {
             ...cartByLocation,
             [locationId]: locationCart.filter((item) => item.inventoryItemId !== inventoryItemId),
+          },
+        });
+      },
+
+      moveCartItem: (fromLocationId, toLocationId, inventoryItemId) => {
+        if (fromLocationId === toLocationId) return;
+
+        const { cartByLocation } = get();
+        const fromCart = cartByLocation[fromLocationId] || [];
+        const toCart = cartByLocation[toLocationId] || [];
+
+        // Find the item to move
+        const itemToMove = fromCart.find((item) => item.inventoryItemId === inventoryItemId);
+        if (!itemToMove) return;
+
+        // Check if item already exists in destination cart
+        const existingItem = toCart.find((item) => item.inventoryItemId === inventoryItemId);
+
+        let newToCart: typeof toCart;
+        if (existingItem) {
+          // Merge quantities if item already exists
+          newToCart = toCart.map((item) =>
+            item.inventoryItemId === inventoryItemId
+              ? { ...item, quantity: item.quantity + itemToMove.quantity }
+              : item
+          );
+        } else {
+          // Add item to destination cart
+          newToCart = [...toCart, itemToMove];
+        }
+
+        // Remove from source cart
+        const newFromCart = fromCart.filter((item) => item.inventoryItemId !== inventoryItemId);
+
+        set({
+          cartByLocation: {
+            ...cartByLocation,
+            [fromLocationId]: newFromCart,
+            [toLocationId]: newToCart,
           },
         });
       },

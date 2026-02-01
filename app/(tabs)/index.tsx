@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,14 +8,26 @@ import {
   RefreshControl,
   Modal,
   Pressable,
+  Alert,
+  ScrollView,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useInventoryStore, useAuthStore } from '@/store';
-import { InventoryItem, ItemCategory, Location } from '@/types';
-import { CATEGORY_LABELS, categoryColors } from '@/constants';
+import * as Haptics from 'expo-haptics';
+import { useInventoryStore, useAuthStore, useOrderStore } from '@/store';
+import { InventoryItem, ItemCategory, Location, SupplierCategory } from '@/types';
+import { CATEGORY_LABELS, categoryColors, colors } from '@/constants';
 import { InventoryItemCard } from '@/components/InventoryItemCard';
 import { CategoryFilter } from '@/components/CategoryFilter';
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const categories: ItemCategory[] = [
   'fish',
@@ -28,8 +40,14 @@ const categories: ItemCategory[] = [
   'packaging',
 ];
 
+const SUPPLIER_CATEGORIES: { value: SupplierCategory; label: string }[] = [
+  { value: 'fish_supplier', label: 'Fish Supplier' },
+  { value: 'main_distributor', label: 'Main Distributor' },
+  { value: 'asian_market', label: 'Asian Market' },
+];
+
 export default function OrderScreen() {
-  const { location, locations, setLocation, fetchLocations } = useAuthStore();
+  const { location, locations, setLocation, fetchLocations, user } = useAuthStore();
   const {
     fetchItems,
     getFilteredItems,
@@ -37,20 +55,33 @@ export default function OrderScreen() {
     setSelectedCategory,
     searchQuery,
     setSearchQuery,
+    addItem,
+    isLoading: inventoryLoading,
   } = useInventoryStore();
+  const { getLocationCartTotal } = useOrderStore();
 
   const [refreshing, setRefreshing] = useState(false);
-  const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [showAddItemModal, setShowAddItemModal] = useState(false);
+
+  // New item form state
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemCategory, setNewItemCategory] = useState<ItemCategory>('dry');
+  const [newItemSupplierCategory, setNewItemSupplierCategory] = useState<SupplierCategory>('main_distributor');
+  const [newItemBaseUnit, setNewItemBaseUnit] = useState('');
+  const [newItemPackUnit, setNewItemPackUnit] = useState('');
+  const [newItemPackSize, setNewItemPackSize] = useState('');
+  const [isSubmittingItem, setIsSubmittingItem] = useState(false);
 
   useEffect(() => {
     fetchItems();
     fetchLocations();
   }, []);
 
-  // Show location picker if no location is selected
+  // Auto-select first location if none selected
   useEffect(() => {
     if (locations.length > 0 && !location) {
-      setShowLocationPicker(true);
+      setLocation(locations[0]);
     }
   }, [locations, location]);
 
@@ -60,12 +91,79 @@ export default function OrderScreen() {
     setRefreshing(false);
   };
 
-  const handleSelectLocation = (selectedLocation: Location) => {
+  const toggleLocationDropdown = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setShowLocationDropdown((prev) => !prev);
+  }, []);
+
+  const handleSelectLocation = useCallback((selectedLocation: Location) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
     setLocation(selectedLocation);
-    setShowLocationPicker(false);
-  };
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setShowLocationDropdown(false);
+  }, [setLocation]);
 
   const filteredItems = getFilteredItems();
+
+  const resetNewItemForm = () => {
+    setNewItemName(searchQuery); // Pre-fill with search query
+    setNewItemCategory('dry');
+    setNewItemSupplierCategory('main_distributor');
+    setNewItemBaseUnit('');
+    setNewItemPackUnit('');
+    setNewItemPackSize('');
+  };
+
+  const handleOpenAddItemModal = () => {
+    resetNewItemForm();
+    setShowAddItemModal(true);
+  };
+
+  const handleAddNewItem = async () => {
+    if (!newItemName.trim()) {
+      Alert.alert('Error', 'Please enter an item name');
+      return;
+    }
+    if (!newItemBaseUnit.trim()) {
+      Alert.alert('Error', 'Please enter a base unit (e.g., lb, oz, each)');
+      return;
+    }
+    if (!newItemPackUnit.trim()) {
+      Alert.alert('Error', 'Please enter a pack unit (e.g., case, bag, box)');
+      return;
+    }
+    if (!newItemPackSize.trim() || isNaN(parseFloat(newItemPackSize))) {
+      Alert.alert('Error', 'Please enter a valid pack size number');
+      return;
+    }
+
+    setIsSubmittingItem(true);
+    try {
+      await addItem({
+        name: newItemName.trim(),
+        category: newItemCategory,
+        supplier_category: newItemSupplierCategory,
+        base_unit: newItemBaseUnit.trim(),
+        pack_unit: newItemPackUnit.trim(),
+        pack_size: parseFloat(newItemPackSize),
+        created_by: user?.id,
+      });
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      setShowAddItemModal(false);
+      setSearchQuery(newItemName.trim()); // Search for the new item
+      Alert.alert('Success', `"${newItemName}" has been added to the inventory`);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to add item');
+    } finally {
+      setIsSubmittingItem(false);
+    }
+  };
 
   const renderItem = ({ item }: { item: InventoryItem }) => (
     <InventoryItemCard item={item} locationId={location?.id || ''} />
@@ -73,30 +171,66 @@ export default function OrderScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      {/* Location Selector Header */}
-      <TouchableOpacity
-        className="bg-white px-4 py-3 flex-row items-center justify-between border-b border-gray-100"
-        onPress={() => setShowLocationPicker(true)}
-        activeOpacity={0.7}
-      >
-        <View className="flex-row items-center flex-1">
-          <View className="w-10 h-10 bg-primary-100 rounded-full items-center justify-center">
-            <Ionicons name="location" size={20} color="#F97316" />
-          </View>
-          <View className="ml-3 flex-1">
-            <Text className="text-xs text-gray-500 uppercase tracking-wide">
-              Ordering for
-            </Text>
-            <Text className="text-base font-bold text-gray-900" numberOfLines={1}>
+      {/* Header with Location Dropdown */}
+      <View className="bg-white border-b border-gray-200">
+        <TouchableOpacity
+          onPress={toggleLocationDropdown}
+          className="flex-row items-center justify-center px-4 py-3"
+        >
+          <View className="flex-row items-center bg-gray-100 px-4 py-2.5 rounded-xl">
+            <Ionicons name="location" size={18} color={colors.primary[500]} />
+            <Text className="text-base font-semibold text-gray-900 mx-2">
               {location?.name || 'Select Location'}
             </Text>
+            <Ionicons
+              name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.gray[500]}
+            />
           </View>
-        </View>
-        <View className="flex-row items-center">
-          <Text className="text-primary-500 font-medium mr-1">Change</Text>
-          <Ionicons name="chevron-down" size={16} color="#F97316" />
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+
+        {/* Location Dropdown Menu */}
+        {showLocationDropdown && (
+          <View className="border-t border-gray-100 pb-2">
+            {locations.map((loc) => {
+              const isSelected = location?.id === loc.id;
+              const cartCount = getLocationCartTotal(loc.id);
+
+              return (
+                <TouchableOpacity
+                  key={loc.id}
+                  onPress={() => handleSelectLocation(loc)}
+                  className={`flex-row items-center justify-between px-4 py-3 mx-2 rounded-lg ${
+                    isSelected ? 'bg-primary-50' : ''
+                  }`}
+                >
+                  <View className="flex-row items-center">
+                    <View className={`w-9 h-9 rounded-full items-center justify-center mr-3 ${
+                      isSelected ? 'bg-primary-500' : 'bg-gray-200'
+                    }`}>
+                      <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
+                        {loc.short_code}
+                      </Text>
+                    </View>
+                    <Text className={`text-base ${isSelected ? 'font-semibold text-primary-700' : 'text-gray-800'}`}>
+                      {loc.name}
+                    </Text>
+                  </View>
+                  <View className="flex-row items-center">
+                    {cartCount > 0 && (
+                      <Text className="text-sm text-gray-500 mr-2">{cartCount} items</Text>
+                    )}
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={20} color={colors.primary[500]} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+      </View>
 
       {/* Search Bar */}
       <View className="px-4 py-3 bg-white border-b border-gray-100">
@@ -140,6 +274,15 @@ export default function OrderScreen() {
                 ? 'No items match your search'
                 : 'No inventory items found'}
             </Text>
+            {(searchQuery || selectedCategory) && (
+              <TouchableOpacity
+                onPress={handleOpenAddItemModal}
+                className="mt-4 flex-row items-center bg-primary-500 px-5 py-3 rounded-xl"
+              >
+                <Ionicons name="add-circle-outline" size={20} color="white" />
+                <Text className="text-white font-semibold ml-2">Add Missing Item</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
         refreshControl={
@@ -151,87 +294,176 @@ export default function OrderScreen() {
         }
       />
 
-      {/* Location Picker Modal */}
+      {/* Add Item Modal */}
       <Modal
-        visible={showLocationPicker}
+        visible={showAddItemModal}
         transparent
         animationType="slide"
-        onRequestClose={() => location && setShowLocationPicker(false)}
+        onRequestClose={() => setShowAddItemModal(false)}
       >
-        <Pressable
-          className="flex-1 bg-black/50 justify-end"
-          onPress={() => location && setShowLocationPicker(false)}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          className="flex-1"
         >
           <Pressable
-            className="bg-white rounded-t-3xl"
-            onPress={(e) => e.stopPropagation()}
+            className="flex-1 bg-black/50 justify-end"
+            onPress={() => setShowAddItemModal(false)}
           >
-            {/* Handle bar */}
-            <View className="items-center pt-3 pb-2">
-              <View className="w-10 h-1 bg-gray-300 rounded-full" />
-            </View>
+            <Pressable
+              className="bg-white rounded-t-3xl max-h-[90%]"
+              onPress={(e) => e.stopPropagation()}
+            >
+              {/* Handle bar */}
+              <View className="items-center pt-3 pb-2">
+                <View className="w-10 h-1 bg-gray-300 rounded-full" />
+              </View>
 
-            <View className="px-6 pb-8">
-              <Text className="text-2xl font-bold text-gray-900 mb-2">
-                Select Location
-              </Text>
-              <Text className="text-gray-500 mb-6">
-                Choose which restaurant you're ordering for
-              </Text>
+              <ScrollView className="px-6 pb-8" showsVerticalScrollIndicator={false}>
+                <Text className="text-2xl font-bold text-gray-900 mb-1">
+                  Add Missing Item
+                </Text>
+                <Text className="text-gray-500 mb-6">
+                  This item will be added to the inventory
+                </Text>
 
-              {locations.map((loc) => {
-                const isSelected = location?.id === loc.id;
-                return (
+                {/* Item Name */}
+                <View className="mb-4">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">Item Name *</Text>
+                  <TextInput
+                    className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900 text-base"
+                    placeholder="e.g., Salmon Fillet"
+                    value={newItemName}
+                    onChangeText={setNewItemName}
+                    autoCapitalize="words"
+                  />
+                </View>
+
+                {/* Category */}
+                <View className="mb-4">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">Category *</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View className="flex-row">
+                      {categories.map((cat) => {
+                        const isSelected = newItemCategory === cat;
+                        const catColor = categoryColors[cat] || '#6B7280';
+                        return (
+                          <TouchableOpacity
+                            key={cat}
+                            onPress={() => setNewItemCategory(cat)}
+                            className={`mr-2 px-4 py-2 rounded-lg border-2 ${
+                              isSelected ? 'border-primary-500' : 'border-transparent'
+                            }`}
+                            style={{ backgroundColor: isSelected ? catColor + '30' : catColor + '15' }}
+                          >
+                            <Text style={{ color: catColor }} className="font-medium text-sm">
+                              {CATEGORY_LABELS[cat]}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                </View>
+
+                {/* Supplier Category */}
+                <View className="mb-4">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">Supplier *</Text>
+                  <View className="flex-row flex-wrap">
+                    {SUPPLIER_CATEGORIES.map((sup) => {
+                      const isSelected = newItemSupplierCategory === sup.value;
+                      return (
+                        <TouchableOpacity
+                          key={sup.value}
+                          onPress={() => setNewItemSupplierCategory(sup.value)}
+                          className={`mr-2 mb-2 px-4 py-2 rounded-lg ${
+                            isSelected ? 'bg-primary-500' : 'bg-gray-100'
+                          }`}
+                        >
+                          <Text className={`font-medium text-sm ${
+                            isSelected ? 'text-white' : 'text-gray-700'
+                          }`}>
+                            {sup.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                {/* Units Row */}
+                <View className="flex-row mb-4">
+                  <View className="flex-1 mr-2">
+                    <Text className="text-sm font-medium text-gray-700 mb-2">Base Unit *</Text>
+                    <TextInput
+                      className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900 text-base"
+                      placeholder="e.g., lb, oz, each"
+                      value={newItemBaseUnit}
+                      onChangeText={setNewItemBaseUnit}
+                      autoCapitalize="none"
+                    />
+                  </View>
+                  <View className="flex-1 ml-2">
+                    <Text className="text-sm font-medium text-gray-700 mb-2">Pack Unit *</Text>
+                    <TextInput
+                      className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900 text-base"
+                      placeholder="e.g., case, bag"
+                      value={newItemPackUnit}
+                      onChangeText={setNewItemPackUnit}
+                      autoCapitalize="none"
+                    />
+                  </View>
+                </View>
+
+                {/* Pack Size */}
+                <View className="mb-6">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">Pack Size *</Text>
+                  <TextInput
+                    className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900 text-base"
+                    placeholder="Number of base units per pack"
+                    value={newItemPackSize}
+                    onChangeText={setNewItemPackSize}
+                    keyboardType="decimal-pad"
+                  />
+                  <Text className="text-xs text-gray-400 mt-1">
+                    How many {newItemBaseUnit || 'base units'} per {newItemPackUnit || 'pack'}?
+                  </Text>
+                </View>
+
+                {/* Employee Note */}
+                <View className="bg-blue-50 rounded-xl p-4 mb-6">
+                  <View className="flex-row items-center mb-1">
+                    <Ionicons name="information-circle" size={18} color="#3B82F6" />
+                    <Text className="text-blue-700 font-medium ml-2">Employee-Added Item</Text>
+                  </View>
+                  <Text className="text-blue-600 text-sm">
+                    This item will be marked as added by you ({user?.name || 'Employee'}) and may be reviewed by a manager.
+                  </Text>
+                </View>
+
+                {/* Action Buttons */}
+                <View className="flex-row mb-8">
                   <TouchableOpacity
-                    key={loc.id}
-                    className={`flex-row items-center p-4 rounded-2xl mb-3 border-2 ${
-                      isSelected
-                        ? 'border-primary-500 bg-primary-50'
-                        : 'border-gray-200 bg-white'
-                    }`}
-                    onPress={() => handleSelectLocation(loc)}
-                    activeOpacity={0.7}
+                    onPress={() => setShowAddItemModal(false)}
+                    className="flex-1 mr-2 py-4 rounded-xl bg-gray-200"
                   >
-                    <View
-                      className={`w-12 h-12 rounded-full items-center justify-center ${
-                        isSelected ? 'bg-primary-500' : 'bg-gray-100'
-                      }`}
-                    >
-                      <Ionicons
-                        name="restaurant"
-                        size={24}
-                        color={isSelected ? 'white' : '#6B7280'}
-                      />
-                    </View>
-                    <View className="flex-1 ml-4">
-                      <Text
-                        className={`font-bold text-lg ${
-                          isSelected ? 'text-primary-700' : 'text-gray-900'
-                        }`}
-                      >
-                        {loc.name}
-                      </Text>
-                      <Text
-                        className={`text-sm ${
-                          isSelected ? 'text-primary-600' : 'text-gray-500'
-                        }`}
-                      >
-                        {loc.short_code}
-                      </Text>
-                    </View>
-                    {isSelected && (
-                      <Ionicons
-                        name="checkmark-circle"
-                        size={24}
-                        color="#F97316"
-                      />
-                    )}
+                    <Text className="text-gray-700 font-semibold text-center">Cancel</Text>
                   </TouchableOpacity>
-                );
-              })}
-            </View>
+                  <TouchableOpacity
+                    onPress={handleAddNewItem}
+                    disabled={isSubmittingItem}
+                    className={`flex-1 ml-2 py-4 rounded-xl bg-primary-500 ${
+                      isSubmittingItem ? 'opacity-70' : ''
+                    }`}
+                  >
+                    <Text className="text-white font-semibold text-center">
+                      {isSubmittingItem ? 'Adding...' : 'Add Item'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
