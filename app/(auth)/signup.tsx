@@ -7,7 +7,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  ActivityIndicator,
   ScrollView,
 } from 'react-native';
 import { Link, router } from 'expo-router';
@@ -15,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
 import { UserRole } from '@/types';
+import { SpinningFish } from '@/components';
 
 export default function SignUpScreen() {
   const [name, setName] = useState('');
@@ -280,7 +280,7 @@ export default function SignUpScreen() {
                 activeOpacity={0.8}
               >
                 {isLoading ? (
-                  <ActivityIndicator color="white" />
+                  <SpinningFish size="small" />
                 ) : (
                   <Text className="text-white font-bold text-lg">
                     Create Account

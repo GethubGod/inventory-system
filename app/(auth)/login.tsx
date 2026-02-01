@@ -7,12 +7,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import { Link, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
+import { SpinningFish } from '@/components';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -145,7 +145,7 @@ export default function LoginScreen() {
               activeOpacity={0.8}
             >
               {isLoading ? (
-                <ActivityIndicator color="white" />
+                <SpinningFish size="small" />
               ) : (
                 <Text className="text-white font-bold text-lg">Sign In</Text>
               )}

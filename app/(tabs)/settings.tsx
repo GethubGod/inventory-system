@@ -70,11 +70,12 @@ function SettingsRow({
 }
 
 export default function SettingsScreen() {
-  const { user, location, signOut } = useAuthStore();
+  const { user, location, signOut, setViewMode } = useAuthStore();
   const { getTotalItemCount, clearAllDrafts } = useDraftStore();
 
   const draftCount = getTotalItemCount();
   const firstName = user?.name?.split(' ')[0] || 'User';
+  const isManager = user?.role === 'manager';
 
   const handleSignOut = () => {
     Alert.alert(
@@ -120,6 +121,14 @@ export default function SettingsScreen() {
         },
       ]
     );
+  };
+
+  const handleSwitchToManager = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setViewMode('manager');
+    router.replace('/(manager)');
   };
 
   return (
@@ -228,6 +237,30 @@ export default function SettingsScreen() {
             />
           </View>
         </View>
+
+        {/* Manager Switch - Only visible to managers */}
+        {isManager && (
+          <View className="mt-6">
+            <View className="bg-white rounded-xl mx-4 overflow-hidden"
+              style={{
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 4,
+                elevation: 2,
+              }}
+            >
+              <SettingsRow
+                icon="swap-horizontal"
+                iconColor="#7C3AED"
+                iconBgColor="#EDE9FE"
+                title="Switch to Manager View"
+                subtitle="Manage orders and fulfillment"
+                onPress={handleSwitchToManager}
+              />
+            </View>
+          </View>
+        )}
 
         {/* Sign Out Section */}
         <View className="mt-6">

@@ -5,6 +5,8 @@ import { Session } from '@supabase/supabase-js';
 import { User, Location, UserRole } from '@/types';
 import { supabase } from '@/lib/supabase';
 
+type ViewMode = 'employee' | 'manager';
+
 interface AuthState {
   session: Session | null;
   user: User | null;
@@ -12,12 +14,14 @@ interface AuthState {
   locations: Location[];
   isLoading: boolean;
   isInitialized: boolean;
+  viewMode: ViewMode;
 
   // Actions
   setSession: (session: Session | null) => void;
   setUser: (user: User | null) => void;
   setLocation: (location: Location | null) => void;
   setIsLoading: (isLoading: boolean) => void;
+  setViewMode: (mode: ViewMode) => void;
   initialize: () => Promise<void>;
   fetchUser: () => Promise<User | null>;
   fetchLocations: () => Promise<Location[]>;
@@ -43,11 +47,13 @@ export const useAuthStore = create<AuthState>()(
       locations: [],
       isLoading: true,
       isInitialized: false,
+      viewMode: 'employee',
 
       setSession: (session) => set({ session }),
       setUser: (user) => set({ user }),
       setLocation: (location) => set({ location }),
       setIsLoading: (isLoading) => set({ isLoading }),
+      setViewMode: (mode) => set({ viewMode: mode }),
 
       fetchLocations: async () => {
         const { data } = await supabase
@@ -229,7 +235,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           const { error } = await supabase.auth.signOut();
           if (error) throw error;
-          set({ session: null, user: null, location: null });
+          set({ session: null, user: null, location: null, viewMode: 'employee' });
         } finally {
           set({ isLoading: false });
         }
@@ -278,6 +284,7 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({
         location: state.location,
         user: state.user,
+        viewMode: state.viewMode,
       }),
     }
   )

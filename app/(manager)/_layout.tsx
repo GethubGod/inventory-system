@@ -44,6 +44,17 @@ export default function ManagerLayout() {
         }}
       />
 
+      {/* Fulfillment */}
+      <Tabs.Screen
+        name="fulfillment"
+        options={{
+          title: 'Fulfillment',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="clipboard-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
       {/* Inventory */}
       <Tabs.Screen
         name="inventory"
@@ -63,6 +74,14 @@ export default function ManagerLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),
+        }}
+      />
+
+      {/* Hidden screens (accessible via navigation) */}
+      <Tabs.Screen
+        name="export-fish-order"
+        options={{
+          href: null, // Hide from tab bar
         }}
       />
     </Tabs>

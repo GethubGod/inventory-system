@@ -5,7 +5,6 @@ import {
   FlatList,
   TouchableOpacity,
   Alert,
-  ActivityIndicator,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +15,7 @@ import { useOrderStore, useAuthStore } from '@/store';
 import { OrderItemWithInventory } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS, CATEGORY_LABELS, categoryColors } from '@/constants';
 import { supabase } from '@/lib/supabase';
+import { SpinningFish } from '@/components';
 
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -185,7 +185,7 @@ export default function OrderDetailScreen() {
   if (isLoading || !currentOrder) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
-        <ActivityIndicator size="large" color="#F97316" />
+        <SpinningFish size="large" showText text="Loading order..." />
       </SafeAreaView>
     );
   }
@@ -365,7 +365,7 @@ export default function OrderDetailScreen() {
                   disabled={isUpdating}
                 >
                   {isUpdating ? (
-                    <ActivityIndicator color="white" size="small" />
+                    <SpinningFish size="small" />
                   ) : (
                     <>
                       <Ionicons name="send" size={18} color="white" />
@@ -394,7 +394,7 @@ export default function OrderDetailScreen() {
                   disabled={isUpdating}
                 >
                   {isUpdating ? (
-                    <ActivityIndicator color="white" size="small" />
+                    <SpinningFish size="small" />
                   ) : (
                     <>
                       <Ionicons name="play-circle" size={18} color="white" />
@@ -423,7 +423,7 @@ export default function OrderDetailScreen() {
                   disabled={isUpdating}
                 >
                   {isUpdating ? (
-                    <ActivityIndicator color="white" size="small" />
+                    <SpinningFish size="small" />
                   ) : (
                     <>
                       <Ionicons name="checkmark-circle" size={18} color="white" />

@@ -25,7 +25,7 @@ interface DashboardStats {
 }
 
 export default function ManagerDashboard() {
-  const { locations, signOut, fetchLocations } = useAuthStore();
+  const { locations, signOut, fetchLocations, setViewMode } = useAuthStore();
   const [stats, setStats] = useState<DashboardStats>({
     pendingOrders: 0,
     todayOrders: 0,
@@ -123,6 +123,14 @@ export default function ManagerDashboard() {
     }
     await signOut();
     router.replace('/(auth)/login');
+  };
+
+  const handleSwitchToEmployee = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setViewMode('employee');
+    router.replace('/(tabs)');
   };
 
   const formatDate = (dateString: string) => {
@@ -310,9 +318,33 @@ export default function ManagerDashboard() {
             icon="clipboard"
             color="#F97316"
             bgColor="#FFF7ED"
-            onPress={() => router.push('/(manager)/orders')}
+            badge={stats.pendingOrders}
+            onPress={() => router.push('/(manager)/fulfillment')}
           />
         </View>
+
+        {/* Switch to Employee View */}
+        <TouchableOpacity
+          className="bg-purple-50 rounded-2xl p-4 mb-6 flex-row items-center border border-purple-100"
+          style={{
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.05,
+            shadowRadius: 4,
+            elevation: 2,
+          }}
+          onPress={handleSwitchToEmployee}
+          activeOpacity={0.7}
+        >
+          <View className="w-12 h-12 rounded-xl bg-purple-100 items-center justify-center">
+            <Ionicons name="swap-horizontal" size={24} color="#7C3AED" />
+          </View>
+          <View className="flex-1 ml-4">
+            <Text className="text-gray-900 font-bold text-base">Switch to Employee View</Text>
+            <Text className="text-gray-600 text-sm mt-0.5">Place your own orders</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#7C3AED" />
+        </TouchableOpacity>
 
         {/* Recent Orders */}
         <View

@@ -3,3 +3,4 @@ export { CartItemCard } from './CartItemCard';
 export { CategoryFilter } from './CategoryFilter';
 export { StatusFilter } from './StatusFilter';
 export { OrderCard } from './OrderCard';
+export { SpinningFish } from './SpinningFish';

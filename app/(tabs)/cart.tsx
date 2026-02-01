@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { useOrderStore, useInventoryStore, useAuthStore } from '@/store';
 import { colors } from '@/constants';
 import { Location, InventoryItem, UnitType } from '@/types';
-import { ActivityIndicator } from 'react-native';
+import { SpinningFish } from '@/components';
 
 // Category emoji mapping
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -341,7 +341,7 @@ export default function CartScreen() {
         >
           {submittingLocation === location.id ? (
             <>
-              <ActivityIndicator size="small" color="white" />
+              <SpinningFish size="small" />
               <Text className="text-white font-semibold ml-2">Submitting...</Text>
             </>
           ) : (

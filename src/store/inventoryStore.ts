@@ -4,6 +4,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { InventoryItem, ItemCategory, SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 
+export interface NewInventoryItem {
+  name: string;
+  category: ItemCategory;
+  supplier_category: SupplierCategory;
+  base_unit: string;
+  pack_unit: string;
+  pack_size: number;
+  created_by?: string;
+}
+
 interface InventoryState {
   items: InventoryItem[];
   isLoading: boolean;
@@ -14,6 +24,9 @@ interface InventoryState {
 
   // Actions
   fetchItems: () => Promise<void>;
+  addItem: (item: NewInventoryItem) => Promise<InventoryItem>;
+  updateItem: (id: string, updates: Partial<NewInventoryItem>) => Promise<void>;
+  deleteItem: (id: string) => Promise<void>;
   setSelectedCategory: (category: ItemCategory | null) => void;
   setSelectedSupplierCategory: (category: SupplierCategory | null) => void;
   setSearchQuery: (query: string) => void;
@@ -60,6 +73,77 @@ export const useInventoryStore = create<InventoryState>()(
             items: data || [],
             lastFetched: Date.now(),
           });
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      addItem: async (item) => {
+        set({ isLoading: true });
+        try {
+          const { data, error } = await supabase
+            .from('inventory_items')
+            .insert({
+              ...item,
+              active: true,
+            })
+            .select()
+            .single();
+
+          if (error) throw error;
+
+          // Add to local state
+          set((state) => ({
+            items: [...state.items, data].sort((a, b) => {
+              if (a.category !== b.category) {
+                return a.category.localeCompare(b.category);
+              }
+              return a.name.localeCompare(b.name);
+            }),
+          }));
+
+          return data;
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      updateItem: async (id, updates) => {
+        set({ isLoading: true });
+        try {
+          const { error } = await supabase
+            .from('inventory_items')
+            .update(updates)
+            .eq('id', id);
+
+          if (error) throw error;
+
+          // Update local state
+          set((state) => ({
+            items: state.items.map((item) =>
+              item.id === id ? { ...item, ...updates } : item
+            ),
+          }));
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      deleteItem: async (id) => {
+        set({ isLoading: true });
+        try {
+          // Soft delete by setting active to false
+          const { error } = await supabase
+            .from('inventory_items')
+            .update({ active: false })
+            .eq('id', id);
+
+          if (error) throw error;
+
+          // Remove from local state
+          set((state) => ({
+            items: state.items.filter((item) => item.id !== id),
+          }));
         } finally {
           set({ isLoading: false });
         }

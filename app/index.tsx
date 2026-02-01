@@ -1,17 +1,16 @@
-import { View, ActivityIndicator, Text } from 'react-native';
+import { View, Text } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useAuthStore } from '@/store';
+import { SpinningFish } from '@/components';
 
 export default function Index() {
-  const { session, user, isLoading, isInitialized } = useAuthStore();
+  const { session, user, isLoading, isInitialized, viewMode } = useAuthStore();
 
   // Show loading state while initializing
   if (!isInitialized || isLoading) {
     return (
       <View className="flex-1 items-center justify-center bg-white">
-        <Text className="text-5xl mb-4">🐟</Text>
-        <ActivityIndicator size="large" color="#F97316" />
-        <Text className="text-gray-500 mt-4">Loading...</Text>
+        <SpinningFish size="large" showText text="Loading..." />
       </View>
     );
   }
@@ -21,11 +20,11 @@ export default function Index() {
     return <Redirect href="/(auth)/login" />;
   }
 
-  // Logged in - route based on role
-  if (user?.role === 'manager') {
+  // Route based on viewMode for managers, employees always go to tabs
+  if (user?.role === 'manager' && viewMode === 'manager') {
     return <Redirect href="/(manager)" />;
   }
 
-  // Default: employee goes to tabs
+  // Default: employee view (tabs)
   return <Redirect href="/(tabs)" />;
 }

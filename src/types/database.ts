@@ -46,6 +46,7 @@ export interface InventoryItem {
   pack_size: number;
   active: boolean;
   created_at: string;
+  created_by?: string | null;
 }
 
 export interface Order {

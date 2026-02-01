@@ -70,9 +70,17 @@ function SettingsRow({
 }
 
 export default function ManagerSettingsScreen() {
-  const { user, locations, signOut } = useAuthStore();
+  const { user, locations, signOut, setViewMode } = useAuthStore();
 
   const firstName = user?.name?.split(' ')[0] || 'Manager';
+
+  const handleSwitchToEmployee = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    setViewMode('employee');
+    router.replace('/(tabs)');
+  };
 
   const handleSignOut = () => {
     Alert.alert(
@@ -205,6 +213,28 @@ export default function ManagerSettingsScreen() {
               subtitle={user?.email || ''}
               onPress={() => {}}
               showChevron={false}
+            />
+          </View>
+        </View>
+
+        {/* Switch View Section */}
+        <View className="mt-6">
+          <View className="bg-white rounded-xl mx-4 overflow-hidden"
+            style={{
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+          >
+            <SettingsRow
+              icon="swap-horizontal"
+              iconColor="#7C3AED"
+              iconBgColor="#EDE9FE"
+              title="Switch to Employee View"
+              subtitle="Place your own orders"
+              onPress={handleSwitchToEmployee}
             />
           </View>
         </View>
