@@ -11,7 +11,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useAuthStore } from '@/store';
+import { useAuthStore, useDraftStore } from '@/store';
 import { colors } from '@/constants';
 
 interface SettingsRowProps {
@@ -69,10 +69,12 @@ function SettingsRow({
   );
 }
 
-export default function ManagerSettingsScreen() {
-  const { user, locations, signOut } = useAuthStore();
+export default function SettingsScreen() {
+  const { user, location, signOut } = useAuthStore();
+  const { getTotalItemCount, clearAllDrafts } = useDraftStore();
 
-  const firstName = user?.name?.split(' ')[0] || 'Manager';
+  const draftCount = getTotalItemCount();
+  const firstName = user?.name?.split(' ')[0] || 'User';
 
   const handleSignOut = () => {
     Alert.alert(
@@ -89,6 +91,31 @@ export default function ManagerSettingsScreen() {
             }
             await signOut();
             router.replace('/(auth)/login');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleClearDrafts = () => {
+    if (draftCount === 0) {
+      Alert.alert('No Drafts', 'You have no draft items to clear.');
+      return;
+    }
+
+    Alert.alert(
+      'Clear Drafts',
+      `Are you sure you want to clear all ${draftCount} draft item${draftCount !== 1 ? 's' : ''}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear All',
+          style: 'destructive',
+          onPress: () => {
+            if (Platform.OS !== 'web') {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+            clearAllDrafts();
           },
         },
       ]
@@ -124,54 +151,15 @@ export default function ManagerSettingsScreen() {
               </Text>
             </View>
             <View className="flex-1">
-              <Text className="text-gray-900 font-bold text-xl">{user?.name || 'Manager'}</Text>
+              <Text className="text-gray-900 font-bold text-xl">{user?.name || 'User'}</Text>
               <Text className="text-gray-500 text-sm mt-1">{user?.email || ''}</Text>
-              <View className="flex-row items-center mt-2">
-                <View className="bg-purple-100 px-2.5 py-1 rounded-full">
-                  <Text className="text-purple-700 text-xs font-semibold capitalize">
-                    {user?.role || 'Manager'}
-                  </Text>
+              {location && (
+                <View className="flex-row items-center mt-2">
+                  <Ionicons name="location" size={14} color={colors.primary[500]} />
+                  <Text className="text-primary-600 text-sm ml-1 font-medium">{location.name}</Text>
                 </View>
-              </View>
+              )}
             </View>
-          </View>
-        </View>
-
-        {/* Locations Section */}
-        <View className="mt-6">
-          <Text className="px-5 mb-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
-            Managed Locations
-          </Text>
-          <View className="bg-white rounded-xl mx-4 overflow-hidden"
-            style={{
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-              elevation: 2,
-            }}
-          >
-            {locations.map((loc, index) => (
-              <View
-                key={loc.id}
-                className={`flex-row items-center px-4 py-4 ${
-                  index < locations.length - 1 ? 'border-b border-gray-100' : ''
-                }`}
-              >
-                <View className="w-10 h-10 bg-primary-100 rounded-xl items-center justify-center">
-                  <Ionicons name="restaurant" size={20} color="#F97316" />
-                </View>
-                <View className="ml-3 flex-1">
-                  <Text className="text-gray-900 font-medium">{loc.name}</Text>
-                  <Text className="text-gray-500 text-sm">{loc.short_code}</Text>
-                </View>
-                <View
-                  className={`w-3 h-3 rounded-full ${
-                    loc.active ? 'bg-green-500' : 'bg-gray-300'
-                  }`}
-                />
-              </View>
-            ))}
           </View>
         </View>
 
@@ -195,15 +183,47 @@ export default function ManagerSettingsScreen() {
               iconBgColor="#DBEAFE"
               title="Profile"
               subtitle="Edit your profile information"
-              onPress={() => {}}
+              onPress={() => router.push('/profile')}
             />
             <SettingsRow
-              icon="mail-outline"
-              iconColor="#8B5CF6"
-              iconBgColor="#EDE9FE"
-              title="Email"
-              subtitle={user?.email || ''}
-              onPress={() => {}}
+              icon="location-outline"
+              iconColor={colors.primary[600]}
+              iconBgColor={colors.primary[100]}
+              title="Change Location"
+              subtitle={location?.name || 'Select a location'}
+              onPress={() => router.push('/(tabs)' as any)}
+            />
+          </View>
+        </View>
+
+        {/* Data Section */}
+        <View className="mt-6">
+          <Text className="px-5 mb-2 text-sm font-semibold text-gray-500 uppercase tracking-wide">
+            Data
+          </Text>
+          <View className="bg-white rounded-xl mx-4 overflow-hidden"
+            style={{
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+          >
+            <SettingsRow
+              icon="document-text-outline"
+              iconColor="#F59E0B"
+              iconBgColor="#FEF3C7"
+              title="Draft Items"
+              subtitle={draftCount > 0 ? `${draftCount} item${draftCount !== 1 ? 's' : ''} saved` : 'No drafts'}
+              onPress={() => router.push('/draft')}
+            />
+            <SettingsRow
+              icon="trash-outline"
+              iconColor="#EF4444"
+              iconBgColor="#FEE2E2"
+              title="Clear All Drafts"
+              onPress={handleClearDrafts}
               showChevron={false}
             />
           </View>
@@ -235,7 +255,7 @@ export default function ManagerSettingsScreen() {
         {/* App Info */}
         <View className="mt-8 items-center">
           <Text className="text-gray-400 text-sm">Fast Order v1.0.0</Text>
-          <Text className="text-gray-400 text-xs mt-1">Babytuna Manager Portal</Text>
+          <Text className="text-gray-400 text-xs mt-1">Babytuna Inventory System</Text>
         </View>
       </ScrollView>
     </SafeAreaView>

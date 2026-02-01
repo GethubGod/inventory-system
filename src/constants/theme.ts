@@ -105,7 +105,8 @@ export const categoryColors: Record<string, string> = {
 // Status colors for orders
 export const statusColors: Record<string, { bg: string; text: string }> = {
   draft: { bg: '#F3F4F6', text: '#6B7280' },
-  submitted: { bg: '#DBEAFE', text: '#1D4ED8' },
-  fulfilled: { bg: '#D1FAE5', text: '#047857' },
+  submitted: { bg: '#FEF3C7', text: '#D97706' }, // Orange/Pending
+  processing: { bg: '#DBEAFE', text: '#1D4ED8' }, // Blue
+  fulfilled: { bg: '#D1FAE5', text: '#047857' }, // Green
   cancelled: { bg: '#FEE2E2', text: '#B91C1C' },
 } as const;

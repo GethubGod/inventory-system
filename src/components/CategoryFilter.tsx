@@ -1,6 +1,18 @@
-import { ScrollView, TouchableOpacity, Text } from 'react-native';
+import { ScrollView, TouchableOpacity, Text, View } from 'react-native';
 import { ItemCategory } from '@/types';
 import { categoryColors, CATEGORY_LABELS } from '@/constants';
+
+// Shorter labels for compact display
+const SHORT_LABELS: Record<string, string> = {
+  fish: 'Fish',
+  protein: 'Protein',
+  produce: 'Produce',
+  dry: 'Dry',
+  dairy_cold: 'Dairy',
+  frozen: 'Frozen',
+  sauces: 'Sauces',
+  packaging: 'Packaging',
+};
 
 interface CategoryFilterProps {
   categories: ItemCategory[];
@@ -14,53 +26,58 @@ export function CategoryFilter({
   onSelectCategory,
 }: CategoryFilterProps) {
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      className="bg-white border-b border-gray-200"
-      contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }}
-    >
-      {/* All Categories */}
-      <TouchableOpacity
-        className={`px-4 py-2 rounded-full mr-2 ${
-          selectedCategory === null
-            ? 'bg-primary-500'
-            : 'bg-gray-100'
-        }`}
-        onPress={() => onSelectCategory(null)}
+    <View className="bg-white border-b border-gray-200">
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }}
       >
-        <Text
-          className={`font-medium ${
-            selectedCategory === null ? 'text-white' : 'text-gray-700'
+        {/* All Categories */}
+        <TouchableOpacity
+          className={`px-4 py-2.5 rounded-full mr-2 ${
+            selectedCategory === null
+              ? 'bg-primary-500'
+              : 'bg-gray-100'
           }`}
+          style={{ minWidth: 50 }}
+          onPress={() => onSelectCategory(null)}
         >
-          All
-        </Text>
-      </TouchableOpacity>
-
-      {/* Category Filters */}
-      {categories.map((category) => {
-        const isSelected = selectedCategory === category;
-        const color = categoryColors[category] || '#6B7280';
-
-        return (
-          <TouchableOpacity
-            key={category}
-            className="px-4 py-2 rounded-full mr-2"
-            style={{
-              backgroundColor: isSelected ? color : color + '20',
-            }}
-            onPress={() => onSelectCategory(isSelected ? null : category)}
+          <Text
+            className={`font-semibold text-sm text-center ${
+              selectedCategory === null ? 'text-white' : 'text-gray-700'
+            }`}
           >
-            <Text
-              style={{ color: isSelected ? '#FFFFFF' : color }}
-              className="font-medium"
+            All
+          </Text>
+        </TouchableOpacity>
+
+        {/* Category Filters */}
+        {categories.map((category) => {
+          const isSelected = selectedCategory === category;
+          const color = categoryColors[category] || '#6B7280';
+          const label = SHORT_LABELS[category] || CATEGORY_LABELS[category];
+
+          return (
+            <TouchableOpacity
+              key={category}
+              className="px-4 py-2.5 rounded-full mr-2"
+              style={{
+                backgroundColor: isSelected ? color : color + '20',
+                minWidth: 70,
+              }}
+              onPress={() => onSelectCategory(isSelected ? null : category)}
             >
-              {CATEGORY_LABELS[category]}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
+              <Text
+                style={{ color: isSelected ? '#FFFFFF' : color }}
+                className="font-semibold text-sm text-center"
+                numberOfLines={1}
+              >
+                {label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    </View>
   );
 }

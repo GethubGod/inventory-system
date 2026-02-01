@@ -14,8 +14,8 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
   const { addToCart, getCartItem, updateCartItem, removeFromCart } =
     useOrderStore();
   const cartItem = getCartItem(locationId, item.id);
-  const [quantity, setQuantity] = useState(cartItem?.quantity?.toString() || '');
-  const [unitType, setUnitType] = useState<UnitType>(cartItem?.unitType || 'base');
+  const [quantity, setQuantity] = useState(cartItem?.quantity?.toString() || '1');
+  const [unitType, setUnitType] = useState<UnitType>(cartItem?.unitType || 'pack');
 
   const categoryColor = categoryColors[item.category] || '#6B7280';
 

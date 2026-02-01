@@ -10,61 +10,58 @@ export default function ManagerLayout() {
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E5E7EB',
-          paddingTop: 8,
-          paddingBottom: 8,
-          height: 80,
+          paddingTop: 12,
+          paddingBottom: 12,
+          height: 90,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '500',
-        },
-        headerStyle: {
-          backgroundColor: '#FFFFFF',
-        },
-        headerTitleStyle: {
+          fontSize: 11,
           fontWeight: '600',
-          color: '#111827',
+          marginTop: 4,
         },
-        headerShadowVisible: false,
+        headerShown: false,
       }}
     >
+      {/* Dashboard - Default Tab */}
       <Tabs.Screen
         name="index"
         options={{
           title: 'Dashboard',
-          headerTitle: 'Manager Dashboard',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="grid-outline" size={size} color={color} />
           ),
         }}
       />
+
+      {/* Orders */}
       <Tabs.Screen
         name="orders"
         options={{
           title: 'Orders',
-          headerTitle: 'Pending Orders',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="receipt-outline" size={size} color={color} />
           ),
         }}
       />
+
+      {/* Inventory */}
       <Tabs.Screen
         name="inventory"
         options={{
           title: 'Inventory',
-          headerTitle: 'Inventory',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cube-outline" size={size} color={color} />
           ),
         }}
       />
+
+      {/* Settings/Profile */}
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          headerTitle: 'My Profile',
+          title: 'Settings',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
+            <Ionicons name="settings-outline" size={size} color={color} />
           ),
         }}
       />

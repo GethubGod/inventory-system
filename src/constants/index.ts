@@ -19,7 +19,8 @@ export const SUPPLIER_CATEGORY_LABELS: Record<string, string> = {
 
 export const ORDER_STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
-  submitted: 'Submitted',
+  submitted: 'Pending',
+  processing: 'Processing',
   fulfilled: 'Fulfilled',
   cancelled: 'Cancelled',
 };

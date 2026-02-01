@@ -14,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { useOrderStore, useInventoryStore, useAuthStore } from '@/store';
 import { colors } from '@/constants';
 import { Location, InventoryItem, UnitType } from '@/types';
+import { ActivityIndicator } from 'react-native';
 
 // Category emoji mapping
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -43,8 +44,7 @@ export default function CartScreen() {
     removeFromCart,
     clearLocationCart,
     clearAllCarts,
-    createOrder,
-    isLoading
+    createAndSubmitOrder,
   } = useOrderStore();
   const { items } = useInventoryStore();
   const { user, locations } = useAuthStore();
@@ -154,8 +154,11 @@ export default function CartScreen() {
     );
   }, [clearAllCarts]);
 
-  // Handle create order for location
-  const handleCreateOrder = useCallback((locationId: string, locationName: string) => {
+  // Track which location is currently submitting
+  const [submittingLocation, setSubmittingLocation] = useState<string | null>(null);
+
+  // Handle submit order for location
+  const handleSubmitOrder = useCallback(async (locationId: string, locationName: string) => {
     if (!user) {
       Alert.alert('Error', 'Please log in first');
       return;
@@ -167,38 +170,25 @@ export default function CartScreen() {
       return;
     }
 
-    Alert.alert(
-      'Create Order',
-      `Create order for ${locationName} with ${cartItems.length} item${cartItems.length !== 1 ? 's' : ''}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Create Order',
-          onPress: async () => {
-            try {
-              if (Platform.OS !== 'web') {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              }
-              const order = await createOrder(locationId, user.id);
-              Alert.alert(
-                'Order Created',
-                `Order #${order.order_number} has been created as a draft.`,
-                [
-                  {
-                    text: 'View Order',
-                    onPress: () => router.push(`/orders/${order.id}` as any),
-                  },
-                  { text: 'OK' },
-                ]
-              );
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to create order');
-            }
-          },
+    setSubmittingLocation(locationId);
+    try {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      const order = await createAndSubmitOrder(locationId, user.id);
+      router.push({
+        pathname: '/order-confirmation',
+        params: {
+          orderNumber: order.order_number.toString(),
+          locationName: locationName,
         },
-      ]
-    );
-  }, [user, getCartItems, createOrder]);
+      } as any);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to submit order');
+    } finally {
+      setSubmittingLocation(null);
+    }
+  }, [user, getCartItems, createAndSubmitOrder]);
 
   // Render a compact cart item
   const renderCartItem = useCallback((locationId: string, item: CartItemWithDetails) => {
@@ -341,28 +331,40 @@ export default function CartScreen() {
           {cartWithDetails.map((item) => renderCartItem(location.id, item))}
         </View>
 
-        {/* Create Order Button */}
+        {/* Submit Order Button */}
         <TouchableOpacity
-          onPress={() => handleCreateOrder(location.id, location.name)}
-          disabled={isLoading}
+          onPress={() => handleSubmitOrder(location.id, location.name)}
+          disabled={submittingLocation === location.id}
           className={`bg-primary-500 py-3 rounded-b-xl items-center flex-row justify-center ${
-            isLoading ? 'opacity-50' : ''
+            submittingLocation === location.id ? 'opacity-70' : ''
           }`}
         >
-          <Ionicons name="checkmark-circle" size={18} color="white" />
-          <Text className="text-white font-semibold ml-2">
-            {isLoading ? 'Creating...' : `Create ${location.short_code} Order`}
-          </Text>
+          {submittingLocation === location.id ? (
+            <>
+              <ActivityIndicator size="small" color="white" />
+              <Text className="text-white font-semibold ml-2">Submitting...</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="send" size={18} color="white" />
+              <Text className="text-white font-semibold ml-2">Submit Order</Text>
+            </>
+          )}
         </TouchableOpacity>
       </View>
     );
-  }, [getCartWithDetails, renderCartItem, handleClearLocationCart, handleCreateOrder, isLoading]);
+  }, [getCartWithDetails, renderCartItem, handleClearLocationCart, handleSubmitOrder, submittingLocation]);
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['left', 'right']}>
+    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+      {/* Header */}
+      <View className="bg-white px-5 py-4 border-b border-gray-100">
+        <Text className="text-2xl font-bold text-gray-900">Cart</Text>
+      </View>
+
       {totalCartCount > 0 ? (
         <>
-          {/* Header Bar */}
+          {/* Summary Bar */}
           <View className="flex-row justify-between items-center px-4 py-3 bg-white border-b border-gray-200">
             <Text className="text-gray-600">
               {totalCartCount} item{totalCartCount !== 1 ? 's' : ''} across {locationsWithCart.length} location{locationsWithCart.length !== 1 ? 's' : ''}

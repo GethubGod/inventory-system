@@ -14,39 +14,34 @@ export default function TabsLayout() {
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E5E7EB',
-          paddingTop: 8,
-          paddingBottom: 8,
-          height: 80,
+          paddingTop: 12,
+          paddingBottom: 12,
+          height: 90,
         },
         tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '500',
-        },
-        headerStyle: {
-          backgroundColor: '#FFFFFF',
-        },
-        headerTitleStyle: {
+          fontSize: 11,
           fontWeight: '600',
-          color: '#111827',
+          marginTop: 4,
         },
-        headerShadowVisible: false,
+        headerShown: false,
       }}
     >
+      {/* Browse - Default Tab (index.tsx) */}
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Order',
-          headerTitle: 'New Order',
+          title: 'Browse',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="add-circle-outline" size={size} color={color} />
+            <Ionicons name="grid-outline" size={size} color={color} />
           ),
         }}
       />
+
+      {/* Quick Order */}
       <Tabs.Screen
         name="quick-order"
         options={{
           title: 'Quick',
-          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="flash-outline" size={size} color={color} />
           ),
@@ -58,17 +53,12 @@ export default function TabsLayout() {
           },
         }}
       />
-      <Tabs.Screen
-        name="draft"
-        options={{
-          href: null, // Hide from tab bar, accessed via Quick Order
-        }}
-      />
+
+      {/* Cart */}
       <Tabs.Screen
         name="cart"
         options={{
           title: 'Cart',
-          headerTitle: 'Order Cart',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cart-outline" size={size} color={color} />
           ),
@@ -80,24 +70,40 @@ export default function TabsLayout() {
           },
         }}
       />
+
+      {/* Orders */}
       <Tabs.Screen
         name="orders"
         options={{
-          title: 'History',
-          headerTitle: 'Order History',
+          title: 'Orders',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="list-outline" size={size} color={color} />
+            <Ionicons name="receipt-outline" size={size} color={color} />
           ),
+        }}
+      />
+
+      {/* Settings (renamed from Home) */}
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="settings-outline" size={size} color={color} />
+          ),
+        }}
+      />
+
+      {/* Hidden screens */}
+      <Tabs.Screen
+        name="draft"
+        options={{
+          href: null,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
-          headerTitle: 'My Profile',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
-          ),
+          href: null,
         }}
       />
     </Tabs>

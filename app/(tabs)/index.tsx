@@ -72,7 +72,7 @@ export default function OrderScreen() {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['left', 'right']}>
+    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Location Selector Header */}
       <TouchableOpacity
         className="bg-white px-4 py-3 flex-row items-center justify-between border-b border-gray-100"

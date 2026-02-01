@@ -4,8 +4,8 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit"
@@ -16,9 +16,7 @@
     "@supabase/supabase-js": "^2.45.0",
     "expo": "~54.0.33",
     "expo-constants": "~18.0.13",
-
     "expo-haptics": "~14.1.4",
-
     "expo-linking": "~8.0.11",
     "expo-router": "~6.0.23",
     "expo-secure-store": "~15.0.8",
