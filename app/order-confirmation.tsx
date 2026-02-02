@@ -1,41 +1,42 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   Animated,
   Easing,
   Platform,
+  Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useOrderStore } from '@/store';
 import { colors } from '@/constants';
 
-// Category emoji mapping
-const CATEGORY_EMOJI: Record<string, string> = {
-  fish: '🐟',
-  protein: '🥩',
-  produce: '🥬',
-  dry: '🍚',
-  dairy_cold: '🧊',
-  frozen: '❄️',
-  sauces: '🍶',
-  packaging: '📦',
-};
+const AUTO_DISMISS_SECONDS = 5;
 
 export default function OrderConfirmationScreen() {
   const { currentOrder } = useOrderStore();
   const params = useLocalSearchParams<{ orderNumber: string; locationName: string }>();
+  const [countdown, setCountdown] = useState(AUTO_DISMISS_SECONDS);
 
   // Animation values
+  const popupScale = useRef(new Animated.Value(0.8)).current;
+  const popupOpacity = useRef(new Animated.Value(0)).current;
   const checkmarkScale = useRef(new Animated.Value(0)).current;
-  const checkmarkOpacity = useRef(new Animated.Value(0)).current;
-  const contentTranslate = useRef(new Animated.Value(30)).current;
-  const contentOpacity = useRef(new Animated.Value(0)).current;
+  const progressWidth = useRef(new Animated.Value(100)).current;
+
+  const orderNumber = params.orderNumber || currentOrder?.order_number?.toString() || '---';
+  const locationName = params.locationName || currentOrder?.location?.name || 'Location';
+  const itemCount = currentOrder?.order_items?.length || 0;
+
+  const handleClose = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    router.replace('/(tabs)');
+  };
 
   useEffect(() => {
     // Play success haptic
@@ -43,199 +44,128 @@ export default function OrderConfirmationScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
+    // Animate popup in
+    Animated.parallel([
+      Animated.spring(popupScale, {
+        toValue: 1,
+        friction: 8,
+        tension: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(popupOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     // Animate checkmark
     Animated.sequence([
-      Animated.parallel([
-        Animated.timing(checkmarkScale, {
-          toValue: 1.2,
-          duration: 300,
-          easing: Easing.out(Easing.back(2)),
-          useNativeDriver: true,
-        }),
-        Animated.timing(checkmarkOpacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]),
-      Animated.timing(checkmarkScale, {
+      Animated.delay(100),
+      Animated.spring(checkmarkScale, {
         toValue: 1,
-        duration: 150,
+        friction: 4,
+        tension: 100,
         useNativeDriver: true,
       }),
     ]).start();
 
-    // Animate content
-    Animated.parallel([
-      Animated.timing(contentTranslate, {
-        toValue: 0,
-        duration: 400,
-        delay: 200,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }),
-      Animated.timing(contentOpacity, {
-        toValue: 1,
-        duration: 400,
-        delay: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    // Animate progress bar
+    Animated.timing(progressWidth, {
+      toValue: 0,
+      duration: AUTO_DISMISS_SECONDS * 1000,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    }).start();
+
+    // Countdown timer
+    const countdownInterval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    // Auto dismiss after countdown
+    const dismissTimeout = setTimeout(() => {
+      handleClose();
+    }, AUTO_DISMISS_SECONDS * 1000);
+
+    return () => {
+      clearInterval(countdownInterval);
+      clearTimeout(dismissTimeout);
+    };
   }, []);
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-  };
-
-  const handleStartNewOrder = () => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    router.replace('/(tabs)');
-  };
-
-  const handleViewMyOrders = () => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    router.replace('/(tabs)/orders');
-  };
-
-  const orderNumber = params.orderNumber || currentOrder?.order_number?.toString() || '---';
-  const locationName = params.locationName || currentOrder?.location?.name || 'Location';
-  const orderItems = currentOrder?.order_items || [];
-  const timestamp = currentOrder?.created_at ? formatDate(currentOrder.created_at) : formatDate(new Date().toISOString());
-
   return (
-    <SafeAreaView className="flex-1 bg-white">
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ flexGrow: 1, padding: 24 }}
-        showsVerticalScrollIndicator={false}
+    <View className="flex-1 bg-black/50 items-center justify-center px-6">
+      <Pressable className="absolute inset-0" onPress={handleClose} />
+
+      <Animated.View
+        style={{
+          transform: [{ scale: popupScale }],
+          opacity: popupOpacity,
+        }}
+        className="bg-white rounded-3xl w-full max-w-sm overflow-hidden"
       >
-        {/* Success Animation */}
-        <View className="items-center pt-8 pb-6">
+        {/* Progress bar */}
+        <View className="h-1 bg-gray-100">
           <Animated.View
+            className="h-full bg-green-500"
             style={{
-              transform: [{ scale: checkmarkScale }],
-              opacity: checkmarkOpacity,
+              width: progressWidth.interpolate({
+                inputRange: [0, 100],
+                outputRange: ['0%', '100%'],
+              }),
             }}
-            className="w-24 h-24 bg-green-100 rounded-full items-center justify-center mb-6"
-          >
-            <View className="w-20 h-20 bg-green-500 rounded-full items-center justify-center">
-              <Ionicons name="checkmark" size={48} color="white" />
-            </View>
-          </Animated.View>
-
-          <Animated.View
-            style={{
-              transform: [{ translateY: contentTranslate }],
-              opacity: contentOpacity,
-            }}
-            className="items-center"
-          >
-            <Text className="text-3xl font-bold text-gray-900 text-center">
-              Order #{orderNumber} Submitted!
-            </Text>
-
-            <View className="flex-row items-center mt-3">
-              <Ionicons name="location" size={16} color={colors.primary[500]} />
-              <Text className="text-gray-600 ml-1">{locationName}</Text>
-              <Text className="text-gray-400 mx-2">•</Text>
-              <Text className="text-gray-500">{timestamp}</Text>
-            </View>
-          </Animated.View>
+          />
         </View>
 
-        {/* Order Summary Card */}
-        <Animated.View
-          style={{
-            transform: [{ translateY: contentTranslate }],
-            opacity: contentOpacity,
-          }}
-          className="bg-gray-50 rounded-2xl p-5 mt-4"
+        {/* Close button */}
+        <TouchableOpacity
+          onPress={handleClose}
+          className="absolute top-3 right-3 z-10 w-8 h-8 bg-gray-100 rounded-full items-center justify-center"
         >
-          <Text className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-4">
-            Order Summary
+          <Ionicons name="close" size={18} color="#6B7280" />
+        </TouchableOpacity>
+
+        <View className="p-6 items-center">
+          {/* Success checkmark */}
+          <Animated.View
+            style={{ transform: [{ scale: checkmarkScale }] }}
+            className="w-16 h-16 bg-green-500 rounded-full items-center justify-center mb-4"
+          >
+            <Ionicons name="checkmark" size={36} color="white" />
+          </Animated.View>
+
+          {/* Order info */}
+          <Text className="text-2xl font-bold text-gray-900 text-center">
+            Order #{orderNumber}
+          </Text>
+          <Text className="text-lg text-green-600 font-semibold mt-1">
+            Submitted!
           </Text>
 
-          {orderItems.length > 0 ? (
-            <>
-              {orderItems.map((item, index) => {
-                const inventoryItem = item.inventory_item;
-                if (!inventoryItem) return null;
+          <View className="flex-row items-center mt-3 mb-4">
+            <Ionicons name="location" size={16} color={colors.primary[500]} />
+            <Text className="text-gray-600 ml-1">{locationName}</Text>
+            {itemCount > 0 && (
+              <>
+                <Text className="text-gray-400 mx-2">•</Text>
+                <Text className="text-gray-500">{itemCount} items</Text>
+              </>
+            )}
+          </View>
 
-                const emoji = CATEGORY_EMOJI[inventoryItem.category] || '📦';
-                const unitLabel = item.unit_type === 'pack'
-                  ? inventoryItem.pack_unit
-                  : inventoryItem.base_unit;
-
-                return (
-                  <View
-                    key={item.id || index}
-                    className={`flex-row items-center py-3 ${
-                      index < orderItems.length - 1 ? 'border-b border-gray-200' : ''
-                    }`}
-                  >
-                    <Text className="text-xl mr-3">{emoji}</Text>
-                    <Text className="flex-1 text-gray-900" numberOfLines={1}>
-                      {inventoryItem.name}
-                    </Text>
-                    <Text className="text-gray-600 font-medium">
-                      {item.quantity} {unitLabel}
-                    </Text>
-                  </View>
-                );
-              })}
-
-              <View className="border-t border-gray-300 mt-3 pt-3">
-                <Text className="text-gray-600 text-center">
-                  Total: {orderItems.length} item{orderItems.length !== 1 ? 's' : ''}
-                </Text>
-              </View>
-            </>
-          ) : (
-            <Text className="text-gray-500 text-center py-4">
-              Order submitted successfully
-            </Text>
-          )}
-        </Animated.View>
-
-        {/* Spacer */}
-        <View className="flex-1 min-h-[40px]" />
-
-        {/* Action Buttons */}
-        <Animated.View
-          style={{
-            transform: [{ translateY: contentTranslate }],
-            opacity: contentOpacity,
-          }}
-          className="pb-4"
-        >
-          <TouchableOpacity
-            onPress={handleStartNewOrder}
-            className="bg-primary-500 py-4 rounded-xl items-center mb-3"
-            activeOpacity={0.8}
-          >
-            <Text className="text-white font-bold text-lg">Start New Order</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            onPress={handleViewMyOrders}
-            className="bg-white border-2 border-gray-200 py-4 rounded-xl items-center"
-            activeOpacity={0.8}
-          >
-            <Text className="text-gray-700 font-semibold text-lg">View My Orders</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </ScrollView>
-    </SafeAreaView>
+          {/* Countdown text */}
+          <Text className="text-gray-400 text-sm">
+            Closing in {countdown}s
+          </Text>
+        </View>
+      </Animated.View>
+    </View>
   );
 }

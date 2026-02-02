@@ -16,6 +16,15 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { colors } from '@/constants';
 
+// For multi-item orders from a single location
+interface FishItemOrder {
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+}
+
+// Legacy: For single item across multiple locations
 interface LocationQuantity {
   name: string;
   shortCode: string;
@@ -24,6 +33,11 @@ interface LocationQuantity {
 
 export default function ExportFishOrderScreen() {
   const params = useLocalSearchParams<{
+    // New multi-item format
+    locationName: string;
+    locationShortCode: string;
+    fishItems: string; // JSON array of FishItemOrder
+    // Legacy single item format
     fishItemId: string;
     fishItemName: string;
     fishItemQuantity: string;
@@ -31,24 +45,54 @@ export default function ExportFishOrderScreen() {
     fishItemLocations: string;
   }>();
 
-  // Parse params
-  const itemName = params.fishItemName || 'Fish Item';
-  const itemUnit = params.fishItemUnit || 'case';
-  const initialLocations: LocationQuantity[] = params.fishItemLocations
+  // Detect which format is being used
+  const isMultiItemFormat = !!params.fishItems;
+
+  // Parse params for multi-item format
+  const locationName = params.locationName || 'Location';
+  const locationShortCode = params.locationShortCode || '??';
+  const initialFishItems: FishItemOrder[] = params.fishItems
+    ? JSON.parse(params.fishItems)
+    : [];
+
+  // Parse params for legacy single-item format
+  const legacyItemName = params.fishItemName || 'Fish Item';
+  const legacyItemUnit = params.fishItemUnit || 'case';
+  const legacyLocations: LocationQuantity[] = params.fishItemLocations
     ? JSON.parse(params.fishItemLocations)
     : [];
 
-  // Editable state
-  const [locationQuantities, setLocationQuantities] = useState<LocationQuantity[]>(
-    initialLocations.map((loc) => ({ ...loc }))
+  // Editable state for multi-item format
+  const [fishItems, setFishItems] = useState<FishItemOrder[]>(
+    initialFishItems.map((item) => ({ ...item }))
   );
 
-  // Calculate total
-  const totalQuantity = useMemo(() => {
-    return locationQuantities.reduce((sum, loc) => sum + loc.quantity, 0);
-  }, [locationQuantities]);
+  // Editable state for legacy format
+  const [locationQuantities, setLocationQuantities] = useState<LocationQuantity[]>(
+    legacyLocations.map((loc) => ({ ...loc }))
+  );
 
-  // Update quantity for a location
+  // Calculate totals
+  const totalQuantity = useMemo(() => {
+    if (isMultiItemFormat) {
+      return fishItems.reduce((sum, item) => sum + item.quantity, 0);
+    }
+    return locationQuantities.reduce((sum, loc) => sum + loc.quantity, 0);
+  }, [isMultiItemFormat, fishItems, locationQuantities]);
+
+  // Update quantity for a fish item (multi-item format)
+  const updateFishItemQuantity = useCallback((index: number, newQuantity: number) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setFishItems((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], quantity: Math.max(0, newQuantity) };
+      return updated;
+    });
+  }, []);
+
+  // Update quantity for a location (legacy format)
   const updateQuantity = useCallback((index: number, newQuantity: number) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -72,20 +116,31 @@ export default function ExportFishOrderScreen() {
     message += `FISH ORDER - Babytuna\n`;
     message += `Date: ${today}\n\n`;
 
-    // Location breakdown
-    locationQuantities.forEach((loc) => {
-      if (loc.quantity > 0) {
-        message += `${loc.name}:\n`;
-        message += `- ${itemName}: ${loc.quantity} ${itemUnit}\n\n`;
-      }
-    });
+    if (isMultiItemFormat) {
+      // Multi-item format: one location, multiple fish items
+      message += `${locationName}:\n`;
+      fishItems.forEach((item) => {
+        if (item.quantity > 0) {
+          message += `- ${item.itemName}: ${item.quantity} ${item.unit}\n`;
+        }
+      });
+      message += `\n`;
+      message += `TOTAL: ${totalQuantity} items\n\n`;
+    } else {
+      // Legacy format: one item, multiple locations
+      locationQuantities.forEach((loc) => {
+        if (loc.quantity > 0) {
+          message += `${loc.name}:\n`;
+          message += `- ${legacyItemName}: ${loc.quantity} ${legacyItemUnit}\n\n`;
+        }
+      });
+      message += `TOTAL: ${totalQuantity} ${legacyItemUnit}\n\n`;
+    }
 
-    // Total
-    message += `TOTAL: ${totalQuantity} ${itemUnit}\n\n`;
     message += `Please confirm availability.\nThank you!`;
 
     return message;
-  }, [locationQuantities, itemName, itemUnit, totalQuantity]);
+  }, [isMultiItemFormat, fishItems, locationQuantities, locationName, legacyItemName, legacyItemUnit, totalQuantity]);
 
   // Handle copy to clipboard
   const handleCopyToClipboard = useCallback(async () => {
@@ -129,7 +184,7 @@ export default function ExportFishOrderScreen() {
       />
       <SafeAreaView className="flex-1 bg-gray-50" edges={['bottom']}>
         <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
-          {/* Item Header */}
+          {/* Header */}
           <View
             className="bg-white rounded-2xl p-4 mb-4 border border-gray-200"
             style={{
@@ -140,79 +195,157 @@ export default function ExportFishOrderScreen() {
               elevation: 2,
             }}
           >
-            <View className="flex-row items-center mb-2">
-              <Text className="text-2xl mr-2">🐟</Text>
-              <Text className="text-xl font-bold text-gray-900 flex-1">
-                {itemName}
-              </Text>
-            </View>
-            <View className="flex-row items-center justify-between">
-              <Text className="text-gray-500">Total Order</Text>
-              <Text className="text-2xl font-bold text-primary-600">
-                {totalQuantity} {itemUnit}
-              </Text>
-            </View>
+            {isMultiItemFormat ? (
+              <>
+                <View className="flex-row items-center mb-2">
+                  <View className="bg-primary-500 w-10 h-10 rounded-full items-center justify-center mr-3">
+                    <Text className="text-white font-bold">{locationShortCode}</Text>
+                  </View>
+                  <Text className="text-xl font-bold text-gray-900 flex-1">
+                    {locationName}
+                  </Text>
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-gray-500">Fish Items</Text>
+                  <Text className="text-2xl font-bold text-primary-600">
+                    {fishItems.length} items
+                  </Text>
+                </View>
+              </>
+            ) : (
+              <>
+                <View className="flex-row items-center mb-2">
+                  <Text className="text-2xl mr-2">🐟</Text>
+                  <Text className="text-xl font-bold text-gray-900 flex-1">
+                    {legacyItemName}
+                  </Text>
+                </View>
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-gray-500">Total Order</Text>
+                  <Text className="text-2xl font-bold text-primary-600">
+                    {totalQuantity} {legacyItemUnit}
+                  </Text>
+                </View>
+              </>
+            )}
           </View>
 
           {/* Editable Quantities */}
           <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3 px-1">
-            Adjust Quantities by Location
+            {isMultiItemFormat ? 'Adjust Quantities' : 'Adjust Quantities by Location'}
           </Text>
 
-          {locationQuantities.map((loc, index) => (
-            <View
-              key={index}
-              className="bg-white rounded-xl p-4 mb-3 border border-gray-200 flex-row items-center"
-              style={{
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.05,
-                shadowRadius: 4,
-                elevation: 2,
-              }}
-            >
-              {/* Location Info */}
-              <View className="flex-1">
-                <Text className="font-semibold text-gray-900">{loc.name}</Text>
-                <Text className="text-sm text-gray-500">{loc.shortCode}</Text>
+          {isMultiItemFormat ? (
+            // Multi-item format: list fish items
+            fishItems.map((item, index) => (
+              <View
+                key={item.itemId}
+                className="bg-white rounded-xl p-4 mb-3 border border-gray-200 flex-row items-center"
+                style={{
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.05,
+                  shadowRadius: 4,
+                  elevation: 2,
+                }}
+              >
+                {/* Item Info */}
+                <Text className="text-lg mr-2">🐟</Text>
+                <View className="flex-1">
+                  <Text className="font-semibold text-gray-900">{item.itemName}</Text>
+                  <Text className="text-sm text-gray-500">{item.unit}</Text>
+                </View>
+
+                {/* Quantity Controls */}
+                <View className="flex-row items-center">
+                  <TouchableOpacity
+                    className="w-10 h-10 bg-gray-100 rounded-l-xl items-center justify-center"
+                    onPress={() => updateFishItemQuantity(index, item.quantity - 1)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="remove" size={20} color={colors.gray[600]} />
+                  </TouchableOpacity>
+
+                  <TextInput
+                    className="w-16 h-10 bg-gray-50 text-center text-lg font-bold text-gray-900"
+                    value={item.quantity.toString()}
+                    onChangeText={(text) => {
+                      const num = parseInt(text, 10);
+                      if (!isNaN(num)) {
+                        updateFishItemQuantity(index, num);
+                      }
+                    }}
+                    keyboardType="number-pad"
+                    selectTextOnFocus
+                  />
+
+                  <TouchableOpacity
+                    className="w-10 h-10 bg-gray-100 rounded-r-xl items-center justify-center"
+                    onPress={() => updateFishItemQuantity(index, item.quantity + 1)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add" size={20} color={colors.gray[600]} />
+                  </TouchableOpacity>
+                </View>
               </View>
+            ))
+          ) : (
+            // Legacy format: list locations
+            locationQuantities.map((loc, index) => (
+              <View
+                key={index}
+                className="bg-white rounded-xl p-4 mb-3 border border-gray-200 flex-row items-center"
+                style={{
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.05,
+                  shadowRadius: 4,
+                  elevation: 2,
+                }}
+              >
+                {/* Location Info */}
+                <View className="flex-1">
+                  <Text className="font-semibold text-gray-900">{loc.name}</Text>
+                  <Text className="text-sm text-gray-500">{loc.shortCode}</Text>
+                </View>
 
-              {/* Quantity Controls */}
-              <View className="flex-row items-center">
-                <TouchableOpacity
-                  className="w-10 h-10 bg-gray-100 rounded-l-xl items-center justify-center"
-                  onPress={() => updateQuantity(index, loc.quantity - 1)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="remove" size={20} color={colors.gray[600]} />
-                </TouchableOpacity>
+                {/* Quantity Controls */}
+                <View className="flex-row items-center">
+                  <TouchableOpacity
+                    className="w-10 h-10 bg-gray-100 rounded-l-xl items-center justify-center"
+                    onPress={() => updateQuantity(index, loc.quantity - 1)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="remove" size={20} color={colors.gray[600]} />
+                  </TouchableOpacity>
 
-                <TextInput
-                  className="w-16 h-10 bg-gray-50 text-center text-lg font-bold text-gray-900"
-                  value={loc.quantity.toString()}
-                  onChangeText={(text) => {
-                    const num = parseInt(text, 10);
-                    if (!isNaN(num)) {
-                      updateQuantity(index, num);
-                    }
-                  }}
-                  keyboardType="number-pad"
-                  selectTextOnFocus
-                />
+                  <TextInput
+                    className="w-16 h-10 bg-gray-50 text-center text-lg font-bold text-gray-900"
+                    value={loc.quantity.toString()}
+                    onChangeText={(text) => {
+                      const num = parseInt(text, 10);
+                      if (!isNaN(num)) {
+                        updateQuantity(index, num);
+                      }
+                    }}
+                    keyboardType="number-pad"
+                    selectTextOnFocus
+                  />
 
-                <TouchableOpacity
-                  className="w-10 h-10 bg-gray-100 rounded-r-xl items-center justify-center"
-                  onPress={() => updateQuantity(index, loc.quantity + 1)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="add" size={20} color={colors.gray[600]} />
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    className="w-10 h-10 bg-gray-100 rounded-r-xl items-center justify-center"
+                    onPress={() => updateQuantity(index, loc.quantity + 1)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add" size={20} color={colors.gray[600]} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Unit Label */}
+                <Text className="text-sm text-gray-500 ml-2 w-12">{legacyItemUnit}</Text>
               </View>
-
-              {/* Unit Label */}
-              <Text className="text-sm text-gray-500 ml-2 w-12">{itemUnit}</Text>
-            </View>
-          ))}
+            ))
+          )}
 
           {/* Message Preview */}
           <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wide mt-4 mb-3 px-1">

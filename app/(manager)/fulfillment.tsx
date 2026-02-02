@@ -7,6 +7,7 @@ import {
   RefreshControl,
   Alert,
   Platform,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -14,100 +15,27 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore, useOrderStore, useFulfillmentStore } from '@/store';
 import { colors, CATEGORY_LABELS } from '@/constants';
-import { OrderWithDetails, InventoryItem } from '@/types';
+import { OrderWithDetails, InventoryItem, Location } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { SpinningFish } from '@/components';
 
-// Category emoji mapping
-const CATEGORY_EMOJI: Record<string, string> = {
-  fish: '🐟',
-  protein: '🥩',
-  produce: '🥬',
-  dry: '🍚',
-  dairy_cold: '🧊',
-  frozen: '❄️',
-  sauces: '🍶',
-  packaging: '📦',
-};
+// Fish item with order details
+interface FishOrderItem {
+  inventoryItem: InventoryItem;
+  quantity: number;
+  unitType: 'base' | 'pack';
+  orderedBy: string;
+  orderNumber: number;
+  orderId: string;
+}
 
-// Sample fish data for testing (will be merged with real orders)
-const SAMPLE_FISH_ORDERS = [
-  {
-    id: 'sample-salmon',
-    name: 'Salmon (Sushi Grade)',
-    category: 'fish' as const,
-    base_unit: 'lb',
-    pack_unit: 'case',
-    pack_size: 10,
-    quantity: 8,
-    unitType: 'pack' as const,
-    locations: [
-      { name: 'Babytuna Sushi', shortCode: 'BTS', quantity: 5 },
-      { name: 'Babytuna Poki & Pho', shortCode: 'BTP', quantity: 3 },
-    ],
-    orderNumbers: [127, 126, 125],
-  },
-  {
-    id: 'sample-tuna',
-    name: 'Tuna (Sushi Grade)',
-    category: 'fish' as const,
-    base_unit: 'lb',
-    pack_unit: 'case',
-    pack_size: 10,
-    quantity: 5,
-    unitType: 'pack' as const,
-    locations: [
-      { name: 'Babytuna Sushi', shortCode: 'BTS', quantity: 3 },
-      { name: 'Babytuna Poki & Pho', shortCode: 'BTP', quantity: 2 },
-    ],
-    orderNumbers: [127, 126],
-  },
-  {
-    id: 'sample-shrimp',
-    name: 'Shrimp (Ebi)',
-    category: 'fish' as const,
-    base_unit: 'lb',
-    pack_unit: 'lb',
-    pack_size: 1,
-    quantity: 12,
-    unitType: 'base' as const,
-    locations: [
-      { name: 'Babytuna Sushi', shortCode: 'BTS', quantity: 7 },
-      { name: 'Babytuna Poki & Pho', shortCode: 'BTP', quantity: 5 },
-    ],
-    orderNumbers: [127, 125],
-  },
-  {
-    id: 'sample-yellowtail',
-    name: 'Yellowtail (Hamachi)',
-    category: 'fish' as const,
-    base_unit: 'lb',
-    pack_unit: 'case',
-    pack_size: 8,
-    quantity: 3,
-    unitType: 'pack' as const,
-    locations: [
-      { name: 'Babytuna Sushi', shortCode: 'BTS', quantity: 3 },
-    ],
-    orderNumbers: [127],
-  },
-  {
-    id: 'sample-octopus',
-    name: 'Octopus (Tako)',
-    category: 'fish' as const,
-    base_unit: 'lb',
-    pack_unit: 'lb',
-    pack_size: 1,
-    quantity: 6,
-    unitType: 'base' as const,
-    locations: [
-      { name: 'Babytuna Poki & Pho', shortCode: 'BTP', quantity: 6 },
-    ],
-    orderNumbers: [126],
-  },
-];
+// Fish order grouped by location
+interface LocationFishOrder {
+  location: Location;
+  items: FishOrderItem[];
+}
 
-// Aggregated item type
+// Aggregated item type for other orders
 interface AggregatedItem {
   inventoryItem: InventoryItem;
   totalQuantity: number;
@@ -117,53 +45,36 @@ interface AggregatedItem {
     locationName: string;
     shortCode: string;
     quantity: number;
+    orderedBy: string;
   }>;
   orderNumbers: number[];
   orderIds: string[];
 }
 
-// Sample fish item type
-interface SampleFishItem {
-  id: string;
-  name: string;
-  category: 'fish';
-  base_unit: string;
-  pack_unit: string;
-  pack_size: number;
-  quantity: number;
-  unitType: 'base' | 'pack';
-  locations: Array<{ name: string; shortCode: string; quantity: number }>;
-  orderNumbers: number[];
-}
-
 type TabType = 'fish' | 'other';
 
 export default function FulfillmentScreen() {
-  const { locations, user } = useAuthStore();
-  const { orders, fetchManagerOrders, updateOrderStatus, isLoading } = useOrderStore();
+  const { user } = useAuthStore();
+  const { orders, updateOrderStatus } = useOrderStore();
   const {
-    checkedFishItems,
     checkedOtherItems,
-    toggleFishItem,
     toggleOtherItem,
     clearOtherItems,
   } = useFulfillmentStore();
 
   const [activeTab, setActiveTab] = useState<TabType>('fish');
-  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['produce', 'dry', 'protein', 'dairy_cold', 'frozen', 'sauces', 'packaging']));
+  const [expandedFishItems, setExpandedFishItems] = useState<Set<string>>(new Set());
   const [isFulfilling, setIsFulfilling] = useState(false);
-  const [useSampleData, setUseSampleData] = useState(true); // Toggle for sample data
 
-  // Fetch pending and processing orders
-  useEffect(() => {
-    fetchPendingOrders();
-  }, [selectedLocationId]);
+  // Editable quantities for fish items (locationId-itemId -> quantity)
+  const [editedQuantities, setEditedQuantities] = useState<Record<string, number>>({});
 
+  // Fetch pending orders
   const fetchPendingOrders = async () => {
     try {
-      let query = supabase
+      const { data, error } = await supabase
         .from('orders')
         .select(`
           *,
@@ -174,14 +85,9 @@ export default function FulfillmentScreen() {
             inventory_item:inventory_items(*)
           )
         `)
-        .in('status', ['submitted', 'processing'])
+        .eq('status', 'submitted')
         .order('created_at', { ascending: false });
 
-      if (selectedLocationId) {
-        query = query.eq('location_id', selectedLocationId);
-      }
-
-      const { data, error } = await query;
       if (!error && data) {
         useOrderStore.setState({ orders: data });
       }
@@ -190,27 +96,74 @@ export default function FulfillmentScreen() {
     }
   };
 
+  useEffect(() => {
+    fetchPendingOrders();
+  }, []);
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await fetchPendingOrders();
     setRefreshing(false);
-  }, [selectedLocationId]);
+  }, []);
 
   // Get pending orders
   const pendingOrders = useMemo(() => {
     return (orders as OrderWithDetails[]).filter(
-      (order) => order.status === 'submitted' || order.status === 'processing'
+      (order) => order.status === 'submitted'
     );
   }, [orders]);
 
-  // Aggregate items from all pending orders
-  const aggregatedItems = useMemo(() => {
+  // Group fish orders by location
+  const fishOrdersByLocation = useMemo(() => {
+    const locationMap = new Map<string, LocationFishOrder>();
+
+    pendingOrders.forEach((order) => {
+      order.order_items?.forEach((orderItem) => {
+        const item = orderItem.inventory_item;
+        if (!item || item.category !== 'fish') return;
+
+        const locationId = order.location_id;
+        let locationOrder = locationMap.get(locationId);
+
+        if (!locationOrder) {
+          locationOrder = {
+            location: order.location as Location,
+            items: [],
+          };
+          locationMap.set(locationId, locationOrder);
+        }
+
+        // Check if this item already exists for this location
+        const existingItem = locationOrder.items.find(
+          (i) => i.inventoryItem.id === item.id && i.unitType === orderItem.unit_type
+        );
+
+        if (existingItem) {
+          existingItem.quantity += orderItem.quantity;
+        } else {
+          locationOrder.items.push({
+            inventoryItem: item,
+            quantity: orderItem.quantity,
+            unitType: orderItem.unit_type,
+            orderedBy: order.user?.name || 'Unknown',
+            orderNumber: order.order_number,
+            orderId: order.id,
+          });
+        }
+      });
+    });
+
+    return Array.from(locationMap.values());
+  }, [pendingOrders]);
+
+  // Aggregate other (non-fish) items
+  const otherItems = useMemo(() => {
     const itemMap = new Map<string, AggregatedItem>();
 
     pendingOrders.forEach((order) => {
       order.order_items?.forEach((orderItem) => {
         const item = orderItem.inventory_item;
-        if (!item) return;
+        if (!item || item.category === 'fish') return;
 
         const key = `${item.id}-${orderItem.unit_type}`;
         const existing = itemMap.get(key);
@@ -233,6 +186,7 @@ export default function FulfillmentScreen() {
               locationName: order.location?.name || 'Unknown',
               shortCode: order.location?.short_code || '??',
               quantity: orderItem.quantity,
+              orderedBy: order.user?.name || 'Unknown',
             });
           }
         } else {
@@ -246,6 +200,7 @@ export default function FulfillmentScreen() {
                 locationName: order.location?.name || 'Unknown',
                 shortCode: order.location?.short_code || '??',
                 quantity: orderItem.quantity,
+                orderedBy: order.user?.name || 'Unknown',
               },
             ],
             orderNumbers: [order.order_number],
@@ -257,15 +212,6 @@ export default function FulfillmentScreen() {
 
     return Array.from(itemMap.values());
   }, [pendingOrders]);
-
-  // Split items by fish vs other
-  const fishItems = useMemo(() => {
-    return aggregatedItems.filter((item) => item.inventoryItem.category === 'fish');
-  }, [aggregatedItems]);
-
-  const otherItems = useMemo(() => {
-    return aggregatedItems.filter((item) => item.inventoryItem.category !== 'fish');
-  }, [aggregatedItems]);
 
   // Group other items by category
   const otherItemsByCategory = useMemo(() => {
@@ -303,6 +249,37 @@ export default function FulfillmentScreen() {
     });
   }, []);
 
+  // Toggle fish item expansion
+  const toggleFishItemExpand = useCallback((key: string) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setExpandedFishItems((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) {
+        newSet.delete(key);
+      } else {
+        newSet.add(key);
+      }
+      return newSet;
+    });
+  }, []);
+
+  // Handle quantity change for fish item
+  const handleQuantityChange = useCallback((locationId: string, itemId: string, newQuantity: number) => {
+    const key = `${locationId}-${itemId}`;
+    setEditedQuantities((prev) => ({
+      ...prev,
+      [key]: Math.max(0, newQuantity),
+    }));
+  }, []);
+
+  // Get displayed quantity (edited or original)
+  const getDisplayQuantity = useCallback((locationId: string, itemId: string, originalQuantity: number) => {
+    const key = `${locationId}-${itemId}`;
+    return editedQuantities[key] ?? originalQuantity;
+  }, [editedQuantities]);
+
   // Handle toggle check for other items
   const handleToggleOtherCheck = useCallback((item: AggregatedItem) => {
     if (Platform.OS !== 'web') {
@@ -311,24 +288,6 @@ export default function FulfillmentScreen() {
     const key = `${item.inventoryItem.id}-${item.unitType}`;
     toggleOtherItem(key);
   }, [toggleOtherItem]);
-
-  // Handle order button for fish item
-  const handleOrderFish = useCallback((fishItem: SampleFishItem) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    // Navigate to order confirmation with this fish item's data
-    router.push({
-      pathname: '/(manager)/export-fish-order',
-      params: {
-        fishItemId: fishItem.id,
-        fishItemName: fishItem.name,
-        fishItemQuantity: fishItem.quantity.toString(),
-        fishItemUnit: fishItem.unitType === 'pack' ? fishItem.pack_unit : fishItem.base_unit,
-        fishItemLocations: JSON.stringify(fishItem.locations),
-      },
-    } as any);
-  }, []);
 
   // Handle mark orders fulfilled
   const handleMarkFulfilled = useCallback(async () => {
@@ -377,67 +336,159 @@ export default function FulfillmentScreen() {
     );
   }, [otherItems, checkedOtherItems, updateOrderStatus, user, clearOtherItems]);
 
-  // Render sample fish item with Order button
-  const renderSampleFishItem = useCallback((item: SampleFishItem) => {
-    const unitLabel = item.unitType === 'pack' ? item.pack_unit : item.base_unit;
+  // Render fish item in location cart
+  const renderFishItem = useCallback((locationId: string, item: FishOrderItem, index: number, totalItems: number) => {
+    const key = `${locationId}-${item.inventoryItem.id}`;
+    const isExpanded = expandedFishItems.has(key);
+    const unitLabel = item.unitType === 'pack' ? item.inventoryItem.pack_unit : item.inventoryItem.base_unit;
+    const displayQty = getDisplayQuantity(locationId, item.inventoryItem.id, item.quantity);
 
     return (
-      <View
-        key={item.id}
-        className="bg-white rounded-2xl p-4 mb-3 border border-gray-200"
-        style={{
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.05,
-          shadowRadius: 4,
-          elevation: 2,
-        }}
-      >
-        <View className="flex-row items-start justify-between">
-          <View className="flex-1 mr-3">
-            {/* Item Name */}
-            <Text className="font-semibold text-base text-gray-900">
-              {item.name}
-            </Text>
-
-            {/* Total Quantity */}
-            <Text className="font-bold text-lg mt-1 text-primary-600">
-              {item.quantity} {unitLabel} total
-            </Text>
-
-            {/* Location Breakdown */}
-            {item.locations.length > 0 && (
-              <View className="mt-3 space-y-1">
-                {item.locations.map((loc, idx) => (
-                  <View key={idx} className="flex-row items-center">
-                    <Ionicons name="location" size={14} color={colors.primary[500]} />
-                    <Text className="ml-1.5 text-sm text-gray-600">
-                      {loc.name}: {loc.quantity}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {/* Order Numbers */}
-            <Text className="text-xs mt-2 text-gray-500">
-              Orders: #{item.orderNumbers.join(', #')}
+      <View key={key} className={index < totalItems - 1 ? 'border-b border-gray-100' : ''}>
+        <TouchableOpacity
+          onPress={() => toggleFishItemExpand(key)}
+          className="flex-row items-center py-3"
+          activeOpacity={0.7}
+        >
+          <Text className="text-lg mr-2">🐟</Text>
+          <View className="flex-1">
+            <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
+              {item.inventoryItem.name}
             </Text>
           </View>
+          <Text className="text-sm font-semibold text-gray-700 mr-2">
+            {displayQty} {unitLabel}
+          </Text>
+          <Ionicons
+            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+            size={16}
+            color={colors.gray[400]}
+          />
+        </TouchableOpacity>
 
-          {/* Order Button */}
-          <TouchableOpacity
-            className="bg-primary-500 rounded-xl px-4 py-2.5 flex-row items-center"
-            onPress={() => handleOrderFish(item)}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="cart-outline" size={18} color="white" />
-            <Text className="text-white font-semibold ml-1.5">Order</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Expanded Controls */}
+        {isExpanded && (
+          <View className="pb-3 pl-8">
+            {/* Ordered by info */}
+            <View className="flex-row items-center mb-3 bg-blue-50 rounded-lg px-3 py-2">
+              <Ionicons name="person" size={14} color="#3B82F6" />
+              <Text className="text-sm text-blue-700 ml-2">
+                Ordered by: {item.orderedBy}
+              </Text>
+              <Text className="text-sm text-blue-500 ml-2">
+                (Order #{item.orderNumber})
+              </Text>
+            </View>
+
+            {/* Quantity Controls */}
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center">
+                <TouchableOpacity
+                  onPress={() => handleQuantityChange(locationId, item.inventoryItem.id, displayQty - 1)}
+                  className="w-9 h-9 bg-gray-100 rounded-lg items-center justify-center"
+                >
+                  <Ionicons name="remove" size={18} color={colors.gray[600]} />
+                </TouchableOpacity>
+
+                <TextInput
+                  className="w-16 h-9 bg-gray-50 border border-gray-200 rounded-lg mx-2 text-center text-gray-900 font-semibold"
+                  value={displayQty.toString()}
+                  onChangeText={(text) => {
+                    const num = parseFloat(text) || 0;
+                    handleQuantityChange(locationId, item.inventoryItem.id, num);
+                  }}
+                  keyboardType="decimal-pad"
+                />
+
+                <TouchableOpacity
+                  onPress={() => handleQuantityChange(locationId, item.inventoryItem.id, displayQty + 1)}
+                  className="w-9 h-9 bg-gray-100 rounded-lg items-center justify-center"
+                >
+                  <Ionicons name="add" size={18} color={colors.gray[600]} />
+                </TouchableOpacity>
+
+                <Text className="ml-2 text-sm text-gray-500">{unitLabel}</Text>
+              </View>
+            </View>
+
+            {/* Pack info */}
+            <Text className="text-xs text-gray-400 mt-2">
+              {item.inventoryItem.pack_size} {item.inventoryItem.base_unit} per {item.inventoryItem.pack_unit}
+            </Text>
+          </View>
+        )}
       </View>
     );
-  }, [handleOrderFish]);
+  }, [expandedFishItems, toggleFishItemExpand, getDisplayQuantity, handleQuantityChange]);
+
+  // Handle navigation to export fish order page
+  const handleOrderFromSupplier = useCallback((locationOrder: LocationFishOrder) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    // Prepare fish items data with any edited quantities
+    const fishItemsData = locationOrder.items.map((item) => {
+      const displayQty = getDisplayQuantity(locationOrder.location.id, item.inventoryItem.id, item.quantity);
+      const unitLabel = item.unitType === 'pack' ? item.inventoryItem.pack_unit : item.inventoryItem.base_unit;
+      return {
+        itemId: item.inventoryItem.id,
+        itemName: item.inventoryItem.name,
+        quantity: displayQty,
+        unit: unitLabel,
+      };
+    });
+
+    router.push({
+      pathname: '/(manager)/export-fish-order',
+      params: {
+        locationName: locationOrder.location.name,
+        locationShortCode: locationOrder.location.short_code,
+        fishItems: JSON.stringify(fishItemsData),
+      },
+    });
+  }, [getDisplayQuantity]);
+
+  // Render location fish cart
+  const renderLocationFishCart = useCallback((locationOrder: LocationFishOrder) => {
+    const itemCount = locationOrder.items.length;
+
+    return (
+      <View key={locationOrder.location.id} className="mb-4">
+        {/* Location Header */}
+        <View className="bg-white rounded-t-xl px-4 py-3 border border-gray-200 border-b-0">
+          <View className="flex-row items-center justify-between">
+            <View className="flex-row items-center">
+              <View className="bg-primary-500 w-10 h-10 rounded-full items-center justify-center mr-3">
+                <Text className="text-white font-bold">{locationOrder.location.short_code}</Text>
+              </View>
+              <View>
+                <Text className="text-base font-semibold text-gray-900">{locationOrder.location.name}</Text>
+                <Text className="text-sm text-gray-500">
+                  {itemCount} fish item{itemCount !== 1 ? 's' : ''}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        {/* Items List */}
+        <View className="bg-white px-4 border-l border-r border-gray-200">
+          {locationOrder.items.map((item, index) => renderFishItem(locationOrder.location.id, item, index, itemCount))}
+        </View>
+
+        {/* Order from Supplier Button */}
+        <TouchableOpacity
+          className="bg-primary-500 py-3 rounded-b-xl items-center flex-row justify-center"
+          onPress={() => handleOrderFromSupplier(locationOrder)}
+          activeOpacity={0.8}
+        >
+          <Ionicons name="call-outline" size={18} color="white" />
+          <Text className="text-white font-semibold ml-2">Order from Supplier</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }, [renderFishItem, handleOrderFromSupplier]);
 
   // Render other item (compact)
   const renderOtherItem = useCallback((item: AggregatedItem) => {
@@ -533,25 +584,14 @@ export default function FulfillmentScreen() {
     );
   }, [expandedCategories, toggleCategory, renderOtherItem]);
 
-  // Determine which fish items to display
-  const displayFishItems = useSampleData ? SAMPLE_FISH_ORDERS : [];
+  // Count total fish items
+  const totalFishItems = fishOrdersByLocation.reduce((sum, loc) => sum + loc.items.length, 0);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Header */}
       <View className="bg-white px-5 py-4 border-b border-gray-100">
-        <View className="flex-row items-center justify-between">
-          <Text className="text-2xl font-bold text-gray-900">Fulfillment</Text>
-          {/* Sample Data Toggle */}
-          <TouchableOpacity
-            className={`px-3 py-1.5 rounded-full ${useSampleData ? 'bg-primary-100' : 'bg-gray-100'}`}
-            onPress={() => setUseSampleData(!useSampleData)}
-          >
-            <Text className={`text-xs font-medium ${useSampleData ? 'text-primary-600' : 'text-gray-500'}`}>
-              {useSampleData ? 'Sample Data' : 'Real Data'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+        <Text className="text-2xl font-bold text-gray-900">Fulfillment</Text>
       </View>
 
       {/* Tab Bar */}
@@ -569,9 +609,9 @@ export default function FulfillmentScreen() {
           >
             🐟 Fish Orders
           </Text>
-          {displayFishItems.length > 0 && (
+          {totalFishItems > 0 && (
             <View className="absolute top-1 right-8 bg-primary-500 rounded-full w-5 h-5 items-center justify-center">
-              <Text className="text-white text-xs font-bold">{displayFishItems.length}</Text>
+              <Text className="text-white text-xs font-bold">{totalFishItems}</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -601,27 +641,24 @@ export default function FulfillmentScreen() {
         className="flex-1"
         contentContainerStyle={{ padding: 16, paddingBottom: activeTab === 'other' && otherItems.length > 0 ? 100 : 32 }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />
         }
       >
         {activeTab === 'fish' ? (
           <>
-            {displayFishItems.length === 0 ? (
+            {fishOrdersByLocation.length === 0 ? (
               <View className="items-center py-12">
                 <Text className="text-4xl mb-4">🐟</Text>
                 <Text className="text-gray-500 text-center">
                   No fish orders pending
                 </Text>
-                <Text className="text-gray-400 text-sm text-center mt-2">
-                  Toggle "Sample Data" to see test items
-                </Text>
               </View>
             ) : (
               <>
                 <Text className="text-sm text-gray-500 mb-4">
-                  Tap "Order" to place an order with your fish supplier
+                  Fish orders grouped by location. Tap items to edit quantities.
                 </Text>
-                {displayFishItems.map((item) => renderSampleFishItem(item))}
+                {fishOrdersByLocation.map((locationOrder) => renderLocationFishCart(locationOrder))}
               </>
             )}
           </>
@@ -664,7 +701,7 @@ export default function FulfillmentScreen() {
                 <>
                   <Ionicons name="checkmark-circle" size={18} color="white" />
                   <Text className="text-white font-semibold ml-2">
-                    Mark Orders Fulfilled
+                    Mark Fulfilled
                   </Text>
                 </>
               )}
