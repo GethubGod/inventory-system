@@ -231,8 +231,7 @@ export default function OrderDetailScreen() {
   const minutesSinceCreated = Math.floor(
     (Date.now() - new Date(currentOrder.created_at).getTime()) / (1000 * 60)
   );
-  const withinGracePeriod = minutesSinceCreated <= 5;
-  const canRequestCancellation = minutesSinceCreated > 5;
+  const withinGracePeriod = minutesSinceCreated < 5;
   const isCancellableStatus =
     currentOrder.status === 'submitted' || currentOrder.status === 'processing';
   const showEmployeeCancellation =

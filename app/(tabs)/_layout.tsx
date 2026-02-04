@@ -71,13 +71,13 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Orders */}
+      {/* Stock */}
       <Tabs.Screen
-        name="orders"
+        name="stock"
         options={{
-          title: 'Orders',
+          title: 'Stock',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="receipt-outline" size={size} color={color} />
+            <Ionicons name="hardware-chip-outline" size={size} color={color} />
           ),
         }}
       />
@@ -96,6 +96,12 @@ export default function TabsLayout() {
       {/* Hidden screens */}
       <Tabs.Screen
         name="draft"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="orders"
         options={{
           href: null,
         }}

@@ -450,9 +450,12 @@ export default function CartScreen() {
       </View>
 
       {totalCartCount > 0 ? (
-        <>
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        >
           {/* Change Order Location */}
-          <View className="bg-white border-b border-gray-200">
+          <View className="bg-white rounded-xl border border-gray-200 mb-3">
             <TouchableOpacity
               onPress={() => setShowLocationModal(true)}
               className="flex-row items-center justify-between px-4 py-3"
@@ -471,7 +474,7 @@ export default function CartScreen() {
           </View>
 
           {/* Summary Bar */}
-          <View className="flex-row justify-between items-center px-4 py-3 bg-white border-b border-gray-200">
+          <View className="flex-row justify-between items-center px-4 py-3 bg-white border border-gray-200 rounded-xl mb-4">
             <Text className="text-gray-600">
               {totalCartCount} item{totalCartCount !== 1 ? 's' : ''} across {locationsWithCart.length} location{locationsWithCart.length !== 1 ? 's' : ''}
             </Text>
@@ -481,13 +484,8 @@ export default function CartScreen() {
           </View>
 
           {/* Cart Sections */}
-          <ScrollView
-            className="flex-1"
-            contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
-          >
-            {locationsWithCart.map(renderLocationSection)}
-          </ScrollView>
-        </>
+          {locationsWithCart.map(renderLocationSection)}
+        </ScrollView>
       ) : (
         <View className="flex-1 items-center justify-center p-8">
           <Ionicons name="cart-outline" size={64} color={colors.gray[300]} />

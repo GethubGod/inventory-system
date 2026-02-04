@@ -909,6 +909,22 @@ export default function SettingsScreen() {
           <AboutSection />
         </ExpandableSection>
 
+        {/* Order History */}
+        <View
+          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+          style={shadow.md}
+        >
+          <SettingsRow
+            icon="receipt-outline"
+            iconColor="#F97316"
+            iconBgColor="#FFEDD5"
+            title="My Orders"
+            subtitle="View your order history"
+            onPress={() => router.push('/orders/history')}
+            showBorder={false}
+          />
+        </View>
+
         {/* Draft Items */}
         <View
           className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
