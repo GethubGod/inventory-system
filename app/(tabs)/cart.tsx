@@ -45,6 +45,7 @@ export default function CartScreen() {
     updateCartItem,
     removeFromCart,
     moveCartItem,
+    moveAllCartItemsToLocation,
     clearLocationCart,
     clearAllCarts,
     createAndSubmitOrder,
@@ -57,6 +58,7 @@ export default function CartScreen() {
 
   // Move item modal state
   const [showMoveModal, setShowMoveModal] = useState(false);
+  const [showLocationModal, setShowLocationModal] = useState(false);
   const [itemToMove, setItemToMove] = useState<{
     locationId: string;
     inventoryItemId: string;
@@ -70,6 +72,17 @@ export default function CartScreen() {
   const locationsWithCart = useMemo(() => {
     return locations.filter(loc => cartLocationIds.includes(loc.id));
   }, [locations, cartLocationIds]);
+
+  const currentLocationLabel = useMemo(() => {
+    if (cartLocationIds.length === 1) {
+      const match = locations.find((loc) => loc.id === cartLocationIds[0]);
+      return match?.name || 'Select Location';
+    }
+    if (cartLocationIds.length > 1) {
+      return 'Multiple Locations';
+    }
+    return 'Select Location';
+  }, [cartLocationIds, locations]);
 
   // Get cart items with inventory details for a location
   const getCartWithDetails = useCallback((locationId: string): CartItemWithDetails[] => {
@@ -144,6 +157,34 @@ export default function CartScreen() {
     setShowMoveModal(false);
     setItemToMove(null);
   }, [itemToMove, moveCartItem]);
+
+  const handleMoveAllToLocation = useCallback((locationId: string, locationName: string) => {
+    const locationCount = cartLocationIds.length;
+    if (locationCount === 0) return;
+
+    if (locationCount === 1 && cartLocationIds[0] === locationId) {
+      setShowLocationModal(false);
+      return;
+    }
+
+    Alert.alert(
+      'Change Order Location',
+      `Move all cart items to ${locationName}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Move',
+          onPress: () => {
+            if (Platform.OS !== 'web') {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+            moveAllCartItemsToLocation(locationId);
+            setShowLocationModal(false);
+          },
+        },
+      ]
+    );
+  }, [cartLocationIds, moveAllCartItemsToLocation]);
 
   // Handle clear location cart
   const handleClearLocationCart = useCallback((locationId: string, locationName: string) => {
@@ -410,6 +451,25 @@ export default function CartScreen() {
 
       {totalCartCount > 0 ? (
         <>
+          {/* Change Order Location */}
+          <View className="bg-white border-b border-gray-200">
+            <TouchableOpacity
+              onPress={() => setShowLocationModal(true)}
+              className="flex-row items-center justify-between px-4 py-3"
+            >
+              <View className="flex-row items-center">
+                <Ionicons name="location-outline" size={18} color={colors.gray[600]} />
+                <Text className="text-sm text-gray-600 ml-2">Change Order Location</Text>
+              </View>
+              <View className="flex-row items-center">
+                <Text className="text-sm font-semibold text-gray-900 mr-1">
+                  {currentLocationLabel}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={colors.gray[500]} />
+              </View>
+            </TouchableOpacity>
+          </View>
+
           {/* Summary Bar */}
           <View className="flex-row justify-between items-center px-4 py-3 bg-white border-b border-gray-200">
             <Text className="text-gray-600">
@@ -454,6 +514,78 @@ export default function CartScreen() {
           </View>
         </View>
       )}
+
+      {/* Change Order Location Modal */}
+      <Modal
+        visible={showLocationModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowLocationModal(false)}
+      >
+        <Pressable
+          className="flex-1 bg-black/50 justify-end"
+          onPress={() => setShowLocationModal(false)}
+        >
+          <Pressable
+            className="bg-white rounded-t-3xl"
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Handle bar */}
+            <View className="items-center pt-3 pb-2">
+              <View className="w-10 h-1 bg-gray-300 rounded-full" />
+            </View>
+
+            <View className="px-6 pb-8">
+              <Text className="text-xl font-bold text-gray-900 mb-2">
+                Change Order Location
+              </Text>
+              <Text className="text-gray-500 mb-4">
+                Move all items to a single location
+              </Text>
+
+              {locations.map((loc) => {
+                const isSelected = cartLocationIds.length === 1 && cartLocationIds[0] === loc.id;
+                return (
+                  <TouchableOpacity
+                    key={loc.id}
+                    className={`flex-row items-center p-4 rounded-xl mb-3 border-2 ${
+                      isSelected ? 'border-primary-500 bg-primary-50' : 'border-gray-200 bg-white'
+                    }`}
+                    onPress={() => handleMoveAllToLocation(loc.id, loc.name)}
+                    activeOpacity={0.7}
+                  >
+                    <View className={`w-11 h-11 rounded-full items-center justify-center ${
+                      isSelected ? 'bg-primary-500' : 'bg-gray-100'
+                    }`}>
+                      <Text className={`font-bold text-sm ${isSelected ? 'text-white' : 'text-gray-600'}`}>
+                        {loc.short_code}
+                      </Text>
+                    </View>
+                    <View className="flex-1 ml-4">
+                      <Text className="font-semibold text-base text-gray-900">
+                        {loc.name}
+                      </Text>
+                      {isSelected && (
+                        <Text className="text-sm text-primary-600">Current location</Text>
+                      )}
+                    </View>
+                    {isSelected && (
+                      <Ionicons name="checkmark-circle" size={20} color={colors.primary[500]} />
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+
+              <TouchableOpacity
+                onPress={() => setShowLocationModal(false)}
+                className="py-4 mt-2"
+              >
+                <Text className="text-gray-500 font-medium text-center">Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Move Item Modal */}
       <Modal

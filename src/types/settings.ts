@@ -42,6 +42,10 @@ export interface ReminderSettings {
   closingTime: string; // "HH:MM" format
 }
 
+export interface ExportFormatSettings {
+  template: string;
+}
+
 export interface DisplaySettings {
   fontSize: FontSize;
   textScale: TextScale;
@@ -75,6 +79,11 @@ export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
   noOrderTodayReminder: false,
   beforeClosingReminder: false,
   closingTime: '21:00',
+};
+
+export const DEFAULT_EXPORT_FORMAT_SETTINGS: ExportFormatSettings = {
+  template:
+    "Hi, I'd like to place an order:\n\nORDER - Babytuna\nSupplier: {{supplier}}\nDate: {{date}}\n\n{{items}}\n\nPlease confirm availability.\nThank you!",
 };
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {

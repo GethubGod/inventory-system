@@ -10,9 +10,11 @@ import {
   NotificationSettings,
   ReminderSettings,
   Reminder,
+  ExportFormatSettings,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_REMINDER_SETTINGS,
   DEFAULT_DISPLAY_SETTINGS,
+  DEFAULT_EXPORT_FORMAT_SETTINGS,
 } from '@/types/settings';
 
 interface SettingsState {
@@ -33,6 +35,7 @@ interface SettingsState {
 
   // Reminders
   reminders: ReminderSettings;
+  exportFormat: ExportFormatSettings;
 
   // Display Actions
   setFontSize: (size: FontSize) => void;
@@ -56,6 +59,9 @@ interface SettingsState {
   updateReminder: (id: string, updates: Partial<Reminder>) => void;
   deleteReminder: (id: string) => void;
   toggleReminder: (id: string) => void;
+
+  // Export Format Actions
+  setExportFormat: (settings: Partial<ExportFormatSettings>) => void;
 
   // Reset
   resetDisplayToDefaults: () => void;
@@ -82,6 +88,9 @@ export const useSettingsStore = create<SettingsState>()(
 
       // Reminders - Initial State
       reminders: DEFAULT_REMINDER_SETTINGS,
+
+      // Export Format - Initial State
+      exportFormat: DEFAULT_EXPORT_FORMAT_SETTINGS,
 
       // Display Actions
       setFontSize: (fontSize) => set({ fontSize }),
@@ -164,6 +173,11 @@ export const useSettingsStore = create<SettingsState>()(
           },
         })),
 
+      setExportFormat: (settings) =>
+        set((state) => ({
+          exportFormat: { ...state.exportFormat, ...settings },
+        })),
+
       // Reset Actions
       resetDisplayToDefaults: () =>
         set({
@@ -188,6 +202,7 @@ export const useSettingsStore = create<SettingsState>()(
           avatarUri: null,
           notifications: DEFAULT_NOTIFICATION_SETTINGS,
           reminders: DEFAULT_REMINDER_SETTINGS,
+          exportFormat: DEFAULT_EXPORT_FORMAT_SETTINGS,
         }),
     }),
     {

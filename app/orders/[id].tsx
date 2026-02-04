@@ -171,6 +171,35 @@ export default function OrderDetailScreen() {
     );
   };
 
+  const handleRequestCancellation = () => {
+    if (!currentOrder) return;
+
+    Alert.alert(
+      'Request Cancellation',
+      'Send a cancellation request for this order?',
+      [
+        { text: 'No', style: 'cancel' },
+        {
+          text: 'Yes, Request',
+          onPress: async () => {
+            try {
+              setIsUpdating(true);
+              await updateOrderStatus(currentOrder.id, 'cancel_requested');
+              if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              }
+              fetchOrder(currentOrder.id);
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to request cancellation');
+            } finally {
+              setIsUpdating(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
@@ -196,6 +225,18 @@ export default function OrderDetailScreen() {
   const canMarkFulfilled = currentOrder.status === 'processing' && isManager;
   const canCancel = (currentOrder.status === 'submitted' || currentOrder.status === 'processing') && isManager;
   const isFulfilled = currentOrder.status === 'fulfilled';
+  const isCancelled = currentOrder.status === 'cancelled';
+  const isCancelRequested = currentOrder.status === 'cancel_requested';
+
+  const minutesSinceCreated = Math.floor(
+    (Date.now() - new Date(currentOrder.created_at).getTime()) / (1000 * 60)
+  );
+  const withinGracePeriod = minutesSinceCreated <= 5;
+  const canRequestCancellation = minutesSinceCreated > 5;
+  const isCancellableStatus =
+    currentOrder.status === 'submitted' || currentOrder.status === 'processing';
+  const showEmployeeCancellation =
+    isCancellableStatus && !isFulfilled && !isCancelled && !isCancelRequested;
 
   const renderOrderItem = ({ item }: { item: OrderItemWithInventory }) => {
     const categoryColor = categoryColors[item.inventory_item.category] || '#6B7280';
@@ -347,7 +388,7 @@ export default function OrderDetailScreen() {
         />
 
         {/* Action Buttons */}
-        {(canMarkProcessing || canMarkFulfilled || currentOrder.status === 'draft') && (
+        {(canMarkProcessing || canMarkFulfilled || currentOrder.status === 'draft' || showEmployeeCancellation) && (
           <View className="p-4 bg-white border-t border-gray-200">
             {/* Draft Status - Employee can submit */}
             {currentOrder.status === 'draft' && (
@@ -431,6 +472,43 @@ export default function OrderDetailScreen() {
                     </>
                   )}
                 </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Cancellation - Time Based */}
+            {!isManager && showEmployeeCancellation && (
+              <View className="flex-row mt-3">
+                {withinGracePeriod ? (
+                  <TouchableOpacity
+                    className="flex-1 bg-red-500 rounded-xl py-4 items-center flex-row justify-center"
+                    onPress={handleCancel}
+                    disabled={isUpdating}
+                  >
+                    {isUpdating ? (
+                      <SpinningFish size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="close-circle" size={18} color="white" />
+                        <Text className="text-white font-semibold ml-2">Cancel Order</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    className="flex-1 bg-amber-500 rounded-xl py-4 items-center flex-row justify-center"
+                    onPress={handleRequestCancellation}
+                    disabled={isUpdating}
+                  >
+                    {isUpdating ? (
+                      <SpinningFish size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="alert-circle" size={18} color="white" />
+                        <Text className="text-white font-semibold ml-2">Request Cancellation</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>

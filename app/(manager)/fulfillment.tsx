@@ -296,6 +296,7 @@ export default function FulfillmentScreen() {
         return {
           id: item.aggregateKey,
           name: item.inventoryItem.name,
+          category: item.inventoryItem.category,
           quantity: qty,
           unitLabel,
           details: item.locationBreakdown.map((loc) => ({
@@ -309,6 +310,7 @@ export default function FulfillmentScreen() {
     }).filter(Boolean) as Array<{
       id: string;
       name: string;
+      category: ItemCategory;
       quantity: number;
       unitLabel: string;
       details: Array<{ locationName: string; orderedBy: string; quantity: number; shortCode: string }>;

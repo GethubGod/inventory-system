@@ -108,5 +108,6 @@ export const statusColors: Record<string, { bg: string; text: string }> = {
   submitted: { bg: '#FEF3C7', text: '#D97706' }, // Orange/Pending
   processing: { bg: '#DBEAFE', text: '#1D4ED8' }, // Blue
   fulfilled: { bg: '#D1FAE5', text: '#047857' }, // Green
+  cancel_requested: { bg: '#FEF3C7', text: '#B45309' },
   cancelled: { bg: '#FEE2E2', text: '#B91C1C' },
 } as const;

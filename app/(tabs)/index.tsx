@@ -7,7 +7,6 @@ import {
   TextInput,
   RefreshControl,
   Modal,
-  Pressable,
   Alert,
   ScrollView,
   LayoutAnimation,
@@ -17,12 +16,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useInventoryStore, useAuthStore, useOrderStore } from '@/store';
 import { InventoryItem, ItemCategory, Location, SupplierCategory } from '@/types';
 import { CATEGORY_LABELS, categoryColors, colors } from '@/constants';
 import { InventoryItemCard } from '@/components/InventoryItemCard';
-import { CategoryFilter } from '@/components/CategoryFilter';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -39,6 +38,17 @@ const categories: ItemCategory[] = [
   'sauces',
   'packaging',
 ];
+
+const CATEGORY_ICONS: Record<ItemCategory, keyof typeof Ionicons.glyphMap> = {
+  fish: 'fish-outline',
+  protein: 'restaurant-outline',
+  produce: 'leaf-outline',
+  dry: 'cube-outline',
+  dairy_cold: 'thermometer-outline',
+  frozen: 'snow-outline',
+  sauces: 'water-outline',
+  packaging: 'archive-outline',
+};
 
 const SUPPLIER_CATEGORIES: { value: SupplierCategory; label: string }[] = [
   { value: 'fish_supplier', label: 'Fish Supplier' },
@@ -58,7 +68,7 @@ export default function OrderScreen() {
     addItem,
     isLoading: inventoryLoading,
   } = useInventoryStore();
-  const { getLocationCartTotal } = useOrderStore();
+  const { getLocationCartTotal, getTotalCartCount } = useOrderStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
@@ -72,6 +82,7 @@ export default function OrderScreen() {
   const [newItemPackUnit, setNewItemPackUnit] = useState('');
   const [newItemPackSize, setNewItemPackSize] = useState('');
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
+  const totalCartCount = getTotalCartCount();
 
   useEffect(() => {
     fetchItems();
@@ -105,7 +116,21 @@ export default function OrderScreen() {
     setShowLocationDropdown(false);
   }, [setLocation]);
 
+  const handleSelectCategory = useCallback((category: ItemCategory) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setSelectedCategory(category);
+    setSearchQuery('');
+  }, [setSelectedCategory, setSearchQuery]);
+
+  const handleBackToCategories = useCallback(() => {
+    setSelectedCategory(null);
+    setSearchQuery('');
+  }, [setSelectedCategory, setSearchQuery]);
+
   const filteredItems = getFilteredItems();
+  const showCategoryGrid = !selectedCategory && !searchQuery.trim();
 
   const resetNewItemForm = () => {
     setNewItemName(searchQuery); // Pre-fill with search query
@@ -169,17 +194,60 @@ export default function OrderScreen() {
     <InventoryItemCard item={item} locationId={location?.id || ''} />
   );
 
+  const CategoryPicker = ({ value, onChange }: { value: ItemCategory; onChange: (v: ItemCategory) => void }) => (
+    <View className="flex-row flex-wrap gap-2">
+      {categories.map((cat) => {
+        const isSelected = value === cat;
+        const color = categoryColors[cat] || '#6B7280';
+        return (
+          <TouchableOpacity
+            key={cat}
+            className="px-3 py-2 rounded-lg"
+            style={{ backgroundColor: isSelected ? color : color + '20' }}
+            onPress={() => onChange(cat)}
+          >
+            <Text
+              style={{ color: isSelected ? '#FFFFFF' : color }}
+              className="text-sm font-medium"
+            >
+              {CATEGORY_LABELS[cat]}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+
+  const SupplierPicker = ({ value, onChange }: { value: SupplierCategory; onChange: (v: SupplierCategory) => void }) => (
+    <View className="flex-row flex-wrap gap-2">
+      {SUPPLIER_CATEGORIES.map((sup) => {
+        const isSelected = value === sup.value;
+        return (
+          <TouchableOpacity
+            key={sup.value}
+            className={`px-3 py-2 rounded-lg ${isSelected ? 'bg-primary-500' : 'bg-gray-100'}`}
+            onPress={() => onChange(sup.value)}
+          >
+            <Text className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}>
+              {sup.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
+  );
+
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      {/* Header with Location Dropdown */}
+      {/* Header */}
       <View className="bg-white border-b border-gray-200">
-        <TouchableOpacity
-          onPress={toggleLocationDropdown}
-          className="flex-row items-center justify-center px-4 py-3"
-        >
-          <View className="flex-row items-center bg-gray-100 px-4 py-2.5 rounded-xl">
+        <View className="flex-row items-center justify-between px-4 py-3">
+          <TouchableOpacity
+            onPress={toggleLocationDropdown}
+            className="flex-row items-center bg-gray-100 px-3 py-2 rounded-xl flex-1 mr-3"
+          >
             <Ionicons name="location" size={18} color={colors.primary[500]} />
-            <Text className="text-base font-semibold text-gray-900 mx-2">
+            <Text className="text-base font-semibold text-gray-900 mx-2 flex-1" numberOfLines={1}>
               {location?.name || 'Select Location'}
             </Text>
             <Ionicons
@@ -187,8 +255,33 @@ export default function OrderScreen() {
               size={18}
               color={colors.gray[500]}
             />
+          </TouchableOpacity>
+
+          <View className="flex-row items-center">
+            <TouchableOpacity
+              onPress={handleOpenAddItemModal}
+              className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center mr-2"
+            >
+              <Ionicons name="add" size={20} color={colors.gray[700]} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push('/cart' as any)}
+              className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center relative"
+            >
+              <Ionicons name="cart-outline" size={20} color={colors.gray[700]} />
+              {totalCartCount > 0 && (
+                <View
+                  className="absolute -top-1 -right-1 bg-primary-500 h-5 rounded-full items-center justify-center px-1"
+                  style={{ minWidth: 20 }}
+                >
+                  <Text className="text-white font-bold" style={{ fontSize: 10 }}>
+                    {totalCartCount > 99 ? '99+' : totalCartCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
 
         {/* Location Dropdown Menu */}
         {showLocationDropdown && (
@@ -252,218 +345,246 @@ export default function OrderScreen() {
         </View>
       </View>
 
-      {/* Category Filter */}
-      <CategoryFilter
-        categories={categories}
-        selectedCategory={selectedCategory}
-        onSelectCategory={setSelectedCategory}
-      />
-
-      {/* Inventory List */}
-      <FlatList
-        data={filteredItems}
-        renderItem={renderItem}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 16 }}
-        ItemSeparatorComponent={() => <View className="h-3" />}
-        ListEmptyComponent={() => (
-          <View className="flex-1 items-center justify-center py-12">
-            <Ionicons name="cube-outline" size={48} color="#9CA3AF" />
-            <Text className="text-gray-500 mt-4 text-center">
-              {searchQuery || selectedCategory
-                ? 'No items match your search'
-                : 'No inventory items found'}
-            </Text>
-            {(searchQuery || selectedCategory) && (
-              <TouchableOpacity
-                onPress={handleOpenAddItemModal}
-                className="mt-4 flex-row items-center bg-primary-500 px-5 py-3 rounded-xl"
-              >
-                <Ionicons name="add-circle-outline" size={20} color="white" />
-                <Text className="text-white font-semibold ml-2">Add Missing Item</Text>
-              </TouchableOpacity>
+      {showCategoryGrid ? (
+        <ScrollView
+          className="flex-1"
+          contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#F97316"
+            />
+          }
+        >
+          <Text className="text-xs text-gray-500 uppercase tracking-wide mb-3">
+            Browse by Category
+          </Text>
+          <View className="flex-row flex-wrap justify-between">
+            {categories.map((cat) => {
+              const catColor = categoryColors[cat] || '#6B7280';
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => handleSelectCategory(cat)}
+                  className="bg-white rounded-2xl p-4 mb-4 border border-gray-100"
+                  style={{
+                    width: '48%',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 1 },
+                    shadowOpacity: 0.05,
+                    shadowRadius: 4,
+                    elevation: 2,
+                  }}
+                >
+                  <View
+                    className="w-10 h-10 rounded-xl items-center justify-center mb-3"
+                    style={{ backgroundColor: catColor + '20' }}
+                  >
+                    <Ionicons name={CATEGORY_ICONS[cat]} size={20} color={catColor} />
+                  </View>
+                  <Text className="text-base font-semibold text-gray-900">
+                    {CATEGORY_LABELS[cat]}
+                  </Text>
+                  <Text className="text-xs text-gray-400 mt-1">View items</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </ScrollView>
+      ) : (
+        <>
+          <View className="px-4 py-2 bg-white border-b border-gray-100 flex-row items-center justify-between">
+            <TouchableOpacity onPress={handleBackToCategories} className="flex-row items-center">
+              <Ionicons name="arrow-back" size={18} color={colors.gray[600]} />
+              <Text className="text-sm text-gray-600 ml-1">Categories</Text>
+            </TouchableOpacity>
+            {selectedCategory ? (
+              <Text className="text-sm font-semibold text-gray-900">
+                {CATEGORY_LABELS[selectedCategory]}
+              </Text>
+            ) : (
+              <Text className="text-sm text-gray-500">Search Results</Text>
             )}
           </View>
-        )}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#F97316"
+
+          {/* Inventory List */}
+          <FlatList
+            data={filteredItems}
+            renderItem={renderItem}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={{ padding: 16 }}
+            ItemSeparatorComponent={() => <View className="h-3" />}
+            ListEmptyComponent={() => (
+              <View className="flex-1 items-center justify-center py-12">
+                <Ionicons name="cube-outline" size={48} color="#9CA3AF" />
+                <Text className="text-gray-500 mt-4 text-center">
+                  {searchQuery || selectedCategory
+                    ? 'No items match your search'
+                    : 'No inventory items found'}
+                </Text>
+                {(searchQuery || selectedCategory) && (
+                  <TouchableOpacity
+                    onPress={handleOpenAddItemModal}
+                    className="mt-4 flex-row items-center bg-primary-500 px-5 py-3 rounded-xl"
+                  >
+                    <Ionicons name="add-circle-outline" size={20} color="white" />
+                    <Text className="text-white font-semibold ml-2">Add Missing Item</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                tintColor="#F97316"
+              />
+            }
           />
-        }
-      />
+        </>
+      )}
 
       {/* Add Item Modal */}
       <Modal
         visible={showAddItemModal}
-        transparent
         animationType="slide"
+        presentationStyle="pageSheet"
         onRequestClose={() => setShowAddItemModal(false)}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-1"
-        >
-          <Pressable
-            className="flex-1 bg-black/50 justify-end"
-            onPress={() => setShowAddItemModal(false)}
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="flex-1"
           >
-            <Pressable
-              className="bg-white rounded-t-3xl max-h-[90%]"
-              onPress={(e) => e.stopPropagation()}
-            >
-              {/* Handle bar */}
-              <View className="items-center pt-3 pb-2">
-                <View className="w-10 h-1 bg-gray-300 rounded-full" />
+            {/* Modal Header */}
+            <View className="bg-white px-4 py-4 border-b border-gray-200 flex-row items-center justify-between">
+              <TouchableOpacity onPress={() => setShowAddItemModal(false)}>
+                <Text className="text-primary-500 font-medium">Cancel</Text>
+              </TouchableOpacity>
+              <Text className="text-lg font-bold text-gray-900">Add New Item</Text>
+              <View style={{ width: 50 }} />
+            </View>
+
+            <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
+              {/* Name */}
+              <View className="mb-4">
+                <Text className="text-sm font-medium text-gray-700 mb-2">
+                  Item Name *
+                </Text>
+                <TextInput
+                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                  placeholder="e.g., Salmon (Sushi Grade)"
+                  placeholderTextColor="#9CA3AF"
+                  value={newItemName}
+                  onChangeText={setNewItemName}
+                />
               </View>
 
-              <ScrollView className="px-6 pb-8" showsVerticalScrollIndicator={false}>
-                <Text className="text-2xl font-bold text-gray-900 mb-1">
-                  Add Missing Item
+              {/* Category */}
+              <View className="mb-4">
+                <Text className="text-sm font-medium text-gray-700 mb-2">
+                  Category *
                 </Text>
-                <Text className="text-gray-500 mb-6">
-                  This item will be added to the inventory
-                </Text>
+                <CategoryPicker
+                  value={newItemCategory}
+                  onChange={setNewItemCategory}
+                />
+              </View>
 
-                {/* Item Name */}
-                <View className="mb-4">
-                  <Text className="text-sm font-medium text-gray-700 mb-2">Item Name *</Text>
+              {/* Supplier Category */}
+              <View className="mb-4">
+                <Text className="text-sm font-medium text-gray-700 mb-2">
+                  Supplier *
+                </Text>
+                <SupplierPicker
+                  value={newItemSupplierCategory}
+                  onChange={setNewItemSupplierCategory}
+                />
+              </View>
+
+              {/* Units Row */}
+              <View className="flex-row gap-3 mb-4">
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">
+                    Base Unit *
+                  </Text>
                   <TextInput
-                    className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900 text-base"
-                    placeholder="e.g., Salmon Fillet"
-                    value={newItemName}
-                    onChangeText={setNewItemName}
-                    autoCapitalize="words"
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                    placeholder="e.g., lb"
+                    placeholderTextColor="#9CA3AF"
+                    value={newItemBaseUnit}
+                    onChangeText={setNewItemBaseUnit}
                   />
                 </View>
-
-                {/* Category */}
-                <View className="mb-4">
-                  <Text className="text-sm font-medium text-gray-700 mb-2">Category *</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View className="flex-row">
-                      {categories.map((cat) => {
-                        const isSelected = newItemCategory === cat;
-                        const catColor = categoryColors[cat] || '#6B7280';
-                        return (
-                          <TouchableOpacity
-                            key={cat}
-                            onPress={() => setNewItemCategory(cat)}
-                            className={`mr-2 px-4 py-2 rounded-lg border-2 ${
-                              isSelected ? 'border-primary-500' : 'border-transparent'
-                            }`}
-                            style={{ backgroundColor: isSelected ? catColor + '30' : catColor + '15' }}
-                          >
-                            <Text style={{ color: catColor }} className="font-medium text-sm">
-                              {CATEGORY_LABELS[cat]}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </ScrollView>
-                </View>
-
-                {/* Supplier Category */}
-                <View className="mb-4">
-                  <Text className="text-sm font-medium text-gray-700 mb-2">Supplier *</Text>
-                  <View className="flex-row flex-wrap">
-                    {SUPPLIER_CATEGORIES.map((sup) => {
-                      const isSelected = newItemSupplierCategory === sup.value;
-                      return (
-                        <TouchableOpacity
-                          key={sup.value}
-                          onPress={() => setNewItemSupplierCategory(sup.value)}
-                          className={`mr-2 mb-2 px-4 py-2 rounded-lg ${
-                            isSelected ? 'bg-primary-500' : 'bg-gray-100'
-                          }`}
-                        >
-                          <Text className={`font-medium text-sm ${
-                            isSelected ? 'text-white' : 'text-gray-700'
-                          }`}>
-                            {sup.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-
-                {/* Units Row */}
-                <View className="flex-row mb-4">
-                  <View className="flex-1 mr-2">
-                    <Text className="text-sm font-medium text-gray-700 mb-2">Base Unit *</Text>
-                    <TextInput
-                      className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900 text-base"
-                      placeholder="e.g., lb, oz, each"
-                      value={newItemBaseUnit}
-                      onChangeText={setNewItemBaseUnit}
-                      autoCapitalize="none"
-                    />
-                  </View>
-                  <View className="flex-1 ml-2">
-                    <Text className="text-sm font-medium text-gray-700 mb-2">Pack Unit *</Text>
-                    <TextInput
-                      className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900 text-base"
-                      placeholder="e.g., case, bag"
-                      value={newItemPackUnit}
-                      onChangeText={setNewItemPackUnit}
-                      autoCapitalize="none"
-                    />
-                  </View>
-                </View>
-
-                {/* Pack Size */}
-                <View className="mb-6">
-                  <Text className="text-sm font-medium text-gray-700 mb-2">Pack Size *</Text>
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">
+                    Pack Unit *
+                  </Text>
                   <TextInput
-                    className="bg-gray-100 rounded-xl px-4 py-3 text-gray-900 text-base"
-                    placeholder="Number of base units per pack"
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                    placeholder="e.g., case"
+                    placeholderTextColor="#9CA3AF"
+                    value={newItemPackUnit}
+                    onChangeText={setNewItemPackUnit}
+                  />
+                </View>
+              </View>
+
+              {/* Pack Size */}
+              <View className="mb-6">
+                <Text className="text-sm font-medium text-gray-700 mb-2">
+                  Pack Size *
+                </Text>
+                <View className="flex-row items-center">
+                  <TextInput
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 w-24"
+                    placeholder="10"
+                    placeholderTextColor="#9CA3AF"
                     value={newItemPackSize}
                     onChangeText={setNewItemPackSize}
-                    keyboardType="decimal-pad"
+                    keyboardType="number-pad"
                   />
-                  <Text className="text-xs text-gray-400 mt-1">
-                    How many {newItemBaseUnit || 'base units'} per {newItemPackUnit || 'pack'}?
+                  <Text className="text-gray-500 ml-3">
+                    {newItemBaseUnit || 'units'} per {newItemPackUnit || 'pack'}
                   </Text>
                 </View>
+              </View>
 
-                {/* Employee Note */}
-                <View className="bg-blue-50 rounded-xl p-4 mb-6">
-                  <View className="flex-row items-center mb-1">
-                    <Ionicons name="information-circle" size={18} color="#3B82F6" />
-                    <Text className="text-blue-700 font-medium ml-2">Employee-Added Item</Text>
-                  </View>
-                  <Text className="text-blue-600 text-sm">
-                    This item will be marked as added by you ({user?.name || 'Employee'}) and may be reviewed by a manager.
+              {/* Preview */}
+              {newItemName && (
+                <View className="bg-primary-50 rounded-xl p-4 mb-6">
+                  <Text className="text-sm font-medium text-primary-700 mb-2">
+                    Preview
+                  </Text>
+                  <Text className="text-gray-900 font-semibold">{newItemName}</Text>
+                  <Text className="text-gray-600 text-sm mt-1">
+                    {CATEGORY_LABELS[newItemCategory]} • {SUPPLIER_CATEGORIES.find((s) => s.value === newItemSupplierCategory)?.label}
+                  </Text>
+                  <Text className="text-gray-500 text-sm mt-1">
+                    {newItemPackSize || '1'} {newItemBaseUnit || 'units'} per {newItemPackUnit || 'pack'}
                   </Text>
                 </View>
+              )}
+            </ScrollView>
 
-                {/* Action Buttons */}
-                <View className="flex-row mb-8">
-                  <TouchableOpacity
-                    onPress={() => setShowAddItemModal(false)}
-                    className="flex-1 mr-2 py-4 rounded-xl bg-gray-200"
-                  >
-                    <Text className="text-gray-700 font-semibold text-center">Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={handleAddNewItem}
-                    disabled={isSubmittingItem}
-                    className={`flex-1 ml-2 py-4 rounded-xl bg-primary-500 ${
-                      isSubmittingItem ? 'opacity-70' : ''
-                    }`}
-                  >
-                    <Text className="text-white font-semibold text-center">
-                      {isSubmittingItem ? 'Adding...' : 'Add Item'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
+            {/* Submit Button */}
+            <View className="bg-white border-t border-gray-200 px-4 py-4">
+              <TouchableOpacity
+                className={`rounded-xl py-4 items-center flex-row justify-center ${
+                  isSubmittingItem ? 'bg-primary-300' : 'bg-primary-500'
+                }`}
+                onPress={handleAddNewItem}
+                disabled={isSubmittingItem}
+              >
+                <Ionicons name="add-circle" size={20} color="white" />
+                <Text className="text-white font-bold text-lg ml-2">
+                  {isSubmittingItem ? 'Adding...' : 'Add Item'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );

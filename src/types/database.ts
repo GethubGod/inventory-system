@@ -15,7 +15,7 @@ export type SupplierCategory =
 
 export type UserRole = 'employee' | 'manager';
 
-export type OrderStatus = 'draft' | 'submitted' | 'processing' | 'fulfilled' | 'cancelled';
+export type OrderStatus = 'draft' | 'submitted' | 'processing' | 'fulfilled' | 'cancelled' | 'cancel_requested';
 
 export type UnitType = 'base' | 'pack';
 

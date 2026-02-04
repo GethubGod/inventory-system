@@ -129,6 +129,12 @@ export default function ManagerLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen
+        name="settings/export-format"
+        options={{
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }

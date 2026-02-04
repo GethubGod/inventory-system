@@ -24,6 +24,7 @@ interface OrderState {
   updateCartItem: (locationId: string, inventoryItemId: string, quantity: number, unitType: UnitType) => void;
   removeFromCart: (locationId: string, inventoryItemId: string) => void;
   moveCartItem: (fromLocationId: string, toLocationId: string, inventoryItemId: string) => void;
+  moveAllCartItemsToLocation: (toLocationId: string) => void;
   clearLocationCart: (locationId: string) => void;
   clearAllCarts: () => void;
 
@@ -163,6 +164,32 @@ export const useOrderStore = create<OrderState>()(
             ...cartByLocation,
             [fromLocationId]: newFromCart,
             [toLocationId]: newToCart,
+          },
+        });
+      },
+
+      moveAllCartItemsToLocation: (toLocationId) => {
+        const { cartByLocation } = get();
+        const allItems = Object.values(cartByLocation).flat();
+
+        if (allItems.length === 0) {
+          return;
+        }
+
+        const mergedMap = new Map<string, CartItem>();
+        allItems.forEach((item) => {
+          const key = `${item.inventoryItemId}-${item.unitType}`;
+          const existing = mergedMap.get(key);
+          if (existing) {
+            existing.quantity += item.quantity;
+          } else {
+            mergedMap.set(key, { ...item });
+          }
+        });
+
+        set({
+          cartByLocation: {
+            [toLocationId]: Array.from(mergedMap.values()),
           },
         });
       },
