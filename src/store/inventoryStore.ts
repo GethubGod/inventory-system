@@ -91,18 +91,35 @@ export const useInventoryStore = create<InventoryState>()(
             .single();
 
           if (error) throw error;
+          if (data) {
+            // Add to local state
+            set((state) => ({
+              items: [...state.items, data].sort((a, b) => {
+                if (a.category !== b.category) {
+                  return a.category.localeCompare(b.category);
+                }
+                return a.name.localeCompare(b.name);
+              }),
+              lastFetched: Date.now(),
+            }));
 
-          // Add to local state
-          set((state) => ({
-            items: [...state.items, data].sort((a, b) => {
-              if (a.category !== b.category) {
-                return a.category.localeCompare(b.category);
-              }
-              return a.name.localeCompare(b.name);
-            }),
-          }));
+            return data;
+          }
 
-          return data;
+          // Fallback: refresh items if representation wasn't returned
+          set({ lastFetched: null });
+          await get().fetchItems();
+          const created = get().items.find(
+            (existing) =>
+              existing.name.toLowerCase() === item.name.toLowerCase() &&
+              existing.category === item.category &&
+              existing.supplier_category === item.supplier_category
+          );
+          if (created) {
+            return created;
+          }
+
+          throw new Error('Item was created but could not be loaded. Please refresh.');
         } finally {
           set({ isLoading: false });
         }

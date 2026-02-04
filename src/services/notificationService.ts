@@ -1,16 +1,25 @@
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
 import { Reminder } from '@/types/settings';
+import { useSettingsStore } from '@/store';
 
 // Configure notification behavior
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async () => {
+    const { notifications } = useSettingsStore.getState();
+    const inQuietHours = isInQuietHours(
+      notifications.quietHours.enabled,
+      notifications.quietHours.startTime,
+      notifications.quietHours.endTime
+    );
+
+    return {
+      shouldShowAlert: !inQuietHours,
+      shouldPlaySound: notifications.soundEnabled && !inQuietHours,
+      shouldSetBadge: true,
+      shouldShowBanner: !inQuietHours,
+      shouldShowList: !inQuietHours,
+    };
+  },
 });
 
 export async function requestNotificationPermissions(): Promise<boolean> {

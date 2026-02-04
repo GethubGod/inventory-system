@@ -22,6 +22,7 @@ import { SpinningFish } from '@/components';
 
 // Aggregated item type
 interface AggregatedItem {
+  aggregateKey: string;
   inventoryItem: InventoryItem;
   totalQuantity: number;
   unitType: 'base' | 'pack';
@@ -127,8 +128,16 @@ export default function FulfillmentScreen() {
         const item = orderItem.inventory_item;
         if (!item) return;
 
-        const key = `${item.id}-${orderItem.unit_type}`;
-        const existing = itemMap.get(key);
+        const aggregateKey = [
+          item.name.trim().toLowerCase(),
+          item.supplier_category,
+          item.category,
+          orderItem.unit_type,
+          item.base_unit,
+          item.pack_unit,
+          item.pack_size,
+        ].join('|');
+        const existing = itemMap.get(aggregateKey);
 
         if (existing) {
           existing.totalQuantity += orderItem.quantity;
@@ -151,7 +160,8 @@ export default function FulfillmentScreen() {
             });
           }
         } else {
-          itemMap.set(key, {
+          itemMap.set(aggregateKey, {
+            aggregateKey,
             inventoryItem: item,
             totalQuantity: orderItem.quantity,
             unitType: orderItem.unit_type,
@@ -230,7 +240,7 @@ export default function FulfillmentScreen() {
 
   const checkedCount = useMemo(() => {
     return allItems.filter((item) =>
-      checkedOtherItems.has(`${item.inventoryItem.id}-${item.unitType}`)
+      checkedOtherItems.has(item.aggregateKey)
     ).length;
   }, [allItems, checkedOtherItems]);
 
@@ -271,23 +281,20 @@ export default function FulfillmentScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    const key = `${item.inventoryItem.id}-${item.unitType}`;
-    toggleOtherItem(key);
+    toggleOtherItem(item.aggregateKey);
   }, [toggleOtherItem]);
 
   // Handle quantity change
-  const handleQuantityChange = useCallback((itemId: string, unitType: string, newQuantity: number) => {
-    const key = `${itemId}-${unitType}`;
+  const handleQuantityChange = useCallback((itemKey: string, newQuantity: number) => {
     setEditedQuantities((prev) => ({
       ...prev,
-      [key]: Math.max(0, newQuantity),
+      [itemKey]: Math.max(0, newQuantity),
     }));
   }, []);
 
   // Get displayed quantity (edited or original)
   const getDisplayQuantity = useCallback((item: AggregatedItem) => {
-    const key = `${item.inventoryItem.id}-${item.unitType}`;
-    return editedQuantities[key] ?? item.totalQuantity;
+    return editedQuantities[item.aggregateKey] ?? item.totalQuantity;
   }, [editedQuantities]);
 
   // Generate export message for a supplier
@@ -303,19 +310,36 @@ export default function FulfillmentScreen() {
     message += `Supplier: ${SUPPLIER_CATEGORY_LABELS[supplierGroup.supplierCategory]}\n`;
     message += `Date: ${today}\n\n`;
 
-    supplierGroup.categoryGroups.forEach((categoryGroup) => {
-      message += `${CATEGORY_LABELS[categoryGroup.category] || categoryGroup.category}:\n`;
-      categoryGroup.items.forEach((item) => {
-        const qty = getDisplayQuantity(item);
-        const unitLabel = item.unitType === 'pack'
-          ? item.inventoryItem.pack_unit
-          : item.inventoryItem.base_unit;
-        if (qty > 0) {
-          message += `- ${item.inventoryItem.name}: ${qty} ${unitLabel}\n`;
-        }
+    const printableCategories = supplierGroup.categoryGroups
+      .map((categoryGroup) => {
+        const lines = categoryGroup.items
+          .map((item) => {
+            const qty = getDisplayQuantity(item);
+            if (qty <= 0) return null;
+            const unitLabel = item.unitType === 'pack'
+              ? item.inventoryItem.pack_unit
+              : item.inventoryItem.base_unit;
+            return `- ${item.inventoryItem.name}: ${qty} ${unitLabel}`;
+          })
+          .filter(Boolean) as string[];
+        return {
+          label: CATEGORY_LABELS[categoryGroup.category] || categoryGroup.category,
+          lines,
+        };
+      })
+      .filter((category) => category.lines.length > 0);
+
+    if (printableCategories.length === 0) {
+      message += 'No items ready to order yet.\n\n';
+    } else {
+      printableCategories.forEach((category) => {
+        message += `${category.label}:\n`;
+        category.lines.forEach((line) => {
+          message += `${line}\n`;
+        });
+        message += '\n';
       });
-      message += '\n';
-    });
+    }
 
     message += `Please confirm availability.\nThank you!`;
 
@@ -367,7 +391,7 @@ export default function FulfillmentScreen() {
     const checkedOrderIds = new Set<string>();
     allItems
       .filter((item) =>
-        checkedOtherItems.has(`${item.inventoryItem.id}-${item.unitType}`)
+        checkedOtherItems.has(item.aggregateKey)
       )
       .forEach((item) => {
         item.orderIds.forEach((id) => checkedOrderIds.add(id));
@@ -412,7 +436,7 @@ export default function FulfillmentScreen() {
 
   // Render item row
   const renderItem = useCallback((item: AggregatedItem, showLocationBreakdown: boolean) => {
-    const key = `${item.inventoryItem.id}-${item.unitType}`;
+    const key = item.aggregateKey;
     const isChecked = checkedOtherItems.has(key);
     const unitLabel = item.unitType === 'pack'
       ? item.inventoryItem.pack_unit
@@ -454,7 +478,7 @@ export default function FulfillmentScreen() {
             <TouchableOpacity
               onPress={(e) => {
                 e.stopPropagation();
-                handleQuantityChange(item.inventoryItem.id, item.unitType, displayQty - 1);
+                handleQuantityChange(item.aggregateKey, displayQty - 1);
               }}
               className="w-7 h-7 bg-gray-100 rounded items-center justify-center"
             >
@@ -466,7 +490,7 @@ export default function FulfillmentScreen() {
               value={displayQty.toString()}
               onChangeText={(text) => {
                 const num = parseFloat(text) || 0;
-                handleQuantityChange(item.inventoryItem.id, item.unitType, num);
+                handleQuantityChange(item.aggregateKey, num);
               }}
               keyboardType="decimal-pad"
               selectTextOnFocus
@@ -475,7 +499,7 @@ export default function FulfillmentScreen() {
             <TouchableOpacity
               onPress={(e) => {
                 e.stopPropagation();
-                handleQuantityChange(item.inventoryItem.id, item.unitType, displayQty + 1);
+                handleQuantityChange(item.aggregateKey, displayQty + 1);
               }}
               className="w-7 h-7 bg-gray-100 rounded items-center justify-center"
             >

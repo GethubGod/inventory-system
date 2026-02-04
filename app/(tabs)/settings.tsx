@@ -34,6 +34,8 @@ import {
   requestNotificationPermissions,
   scheduleReminder,
   cancelReminder,
+  scheduleNoOrderTodayReminder,
+  scheduleBeforeClosingReminder,
 } from '@/services/notificationService';
 
 // ============================================
@@ -491,6 +493,69 @@ function RemindersSection({
     hapticFeedback,
   } = useSettingsStore();
 
+  const ensureNotificationPermissions = async () => {
+    const granted = await requestNotificationPermissions();
+    if (!granted) {
+      Alert.alert(
+        'Permission Required',
+        'Please enable notifications in your device settings.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+        ]
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const handleReminderMasterToggle = async (enabled: boolean) => {
+    setReminderSettings({ enabled });
+
+    if (!enabled) {
+      await scheduleNoOrderTodayReminder(false);
+      await scheduleBeforeClosingReminder(false, reminders.closingTime);
+      return;
+    }
+
+    const permitted = await ensureNotificationPermissions();
+    if (!permitted) return;
+
+    if (reminders.noOrderTodayReminder) {
+      await scheduleNoOrderTodayReminder(true);
+    }
+    if (reminders.beforeClosingReminder) {
+      await scheduleBeforeClosingReminder(true, reminders.closingTime);
+    }
+  };
+
+  const handleNoOrderTodayToggle = async (enabled: boolean) => {
+    if (enabled) {
+      const permitted = await ensureNotificationPermissions();
+      if (!permitted) return;
+    }
+    setReminderSettings({ noOrderTodayReminder: enabled });
+    await scheduleNoOrderTodayReminder(enabled);
+  };
+
+  const handleBeforeClosingToggle = async (enabled: boolean) => {
+    if (enabled) {
+      const permitted = await ensureNotificationPermissions();
+      if (!permitted) return;
+    }
+    setReminderSettings({ beforeClosingReminder: enabled });
+    await scheduleBeforeClosingReminder(enabled, reminders.closingTime);
+  };
+
+  const handleClosingTimeChange = async (time: string) => {
+    setReminderSettings({ closingTime: time });
+    if (reminders.beforeClosingReminder) {
+      const permitted = await ensureNotificationPermissions();
+      if (!permitted) return;
+      await scheduleBeforeClosingReminder(true, time);
+    }
+  };
+
   const handleDeleteReminder = (reminder: Reminder) => {
     Alert.alert('Delete Reminder', `Delete "${reminder.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
@@ -532,7 +597,7 @@ function RemindersSection({
         title="Reminders"
         subtitle="Get reminded to place orders"
         value={reminders.enabled}
-        onValueChange={(v) => setReminderSettings({ enabled: v })}
+        onValueChange={handleReminderMasterToggle}
       />
 
       {reminders.enabled && (
@@ -547,14 +612,14 @@ function RemindersSection({
             title="No Order Today"
             subtitle="Remind at 3 PM if no order placed"
             value={reminders.noOrderTodayReminder}
-            onValueChange={(v) => setReminderSettings({ noOrderTodayReminder: v })}
+            onValueChange={handleNoOrderTodayToggle}
           />
 
           <SettingToggle
             title="Before Closing"
             subtitle="30 minutes before store closes"
             value={reminders.beforeClosingReminder}
-            onValueChange={(v) => setReminderSettings({ beforeClosingReminder: v })}
+            onValueChange={handleBeforeClosingToggle}
           />
 
           {reminders.beforeClosingReminder && (
@@ -563,7 +628,7 @@ function RemindersSection({
                 <TimePickerRow
                   title="Closing Time"
                   value={reminders.closingTime}
-                  onTimeChange={(t) => setReminderSettings({ closingTime: t })}
+                  onTimeChange={handleClosingTimeChange}
                 />
               </View>
             </View>

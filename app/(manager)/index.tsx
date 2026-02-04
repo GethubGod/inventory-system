@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,10 @@ import {
   TouchableOpacity,
   RefreshControl,
   Modal,
-  Pressable,
   Platform,
   Alert,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
@@ -17,7 +18,6 @@ import * as Haptics from 'expo-haptics';
 import { useAuthStore, useSettingsStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { Location } from '@/types';
-import { statusColors, ORDER_STATUS_LABELS, colors } from '@/constants';
 import { sendReminderToEmployees } from '@/services/notificationService';
 
 interface DashboardStats {
@@ -38,18 +38,33 @@ interface EmployeeActivity {
   timestamp: Date;
   orderNumber?: number;
   orderId?: string;
+  itemCount?: number;
 }
 
 interface EmployeeOrderStatus {
   userId: string;
   userName: string;
-  hasOrderedToday: boolean;
   lastOrderTime?: Date;
   locationName: string;
+  defaultLocationId: string | null;
+  lastOrderLocationId?: string | null;
+}
+
+type ReminderStatus = 'green' | 'orange' | 'red';
+
+const REMINDER_COLORS: Record<ReminderStatus, { dot: string; text: string; bg: string }> = {
+  green: { dot: '#22C55E', text: 'text-green-700', bg: 'bg-green-50' },
+  orange: { dot: '#F59E0B', text: 'text-amber-700', bg: 'bg-amber-50' },
+  red: { dot: '#EF4444', text: 'text-red-700', bg: 'bg-red-50' },
+};
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 export default function ManagerDashboard() {
-  const { locations, signOut, fetchLocations, setViewMode } = useAuthStore();
+  const { locations, signOut, fetchLocations } = useAuthStore();
   const { hapticFeedback } = useSettingsStore();
   const [stats, setStats] = useState<DashboardStats>({
     pendingOrders: 0,
@@ -61,7 +76,8 @@ export default function ManagerDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [isSendingReminder, setIsSendingReminder] = useState(false);
+  const [showReminderModal, setShowReminderModal] = useState(false);
+  const [sendingEmployeeId, setSendingEmployeeId] = useState<string | null>(null);
 
   const fetchDashboardData = async () => {
     try {
@@ -152,14 +168,14 @@ export default function ManagerDashboard() {
         setEmployeeActivity(activities);
       }
 
-      // Fetch employee order statuses for today
-      await fetchEmployeeStatuses(today);
+      // Fetch employee order statuses
+      await fetchEmployeeStatuses();
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     }
   };
 
-  const fetchEmployeeStatuses = async (today: Date) => {
+  const fetchEmployeeStatuses = async () => {
     try {
       // Get all employees
       const { data: employeesData } = await supabase
@@ -171,23 +187,25 @@ export default function ManagerDashboard() {
       const employees = employeesData as Array<{ id: string; name: string; default_location_id: string | null }> | null;
       if (!employees) return;
 
-      // Get today's orders
-      const { data: todayOrders } = await supabase
+      // Get orders to determine last order time per employee
+      const { data: recentOrders } = await supabase
         .from('orders')
-        .select('user_id, created_at, location:locations(name)')
-        .gte('created_at', today.toISOString())
-        .neq('status', 'draft');
+        .select('user_id, created_at, location_id, location:locations(name)')
+        .neq('status', 'draft')
+        .order('created_at', { ascending: false });
 
-      const ordersByUser = new Map<string, { time: Date; locationName: string }>();
-      todayOrders?.forEach((order: any) => {
-        const existing = ordersByUser.get(order.user_id);
-        const orderTime = new Date(order.created_at);
-        if (!existing || orderTime > existing.time) {
-          ordersByUser.set(order.user_id, {
-            time: orderTime,
-            locationName: order.location?.name || 'Unknown',
-          });
-        }
+      const ordersByUser = new Map<
+        string,
+        { time: Date; locationName: string; locationId: string | null }
+      >();
+
+      recentOrders?.forEach((order: any) => {
+        if (ordersByUser.has(order.user_id)) return;
+        ordersByUser.set(order.user_id, {
+          time: new Date(order.created_at),
+          locationName: order.location?.name || 'Unknown',
+          locationId: order.location_id || null,
+        });
       });
 
       // Get location names for employees
@@ -202,19 +220,24 @@ export default function ManagerDashboard() {
 
       const statuses: EmployeeOrderStatus[] = employees.map((emp) => {
         const orderInfo = ordersByUser.get(emp.id);
+        const defaultLocationName = emp.default_location_id
+          ? locationMap.get(emp.default_location_id)
+          : undefined;
         return {
           userId: emp.id,
           userName: emp.name,
-          hasOrderedToday: !!orderInfo,
           lastOrderTime: orderInfo?.time,
-          locationName: orderInfo?.locationName || (emp.default_location_id ? locationMap.get(emp.default_location_id) : undefined) || 'Unknown',
+          locationName: orderInfo?.locationName || defaultLocationName || 'Unknown',
+          defaultLocationId: emp.default_location_id,
+          lastOrderLocationId: orderInfo?.locationId,
         };
       });
 
       // Filter by selected location if applicable
       if (selectedLocation) {
-        const filteredStatuses = statuses.filter(
-          s => s.locationName === selectedLocation.name
+        const filteredStatuses = statuses.filter((status) =>
+          status.defaultLocationId === selectedLocation.id ||
+          status.lastOrderLocationId === selectedLocation.id
         );
         setEmployeeStatuses(filteredStatuses);
       } else {
@@ -245,6 +268,7 @@ export default function ManagerDashboard() {
     if (hapticFeedback && Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setSelectedLocation(loc);
     setShowLocationPicker(false);
   };
@@ -257,45 +281,28 @@ export default function ManagerDashboard() {
     router.replace('/(auth)/login');
   };
 
-  const handleSwitchToEmployee = () => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    setViewMode('employee');
-    router.replace('/(tabs)');
-  };
-
-  const handleSendReminder = async () => {
-    const employeesWhoHaventOrdered = employeeStatuses.filter(e => !e.hasOrderedToday);
-
-    if (employeesWhoHaventOrdered.length === 0) {
-      Alert.alert('All Caught Up!', 'All employees have placed their orders today.');
-      return;
-    }
-
+  const handleSendReminderToEmployee = async (employee: EmployeeOrderStatus) => {
     Alert.alert(
       'Send Reminder',
-      `Send a reminder to ${employeesWhoHaventOrdered.length} employee${employeesWhoHaventOrdered.length !== 1 ? 's' : ''} who haven't ordered yet?`,
+      `Send a reminder to ${employee.userName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Send',
           onPress: async () => {
-            setIsSendingReminder(true);
+            setSendingEmployeeId(employee.userId);
             try {
-              await sendReminderToEmployees(
-                employeesWhoHaventOrdered.map(e => e.userId)
-              );
+              await sendReminderToEmployees([employee.userId]);
 
               if (hapticFeedback && Platform.OS !== 'web') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
 
-              Alert.alert('Sent!', 'Reminder notifications have been sent.');
+              Alert.alert('Sent!', `Reminder sent to ${employee.userName}.`);
             } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to send reminders');
+              Alert.alert('Error', error.message || 'Failed to send reminder');
             } finally {
-              setIsSendingReminder(false);
+              setSendingEmployeeId(null);
             }
           },
         },
@@ -316,7 +323,55 @@ export default function ManagerDashboard() {
     return `${diffDays}d ago`;
   };
 
-  const employeesWhoHaventOrdered = employeeStatuses.filter(e => !e.hasOrderedToday);
+  const getDaysSinceOrder = (date?: Date) => {
+    if (!date) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const orderDate = new Date(date);
+    orderDate.setHours(0, 0, 0, 0);
+    return Math.floor((today.getTime() - orderDate.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  const getReminderStatus = (date?: Date): ReminderStatus => {
+    const days = getDaysSinceOrder(date);
+    if (days === null) return 'red';
+    if (days <= 3) return 'green';
+    if (days <= 6) return 'orange';
+    return 'red';
+  };
+
+  const formatLastOrder = (date?: Date) => {
+    const days = getDaysSinceOrder(date);
+    if (days === null) return 'No orders yet';
+    if (days === 0) return 'Ordered today';
+    if (days === 1) return '1 day ago';
+    return `${days} days ago`;
+  };
+
+  const reminderStats = useMemo(() => {
+    return employeeStatuses.reduce(
+      (acc, employee) => {
+        const status = getReminderStatus(employee.lastOrderTime);
+        acc[status] += 1;
+        return acc;
+      },
+      { green: 0, orange: 0, red: 0 } as Record<ReminderStatus, number>
+    );
+  }, [employeeStatuses]);
+
+  const sortedEmployeeStatuses = useMemo(() => {
+    const severityRank: Record<ReminderStatus, number> = { red: 0, orange: 1, green: 2 };
+    return [...employeeStatuses].sort((a, b) => {
+      const aStatus = getReminderStatus(a.lastOrderTime);
+      const bStatus = getReminderStatus(b.lastOrderTime);
+      if (aStatus !== bStatus) {
+        return severityRank[aStatus] - severityRank[bStatus];
+      }
+      const aDays = getDaysSinceOrder(a.lastOrderTime) ?? 999;
+      const bDays = getDaysSinceOrder(b.lastOrderTime) ?? 999;
+      return bDays - aDays;
+    });
+  }, [employeeStatuses]);
 
   const StatCard = ({
     title,
@@ -355,91 +410,96 @@ export default function ManagerDashboard() {
     </TouchableOpacity>
   );
 
-  const ActionCard = ({
-    title,
-    subtitle,
-    icon,
-    color,
-    bgColor,
-    badge,
-    onPress,
-  }: {
-    title: string;
-    subtitle: string;
-    icon: keyof typeof Ionicons.glyphMap;
-    color: string;
-    bgColor: string;
-    badge?: number;
-    onPress: () => void;
-  }) => (
-    <TouchableOpacity
-      className="flex-1 rounded-2xl p-4 border border-gray-100"
-      style={{
-        backgroundColor: bgColor,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2,
-      }}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <View className="flex-row items-start justify-between">
-        <View className="w-12 h-12 rounded-xl bg-white/50 items-center justify-center">
-          <Ionicons name={icon} size={24} color={color} />
-        </View>
-        {badge !== undefined && badge > 0 && (
-          <View className="bg-primary-500 px-2.5 py-1 rounded-full">
-            <Text className="text-white text-xs font-bold">{badge}</Text>
-          </View>
-        )}
-      </View>
-      <Text className="text-gray-900 font-bold text-base mt-3">{title}</Text>
-      <Text className="text-gray-600 text-sm mt-1">{subtitle}</Text>
-    </TouchableOpacity>
-  );
-
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Header */}
-      <View className="bg-white px-4 py-3 flex-row items-center justify-between border-b border-gray-100">
-        <View className="flex-row items-center">
-          <View className="w-10 h-10 bg-primary-500 rounded-xl items-center justify-center">
-            <Text className="text-white font-bold text-lg">B</Text>
+      <View className="bg-white px-4 pt-3 pb-2 border-b border-gray-100">
+        <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center">
+            <View className="w-10 h-10 bg-primary-500 rounded-xl items-center justify-center">
+              <Text className="text-white font-bold text-lg">B</Text>
+            </View>
+            <View className="ml-3">
+              <Text className="text-gray-900 font-bold text-lg">Babytuna</Text>
+              <Text className="text-primary-500 text-xs font-medium">Manager</Text>
+            </View>
           </View>
-          <View className="ml-3">
-            <Text className="text-gray-900 font-bold text-lg">Babytuna</Text>
-            <Text className="text-primary-500 text-xs font-medium">Manager</Text>
+
+          <View className="flex-row items-center">
+            <TouchableOpacity
+              className="bg-gray-100 rounded-full px-3 py-2 flex-row items-center mr-2"
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setShowLocationPicker((prev) => !prev);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="location" size={14} color="#F97316" />
+              <Text className="text-gray-900 font-medium ml-2" numberOfLines={1}>
+                {selectedLocation?.name || 'All Locations'}
+              </Text>
+              <Ionicons
+                name={showLocationPicker ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color="#6B7280"
+                className="ml-1.5"
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center"
+              onPress={handleSignOut}
+            >
+              <Ionicons name="log-out-outline" size={20} color="#6B7280" />
+            </TouchableOpacity>
           </View>
         </View>
-        <TouchableOpacity
-          className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center"
-          onPress={handleSignOut}
-        >
-          <Ionicons name="log-out-outline" size={20} color="#6B7280" />
-        </TouchableOpacity>
-      </View>
 
-      {/* Location Selector */}
-      <TouchableOpacity
-        className="mx-4 mt-4 bg-white rounded-full px-4 py-2.5 flex-row items-center self-start border border-gray-200"
-        style={{
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.05,
-          shadowRadius: 2,
-          elevation: 1,
-        }}
-        onPress={() => setShowLocationPicker(true)}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="location" size={16} color="#F97316" />
-        <Text className="text-gray-900 font-medium ml-2">
-          {selectedLocation?.name || 'All Locations'}
-        </Text>
-        <Ionicons name="chevron-down" size={16} color="#6B7280" className="ml-1.5" />
-      </TouchableOpacity>
+        {/* Location Dropdown */}
+        {showLocationPicker && (
+          <View className="mt-3 bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            <TouchableOpacity
+              className="flex-row items-center px-4 py-3"
+              onPress={() => handleSelectLocation(null)}
+              activeOpacity={0.7}
+            >
+              <View className="w-9 h-9 rounded-full bg-primary-100 items-center justify-center mr-3">
+                <Ionicons name="globe" size={18} color="#F97316" />
+              </View>
+              <Text className="flex-1 text-gray-900 font-medium">All Locations</Text>
+              {!selectedLocation && (
+                <Ionicons name="checkmark" size={18} color="#F97316" />
+              )}
+            </TouchableOpacity>
+
+            {locations.map((loc) => {
+              const isSelected = selectedLocation?.id === loc.id;
+              return (
+                <TouchableOpacity
+                  key={loc.id}
+                  className="flex-row items-center px-4 py-3 border-t border-gray-100"
+                  onPress={() => handleSelectLocation(loc)}
+                  activeOpacity={0.7}
+                >
+                  <View className={`w-9 h-9 rounded-full items-center justify-center mr-3 ${
+                    isSelected ? 'bg-primary-500' : 'bg-gray-200'
+                  }`}>
+                    <Text className={`text-xs font-bold ${
+                      isSelected ? 'text-white' : 'text-gray-600'
+                    }`}>
+                      {loc.short_code}
+                    </Text>
+                  </View>
+                  <Text className="flex-1 text-gray-900 font-medium">{loc.name}</Text>
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={18} color="#F97316" />
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+      </View>
 
       <ScrollView
         className="flex-1"
@@ -476,69 +536,9 @@ export default function ManagerDashboard() {
           />
         </View>
 
-        {/* Send Reminder Section */}
-        {employeesWhoHaventOrdered.length > 0 && (
-          <TouchableOpacity
-            className="bg-amber-50 rounded-2xl p-4 mb-6 border border-amber-200"
-            style={{
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-              elevation: 2,
-            }}
-            onPress={handleSendReminder}
-            activeOpacity={0.7}
-            disabled={isSendingReminder}
-          >
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center flex-1">
-                <View className="w-12 h-12 rounded-xl bg-amber-100 items-center justify-center">
-                  <Ionicons name="notifications" size={24} color="#F59E0B" />
-                </View>
-                <View className="ml-4 flex-1">
-                  <Text className="text-gray-900 font-bold text-base">
-                    {employeesWhoHaventOrdered.length} haven't ordered
-                  </Text>
-                  <Text className="text-amber-700 text-sm mt-0.5">
-                    Tap to send reminder
-                  </Text>
-                </View>
-              </View>
-              <View className="bg-amber-500 rounded-full px-4 py-2">
-                <Text className="text-white font-semibold text-sm">
-                  {isSendingReminder ? 'Sending...' : 'Remind'}
-                </Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        )}
-
-        {/* Action Cards */}
-        <View className="flex-row gap-3 mb-6">
-          <ActionCard
-            title="View Orders"
-            subtitle="See all incoming orders"
-            icon="list"
-            color="#3B82F6"
-            bgColor="#EFF6FF"
-            badge={stats.pendingOrders}
-            onPress={() => router.push('/(manager)/orders')}
-          />
-          <ActionCard
-            title="Fulfillment"
-            subtitle="Grouped items to fulfill"
-            icon="clipboard"
-            color="#F97316"
-            bgColor="#FFF7ED"
-            badge={stats.pendingOrders}
-            onPress={() => router.push('/(manager)/fulfillment')}
-          />
-        </View>
-
-        {/* Switch to Employee View */}
-        <TouchableOpacity
-          className="bg-purple-50 rounded-2xl p-4 mb-6 flex-row items-center border border-purple-100"
+        {/* Employee Reminder Command Center */}
+        <View
+          className="bg-white rounded-2xl p-4 mb-6 border border-gray-100"
           style={{
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 1 },
@@ -546,18 +546,44 @@ export default function ManagerDashboard() {
             shadowRadius: 4,
             elevation: 2,
           }}
-          onPress={handleSwitchToEmployee}
-          activeOpacity={0.7}
         >
-          <View className="w-12 h-12 rounded-xl bg-purple-100 items-center justify-center">
-            <Ionicons name="swap-horizontal" size={24} color="#7C3AED" />
+          <View className="flex-row items-center justify-between">
+            <View>
+              <Text className="text-gray-900 font-bold text-lg">Employee Reminders</Text>
+              <Text className="text-gray-500 text-sm mt-1">
+                Review ordering activity by employee
+              </Text>
+            </View>
+            <TouchableOpacity
+              className="bg-primary-500 rounded-full px-4 py-2"
+              onPress={() => setShowReminderModal(true)}
+              activeOpacity={0.8}
+            >
+              <Text className="text-white font-semibold text-sm">View</Text>
+            </TouchableOpacity>
           </View>
-          <View className="flex-1 ml-4">
-            <Text className="text-gray-900 font-bold text-base">Switch to Employee View</Text>
-            <Text className="text-gray-600 text-sm mt-0.5">Place your own orders</Text>
+
+          <View className="flex-row gap-3 mt-4">
+            <View className={`flex-1 rounded-xl px-3 py-3 ${REMINDER_COLORS.green.bg}`}>
+              <Text className={`text-xs font-semibold ${REMINDER_COLORS.green.text}`}>Recent</Text>
+              <Text className="text-2xl font-bold text-gray-900 mt-1">
+                {reminderStats.green}
+              </Text>
+            </View>
+            <View className={`flex-1 rounded-xl px-3 py-3 ${REMINDER_COLORS.orange.bg}`}>
+              <Text className={`text-xs font-semibold ${REMINDER_COLORS.orange.text}`}>Warning</Text>
+              <Text className="text-2xl font-bold text-gray-900 mt-1">
+                {reminderStats.orange}
+              </Text>
+            </View>
+            <View className={`flex-1 rounded-xl px-3 py-3 ${REMINDER_COLORS.red.bg}`}>
+              <Text className={`text-xs font-semibold ${REMINDER_COLORS.red.text}`}>Critical</Text>
+              <Text className="text-2xl font-bold text-gray-900 mt-1">
+                {reminderStats.red}
+              </Text>
+            </View>
           </View>
-          <Ionicons name="chevron-forward" size={20} color="#7C3AED" />
-        </TouchableOpacity>
+        </View>
 
         {/* Employee Activity Feed */}
         <View
@@ -615,11 +641,11 @@ export default function ManagerDashboard() {
                       </Text>
                       {activity.itemName && (
                         <Text className="font-medium text-primary-600 ml-1">
-                          {activity.itemName}
-                          {(activity as any).itemCount > 1 && ` +${(activity as any).itemCount - 1} more`}
-                        </Text>
-                      )}
-                    </View>
+                      {activity.itemName}
+                      {activity.itemCount && activity.itemCount > 1 && ` +${activity.itemCount - 1} more`}
+                    </Text>
+                  )}
+                </View>
 
                     {/* Details */}
                     <View className="flex-row items-center mt-1">
@@ -650,126 +676,73 @@ export default function ManagerDashboard() {
         </View>
       </ScrollView>
 
-      {/* Location Picker Modal */}
-      <Modal
-        visible={showLocationPicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowLocationPicker(false)}
-      >
-        <Pressable
-          className="flex-1 bg-black/50 justify-end"
-          onPress={() => setShowLocationPicker(false)}
+      {/* Employee Reminder Modal */}
+      <View>
+        <Modal
+          visible={showReminderModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setShowReminderModal(false)}
         >
-          <Pressable
-            className="bg-white rounded-t-3xl"
-            onPress={(e) => e.stopPropagation()}
-          >
-            {/* Handle bar */}
-            <View className="items-center pt-3 pb-2">
-              <View className="w-10 h-1 bg-gray-300 rounded-full" />
-            </View>
-
-            <View className="px-6 pb-8">
-              <Text className="text-2xl font-bold text-gray-900 mb-2">
-                Filter by Location
-              </Text>
-              <Text className="text-gray-500 mb-6">
-                View orders for a specific location
-              </Text>
-
-              {/* All Locations Option */}
-              <TouchableOpacity
-                className={`flex-row items-center p-4 rounded-2xl mb-3 border-2 ${
-                  !selectedLocation
-                    ? 'border-primary-500 bg-primary-50'
-                    : 'border-gray-200 bg-white'
-                }`}
-                onPress={() => handleSelectLocation(null)}
-                activeOpacity={0.7}
-              >
-                <View
-                  className={`w-12 h-12 rounded-full items-center justify-center ${
-                    !selectedLocation ? 'bg-primary-500' : 'bg-gray-100'
-                  }`}
+          <View className="flex-1 bg-black/40 justify-end">
+            <View className="bg-white rounded-t-3xl" style={{ maxHeight: '80%' }}>
+              <View className="px-6 pt-5 pb-3 border-b border-gray-100 flex-row items-center justify-between">
+                <View>
+                  <Text className="text-xl font-bold text-gray-900">Employee Reminders</Text>
+                  <Text className="text-sm text-gray-500 mt-1">
+                    Tap an employee to send a reminder
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setShowReminderModal(false)}
+                  className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center"
                 >
-                  <Ionicons
-                    name="globe"
-                    size={24}
-                    color={!selectedLocation ? 'white' : '#6B7280'}
-                  />
-                </View>
-                <View className="flex-1 ml-4">
-                  <Text
-                    className={`font-bold text-lg ${
-                      !selectedLocation ? 'text-primary-700' : 'text-gray-900'
-                    }`}
-                  >
-                    All Locations
-                  </Text>
-                  <Text
-                    className={`text-sm ${
-                      !selectedLocation ? 'text-primary-600' : 'text-gray-500'
-                    }`}
-                  >
-                    View orders from all restaurants
-                  </Text>
-                </View>
-                {!selectedLocation && (
-                  <Ionicons name="checkmark-circle" size={24} color="#F97316" />
-                )}
-              </TouchableOpacity>
+                  <Ionicons name="close" size={18} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
 
-              {locations.map((loc) => {
-                const isSelected = selectedLocation?.id === loc.id;
-                return (
-                  <TouchableOpacity
-                    key={loc.id}
-                    className={`flex-row items-center p-4 rounded-2xl mb-3 border-2 ${
-                      isSelected
-                        ? 'border-primary-500 bg-primary-50'
-                        : 'border-gray-200 bg-white'
-                    }`}
-                    onPress={() => handleSelectLocation(loc)}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      className={`w-12 h-12 rounded-full items-center justify-center ${
-                        isSelected ? 'bg-primary-500' : 'bg-gray-100'
-                      }`}
-                    >
-                      <Ionicons
-                        name="restaurant"
-                        size={24}
-                        color={isSelected ? 'white' : '#6B7280'}
-                      />
-                    </View>
-                    <View className="flex-1 ml-4">
-                      <Text
-                        className={`font-bold text-lg ${
-                          isSelected ? 'text-primary-700' : 'text-gray-900'
-                        }`}
+              <ScrollView contentContainerStyle={{ padding: 16 }}>
+                {sortedEmployeeStatuses.length === 0 ? (
+                  <View className="py-10 items-center">
+                    <Ionicons name="people-outline" size={42} color="#D1D5DB" />
+                    <Text className="text-gray-400 mt-3">No employees found</Text>
+                  </View>
+                ) : (
+                  sortedEmployeeStatuses.map((employee) => {
+                    const status = getReminderStatus(employee.lastOrderTime);
+                    const statusStyle = REMINDER_COLORS[status];
+                    return (
+                      <TouchableOpacity
+                        key={employee.userId}
+                        className="flex-row items-center bg-gray-50 rounded-2xl px-4 py-3 mb-3"
+                        onPress={() => handleSendReminderToEmployee(employee)}
+                        activeOpacity={0.7}
+                        disabled={sendingEmployeeId === employee.userId}
                       >
-                        {loc.name}
-                      </Text>
-                      <Text
-                        className={`text-sm ${
-                          isSelected ? 'text-primary-600' : 'text-gray-500'
-                        }`}
-                      >
-                        {loc.short_code}
-                      </Text>
-                    </View>
-                    {isSelected && (
-                      <Ionicons name="checkmark-circle" size={24} color="#F97316" />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
+                        <View
+                          className="w-3 h-3 rounded-full mr-3"
+                          style={{ backgroundColor: statusStyle.dot }}
+                        />
+                        <View className="flex-1">
+                          <Text className="text-gray-900 font-semibold">{employee.userName}</Text>
+                          <Text className="text-xs text-gray-500 mt-1">
+                            {employee.locationName} • {formatLastOrder(employee.lastOrderTime)}
+                          </Text>
+                        </View>
+                        <View className={`px-3 py-1 rounded-full ${statusStyle.bg}`}>
+                          <Text className={`text-xs font-semibold ${statusStyle.text}`}>
+                            {status === 'green' ? 'Recent' : status === 'orange' ? 'Warning' : 'Critical'}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </ScrollView>
             </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+          </View>
+        </Modal>
+      </View>
     </SafeAreaView>
   );
 }
