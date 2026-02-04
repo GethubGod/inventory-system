@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useInventoryStore } from '@/store';
+import { useInventoryStore, useAuthStore } from '@/store';
 import { InventoryItem, ItemCategory, SupplierCategory } from '@/types';
 import { CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS, categoryColors, colors } from '@/constants';
 import { SpinningFish } from '@/components';
@@ -55,7 +55,20 @@ const initialForm: NewItemForm = {
   pack_size: '1',
 };
 
+// Bulk item format: "name, category, supplier, baseUnit, packUnit, packSize"
+interface ParsedBulkItem {
+  name: string;
+  category: ItemCategory;
+  supplier_category: SupplierCategory;
+  base_unit: string;
+  pack_unit: string;
+  pack_size: number;
+  isValid: boolean;
+  error?: string;
+}
+
 export default function ManagerInventoryScreen() {
+  const { user } = useAuthStore();
   const {
     fetchItems,
     getFilteredItems,
@@ -70,8 +83,15 @@ export default function ManagerInventoryScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showBulkAddModal, setShowBulkAddModal] = useState(false);
   const [form, setForm] = useState<NewItemForm>(initialForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [bulkInput, setBulkInput] = useState('');
+  const [bulkCategory, setBulkCategory] = useState<ItemCategory>('produce');
+  const [bulkSupplier, setBulkSupplier] = useState<SupplierCategory>('main_distributor');
+  const [bulkBaseUnit, setBulkBaseUnit] = useState('lb');
+  const [bulkPackUnit, setBulkPackUnit] = useState('case');
+  const [bulkPackSize, setBulkPackSize] = useState('1');
 
   useEffect(() => {
     // Force refresh on mount
@@ -118,6 +138,7 @@ export default function ManagerInventoryScreen() {
         base_unit: form.base_unit.trim(),
         pack_unit: form.pack_unit.trim(),
         pack_size: packSize,
+        created_by: user?.id,
       });
 
       if (Platform.OS !== 'web') {
@@ -132,7 +153,7 @@ export default function ManagerInventoryScreen() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [form, addItem]);
+  }, [form, addItem, user]);
 
   const handleDeleteItem = useCallback((item: InventoryItem) => {
     Alert.alert(
@@ -157,6 +178,77 @@ export default function ManagerInventoryScreen() {
       ]
     );
   }, [deleteItem]);
+
+  // Parse bulk input into items (one item name per line)
+  const parseBulkInput = useCallback((): string[] => {
+    return bulkInput
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
+  }, [bulkInput]);
+
+  const handleBulkAdd = useCallback(async () => {
+    const itemNames = parseBulkInput();
+
+    if (itemNames.length === 0) {
+      Alert.alert('Error', 'Please enter at least one item name');
+      return;
+    }
+
+    if (!bulkBaseUnit.trim() || !bulkPackUnit.trim()) {
+      Alert.alert('Error', 'Please enter base unit and pack unit');
+      return;
+    }
+
+    const packSize = parseInt(bulkPackSize, 10);
+    if (isNaN(packSize) || packSize < 1) {
+      Alert.alert('Error', 'Please enter a valid pack size');
+      return;
+    }
+
+    setIsSubmitting(true);
+    let successCount = 0;
+    const errors: string[] = [];
+
+    try {
+      for (const name of itemNames) {
+        try {
+          await addItem({
+            name: name,
+            category: bulkCategory,
+            supplier_category: bulkSupplier,
+            base_unit: bulkBaseUnit.trim(),
+            pack_unit: bulkPackUnit.trim(),
+            pack_size: packSize,
+            created_by: user?.id,
+          });
+          successCount++;
+        } catch (error: any) {
+          errors.push(`${name}: ${error.message || 'Failed'}`);
+        }
+      }
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      setShowBulkAddModal(false);
+      setBulkInput('');
+
+      if (errors.length > 0) {
+        Alert.alert(
+          'Partial Success',
+          `Added ${successCount} item${successCount !== 1 ? 's' : ''}.\n\nErrors:\n${errors.join('\n')}`
+        );
+      } else {
+        Alert.alert('Success', `Added ${successCount} item${successCount !== 1 ? 's' : ''} successfully`);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to add items');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [parseBulkInput, bulkCategory, bulkSupplier, bulkBaseUnit, bulkPackUnit, bulkPackSize, addItem, user]);
 
   const renderItem = ({ item }: { item: InventoryItem }) => {
     const categoryColor = categoryColors[item.category] || '#6B7280';
@@ -245,18 +337,31 @@ export default function ManagerInventoryScreen() {
     </View>
   );
 
+  const bulkItemCount = parseBulkInput().length;
+
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Header */}
-      <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center justify-between">
-        <Text className="text-xl font-bold text-gray-900">Inventory</Text>
-        <TouchableOpacity
-          className="bg-primary-500 rounded-xl px-4 py-2 flex-row items-center"
-          onPress={() => setShowAddModal(true)}
-        >
-          <Ionicons name="add" size={20} color="white" />
-          <Text className="text-white font-semibold ml-1">Add Item</Text>
-        </TouchableOpacity>
+      <View className="bg-white px-4 py-3 border-b border-gray-100">
+        <View className="flex-row items-center justify-between">
+          <Text className="text-xl font-bold text-gray-900">Inventory</Text>
+          <View className="flex-row items-center">
+            <TouchableOpacity
+              className="bg-gray-100 rounded-xl px-3 py-2 flex-row items-center mr-2"
+              onPress={() => setShowBulkAddModal(true)}
+            >
+              <Ionicons name="layers-outline" size={18} color={colors.gray[700]} />
+              <Text className="text-gray-700 font-medium ml-1">Bulk</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="bg-primary-500 rounded-xl px-4 py-2 flex-row items-center"
+              onPress={() => setShowAddModal(true)}
+            >
+              <Ionicons name="add" size={20} color="white" />
+              <Text className="text-white font-semibold ml-1">Add</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
 
       {/* Search Bar */}
@@ -314,7 +419,7 @@ export default function ManagerInventoryScreen() {
       {/* Item Count */}
       <View className="px-4 py-2 bg-gray-50">
         <Text className="text-gray-500 text-sm">
-          {filteredItems.length} items
+          {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''}
         </Text>
       </View>
 
@@ -489,6 +594,189 @@ export default function ManagerInventoryScreen() {
                     <Ionicons name="add-circle" size={20} color="white" />
                     <Text className="text-white font-bold text-lg ml-2">
                       Add Item
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Bulk Add Modal */}
+      <Modal
+        visible={showBulkAddModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowBulkAddModal(false)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="flex-1"
+          >
+            {/* Modal Header */}
+            <View className="bg-white px-4 py-4 border-b border-gray-200 flex-row items-center justify-between">
+              <TouchableOpacity onPress={() => setShowBulkAddModal(false)}>
+                <Text className="text-primary-500 font-medium">Cancel</Text>
+              </TouchableOpacity>
+              <Text className="text-lg font-bold text-gray-900">Bulk Add Items</Text>
+              <View style={{ width: 50 }} />
+            </View>
+
+            <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
+              {/* Instructions */}
+              <View className="bg-blue-50 rounded-xl p-4 mb-4 border border-blue-100">
+                <View className="flex-row items-start">
+                  <Ionicons name="information-circle" size={20} color="#3B82F6" />
+                  <View className="flex-1 ml-2">
+                    <Text className="text-blue-800 font-medium">How to use</Text>
+                    <Text className="text-blue-700 text-sm mt-1">
+                      Enter one item name per line. All items will share the same category, supplier, and units.
+                    </Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Item Names Input */}
+              <View className="mb-4">
+                <Text className="text-sm font-medium text-gray-700 mb-2">
+                  Item Names (one per line) *
+                </Text>
+                <TextInput
+                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                  placeholder={"Salmon\nTuna\nYellowtail\nMackerel"}
+                  placeholderTextColor="#9CA3AF"
+                  value={bulkInput}
+                  onChangeText={setBulkInput}
+                  multiline
+                  numberOfLines={8}
+                  style={{ height: 160, textAlignVertical: 'top' }}
+                />
+                {bulkItemCount > 0 && (
+                  <Text className="text-sm text-primary-600 mt-2">
+                    {bulkItemCount} item{bulkItemCount !== 1 ? 's' : ''} to add
+                  </Text>
+                )}
+              </View>
+
+              {/* Shared Settings */}
+              <Text className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                Shared Settings
+              </Text>
+
+              {/* Category */}
+              <View className="mb-4">
+                <Text className="text-sm font-medium text-gray-700 mb-2">
+                  Category
+                </Text>
+                <CategoryPicker
+                  value={bulkCategory}
+                  onChange={setBulkCategory}
+                />
+              </View>
+
+              {/* Supplier Category */}
+              <View className="mb-4">
+                <Text className="text-sm font-medium text-gray-700 mb-2">
+                  Supplier
+                </Text>
+                <SupplierPicker
+                  value={bulkSupplier}
+                  onChange={setBulkSupplier}
+                />
+              </View>
+
+              {/* Units Row */}
+              <View className="flex-row gap-3 mb-4">
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">
+                    Base Unit
+                  </Text>
+                  <TextInput
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                    placeholder="e.g., lb"
+                    placeholderTextColor="#9CA3AF"
+                    value={bulkBaseUnit}
+                    onChangeText={setBulkBaseUnit}
+                  />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">
+                    Pack Unit
+                  </Text>
+                  <TextInput
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                    placeholder="e.g., case"
+                    placeholderTextColor="#9CA3AF"
+                    value={bulkPackUnit}
+                    onChangeText={setBulkPackUnit}
+                  />
+                </View>
+              </View>
+
+              {/* Pack Size */}
+              <View className="mb-6">
+                <Text className="text-sm font-medium text-gray-700 mb-2">
+                  Pack Size
+                </Text>
+                <View className="flex-row items-center">
+                  <TextInput
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 w-24"
+                    placeholder="1"
+                    placeholderTextColor="#9CA3AF"
+                    value={bulkPackSize}
+                    onChangeText={setBulkPackSize}
+                    keyboardType="number-pad"
+                  />
+                  <Text className="text-gray-500 ml-3">
+                    {bulkBaseUnit || 'units'} per {bulkPackUnit || 'pack'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Preview */}
+              {bulkItemCount > 0 && (
+                <View className="bg-primary-50 rounded-xl p-4 mb-6">
+                  <Text className="text-sm font-medium text-primary-700 mb-2">
+                    Preview ({bulkItemCount} item{bulkItemCount !== 1 ? 's' : ''})
+                  </Text>
+                  {parseBulkInput().slice(0, 5).map((name, index) => (
+                    <View key={index} className="flex-row items-center py-1">
+                      <Text className="text-gray-400 w-6">{index + 1}.</Text>
+                      <Text className="text-gray-900 font-medium">{name}</Text>
+                    </View>
+                  ))}
+                  {bulkItemCount > 5 && (
+                    <Text className="text-gray-500 text-sm mt-1 pl-6">
+                      ...and {bulkItemCount - 5} more
+                    </Text>
+                  )}
+                  <View className="border-t border-primary-100 mt-3 pt-3">
+                    <Text className="text-gray-600 text-xs">
+                      All items: {CATEGORY_LABELS[bulkCategory]} • {SUPPLIER_CATEGORY_LABELS[bulkSupplier]} • {bulkPackSize || '1'} {bulkBaseUnit || 'units'} per {bulkPackUnit || 'pack'}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Submit Button */}
+            <View className="bg-white border-t border-gray-200 px-4 py-4">
+              <TouchableOpacity
+                className={`rounded-xl py-4 items-center flex-row justify-center ${
+                  isSubmitting || bulkItemCount === 0 ? 'bg-primary-300' : 'bg-primary-500'
+                }`}
+                onPress={handleBulkAdd}
+                disabled={isSubmitting || bulkItemCount === 0}
+              >
+                {isSubmitting ? (
+                  <SpinningFish size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="layers" size={20} color="white" />
+                    <Text className="text-white font-bold text-lg ml-2">
+                      Add {bulkItemCount} Item{bulkItemCount !== 1 ? 's' : ''}
                     </Text>
                   </>
                 )}

@@ -1,7 +1,12 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { View, Text } from 'react-native';
+import { useOrderStore } from '@/store';
 
 export default function ManagerLayout() {
+  const { getTotalCartCount } = useOrderStore();
+  const cartCount = getTotalCartCount();
+
   return (
     <Tabs
       screenOptions={{
@@ -33,13 +38,35 @@ export default function ManagerLayout() {
         }}
       />
 
-      {/* Orders */}
+      {/* Quick Order - Replaces Orders */}
       <Tabs.Screen
-        name="orders"
+        name="quick-order"
         options={{
-          title: 'Orders',
+          title: 'Quick Order',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="receipt-outline" size={size} color={color} />
+            <View>
+              <Ionicons name="flash-outline" size={size} color={color} />
+              {cartCount > 0 && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: -4,
+                    right: -8,
+                    backgroundColor: '#F97316',
+                    borderRadius: 10,
+                    minWidth: 18,
+                    height: 18,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingHorizontal: 4,
+                  }}
+                >
+                  <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>
+                    {cartCount > 99 ? '99+' : cartCount}
+                  </Text>
+                </View>
+              )}
+            </View>
           ),
         }}
       />
@@ -79,9 +106,15 @@ export default function ManagerLayout() {
 
       {/* Hidden screens (accessible via navigation) */}
       <Tabs.Screen
+        name="orders"
+        options={{
+          href: null, // Hide from tab bar but keep accessible
+        }}
+      />
+      <Tabs.Screen
         name="export-fish-order"
         options={{
-          href: null, // Hide from tab bar
+          href: null,
         }}
       />
     </Tabs>

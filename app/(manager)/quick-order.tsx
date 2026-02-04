@@ -39,7 +39,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
 
 type ScreenState = 'searching' | 'quantity';
 
-const INPUT_ACCESSORY_ID = 'quickOrderInput';
+const INPUT_ACCESSORY_ID = 'managerQuickOrderInput';
 
 // Get short label for location (Sushi or Poki)
 const getLocationLabel = (location: Location | null): string => {
@@ -50,7 +50,7 @@ const getLocationLabel = (location: Location | null): string => {
   return location.short_code;
 };
 
-export default function QuickOrderScreen() {
+export default function ManagerQuickOrderScreen() {
   const { location: defaultLocation, locations } = useAuthStore();
   const { items, fetchItems } = useInventoryStore();
   const { addToCart, getTotalCartCount, getLocationCartTotal } = useOrderStore();
@@ -97,14 +97,6 @@ export default function QuickOrderScreen() {
   // Fetch items on mount
   useEffect(() => {
     fetchItems();
-  }, []);
-
-  // Focus search input immediately on mount
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      searchInputRef.current?.focus();
-    }, 100);
-    return () => clearTimeout(timer);
   }, []);
 
   // Keyboard listeners
@@ -338,42 +330,18 @@ export default function QuickOrderScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      {/* Compact Header with Location Selector */}
+      {/* Header with Location Selector */}
       <View className="bg-white border-b border-gray-200">
-        <View className="flex-row items-center px-3 py-2">
-          {/* Back Button */}
-          <TouchableOpacity
-            onPress={() => router.back()}
-            className="p-2"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={22} color={colors.gray[700]} />
-          </TouchableOpacity>
-
-          {/* Location Dropdown */}
-          <TouchableOpacity
-            onPress={toggleLocationDropdown}
-            className="flex-1 flex-row items-center justify-center mx-2"
-          >
-            <View className="flex-row items-center bg-gray-100 px-3 py-2 rounded-lg">
-              <Ionicons name="location" size={16} color={colors.primary[500]} />
-              <Text className="text-base font-semibold text-gray-900 mx-2">
-                {selectedLocation?.name || 'Select'}
-              </Text>
-              <Ionicons
-                name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
-                size={16}
-                color={colors.gray[500]}
-              />
-            </View>
-          </TouchableOpacity>
+        <View className="flex-row items-center px-4 py-3">
+          {/* Title */}
+          <Text className="text-xl font-bold text-gray-900 flex-1">Quick Order</Text>
 
           {/* Cart Button */}
           <TouchableOpacity
             onPress={() => router.push('/cart' as any)}
             className="p-2 relative"
           >
-            <Ionicons name="cart-outline" size={22} color={colors.gray[700]} />
+            <Ionicons name="cart-outline" size={24} color={colors.gray[700]} />
             {totalCartCount > 0 && (
               <View className="absolute -top-1 -right-1 bg-primary-500 w-5 h-5 rounded-full items-center justify-center">
                 <Text className="text-white text-xs font-bold">{totalCartCount}</Text>
@@ -381,6 +349,29 @@ export default function QuickOrderScreen() {
             )}
           </TouchableOpacity>
         </View>
+
+        {/* Location Selector Row */}
+        <TouchableOpacity
+          onPress={toggleLocationDropdown}
+          className="flex-row items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-100"
+        >
+          <View className="flex-row items-center">
+            <Ionicons name="location" size={18} color={colors.primary[500]} />
+            <Text className="text-base font-medium text-gray-700 ml-2">
+              Ordering for:
+            </Text>
+          </View>
+          <View className="flex-row items-center">
+            <Text className="text-base font-semibold text-primary-600 mr-1">
+              {selectedLocation?.name || 'Select Location'}
+            </Text>
+            <Ionicons
+              name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={colors.primary[500]}
+            />
+          </View>
+        </TouchableOpacity>
 
         {/* Location Dropdown Menu */}
         {showLocationDropdown && (
@@ -451,7 +442,6 @@ export default function QuickOrderScreen() {
                       style={{ height: 52 }}
                       autoCapitalize="none"
                       autoCorrect={false}
-                      autoFocus
                       returnKeyType="go"
                       inputAccessoryViewID={Platform.OS === 'ios' ? INPUT_ACCESSORY_ID : undefined}
                     />
@@ -481,7 +471,7 @@ export default function QuickOrderScreen() {
             {/* Empty State */}
             {!searchQuery.trim() && (
               <View className="flex-1 items-center justify-center -mt-16">
-                <Ionicons name="search-outline" size={56} color={colors.gray[300]} />
+                <Ionicons name="flash-outline" size={56} color={colors.gray[300]} />
                 <Text className="text-base font-medium text-gray-500 mt-3">Start typing to search</Text>
                 <Text className="text-sm text-gray-400 mt-1">salmon, avocado, nori...</Text>
               </View>
@@ -493,25 +483,22 @@ export default function QuickOrderScreen() {
                 <Ionicons name="alert-circle-outline" size={56} color={colors.gray[300]} />
                 <Text className="text-base font-medium text-gray-500 mt-3">No items found</Text>
                 <Text className="text-sm text-gray-400 mt-1">Try a different search term</Text>
-                <Text className="text-xs text-gray-300 mt-4 text-center px-8">
-                  Can't find what you need?{'\n'}Ask your manager to add it to the inventory.
-                </Text>
               </View>
             )}
           </>
         ) : (
-          /* Quantity Entry State - Compact */
+          /* Quantity Entry State */
           <View className="flex-1">
             {/* Back button */}
             <TouchableOpacity onPress={handleBackToSearch} className="flex-row items-center mb-3">
               <Ionicons name="arrow-back" size={18} color={colors.gray[600]} />
-              <Text className="text-gray-600 ml-1 text-sm">Back</Text>
+              <Text className="text-gray-600 ml-1 text-sm">Back to search</Text>
             </TouchableOpacity>
 
-            {/* Compact Item Card */}
+            {/* Item Card */}
             {selectedItem && (
               <View className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                {/* Item Info - Compact */}
+                {/* Item Info */}
                 <View className="flex-row items-center mb-4">
                   <Text className="text-2xl mr-3">
                     {CATEGORY_EMOJI[selectedItem.category] || '📦'}
@@ -526,7 +513,7 @@ export default function QuickOrderScreen() {
                   </View>
                 </View>
 
-                {/* Quantity & Unit Row - Compact */}
+                {/* Quantity & Unit Row */}
                 <View className="flex-row items-center">
                   {/* Quantity Controls */}
                   <View className="flex-row items-center flex-1">
@@ -562,7 +549,7 @@ export default function QuickOrderScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Unit Toggle - Compact */}
+                  {/* Unit Toggle */}
                   <View className="flex-row ml-3">
                     <TouchableOpacity
                       onPress={() => setSelectedUnit('pack')}
@@ -630,7 +617,7 @@ export default function QuickOrderScreen() {
           style={{
             opacity: toastOpacity,
             position: 'absolute',
-            top: 80,
+            top: 120,
             left: 20,
             right: 20,
           }}

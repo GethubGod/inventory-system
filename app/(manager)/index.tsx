@@ -8,15 +8,17 @@ import {
   Modal,
   Pressable,
   Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useAuthStore } from '@/store';
+import { useAuthStore, useSettingsStore } from '@/store';
 import { supabase } from '@/lib/supabase';
-import { Order, Location } from '@/types';
-import { statusColors, ORDER_STATUS_LABELS } from '@/constants';
+import { Location } from '@/types';
+import { statusColors, ORDER_STATUS_LABELS, colors } from '@/constants';
+import { sendReminderToEmployees } from '@/services/notificationService';
 
 interface DashboardStats {
   pendingOrders: number;
@@ -24,73 +26,203 @@ interface DashboardStats {
   weekOrders: number;
 }
 
+interface EmployeeActivity {
+  id: string;
+  employeeName: string;
+  employeeId: string;
+  action: string;
+  itemName?: string;
+  quantity?: number;
+  unit?: string;
+  locationName: string;
+  timestamp: Date;
+  orderNumber?: number;
+  orderId?: string;
+}
+
+interface EmployeeOrderStatus {
+  userId: string;
+  userName: string;
+  hasOrderedToday: boolean;
+  lastOrderTime?: Date;
+  locationName: string;
+}
+
 export default function ManagerDashboard() {
   const { locations, signOut, fetchLocations, setViewMode } = useAuthStore();
+  const { hapticFeedback } = useSettingsStore();
   const [stats, setStats] = useState<DashboardStats>({
     pendingOrders: 0,
     todayOrders: 0,
     weekOrders: 0,
   });
-  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [employeeActivity, setEmployeeActivity] = useState<EmployeeActivity[]>([]);
+  const [employeeStatuses, setEmployeeStatuses] = useState<EmployeeOrderStatus[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [isSendingReminder, setIsSendingReminder] = useState(false);
 
   const fetchDashboardData = async () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
 
-    const weekAgo = new Date();
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    weekAgo.setHours(0, 0, 0, 0);
+      const weekAgo = new Date();
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      weekAgo.setHours(0, 0, 0, 0);
 
-    // Build queries with optional location filter
-    let pendingQuery = supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .in('status', ['submitted', 'processing']);
+      // Build queries with optional location filter
+      let pendingQuery = supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .in('status', ['submitted', 'processing']);
 
-    let todayQuery = supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .gte('created_at', today.toISOString())
-      .neq('status', 'draft');
+      let todayQuery = supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', today.toISOString())
+        .neq('status', 'draft');
 
-    let weekQuery = supabase
-      .from('orders')
-      .select('*', { count: 'exact', head: true })
-      .gte('created_at', weekAgo.toISOString())
-      .eq('status', 'fulfilled');
+      let weekQuery = supabase
+        .from('orders')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', weekAgo.toISOString())
+        .eq('status', 'fulfilled');
 
-    let recentQuery = supabase
-      .from('orders')
-      .select('*, location:locations(*), user:users!orders_user_id_fkey(*)')
-      .neq('status', 'draft')
-      .order('created_at', { ascending: false })
-      .limit(5);
+      // Fetch recent orders with details for activity feed
+      let recentQuery = supabase
+        .from('orders')
+        .select(`
+          *,
+          location:locations(*),
+          user:users!orders_user_id_fkey(*),
+          order_items(
+            quantity,
+            unit_type,
+            inventory_item:inventory_items(name)
+          )
+        `)
+        .neq('status', 'draft')
+        .order('created_at', { ascending: false })
+        .limit(10);
 
-    // Apply location filter if selected
-    if (selectedLocation) {
-      pendingQuery = pendingQuery.eq('location_id', selectedLocation.id);
-      todayQuery = todayQuery.eq('location_id', selectedLocation.id);
-      weekQuery = weekQuery.eq('location_id', selectedLocation.id);
-      recentQuery = recentQuery.eq('location_id', selectedLocation.id);
+      // Apply location filter if selected
+      if (selectedLocation) {
+        pendingQuery = pendingQuery.eq('location_id', selectedLocation.id);
+        todayQuery = todayQuery.eq('location_id', selectedLocation.id);
+        weekQuery = weekQuery.eq('location_id', selectedLocation.id);
+        recentQuery = recentQuery.eq('location_id', selectedLocation.id);
+      }
+
+      const [pendingResult, todayResult, weekResult, recentResult] = await Promise.all([
+        pendingQuery,
+        todayQuery,
+        weekQuery,
+        recentQuery,
+      ]);
+
+      setStats({
+        pendingOrders: pendingResult.count || 0,
+        todayOrders: todayResult.count || 0,
+        weekOrders: weekResult.count || 0,
+      });
+
+      // Transform recent orders into activity feed
+      if (recentResult.data) {
+        const activities: EmployeeActivity[] = recentResult.data.map((order: any) => {
+          const firstItem = order.order_items?.[0];
+          const itemCount = order.order_items?.length || 0;
+
+          return {
+            id: order.id,
+            employeeName: order.user?.name || 'Unknown',
+            employeeId: order.user_id,
+            action: `placed order #${order.order_number}`,
+            itemName: firstItem?.inventory_item?.name,
+            quantity: firstItem?.quantity,
+            unit: firstItem?.unit_type,
+            locationName: order.location?.name || 'Unknown',
+            timestamp: new Date(order.created_at),
+            orderNumber: order.order_number,
+            orderId: order.id,
+            itemCount,
+          };
+        });
+        setEmployeeActivity(activities);
+      }
+
+      // Fetch employee order statuses for today
+      await fetchEmployeeStatuses(today);
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
     }
+  };
 
-    const [pendingResult, todayResult, weekResult, recentResult] = await Promise.all([
-      pendingQuery,
-      todayQuery,
-      weekQuery,
-      recentQuery,
-    ]);
+  const fetchEmployeeStatuses = async (today: Date) => {
+    try {
+      // Get all employees
+      const { data: employeesData } = await supabase
+        .from('users')
+        .select('id, name, default_location_id')
+        .eq('role', 'employee');
 
-    setStats({
-      pendingOrders: pendingResult.count || 0,
-      todayOrders: todayResult.count || 0,
-      weekOrders: weekResult.count || 0,
-    });
+      // Type assertion to work around Supabase's generic types
+      const employees = employeesData as Array<{ id: string; name: string; default_location_id: string | null }> | null;
+      if (!employees) return;
 
-    setRecentOrders(recentResult.data || []);
+      // Get today's orders
+      const { data: todayOrders } = await supabase
+        .from('orders')
+        .select('user_id, created_at, location:locations(name)')
+        .gte('created_at', today.toISOString())
+        .neq('status', 'draft');
+
+      const ordersByUser = new Map<string, { time: Date; locationName: string }>();
+      todayOrders?.forEach((order: any) => {
+        const existing = ordersByUser.get(order.user_id);
+        const orderTime = new Date(order.created_at);
+        if (!existing || orderTime > existing.time) {
+          ordersByUser.set(order.user_id, {
+            time: orderTime,
+            locationName: order.location?.name || 'Unknown',
+          });
+        }
+      });
+
+      // Get location names for employees
+      const locationIds = [...new Set(employees.map(e => e.default_location_id).filter(Boolean))] as string[];
+      const { data: locationDataRaw } = await supabase
+        .from('locations')
+        .select('id, name')
+        .in('id', locationIds);
+
+      const locationData = locationDataRaw as Array<{ id: string; name: string }> | null;
+      const locationMap = new Map(locationData?.map(l => [l.id, l.name]) || []);
+
+      const statuses: EmployeeOrderStatus[] = employees.map((emp) => {
+        const orderInfo = ordersByUser.get(emp.id);
+        return {
+          userId: emp.id,
+          userName: emp.name,
+          hasOrderedToday: !!orderInfo,
+          lastOrderTime: orderInfo?.time,
+          locationName: orderInfo?.locationName || (emp.default_location_id ? locationMap.get(emp.default_location_id) : undefined) || 'Unknown',
+        };
+      });
+
+      // Filter by selected location if applicable
+      if (selectedLocation) {
+        const filteredStatuses = statuses.filter(
+          s => s.locationName === selectedLocation.name
+        );
+        setEmployeeStatuses(filteredStatuses);
+      } else {
+        setEmployeeStatuses(statuses);
+      }
+    } catch (error) {
+      console.error('Error fetching employee statuses:', error);
+    }
   };
 
   useEffect(() => {
@@ -110,7 +242,7 @@ export default function ManagerDashboard() {
   };
 
   const handleSelectLocation = (loc: Location | null) => {
-    if (Platform.OS !== 'web') {
+    if (hapticFeedback && Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setSelectedLocation(loc);
@@ -118,7 +250,7 @@ export default function ManagerDashboard() {
   };
 
   const handleSignOut = async () => {
-    if (Platform.OS !== 'web') {
+    if (hapticFeedback && Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
     await signOut();
@@ -126,22 +258,65 @@ export default function ManagerDashboard() {
   };
 
   const handleSwitchToEmployee = () => {
-    if (Platform.OS !== 'web') {
+    if (hapticFeedback && Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     setViewMode('employee');
     router.replace('/(tabs)');
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
+  const handleSendReminder = async () => {
+    const employeesWhoHaventOrdered = employeeStatuses.filter(e => !e.hasOrderedToday);
+
+    if (employeesWhoHaventOrdered.length === 0) {
+      Alert.alert('All Caught Up!', 'All employees have placed their orders today.');
+      return;
+    }
+
+    Alert.alert(
+      'Send Reminder',
+      `Send a reminder to ${employeesWhoHaventOrdered.length} employee${employeesWhoHaventOrdered.length !== 1 ? 's' : ''} who haven't ordered yet?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: async () => {
+            setIsSendingReminder(true);
+            try {
+              await sendReminderToEmployees(
+                employeesWhoHaventOrdered.map(e => e.userId)
+              );
+
+              if (hapticFeedback && Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+
+              Alert.alert('Sent!', 'Reminder notifications have been sent.');
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to send reminders');
+            } finally {
+              setIsSendingReminder(false);
+            }
+          },
+        },
+      ]
+    );
   };
+
+  const formatTimeAgo = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    return `${diffDays}d ago`;
+  };
+
+  const employeesWhoHaventOrdered = employeeStatuses.filter(e => !e.hasOrderedToday);
 
   const StatCard = ({
     title,
@@ -301,6 +476,44 @@ export default function ManagerDashboard() {
           />
         </View>
 
+        {/* Send Reminder Section */}
+        {employeesWhoHaventOrdered.length > 0 && (
+          <TouchableOpacity
+            className="bg-amber-50 rounded-2xl p-4 mb-6 border border-amber-200"
+            style={{
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+            onPress={handleSendReminder}
+            activeOpacity={0.7}
+            disabled={isSendingReminder}
+          >
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center flex-1">
+                <View className="w-12 h-12 rounded-xl bg-amber-100 items-center justify-center">
+                  <Ionicons name="notifications" size={24} color="#F59E0B" />
+                </View>
+                <View className="ml-4 flex-1">
+                  <Text className="text-gray-900 font-bold text-base">
+                    {employeesWhoHaventOrdered.length} haven't ordered
+                  </Text>
+                  <Text className="text-amber-700 text-sm mt-0.5">
+                    Tap to send reminder
+                  </Text>
+                </View>
+              </View>
+              <View className="bg-amber-500 rounded-full px-4 py-2">
+                <Text className="text-white font-semibold text-sm">
+                  {isSendingReminder ? 'Sending...' : 'Remind'}
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* Action Cards */}
         <View className="flex-row gap-3 mb-6">
           <ActionCard
@@ -346,7 +559,7 @@ export default function ManagerDashboard() {
           <Ionicons name="chevron-forward" size={20} color="#7C3AED" />
         </TouchableOpacity>
 
-        {/* Recent Orders */}
+        {/* Employee Activity Feed */}
         <View
           className="bg-white rounded-2xl p-4 border border-gray-100"
           style={{
@@ -358,7 +571,7 @@ export default function ManagerDashboard() {
           }}
         >
           <View className="flex-row justify-between items-center mb-4">
-            <Text className="font-bold text-gray-900 text-lg">Recent Orders</Text>
+            <Text className="font-bold text-gray-900 text-lg">Employee Activity</Text>
             <TouchableOpacity
               className="flex-row items-center"
               onPress={() => router.push('/(manager)/orders')}
@@ -368,56 +581,71 @@ export default function ManagerDashboard() {
             </TouchableOpacity>
           </View>
 
-          {recentOrders.length === 0 ? (
+          {employeeActivity.length === 0 ? (
             <View className="py-8 items-center">
-              <Ionicons name="receipt-outline" size={40} color="#D1D5DB" />
-              <Text className="text-gray-400 mt-2">No recent orders</Text>
+              <Ionicons name="people-outline" size={40} color="#D1D5DB" />
+              <Text className="text-gray-400 mt-2">No recent activity</Text>
             </View>
           ) : (
-            recentOrders.map((order, index) => {
-              const statusColor = statusColors[order.status];
-              const orderUser = (order as any).user;
-              const orderLocation = (order as any).location;
-              return (
-                <TouchableOpacity
-                  key={order.id}
-                  className={`py-3 ${
-                    index < recentOrders.length - 1 ? 'border-b border-gray-100' : ''
-                  }`}
-                  onPress={() => router.push(`/orders/${order.id}`)}
-                  activeOpacity={0.7}
-                >
-                  <View className="flex-row justify-between items-start mb-2">
-                    <Text className="font-bold text-gray-900">
-                      Order #{order.order_number}
+            employeeActivity.slice(0, 5).map((activity, index) => (
+              <TouchableOpacity
+                key={activity.id}
+                className={`py-3 ${
+                  index < Math.min(employeeActivity.length, 5) - 1 ? 'border-b border-gray-100' : ''
+                }`}
+                onPress={() => activity.orderId && router.push(`/orders/${activity.orderId}`)}
+                activeOpacity={0.7}
+              >
+                <View className="flex-row items-start">
+                  {/* Avatar */}
+                  <View className="w-10 h-10 bg-primary-100 rounded-full items-center justify-center mr-3">
+                    <Text className="text-primary-700 font-bold">
+                      {activity.employeeName.charAt(0).toUpperCase()}
                     </Text>
-                    <View
-                      className="px-2.5 py-1 rounded-full"
-                      style={{ backgroundColor: statusColor.bg }}
-                    >
-                      <Text
-                        className="text-xs font-semibold"
-                        style={{ color: statusColor.text }}
-                      >
-                        {ORDER_STATUS_LABELS[order.status]}
+                  </View>
+
+                  <View className="flex-1">
+                    {/* Name and action */}
+                    <View className="flex-row items-center flex-wrap">
+                      <Text className="font-semibold text-gray-900">
+                        {activity.employeeName}
+                      </Text>
+                      <Text className="text-gray-500 ml-1">
+                        ordered
+                      </Text>
+                      {activity.itemName && (
+                        <Text className="font-medium text-primary-600 ml-1">
+                          {activity.itemName}
+                          {(activity as any).itemCount > 1 && ` +${(activity as any).itemCount - 1} more`}
+                        </Text>
+                      )}
+                    </View>
+
+                    {/* Details */}
+                    <View className="flex-row items-center mt-1">
+                      <Ionicons name="location-outline" size={12} color="#9CA3AF" />
+                      <Text className="text-gray-400 text-xs ml-1">
+                        {activity.locationName}
+                      </Text>
+                      <Text className="text-gray-300 mx-2">•</Text>
+                      <Ionicons name="time-outline" size={12} color="#9CA3AF" />
+                      <Text className="text-gray-400 text-xs ml-1">
+                        {formatTimeAgo(activity.timestamp)}
                       </Text>
                     </View>
                   </View>
-                  <View className="flex-row items-center mb-1">
-                    <Ionicons name="person-outline" size={14} color="#6B7280" />
-                    <Text className="text-gray-600 text-sm ml-1.5">
-                      {orderUser?.name || 'Unknown'}
-                    </Text>
-                  </View>
-                  <View className="flex-row items-center">
-                    <Ionicons name="location-outline" size={14} color="#6B7280" />
-                    <Text className="text-gray-500 text-sm ml-1.5">
-                      {orderLocation?.name || 'Unknown'} • {formatDate(order.created_at)}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
+
+                  {/* Order number badge */}
+                  {activity.orderNumber && (
+                    <View className="bg-gray-100 px-2 py-1 rounded">
+                      <Text className="text-gray-500 text-xs font-medium">
+                        #{activity.orderNumber}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            ))
           )}
         </View>
       </ScrollView>

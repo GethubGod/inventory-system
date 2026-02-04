@@ -790,7 +790,7 @@ export default function SettingsScreen() {
           icon="person-outline"
           iconColor="#3B82F6"
           iconBgColor="#DBEAFE"
-          defaultExpanded
+          defaultExpanded={false}
         >
           <ProfileSection onChangePassword={() => setShowPasswordModal(true)} />
         </ExpandableSection>

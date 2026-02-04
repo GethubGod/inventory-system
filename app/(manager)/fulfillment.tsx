@@ -8,34 +8,19 @@ import {
   Alert,
   Platform,
   TextInput,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import * as Clipboard from 'expo-clipboard';
 import { useAuthStore, useOrderStore, useFulfillmentStore } from '@/store';
-import { colors, CATEGORY_LABELS } from '@/constants';
-import { OrderWithDetails, InventoryItem, Location } from '@/types';
+import { colors, CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS } from '@/constants';
+import { OrderWithDetails, InventoryItem, SupplierCategory, ItemCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { SpinningFish } from '@/components';
 
-// Fish item with order details
-interface FishOrderItem {
-  inventoryItem: InventoryItem;
-  quantity: number;
-  unitType: 'base' | 'pack';
-  orderedBy: string;
-  orderNumber: number;
-  orderId: string;
-}
-
-// Fish order grouped by location
-interface LocationFishOrder {
-  location: Location;
-  items: FishOrderItem[];
-}
-
-// Aggregated item type for other orders
+// Aggregated item type
 interface AggregatedItem {
   inventoryItem: InventoryItem;
   totalQuantity: number;
@@ -47,28 +32,47 @@ interface AggregatedItem {
     quantity: number;
     orderedBy: string;
   }>;
-  orderNumbers: number[];
   orderIds: string[];
 }
 
-type TabType = 'fish' | 'other';
+// Category group within a supplier
+interface CategoryGroup {
+  category: ItemCategory;
+  items: AggregatedItem[];
+}
+
+// Supplier group containing categories
+interface SupplierGroup {
+  supplierCategory: SupplierCategory;
+  categoryGroups: CategoryGroup[];
+  totalItems: number;
+}
+
+// Supplier category order and emoji
+const SUPPLIER_ORDER: SupplierCategory[] = ['fish_supplier', 'main_distributor', 'asian_market'];
+const SUPPLIER_EMOJI: Record<SupplierCategory, string> = {
+  fish_supplier: '🐟',
+  main_distributor: '📦',
+  asian_market: '🍜',
+};
+
+const SUPPLIER_COLORS: Record<SupplierCategory, { bg: string; text: string; border: string }> = {
+  fish_supplier: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
+  main_distributor: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
+  asian_market: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+};
 
 export default function FulfillmentScreen() {
   const { user } = useAuthStore();
   const { orders, updateOrderStatus } = useOrderStore();
-  const {
-    checkedOtherItems,
-    toggleOtherItem,
-    clearOtherItems,
-  } = useFulfillmentStore();
+  const { checkedOtherItems, toggleOtherItem, clearOtherItems } = useFulfillmentStore();
 
-  const [activeTab, setActiveTab] = useState<TabType>('fish');
   const [refreshing, setRefreshing] = useState(false);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(['produce', 'dry', 'protein', 'dairy_cold', 'frozen', 'sauces', 'packaging']));
-  const [expandedFishItems, setExpandedFishItems] = useState<Set<string>>(new Set());
+  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<SupplierCategory>>(
+    new Set(['fish_supplier', 'main_distributor', 'asian_market'])
+  );
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [isFulfilling, setIsFulfilling] = useState(false);
-
-  // Editable quantities for fish items (locationId-itemId -> quantity)
   const [editedQuantities, setEditedQuantities] = useState<Record<string, number>>({});
 
   // Fetch pending orders
@@ -113,65 +117,22 @@ export default function FulfillmentScreen() {
     );
   }, [orders]);
 
-  // Group fish orders by location
-  const fishOrdersByLocation = useMemo(() => {
-    const locationMap = new Map<string, LocationFishOrder>();
-
-    pendingOrders.forEach((order) => {
-      order.order_items?.forEach((orderItem) => {
-        const item = orderItem.inventory_item;
-        if (!item || item.category !== 'fish') return;
-
-        const locationId = order.location_id;
-        let locationOrder = locationMap.get(locationId);
-
-        if (!locationOrder) {
-          locationOrder = {
-            location: order.location as Location,
-            items: [],
-          };
-          locationMap.set(locationId, locationOrder);
-        }
-
-        // Check if this item already exists for this location
-        const existingItem = locationOrder.items.find(
-          (i) => i.inventoryItem.id === item.id && i.unitType === orderItem.unit_type
-        );
-
-        if (existingItem) {
-          existingItem.quantity += orderItem.quantity;
-        } else {
-          locationOrder.items.push({
-            inventoryItem: item,
-            quantity: orderItem.quantity,
-            unitType: orderItem.unit_type,
-            orderedBy: order.user?.name || 'Unknown',
-            orderNumber: order.order_number,
-            orderId: order.id,
-          });
-        }
-      });
-    });
-
-    return Array.from(locationMap.values());
-  }, [pendingOrders]);
-
-  // Aggregate other (non-fish) items
-  const otherItems = useMemo(() => {
+  // Aggregate items by supplier then category
+  const supplierGroups = useMemo(() => {
+    // First, aggregate all items
     const itemMap = new Map<string, AggregatedItem>();
 
     pendingOrders.forEach((order) => {
       order.order_items?.forEach((orderItem) => {
         const item = orderItem.inventory_item;
-        if (!item || item.category === 'fish') return;
+        if (!item) return;
 
         const key = `${item.id}-${orderItem.unit_type}`;
         const existing = itemMap.get(key);
 
         if (existing) {
           existing.totalQuantity += orderItem.quantity;
-          if (!existing.orderNumbers.includes(order.order_number)) {
-            existing.orderNumbers.push(order.order_number);
+          if (!existing.orderIds.includes(order.id)) {
             existing.orderIds.push(order.id);
           }
 
@@ -203,58 +164,98 @@ export default function FulfillmentScreen() {
                 orderedBy: order.user?.name || 'Unknown',
               },
             ],
-            orderNumbers: [order.order_number],
             orderIds: [order.id],
           });
         }
       });
     });
 
-    return Array.from(itemMap.values());
-  }, [pendingOrders]);
+    // Group by supplier category then by item category
+    const supplierMap = new Map<SupplierCategory, Map<ItemCategory, AggregatedItem[]>>();
 
-  // Group other items by category
-  const otherItemsByCategory = useMemo(() => {
-    const categoryMap = new Map<string, AggregatedItem[]>();
+    Array.from(itemMap.values()).forEach((aggregatedItem) => {
+      const supplierCat = aggregatedItem.inventoryItem.supplier_category;
+      const itemCat = aggregatedItem.inventoryItem.category;
 
-    otherItems.forEach((item) => {
-      const category = item.inventoryItem.category;
-      const existing = categoryMap.get(category) || [];
-      existing.push(item);
-      categoryMap.set(category, existing);
+      if (!supplierMap.has(supplierCat)) {
+        supplierMap.set(supplierCat, new Map());
+      }
+
+      const categoryMap = supplierMap.get(supplierCat)!;
+      if (!categoryMap.has(itemCat)) {
+        categoryMap.set(itemCat, []);
+      }
+
+      categoryMap.get(itemCat)!.push(aggregatedItem);
     });
 
-    return categoryMap;
-  }, [otherItems]);
+    // Convert to array format sorted by supplier order
+    const groups: SupplierGroup[] = [];
 
-  // Calculate checked counts
-  const otherCheckedCount = useMemo(() => {
-    return otherItems.filter((item) =>
+    SUPPLIER_ORDER.forEach((supplierCat) => {
+      const categoryMap = supplierMap.get(supplierCat);
+      if (!categoryMap || categoryMap.size === 0) return;
+
+      const categoryGroups: CategoryGroup[] = [];
+      let totalItems = 0;
+
+      Array.from(categoryMap.entries()).forEach(([category, items]) => {
+        // Sort items alphabetically
+        items.sort((a, b) => a.inventoryItem.name.localeCompare(b.inventoryItem.name));
+        categoryGroups.push({ category, items });
+        totalItems += items.length;
+      });
+
+      // Sort category groups by category name
+      categoryGroups.sort((a, b) =>
+        (CATEGORY_LABELS[a.category] || a.category).localeCompare(CATEGORY_LABELS[b.category] || b.category)
+      );
+
+      groups.push({
+        supplierCategory: supplierCat,
+        categoryGroups,
+        totalItems,
+      });
+    });
+
+    return groups;
+  }, [pendingOrders]);
+
+  // Calculate total items and checked count
+  const allItems = useMemo(() => {
+    return supplierGroups.flatMap((sg) =>
+      sg.categoryGroups.flatMap((cg) => cg.items)
+    );
+  }, [supplierGroups]);
+
+  const checkedCount = useMemo(() => {
+    return allItems.filter((item) =>
       checkedOtherItems.has(`${item.inventoryItem.id}-${item.unitType}`)
     ).length;
-  }, [otherItems, checkedOtherItems]);
+  }, [allItems, checkedOtherItems]);
 
-  const allOtherChecked = otherCheckedCount === otherItems.length && otherItems.length > 0;
+  const allChecked = checkedCount === allItems.length && allItems.length > 0;
 
-  // Toggle category expansion
-  const toggleCategory = useCallback((category: string) => {
-    setExpandedCategories((prev) => {
+  // Toggle supplier expansion
+  const toggleSupplier = useCallback((supplier: SupplierCategory) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setExpandedSuppliers((prev) => {
       const newSet = new Set(prev);
-      if (newSet.has(category)) {
-        newSet.delete(category);
+      if (newSet.has(supplier)) {
+        newSet.delete(supplier);
       } else {
-        newSet.add(category);
+        newSet.add(supplier);
       }
       return newSet;
     });
   }, []);
 
-  // Toggle fish item expansion
-  const toggleFishItemExpand = useCallback((key: string) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    setExpandedFishItems((prev) => {
+  // Toggle category expansion within supplier
+  const toggleCategory = useCallback((supplierCategory: SupplierCategory, category: ItemCategory) => {
+    const key = `${supplierCategory}-${category}`;
+    setExpandedCategories((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(key)) {
         newSet.delete(key);
@@ -265,23 +266,8 @@ export default function FulfillmentScreen() {
     });
   }, []);
 
-  // Handle quantity change for fish item
-  const handleQuantityChange = useCallback((locationId: string, itemId: string, newQuantity: number) => {
-    const key = `${locationId}-${itemId}`;
-    setEditedQuantities((prev) => ({
-      ...prev,
-      [key]: Math.max(0, newQuantity),
-    }));
-  }, []);
-
-  // Get displayed quantity (edited or original)
-  const getDisplayQuantity = useCallback((locationId: string, itemId: string, originalQuantity: number) => {
-    const key = `${locationId}-${itemId}`;
-    return editedQuantities[key] ?? originalQuantity;
-  }, [editedQuantities]);
-
-  // Handle toggle check for other items
-  const handleToggleOtherCheck = useCallback((item: AggregatedItem) => {
+  // Handle toggle check
+  const handleToggleCheck = useCallback((item: AggregatedItem) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -289,10 +275,97 @@ export default function FulfillmentScreen() {
     toggleOtherItem(key);
   }, [toggleOtherItem]);
 
+  // Handle quantity change
+  const handleQuantityChange = useCallback((itemId: string, unitType: string, newQuantity: number) => {
+    const key = `${itemId}-${unitType}`;
+    setEditedQuantities((prev) => ({
+      ...prev,
+      [key]: Math.max(0, newQuantity),
+    }));
+  }, []);
+
+  // Get displayed quantity (edited or original)
+  const getDisplayQuantity = useCallback((item: AggregatedItem) => {
+    const key = `${item.inventoryItem.id}-${item.unitType}`;
+    return editedQuantities[key] ?? item.totalQuantity;
+  }, [editedQuantities]);
+
+  // Generate export message for a supplier
+  const generateExportMessage = useCallback((supplierGroup: SupplierGroup) => {
+    const today = new Date().toLocaleDateString('en-US', {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    });
+
+    let message = `Hi, I'd like to place an order:\n\n`;
+    message += `ORDER - Babytuna\n`;
+    message += `Supplier: ${SUPPLIER_CATEGORY_LABELS[supplierGroup.supplierCategory]}\n`;
+    message += `Date: ${today}\n\n`;
+
+    supplierGroup.categoryGroups.forEach((categoryGroup) => {
+      message += `${CATEGORY_LABELS[categoryGroup.category] || categoryGroup.category}:\n`;
+      categoryGroup.items.forEach((item) => {
+        const qty = getDisplayQuantity(item);
+        const unitLabel = item.unitType === 'pack'
+          ? item.inventoryItem.pack_unit
+          : item.inventoryItem.base_unit;
+        if (qty > 0) {
+          message += `- ${item.inventoryItem.name}: ${qty} ${unitLabel}\n`;
+        }
+      });
+      message += '\n';
+    });
+
+    message += `Please confirm availability.\nThank you!`;
+
+    return message;
+  }, [getDisplayQuantity]);
+
+  // Handle export for supplier
+  const handleExport = useCallback(async (supplierGroup: SupplierGroup) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    const message = generateExportMessage(supplierGroup);
+
+    Alert.alert(
+      'Export Order',
+      'Choose an action',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Copy to Clipboard',
+          onPress: async () => {
+            await Clipboard.setStringAsync(message);
+            if (Platform.OS !== 'web') {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+            Alert.alert('Copied!', 'Order copied to clipboard');
+          },
+        },
+        {
+          text: 'Share',
+          onPress: async () => {
+            try {
+              await Share.share({
+                message,
+                title: `${SUPPLIER_CATEGORY_LABELS[supplierGroup.supplierCategory]} Order`,
+              });
+            } catch (error: any) {
+              Alert.alert('Error', error.message || 'Failed to share');
+            }
+          },
+        },
+      ]
+    );
+  }, [generateExportMessage]);
+
   // Handle mark orders fulfilled
   const handleMarkFulfilled = useCallback(async () => {
     const checkedOrderIds = new Set<string>();
-    otherItems
+    allItems
       .filter((item) =>
         checkedOtherItems.has(`${item.inventoryItem.id}-${item.unitType}`)
       )
@@ -322,6 +395,7 @@ export default function FulfillmentScreen() {
               }
 
               clearOtherItems();
+              setEditedQuantities({});
               await fetchPendingOrders();
 
               Alert.alert('Success', `${orderCount} order${orderCount !== 1 ? 's' : ''} marked as fulfilled`);
@@ -334,365 +408,278 @@ export default function FulfillmentScreen() {
         },
       ]
     );
-  }, [otherItems, checkedOtherItems, updateOrderStatus, user, clearOtherItems]);
+  }, [allItems, checkedOtherItems, updateOrderStatus, user, clearOtherItems]);
 
-  // Render fish item in location cart
-  const renderFishItem = useCallback((locationId: string, item: FishOrderItem, index: number, totalItems: number) => {
-    const key = `${locationId}-${item.inventoryItem.id}`;
-    const isExpanded = expandedFishItems.has(key);
-    const unitLabel = item.unitType === 'pack' ? item.inventoryItem.pack_unit : item.inventoryItem.base_unit;
-    const displayQty = getDisplayQuantity(locationId, item.inventoryItem.id, item.quantity);
-
-    return (
-      <View key={key} className={index < totalItems - 1 ? 'border-b border-gray-100' : ''}>
-        <TouchableOpacity
-          onPress={() => toggleFishItemExpand(key)}
-          className="flex-row items-center py-3"
-          activeOpacity={0.7}
-        >
-          <Text className="text-lg mr-2">🐟</Text>
-          <View className="flex-1">
-            <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
-              {item.inventoryItem.name}
-            </Text>
-          </View>
-          <Text className="text-sm font-semibold text-gray-700 mr-2">
-            {displayQty} {unitLabel}
-          </Text>
-          <Ionicons
-            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={16}
-            color={colors.gray[400]}
-          />
-        </TouchableOpacity>
-
-        {/* Expanded Controls */}
-        {isExpanded && (
-          <View className="pb-3 pl-8">
-            {/* Ordered by info */}
-            <View className="flex-row items-center mb-3 bg-blue-50 rounded-lg px-3 py-2">
-              <Ionicons name="person" size={14} color="#3B82F6" />
-              <Text className="text-sm text-blue-700 ml-2">
-                Ordered by: {item.orderedBy}
-              </Text>
-              <Text className="text-sm text-blue-500 ml-2">
-                (Order #{item.orderNumber})
-              </Text>
-            </View>
-
-            {/* Quantity Controls */}
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center">
-                <TouchableOpacity
-                  onPress={() => handleQuantityChange(locationId, item.inventoryItem.id, displayQty - 1)}
-                  className="w-9 h-9 bg-gray-100 rounded-lg items-center justify-center"
-                >
-                  <Ionicons name="remove" size={18} color={colors.gray[600]} />
-                </TouchableOpacity>
-
-                <TextInput
-                  className="w-16 h-9 bg-gray-50 border border-gray-200 rounded-lg mx-2 text-center text-gray-900 font-semibold"
-                  value={displayQty.toString()}
-                  onChangeText={(text) => {
-                    const num = parseFloat(text) || 0;
-                    handleQuantityChange(locationId, item.inventoryItem.id, num);
-                  }}
-                  keyboardType="decimal-pad"
-                />
-
-                <TouchableOpacity
-                  onPress={() => handleQuantityChange(locationId, item.inventoryItem.id, displayQty + 1)}
-                  className="w-9 h-9 bg-gray-100 rounded-lg items-center justify-center"
-                >
-                  <Ionicons name="add" size={18} color={colors.gray[600]} />
-                </TouchableOpacity>
-
-                <Text className="ml-2 text-sm text-gray-500">{unitLabel}</Text>
-              </View>
-            </View>
-
-            {/* Pack info */}
-            <Text className="text-xs text-gray-400 mt-2">
-              {item.inventoryItem.pack_size} {item.inventoryItem.base_unit} per {item.inventoryItem.pack_unit}
-            </Text>
-          </View>
-        )}
-      </View>
-    );
-  }, [expandedFishItems, toggleFishItemExpand, getDisplayQuantity, handleQuantityChange]);
-
-  // Handle navigation to export fish order page
-  const handleOrderFromSupplier = useCallback((locationOrder: LocationFishOrder) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-
-    // Prepare fish items data with any edited quantities
-    const fishItemsData = locationOrder.items.map((item) => {
-      const displayQty = getDisplayQuantity(locationOrder.location.id, item.inventoryItem.id, item.quantity);
-      const unitLabel = item.unitType === 'pack' ? item.inventoryItem.pack_unit : item.inventoryItem.base_unit;
-      return {
-        itemId: item.inventoryItem.id,
-        itemName: item.inventoryItem.name,
-        quantity: displayQty,
-        unit: unitLabel,
-      };
-    });
-
-    router.push({
-      pathname: '/(manager)/export-fish-order',
-      params: {
-        locationName: locationOrder.location.name,
-        locationShortCode: locationOrder.location.short_code,
-        fishItems: JSON.stringify(fishItemsData),
-      },
-    });
-  }, [getDisplayQuantity]);
-
-  // Render location fish cart
-  const renderLocationFishCart = useCallback((locationOrder: LocationFishOrder) => {
-    const itemCount = locationOrder.items.length;
-
-    return (
-      <View key={locationOrder.location.id} className="mb-4">
-        {/* Location Header */}
-        <View className="bg-white rounded-t-xl px-4 py-3 border border-gray-200 border-b-0">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center">
-              <View className="bg-primary-500 w-10 h-10 rounded-full items-center justify-center mr-3">
-                <Text className="text-white font-bold">{locationOrder.location.short_code}</Text>
-              </View>
-              <View>
-                <Text className="text-base font-semibold text-gray-900">{locationOrder.location.name}</Text>
-                <Text className="text-sm text-gray-500">
-                  {itemCount} fish item{itemCount !== 1 ? 's' : ''}
-                </Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Items List */}
-        <View className="bg-white px-4 border-l border-r border-gray-200">
-          {locationOrder.items.map((item, index) => renderFishItem(locationOrder.location.id, item, index, itemCount))}
-        </View>
-
-        {/* Order from Supplier Button */}
-        <TouchableOpacity
-          className="bg-primary-500 py-3 rounded-b-xl items-center flex-row justify-center"
-          onPress={() => handleOrderFromSupplier(locationOrder)}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="call-outline" size={18} color="white" />
-          <Text className="text-white font-semibold ml-2">Order from Supplier</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }, [renderFishItem, handleOrderFromSupplier]);
-
-  // Render other item (compact)
-  const renderOtherItem = useCallback((item: AggregatedItem) => {
+  // Render item row
+  const renderItem = useCallback((item: AggregatedItem, showLocationBreakdown: boolean) => {
     const key = `${item.inventoryItem.id}-${item.unitType}`;
     const isChecked = checkedOtherItems.has(key);
     const unitLabel = item.unitType === 'pack'
       ? item.inventoryItem.pack_unit
       : item.inventoryItem.base_unit;
+    const displayQty = getDisplayQuantity(item);
 
     return (
-      <TouchableOpacity
-        key={key}
-        className={`flex-row items-center py-3 px-4 border-b border-gray-100 ${
-          isChecked ? 'bg-green-50' : 'bg-white'
-        }`}
-        onPress={() => handleToggleOtherCheck(item)}
-        activeOpacity={0.7}
-      >
-        {/* Checkbox */}
-        <View
-          className={`w-5 h-5 rounded border-2 items-center justify-center mr-3 ${
-            isChecked ? 'bg-green-500 border-green-500' : 'border-gray-300'
+      <View key={key}>
+        <TouchableOpacity
+          className={`flex-row items-center py-3 px-4 border-b border-gray-100 ${
+            isChecked ? 'bg-green-50' : 'bg-white'
           }`}
+          onPress={() => handleToggleCheck(item)}
+          activeOpacity={0.7}
         >
-          {isChecked && (
-            <Ionicons name="checkmark" size={14} color="white" />
-          )}
-        </View>
+          {/* Checkbox */}
+          <View
+            className={`w-5 h-5 rounded border-2 items-center justify-center mr-3 ${
+              isChecked ? 'bg-green-500 border-green-500' : 'border-gray-300'
+            }`}
+          >
+            {isChecked && (
+              <Ionicons name="checkmark" size={14} color="white" />
+            )}
+          </View>
 
-        {/* Item Name */}
-        <Text
-          className={`flex-1 font-medium ${
-            isChecked ? 'text-gray-400 line-through' : 'text-gray-900'
-          }`}
-          numberOfLines={1}
-        >
-          {item.inventoryItem.name}
-        </Text>
+          {/* Item Name */}
+          <Text
+            className={`flex-1 font-medium ${
+              isChecked ? 'text-gray-400 line-through' : 'text-gray-900'
+            }`}
+            numberOfLines={1}
+          >
+            {item.inventoryItem.name}
+          </Text>
 
-        {/* Quantity */}
-        <Text
-          className={`font-semibold ${
-            isChecked ? 'text-gray-400' : 'text-gray-700'
-          }`}
-        >
-          {item.totalQuantity} {unitLabel}
-        </Text>
-      </TouchableOpacity>
+          {/* Quantity Controls */}
+          <View className="flex-row items-center">
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                handleQuantityChange(item.inventoryItem.id, item.unitType, displayQty - 1);
+              }}
+              className="w-7 h-7 bg-gray-100 rounded items-center justify-center"
+            >
+              <Ionicons name="remove" size={14} color={colors.gray[600]} />
+            </TouchableOpacity>
+
+            <TextInput
+              className="w-12 h-7 text-center text-sm font-bold text-gray-900"
+              value={displayQty.toString()}
+              onChangeText={(text) => {
+                const num = parseFloat(text) || 0;
+                handleQuantityChange(item.inventoryItem.id, item.unitType, num);
+              }}
+              keyboardType="decimal-pad"
+              selectTextOnFocus
+            />
+
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                handleQuantityChange(item.inventoryItem.id, item.unitType, displayQty + 1);
+              }}
+              className="w-7 h-7 bg-gray-100 rounded items-center justify-center"
+            >
+              <Ionicons name="add" size={14} color={colors.gray[600]} />
+            </TouchableOpacity>
+
+            <Text className="text-xs text-gray-500 ml-1 w-10">{unitLabel}</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Location Breakdown (shown when expanded) */}
+        {showLocationBreakdown && item.locationBreakdown.length > 1 && (
+          <View className="bg-gray-50 px-12 py-2 border-b border-gray-100">
+            {item.locationBreakdown.map((loc) => (
+              <View key={loc.locationId} className="flex-row items-center py-1">
+                <View className="w-6 h-6 bg-primary-100 rounded-full items-center justify-center mr-2">
+                  <Text className="text-xs font-bold text-primary-700">{loc.shortCode}</Text>
+                </View>
+                <Text className="text-xs text-gray-600 flex-1">{loc.locationName}</Text>
+                <Text className="text-xs font-medium text-gray-700">{loc.quantity}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
     );
-  }, [checkedOtherItems, handleToggleOtherCheck]);
+  }, [checkedOtherItems, getDisplayQuantity, handleToggleCheck, handleQuantityChange]);
 
   // Render category section
-  const renderCategorySection = useCallback((category: string, items: AggregatedItem[]) => {
-    const isExpanded = expandedCategories.has(category);
-    const label = CATEGORY_LABELS[category] || category;
+  const renderCategorySection = useCallback((
+    supplierCategory: SupplierCategory,
+    categoryGroup: CategoryGroup
+  ) => {
+    const key = `${supplierCategory}-${categoryGroup.category}`;
+    const isExpanded = expandedCategories.has(key);
+    const label = CATEGORY_LABELS[categoryGroup.category] || categoryGroup.category;
 
     return (
-      <View key={category} className="mb-4">
-        {/* Category Header */}
+      <View key={key} className="mb-2">
         <TouchableOpacity
-          className="flex-row items-center justify-between py-2 px-1"
-          onPress={() => toggleCategory(category)}
+          className="flex-row items-center justify-between py-2 px-2 bg-gray-50 rounded-t-lg"
+          onPress={() => toggleCategory(supplierCategory, categoryGroup.category)}
           activeOpacity={0.7}
         >
           <View className="flex-row items-center">
             <Ionicons
               name={isExpanded ? 'chevron-down' : 'chevron-forward'}
-              size={20}
+              size={16}
               color={colors.gray[500]}
             />
-            <Text className="text-sm font-bold text-gray-500 uppercase tracking-wide ml-1">
-              {label} ({items.length} items)
+            <Text className="text-xs font-bold text-gray-500 uppercase tracking-wide ml-1">
+              {label} ({categoryGroup.items.length})
             </Text>
           </View>
         </TouchableOpacity>
 
-        {/* Category Items */}
         {isExpanded && (
-          <View
-            className="bg-white rounded-xl overflow-hidden border border-gray-200"
-            style={{
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-              elevation: 2,
-            }}
-          >
-            {items.map((item) => renderOtherItem(item))}
+          <View className="bg-white rounded-b-lg border border-gray-200 border-t-0 overflow-hidden">
+            {categoryGroup.items.map((item) => renderItem(item, true))}
           </View>
         )}
       </View>
     );
-  }, [expandedCategories, toggleCategory, renderOtherItem]);
+  }, [expandedCategories, toggleCategory, renderItem]);
 
-  // Count total fish items
-  const totalFishItems = fishOrdersByLocation.reduce((sum, loc) => sum + loc.items.length, 0);
+  // Render supplier section
+  const renderSupplierSection = useCallback((supplierGroup: SupplierGroup) => {
+    const isExpanded = expandedSuppliers.has(supplierGroup.supplierCategory);
+    const colorScheme = SUPPLIER_COLORS[supplierGroup.supplierCategory];
+    const emoji = SUPPLIER_EMOJI[supplierGroup.supplierCategory];
+    const label = SUPPLIER_CATEGORY_LABELS[supplierGroup.supplierCategory];
+
+    return (
+      <View key={supplierGroup.supplierCategory} className="mb-4">
+        {/* Supplier Header */}
+        <TouchableOpacity
+          className={`flex-row items-center justify-between p-4 rounded-xl ${colorScheme.bg} border ${colorScheme.border}`}
+          onPress={() => toggleSupplier(supplierGroup.supplierCategory)}
+          activeOpacity={0.7}
+        >
+          <View className="flex-row items-center flex-1">
+            <Text className="text-2xl mr-3">{emoji}</Text>
+            <View>
+              <Text className={`font-bold text-base ${colorScheme.text}`}>{label}</Text>
+              <Text className="text-sm text-gray-500">
+                {supplierGroup.totalItems} item{supplierGroup.totalItems !== 1 ? 's' : ''}
+              </Text>
+            </View>
+          </View>
+
+          <View className="flex-row items-center">
+            {/* Export Button */}
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                handleExport(supplierGroup);
+              }}
+              className="mr-3 p-2 bg-white rounded-lg"
+            >
+              <Ionicons name="share-outline" size={18} color={colors.gray[600]} />
+            </TouchableOpacity>
+
+            <Ionicons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={colors.gray[500]}
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* Expanded Content */}
+        {isExpanded && (
+          <View className="mt-2 pl-2">
+            {supplierGroup.categoryGroups.map((cg) =>
+              renderCategorySection(supplierGroup.supplierCategory, cg)
+            )}
+          </View>
+        )}
+      </View>
+    );
+  }, [expandedSuppliers, toggleSupplier, handleExport, renderCategorySection]);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Header */}
       <View className="bg-white px-5 py-4 border-b border-gray-100">
         <Text className="text-2xl font-bold text-gray-900">Fulfillment</Text>
-      </View>
-
-      {/* Tab Bar */}
-      <View className="flex-row bg-white border-b border-gray-200">
-        <TouchableOpacity
-          className={`flex-1 py-3 items-center border-b-2 ${
-            activeTab === 'fish' ? 'border-primary-500' : 'border-transparent'
-          }`}
-          onPress={() => setActiveTab('fish')}
-        >
-          <Text
-            className={`font-semibold ${
-              activeTab === 'fish' ? 'text-primary-500' : 'text-gray-500'
-            }`}
-          >
-            🐟 Fish Orders
-          </Text>
-          {totalFishItems > 0 && (
-            <View className="absolute top-1 right-8 bg-primary-500 rounded-full w-5 h-5 items-center justify-center">
-              <Text className="text-white text-xs font-bold">{totalFishItems}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          className={`flex-1 py-3 items-center border-b-2 ${
-            activeTab === 'other' ? 'border-primary-500' : 'border-transparent'
-          }`}
-          onPress={() => setActiveTab('other')}
-        >
-          <Text
-            className={`font-semibold ${
-              activeTab === 'other' ? 'text-primary-500' : 'text-gray-500'
-            }`}
-          >
-            📦 Other Orders
-          </Text>
-          {otherItems.length > 0 && (
-            <View className="absolute top-1 right-6 bg-primary-500 rounded-full w-5 h-5 items-center justify-center">
-              <Text className="text-white text-xs font-bold">{otherItems.length}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+        <Text className="text-sm text-gray-500 mt-1">
+          Grouped by supplier, then category
+        </Text>
       </View>
 
       {/* Content */}
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ padding: 16, paddingBottom: activeTab === 'other' && otherItems.length > 0 ? 100 : 32 }}
+        contentContainerStyle={{
+          padding: 16,
+          paddingBottom: allItems.length > 0 ? 100 : 32
+        }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />
         }
       >
-        {activeTab === 'fish' ? (
-          <>
-            {fishOrdersByLocation.length === 0 ? (
-              <View className="items-center py-12">
-                <Text className="text-4xl mb-4">🐟</Text>
-                <Text className="text-gray-500 text-center">
-                  No fish orders pending
-                </Text>
-              </View>
-            ) : (
-              <>
-                <Text className="text-sm text-gray-500 mb-4">
-                  Fish orders grouped by location. Tap items to edit quantities.
-                </Text>
-                {fishOrdersByLocation.map((locationOrder) => renderLocationFishCart(locationOrder))}
-              </>
-            )}
-          </>
+        {supplierGroups.length === 0 ? (
+          <View className="items-center py-12">
+            <Text className="text-4xl mb-4">📋</Text>
+            <Text className="text-gray-500 text-center text-lg font-medium">
+              No pending orders
+            </Text>
+            <Text className="text-gray-400 text-center text-sm mt-2">
+              Orders will appear here when employees submit them
+            </Text>
+          </View>
         ) : (
           <>
-            {otherItems.length === 0 ? (
-              <View className="items-center py-12">
-                <Text className="text-4xl mb-4">📦</Text>
-                <Text className="text-gray-500 text-center">
-                  No other orders pending
-                </Text>
+            {/* Progress Summary */}
+            <View className="bg-white rounded-xl p-4 mb-4 border border-gray-200">
+              <View className="flex-row items-center justify-between">
+                <View>
+                  <Text className="text-sm text-gray-500">Items Checked</Text>
+                  <Text className="text-2xl font-bold text-gray-900">
+                    {checkedCount} / {allItems.length}
+                  </Text>
+                </View>
+                <View className="w-16 h-16 rounded-full border-4 border-gray-200 items-center justify-center"
+                  style={{
+                    borderColor: allChecked ? '#22C55E' : checkedCount > 0 ? '#F97316' : '#E5E7EB',
+                  }}
+                >
+                  <Text className="text-lg font-bold" style={{
+                    color: allChecked ? '#22C55E' : checkedCount > 0 ? '#F97316' : '#9CA3AF',
+                  }}>
+                    {allItems.length > 0 ? Math.round((checkedCount / allItems.length) * 100) : 0}%
+                  </Text>
+                </View>
               </View>
-            ) : (
-              Array.from(otherItemsByCategory.entries()).map(([category, items]) =>
-                renderCategorySection(category, items)
-              )
-            )}
+            </View>
+
+            {/* Supplier Groups */}
+            {supplierGroups.map((group) => renderSupplierSection(group))}
           </>
         )}
       </ScrollView>
 
-      {/* Bottom Action Bar for Other Orders */}
-      {activeTab === 'other' && otherItems.length > 0 && (
+      {/* Bottom Action Bar */}
+      {allItems.length > 0 && (
         <View className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4 py-3">
           <View className="flex-row items-center justify-between">
-            <Text className="text-gray-600">
-              Checked: {otherCheckedCount}/{otherItems.length} items
-            </Text>
+            <View>
+              <Text className="text-gray-600 font-medium">
+                {checkedCount}/{allItems.length} items checked
+              </Text>
+              {!allChecked && (
+                <Text className="text-xs text-gray-400">
+                  Check all items to mark fulfilled
+                </Text>
+              )}
+            </View>
             <TouchableOpacity
               className={`rounded-xl px-5 py-3 flex-row items-center ${
-                allOtherChecked ? 'bg-green-500' : 'bg-gray-300'
+                allChecked ? 'bg-green-500' : 'bg-gray-300'
               }`}
               onPress={handleMarkFulfilled}
-              disabled={!allOtherChecked || isFulfilling}
+              disabled={!allChecked || isFulfilling}
               activeOpacity={0.8}
             >
               {isFulfilling ? (
