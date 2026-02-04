@@ -42,10 +42,11 @@ export default function CartScreen() {
     getCartItems,
     getCartLocationIds,
     getTotalCartCount,
+    addToCart,
     updateCartItem,
     removeFromCart,
     moveCartItem,
-    moveAllCartItemsToLocation,
+    moveLocationCartItems,
     clearLocationCart,
     clearAllCarts,
     createAndSubmitOrder,
@@ -56,13 +57,17 @@ export default function CartScreen() {
   // Track expanded items
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
 
-  // Move item modal state
-  const [showMoveModal, setShowMoveModal] = useState(false);
-  const [showLocationModal, setShowLocationModal] = useState(false);
-  const [itemToMove, setItemToMove] = useState<{
+  // Cart location change modal state
+  const [showCartLocationModal, setShowCartLocationModal] = useState(false);
+  const [cartLocationToMove, setCartLocationToMove] = useState<Location | null>(null);
+
+  // Item menu state
+  const [showItemMenu, setShowItemMenu] = useState(false);
+  const [showItemLocationModal, setShowItemLocationModal] = useState(false);
+  const [itemLocationAction, setItemLocationAction] = useState<'add' | 'move' | null>(null);
+  const [menuItem, setMenuItem] = useState<{
     locationId: string;
-    inventoryItemId: string;
-    itemName: string;
+    item: CartItemWithDetails;
   } | null>(null);
 
   const cartLocationIds = getCartLocationIds();
@@ -73,16 +78,10 @@ export default function CartScreen() {
     return locations.filter(loc => cartLocationIds.includes(loc.id));
   }, [locations, cartLocationIds]);
 
-  const currentLocationLabel = useMemo(() => {
-    if (cartLocationIds.length === 1) {
-      const match = locations.find((loc) => loc.id === cartLocationIds[0]);
-      return match?.name || 'Select Location';
-    }
-    if (cartLocationIds.length > 1) {
-      return 'Multiple Locations';
-    }
-    return 'Select Location';
-  }, [cartLocationIds, locations]);
+  const hasOtherLocations = useMemo(() => {
+    if (!menuItem) return false;
+    return locations.some((loc) => loc.id !== menuItem.locationId);
+  }, [locations, menuItem]);
 
   // Get cart items with inventory details for a location
   const getCartWithDetails = useCallback((locationId: string): CartItemWithDetails[] => {
@@ -136,40 +135,24 @@ export default function CartScreen() {
     );
   }, [removeFromCart]);
 
-  // Handle opening move modal
-  const handleOpenMoveModal = useCallback((locationId: string, inventoryItemId: string, itemName: string) => {
+  const handleOpenCartLocationModal = useCallback((location: Location) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    setItemToMove({ locationId, inventoryItemId, itemName });
-    setShowMoveModal(true);
+    setCartLocationToMove(location);
+    setShowCartLocationModal(true);
   }, []);
 
-  // Handle moving item to another location
-  const handleMoveItem = useCallback((toLocationId: string) => {
-    if (!itemToMove) return;
-
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-
-    moveCartItem(itemToMove.locationId, toLocationId, itemToMove.inventoryItemId);
-    setShowMoveModal(false);
-    setItemToMove(null);
-  }, [itemToMove, moveCartItem]);
-
-  const handleMoveAllToLocation = useCallback((locationId: string, locationName: string) => {
-    const locationCount = cartLocationIds.length;
-    if (locationCount === 0) return;
-
-    if (locationCount === 1 && cartLocationIds[0] === locationId) {
-      setShowLocationModal(false);
+  const handleMoveCartLocation = useCallback((toLocationId: string, toLocationName: string) => {
+    if (!cartLocationToMove) return;
+    if (cartLocationToMove.id === toLocationId) {
+      setShowCartLocationModal(false);
       return;
     }
 
     Alert.alert(
-      'Change Order Location',
-      `Move all cart items to ${locationName}?`,
+      'Change Cart Location',
+      `Move all items from ${cartLocationToMove.name} to ${toLocationName}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -178,13 +161,64 @@ export default function CartScreen() {
             if (Platform.OS !== 'web') {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
-            moveAllCartItemsToLocation(locationId);
-            setShowLocationModal(false);
+            moveLocationCartItems(cartLocationToMove.id, toLocationId);
+            setShowCartLocationModal(false);
+            setCartLocationToMove(null);
           },
         },
       ]
     );
-  }, [cartLocationIds, moveAllCartItemsToLocation]);
+  }, [cartLocationToMove, moveLocationCartItems]);
+
+  const handleOpenItemMenu = useCallback((locationId: string, item: CartItemWithDetails) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setMenuItem({ locationId, item });
+    setShowItemMenu(true);
+  }, []);
+
+  const handleDuplicateItem = useCallback(() => {
+    if (!menuItem) return;
+    const { locationId, item } = menuItem;
+    if (!item.inventoryItem) return;
+    updateCartItem(locationId, item.inventoryItemId, item.quantity + item.quantity, item.unitType);
+    setShowItemMenu(false);
+    setMenuItem(null);
+  }, [menuItem, updateCartItem]);
+
+  const handleOpenItemLocationModal = useCallback((action: 'add' | 'move') => {
+    setItemLocationAction(action);
+    setShowItemMenu(false);
+    setShowItemLocationModal(true);
+  }, []);
+
+  const handleApplyItemLocation = useCallback((toLocationId: string, toLocationName: string) => {
+    if (!menuItem || !itemLocationAction) return;
+    if (menuItem.locationId === toLocationId) {
+      setShowItemLocationModal(false);
+      return;
+    }
+
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+
+    if (itemLocationAction === 'add') {
+      addToCart(toLocationId, menuItem.item.inventoryItemId, menuItem.item.quantity, menuItem.item.unitType);
+    } else {
+      moveCartItem(
+        menuItem.locationId,
+        toLocationId,
+        menuItem.item.inventoryItemId,
+        menuItem.item.unitType
+      );
+    }
+
+    setShowItemLocationModal(false);
+    setItemLocationAction(null);
+    setMenuItem(null);
+  }, [menuItem, itemLocationAction, addToCart, moveCartItem]);
 
   // Handle clear location cart
   const handleClearLocationCart = useCallback((locationId: string, locationName: string) => {
@@ -353,15 +387,12 @@ export default function CartScreen() {
 
               {/* Action Buttons */}
               <View className="flex-row items-center">
-                {/* Move to Another Location Button */}
-                {locations.length > 1 && (
-                  <TouchableOpacity
-                    onPress={() => handleOpenMoveModal(locationId, inventoryItem.id, inventoryItem.name)}
-                    className="p-2 mr-1"
-                  >
-                    <Ionicons name="swap-horizontal" size={18} color={colors.primary[500]} />
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                  onPress={() => handleOpenItemMenu(locationId, item)}
+                  className="p-2 mr-1"
+                >
+                  <Ionicons name="ellipsis-horizontal" size={18} color={colors.gray[500]} />
+                </TouchableOpacity>
 
                 {/* Remove Button */}
                 <TouchableOpacity
@@ -381,7 +412,7 @@ export default function CartScreen() {
         )}
       </View>
     );
-  }, [expandedItems, toggleExpand, handleQuantityChange, handleRemoveItem]);
+  }, [expandedItems, toggleExpand, handleQuantityChange, handleOpenItemMenu, handleRemoveItem]);
 
   // Render location section
   const renderLocationSection = useCallback((location: Location) => {
@@ -415,6 +446,22 @@ export default function CartScreen() {
 
         {/* Items List */}
         <View className="bg-white px-4 border-l border-r border-gray-200">
+          <TouchableOpacity
+            onPress={() => handleOpenCartLocationModal(location)}
+            className="flex-row items-center justify-between py-3 border-b border-gray-100"
+          >
+            <View className="flex-row items-center">
+              <Ionicons name="location-outline" size={16} color={colors.gray[500]} />
+              <Text className="text-sm text-gray-600 ml-2">Order Location</Text>
+            </View>
+            <View className="flex-row items-center">
+              <Text className="text-sm font-semibold text-gray-900 mr-1">
+                {location.name}
+              </Text>
+              <Ionicons name="chevron-down" size={16} color={colors.gray[500]} />
+            </View>
+          </TouchableOpacity>
+
           {cartWithDetails.map((item) => renderCartItem(location.id, item))}
         </View>
 
@@ -440,7 +487,7 @@ export default function CartScreen() {
         </TouchableOpacity>
       </View>
     );
-  }, [getCartWithDetails, renderCartItem, handleClearLocationCart, handleSubmitOrder, submittingLocation]);
+  }, [getCartWithDetails, renderCartItem, handleClearLocationCart, handleSubmitOrder, submittingLocation, handleOpenCartLocationModal]);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
@@ -454,25 +501,6 @@ export default function CartScreen() {
           className="flex-1"
           contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
         >
-          {/* Change Order Location */}
-          <View className="bg-white rounded-xl border border-gray-200 mb-3">
-            <TouchableOpacity
-              onPress={() => setShowLocationModal(true)}
-              className="flex-row items-center justify-between px-4 py-3"
-            >
-              <View className="flex-row items-center">
-                <Ionicons name="location-outline" size={18} color={colors.gray[600]} />
-                <Text className="text-sm text-gray-600 ml-2">Change Order Location</Text>
-              </View>
-              <View className="flex-row items-center">
-                <Text className="text-sm font-semibold text-gray-900 mr-1">
-                  {currentLocationLabel}
-                </Text>
-                <Ionicons name="chevron-down" size={16} color={colors.gray[500]} />
-              </View>
-            </TouchableOpacity>
-          </View>
-
           {/* Summary Bar */}
           <View className="flex-row justify-between items-center px-4 py-3 bg-white border border-gray-200 rounded-xl mb-4">
             <Text className="text-gray-600">
@@ -513,43 +541,48 @@ export default function CartScreen() {
         </View>
       )}
 
-      {/* Change Order Location Modal */}
+      {/* Cart Location Modal */}
       <Modal
-        visible={showLocationModal}
+        visible={showCartLocationModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowLocationModal(false)}
+        onRequestClose={() => {
+          setShowCartLocationModal(false);
+          setCartLocationToMove(null);
+        }}
       >
         <Pressable
           className="flex-1 bg-black/50 justify-end"
-          onPress={() => setShowLocationModal(false)}
+          onPress={() => {
+            setShowCartLocationModal(false);
+            setCartLocationToMove(null);
+          }}
         >
           <Pressable
             className="bg-white rounded-t-3xl"
             onPress={(e) => e.stopPropagation()}
           >
-            {/* Handle bar */}
             <View className="items-center pt-3 pb-2">
               <View className="w-10 h-1 bg-gray-300 rounded-full" />
             </View>
 
             <View className="px-6 pb-8">
               <Text className="text-xl font-bold text-gray-900 mb-2">
-                Change Order Location
+                Change Cart Location
               </Text>
               <Text className="text-gray-500 mb-4">
-                Move all items to a single location
+                Move all items from {cartLocationToMove?.name || 'this cart'}
               </Text>
 
               {locations.map((loc) => {
-                const isSelected = cartLocationIds.length === 1 && cartLocationIds[0] === loc.id;
+                const isSelected = cartLocationToMove?.id === loc.id;
                 return (
                   <TouchableOpacity
                     key={loc.id}
                     className={`flex-row items-center p-4 rounded-xl mb-3 border-2 ${
                       isSelected ? 'border-primary-500 bg-primary-50' : 'border-gray-200 bg-white'
                     }`}
-                    onPress={() => handleMoveAllToLocation(loc.id, loc.name)}
+                    onPress={() => handleMoveCartLocation(loc.id, loc.name)}
                     activeOpacity={0.7}
                   >
                     <View className={`w-11 h-11 rounded-full items-center justify-center ${
@@ -575,7 +608,10 @@ export default function CartScreen() {
               })}
 
               <TouchableOpacity
-                onPress={() => setShowLocationModal(false)}
+                onPress={() => {
+                  setShowCartLocationModal(false);
+                  setCartLocationToMove(null);
+                }}
                 className="py-4 mt-2"
               >
                 <Text className="text-gray-500 font-medium text-center">Cancel</Text>
@@ -585,43 +621,116 @@ export default function CartScreen() {
         </Pressable>
       </Modal>
 
-      {/* Move Item Modal */}
+      {/* Item Actions Menu */}
       <Modal
-        visible={showMoveModal}
+        visible={showItemMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowItemMenu(false);
+          setMenuItem(null);
+        }}
+      >
+        <Pressable
+          className="flex-1 bg-black/40 justify-end"
+          onPress={() => {
+            setShowItemMenu(false);
+            setMenuItem(null);
+          }}
+        >
+          <Pressable
+            className="bg-white rounded-t-3xl px-6 pt-4 pb-6"
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View className="items-center pb-3">
+              <View className="w-10 h-1 bg-gray-300 rounded-full" />
+            </View>
+            <Text className="text-lg font-bold text-gray-900 mb-1">Item Actions</Text>
+            <Text className="text-sm text-gray-500 mb-4">
+              {menuItem?.item.inventoryItem?.name || 'Item'}
+            </Text>
+
+            <TouchableOpacity
+              onPress={handleDuplicateItem}
+              className="flex-row items-center py-3"
+            >
+              <Ionicons name="copy-outline" size={20} color={colors.gray[600]} />
+              <Text className="text-base text-gray-800 ml-3">Duplicate item</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleOpenItemLocationModal('add')}
+              className={`flex-row items-center py-3 ${hasOtherLocations ? '' : 'opacity-50'}`}
+              disabled={!hasOtherLocations}
+            >
+              <Ionicons name="add-circle-outline" size={20} color={colors.gray[600]} />
+              <Text className="text-base text-gray-800 ml-3">Add to other cart</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleOpenItemLocationModal('move')}
+              className={`flex-row items-center py-3 ${hasOtherLocations ? '' : 'opacity-50'}`}
+              disabled={!hasOtherLocations}
+            >
+              <Ionicons name="swap-horizontal" size={20} color={colors.gray[600]} />
+              <Text className="text-base text-gray-800 ml-3">Move to other cart</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => {
+                setShowItemMenu(false);
+                setMenuItem(null);
+              }}
+              className="py-4"
+            >
+              <Text className="text-gray-500 font-medium text-center">Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Item Location Picker */}
+      <Modal
+        visible={showItemLocationModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowMoveModal(false)}
+        onRequestClose={() => {
+          setShowItemLocationModal(false);
+          setItemLocationAction(null);
+        }}
       >
         <Pressable
           className="flex-1 bg-black/50 justify-end"
-          onPress={() => setShowMoveModal(false)}
+          onPress={() => {
+            setShowItemLocationModal(false);
+            setItemLocationAction(null);
+          }}
         >
           <Pressable
             className="bg-white rounded-t-3xl"
             onPress={(e) => e.stopPropagation()}
           >
-            {/* Handle bar */}
             <View className="items-center pt-3 pb-2">
               <View className="w-10 h-1 bg-gray-300 rounded-full" />
             </View>
 
             <View className="px-6 pb-8">
               <Text className="text-xl font-bold text-gray-900 mb-2">
-                Move Item
+                {itemLocationAction === 'add' ? 'Add to Cart' : 'Move to Cart'}
               </Text>
               <Text className="text-gray-500 mb-4">
-                Move "{itemToMove?.itemName}" to another location
+                {menuItem?.item.inventoryItem?.name || 'Item'}
               </Text>
 
               {locations
-                .filter((loc) => loc.id !== itemToMove?.locationId)
+                .filter((loc) => loc.id !== menuItem?.locationId)
                 .map((loc) => {
                   const cartCount = getCartItems(loc.id).length;
                   return (
                     <TouchableOpacity
                       key={loc.id}
                       className="flex-row items-center p-4 rounded-xl mb-3 border-2 border-gray-200 bg-white"
-                      onPress={() => handleMoveItem(loc.id)}
+                      onPress={() => handleApplyItemLocation(loc.id, loc.name)}
                       activeOpacity={0.7}
                     >
                       <View className="w-11 h-11 bg-primary-100 rounded-full items-center justify-center">
@@ -645,7 +754,10 @@ export default function CartScreen() {
                 })}
 
               <TouchableOpacity
-                onPress={() => setShowMoveModal(false)}
+                onPress={() => {
+                  setShowItemLocationModal(false);
+                  setItemLocationAction(null);
+                }}
                 className="py-4 mt-2"
               >
                 <Text className="text-gray-500 font-medium text-center">Cancel</Text>

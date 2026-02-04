@@ -23,7 +23,13 @@ interface OrderState {
   addToCart: (locationId: string, inventoryItemId: string, quantity: number, unitType: UnitType) => void;
   updateCartItem: (locationId: string, inventoryItemId: string, quantity: number, unitType: UnitType) => void;
   removeFromCart: (locationId: string, inventoryItemId: string) => void;
-  moveCartItem: (fromLocationId: string, toLocationId: string, inventoryItemId: string) => void;
+  moveCartItem: (
+    fromLocationId: string,
+    toLocationId: string,
+    inventoryItemId: string,
+    unitType: UnitType
+  ) => void;
+  moveLocationCartItems: (fromLocationId: string, toLocationId: string) => void;
   moveAllCartItemsToLocation: (toLocationId: string) => void;
   clearLocationCart: (locationId: string) => void;
   clearAllCarts: () => void;
@@ -129,7 +135,7 @@ export const useOrderStore = create<OrderState>()(
         });
       },
 
-      moveCartItem: (fromLocationId, toLocationId, inventoryItemId) => {
+      moveCartItem: (fromLocationId, toLocationId, inventoryItemId, unitType) => {
         if (fromLocationId === toLocationId) return;
 
         const { cartByLocation } = get();
@@ -137,17 +143,21 @@ export const useOrderStore = create<OrderState>()(
         const toCart = cartByLocation[toLocationId] || [];
 
         // Find the item to move
-        const itemToMove = fromCart.find((item) => item.inventoryItemId === inventoryItemId);
+        const itemToMove = fromCart.find(
+          (item) => item.inventoryItemId === inventoryItemId && item.unitType === unitType
+        );
         if (!itemToMove) return;
 
         // Check if item already exists in destination cart
-        const existingItem = toCart.find((item) => item.inventoryItemId === inventoryItemId);
+        const existingItem = toCart.find(
+          (item) => item.inventoryItemId === inventoryItemId && item.unitType === unitType
+        );
 
         let newToCart: typeof toCart;
         if (existingItem) {
           // Merge quantities if item already exists
           newToCart = toCart.map((item) =>
-            item.inventoryItemId === inventoryItemId
+            item.inventoryItemId === inventoryItemId && item.unitType === unitType
               ? { ...item, quantity: item.quantity + itemToMove.quantity }
               : item
           );
@@ -157,7 +167,9 @@ export const useOrderStore = create<OrderState>()(
         }
 
         // Remove from source cart
-        const newFromCart = fromCart.filter((item) => item.inventoryItemId !== inventoryItemId);
+        const newFromCart = fromCart.filter(
+          (item) => !(item.inventoryItemId === inventoryItemId && item.unitType === unitType)
+        );
 
         set({
           cartByLocation: {
@@ -166,6 +178,38 @@ export const useOrderStore = create<OrderState>()(
             [toLocationId]: newToCart,
           },
         });
+      },
+
+      moveLocationCartItems: (fromLocationId, toLocationId) => {
+        if (fromLocationId === toLocationId) return;
+        const { cartByLocation } = get();
+        const fromCart = cartByLocation[fromLocationId] || [];
+        const toCart = cartByLocation[toLocationId] || [];
+
+        if (fromCart.length === 0) return;
+
+        const mergedMap = new Map<string, CartItem>();
+        const keyFor = (item: CartItem) => `${item.inventoryItemId}-${item.unitType}`;
+
+        toCart.forEach((item) => {
+          mergedMap.set(keyFor(item), { ...item });
+        });
+
+        fromCart.forEach((item) => {
+          const key = keyFor(item);
+          const existing = mergedMap.get(key);
+          if (existing) {
+            existing.quantity += item.quantity;
+          } else {
+            mergedMap.set(key, { ...item });
+          }
+        });
+
+        const nextCartByLocation = { ...cartByLocation };
+        delete nextCartByLocation[fromLocationId];
+        nextCartByLocation[toLocationId] = Array.from(mergedMap.values());
+
+        set({ cartByLocation: nextCartByLocation });
       },
 
       moveAllCartItemsToLocation: (toLocationId) => {

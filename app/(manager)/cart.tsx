@@ -61,6 +61,7 @@ export default function ManagerCartScreen() {
     locationId: string;
     inventoryItemId: string;
     itemName: string;
+    unitType: UnitType;
   } | null>(null);
 
   const cartLocationIds = getCartLocationIds();
@@ -124,11 +125,16 @@ export default function ManagerCartScreen() {
   }, [removeFromCart]);
 
   // Handle opening move modal
-  const handleOpenMoveModal = useCallback((locationId: string, inventoryItemId: string, itemName: string) => {
+  const handleOpenMoveModal = useCallback((
+    locationId: string,
+    inventoryItemId: string,
+    itemName: string,
+    unitType: UnitType
+  ) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    setItemToMove({ locationId, inventoryItemId, itemName });
+    setItemToMove({ locationId, inventoryItemId, itemName, unitType });
     setShowMoveModal(true);
   }, []);
 
@@ -140,7 +146,12 @@ export default function ManagerCartScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
-    moveCartItem(itemToMove.locationId, toLocationId, itemToMove.inventoryItemId);
+    moveCartItem(
+      itemToMove.locationId,
+      toLocationId,
+      itemToMove.inventoryItemId,
+      itemToMove.unitType
+    );
     setShowMoveModal(false);
     setItemToMove(null);
   }, [itemToMove, moveCartItem]);
@@ -315,7 +326,7 @@ export default function ManagerCartScreen() {
                 {/* Move to Another Location Button */}
                 {locations.length > 1 && (
                   <TouchableOpacity
-                    onPress={() => handleOpenMoveModal(locationId, inventoryItem.id, inventoryItem.name)}
+                    onPress={() => handleOpenMoveModal(locationId, inventoryItem.id, inventoryItem.name, unitType)}
                     className="p-2 mr-1"
                   >
                     <Ionicons name="swap-horizontal" size={18} color={colors.primary[500]} />
