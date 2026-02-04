@@ -112,7 +112,19 @@ export default function ManagerLayout() {
         }}
       />
       <Tabs.Screen
+        name="cart"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
         name="export-fish-order"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="fulfillment-confirmation"
         options={{
           href: null,
         }}

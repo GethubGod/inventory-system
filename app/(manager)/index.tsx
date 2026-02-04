@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useAuthStore, useSettingsStore } from '@/store';
+import { useAuthStore, useSettingsStore, useOrderStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { Location } from '@/types';
 import { sendReminderToEmployees } from '@/services/notificationService';
@@ -64,8 +64,10 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 export default function ManagerDashboard() {
-  const { locations, signOut, fetchLocations } = useAuthStore();
+  const { locations, fetchLocations } = useAuthStore();
   const { hapticFeedback } = useSettingsStore();
+  const { getTotalCartCount } = useOrderStore();
+  const cartCount = getTotalCartCount();
   const [stats, setStats] = useState<DashboardStats>({
     pendingOrders: 0,
     todayOrders: 0,
@@ -273,14 +275,6 @@ export default function ManagerDashboard() {
     setShowLocationPicker(false);
   };
 
-  const handleSignOut = async () => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    }
-    await signOut();
-    router.replace('/(auth)/login');
-  };
-
   const handleSendReminderToEmployee = async (employee: EmployeeOrderStatus) => {
     Alert.alert(
       'Send Reminder',
@@ -448,9 +442,19 @@ export default function ManagerDashboard() {
 
             <TouchableOpacity
               className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center"
-              onPress={handleSignOut}
+              onPress={() => router.push('/(manager)/cart')}
             >
-              <Ionicons name="log-out-outline" size={20} color="#6B7280" />
+              <Ionicons name="cart-outline" size={20} color="#6B7280" />
+              {cartCount > 0 && (
+                <View
+                  className="absolute -top-1 -right-1 bg-primary-500 h-5 rounded-full items-center justify-center px-1"
+                  style={{ minWidth: 20 }}
+                >
+                  <Text className="text-white font-bold" style={{ fontSize: 10 }}>
+                    {cartCount > 99 ? '99+' : cartCount}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
         </View>

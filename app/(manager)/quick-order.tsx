@@ -11,13 +11,18 @@ import {
   InputAccessoryView,
   LayoutAnimation,
   UIManager,
+  Modal,
+  ScrollView,
+  KeyboardAvoidingView,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore, useInventoryStore, useOrderStore } from '@/store';
-import { InventoryItem, UnitType, Location } from '@/types';
+import { InventoryItem, UnitType, Location, ItemCategory, SupplierCategory } from '@/types';
 import { colors, CATEGORY_LABELS } from '@/constants';
 
 // Enable LayoutAnimation on Android
@@ -37,6 +42,23 @@ const CATEGORY_EMOJI: Record<string, string> = {
   packaging: '📦',
 };
 
+const QUICK_CREATE_CATEGORIES: ItemCategory[] = [
+  'fish',
+  'protein',
+  'produce',
+  'dry',
+  'dairy_cold',
+  'frozen',
+  'sauces',
+  'packaging',
+];
+
+const QUICK_CREATE_SUPPLIERS: SupplierCategory[] = [
+  'fish_supplier',
+  'main_distributor',
+  'asian_market',
+];
+
 type ScreenState = 'searching' | 'quantity';
 
 const INPUT_ACCESSORY_ID = 'managerQuickOrderInput';
@@ -51,8 +73,9 @@ const getLocationLabel = (location: Location | null): string => {
 };
 
 export default function ManagerQuickOrderScreen() {
-  const { location: defaultLocation, locations } = useAuthStore();
-  const { items, fetchItems } = useInventoryStore();
+  const navigation = useNavigation();
+  const { location: defaultLocation, locations, user } = useAuthStore();
+  const { items, fetchItems, addItem } = useInventoryStore();
   const { addToCart, getTotalCartCount, getLocationCartTotal } = useOrderStore();
 
   // Selected location for ordering
@@ -67,6 +90,16 @@ export default function ManagerQuickOrderScreen() {
   const [selectedUnit, setSelectedUnit] = useState<UnitType>('pack');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+
+  // Quick create state
+  const [showQuickCreate, setShowQuickCreate] = useState(false);
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemCategory, setNewItemCategory] = useState<ItemCategory>('produce');
+  const [newItemSupplier, setNewItemSupplier] = useState<SupplierCategory>('main_distributor');
+  const [newItemBaseUnit, setNewItemBaseUnit] = useState('lb');
+  const [newItemPackUnit, setNewItemPackUnit] = useState('case');
+  const [newItemPackSize, setNewItemPackSize] = useState('1');
+  const [isCreatingItem, setIsCreatingItem] = useState(false);
 
   // Keyboard state
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -99,6 +132,14 @@ export default function ManagerQuickOrderScreen() {
     fetchItems();
   }, []);
 
+  // Focus search input immediately on mount
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Keyboard listeners
   useEffect(() => {
     const showSub = Keyboard.addListener(
@@ -121,6 +162,19 @@ export default function ManagerQuickOrderScreen() {
       hideSub.remove();
     };
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+        if (e.data.action?.type === 'GO_BACK') {
+          e.preventDefault();
+          router.replace('/(manager)');
+        }
+      });
+
+      return unsubscribe;
+    }, [navigation])
+  );
 
   // Total cart count
   const totalCartCount = getTotalCartCount();
@@ -178,6 +232,73 @@ export default function ManagerQuickOrderScreen() {
       }),
     ]).start(() => setShowToast(false));
   }, []);
+
+  const resetQuickCreateForm = useCallback(() => {
+    const defaultName = searchQuery.trim();
+    setNewItemName(defaultName);
+    setNewItemCategory('produce');
+    setNewItemSupplier('main_distributor');
+    setNewItemBaseUnit('lb');
+    setNewItemPackUnit('case');
+    setNewItemPackSize('1');
+  }, [searchQuery]);
+
+  const handleOpenQuickCreate = useCallback(() => {
+    resetQuickCreateForm();
+    setShowQuickCreate(true);
+  }, [resetQuickCreateForm]);
+
+  const handleCreateItem = useCallback(async () => {
+    if (!newItemName.trim()) {
+      Alert.alert('Error', 'Please enter an item name');
+      return;
+    }
+    if (!newItemBaseUnit.trim() || !newItemPackUnit.trim()) {
+      Alert.alert('Error', 'Please enter base and pack units');
+      return;
+    }
+    const packSize = parseFloat(newItemPackSize);
+    if (isNaN(packSize) || packSize <= 0) {
+      Alert.alert('Error', 'Please enter a valid pack size');
+      return;
+    }
+
+    setIsCreatingItem(true);
+    try {
+      await addItem({
+        name: newItemName.trim(),
+        category: newItemCategory,
+        supplier_category: newItemSupplier,
+        base_unit: newItemBaseUnit.trim(),
+        pack_unit: newItemPackUnit.trim(),
+        pack_size: packSize,
+        created_by: user?.id,
+      });
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      setShowQuickCreate(false);
+      setSearchQuery(newItemName.trim());
+      showSuccessToast(`Added ${newItemName.trim()} to inventory`);
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to add item');
+    } finally {
+      setIsCreatingItem(false);
+    }
+  }, [
+    newItemName,
+    newItemCategory,
+    newItemSupplier,
+    newItemBaseUnit,
+    newItemPackUnit,
+    newItemPackSize,
+    addItem,
+    user,
+    showSuccessToast,
+    setSearchQuery,
+  ]);
 
   // Toggle location dropdown
   const toggleLocationDropdown = useCallback(() => {
@@ -307,7 +428,7 @@ export default function ManagerQuickOrderScreen() {
             <TouchableOpacity
               onPress={() => {
                 Keyboard.dismiss();
-                router.push('/cart' as any);
+                router.push('/(manager)/cart');
               }}
               className="flex-row items-center justify-between px-4 py-2 bg-gray-50"
             >
@@ -330,48 +451,54 @@ export default function ManagerQuickOrderScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      {/* Header with Location Selector */}
+      {/* Compact Header with Location Selector */}
       <View className="bg-white border-b border-gray-200">
-        <View className="flex-row items-center px-4 py-3">
-          {/* Title */}
-          <Text className="text-xl font-bold text-gray-900 flex-1">Quick Order</Text>
+        <View className="flex-row items-center px-3 py-2">
+          {/* Back Button */}
+          <TouchableOpacity
+            onPress={() => router.replace('/(manager)')}
+            className="p-2"
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="arrow-back" size={22} color={colors.gray[700]} />
+          </TouchableOpacity>
+
+          {/* Location Dropdown */}
+          <TouchableOpacity
+            onPress={toggleLocationDropdown}
+            className="flex-1 flex-row items-center justify-center mx-2"
+          >
+            <View className="flex-row items-center bg-gray-100 px-3 py-2 rounded-lg">
+              <Ionicons name="location" size={16} color={colors.primary[500]} />
+              <Text className="text-base font-semibold text-gray-900 mx-2">
+                {selectedLocation?.name || 'Select'}
+              </Text>
+              <Ionicons
+                name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
+                size={16}
+                color={colors.gray[500]}
+              />
+            </View>
+          </TouchableOpacity>
 
           {/* Cart Button */}
           <TouchableOpacity
-            onPress={() => router.push('/cart' as any)}
+            onPress={() => router.push('/(manager)/cart')}
             className="p-2 relative"
           >
-            <Ionicons name="cart-outline" size={24} color={colors.gray[700]} />
+            <Ionicons name="cart-outline" size={22} color={colors.gray[700]} />
             {totalCartCount > 0 && (
-              <View className="absolute -top-1 -right-1 bg-primary-500 w-5 h-5 rounded-full items-center justify-center">
-                <Text className="text-white text-xs font-bold">{totalCartCount}</Text>
+              <View
+                className="absolute -top-1 -right-1 bg-primary-500 h-5 rounded-full items-center justify-center px-1"
+                style={{ minWidth: 20 }}
+              >
+                <Text className="text-white text-xs font-bold">
+                  {totalCartCount > 99 ? '99+' : totalCartCount}
+                </Text>
               </View>
             )}
           </TouchableOpacity>
         </View>
-
-        {/* Location Selector Row */}
-        <TouchableOpacity
-          onPress={toggleLocationDropdown}
-          className="flex-row items-center justify-between px-4 py-2 bg-gray-50 border-t border-gray-100"
-        >
-          <View className="flex-row items-center">
-            <Ionicons name="location" size={18} color={colors.primary[500]} />
-            <Text className="text-base font-medium text-gray-700 ml-2">
-              Ordering for:
-            </Text>
-          </View>
-          <View className="flex-row items-center">
-            <Text className="text-base font-semibold text-primary-600 mr-1">
-              {selectedLocation?.name || 'Select Location'}
-            </Text>
-            <Ionicons
-              name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
-              size={18}
-              color={colors.primary[500]}
-            />
-          </View>
-        </TouchableOpacity>
 
         {/* Location Dropdown Menu */}
         {showLocationDropdown && (
@@ -442,6 +569,7 @@ export default function ManagerQuickOrderScreen() {
                       style={{ height: 52 }}
                       autoCapitalize="none"
                       autoCorrect={false}
+                      autoFocus
                       returnKeyType="go"
                       inputAccessoryViewID={Platform.OS === 'ios' ? INPUT_ACCESSORY_ID : undefined}
                     />
@@ -461,7 +589,7 @@ export default function ManagerQuickOrderScreen() {
                     data={filteredItems}
                     keyExtractor={(item) => item.id}
                     renderItem={renderSuggestionItem}
-                    keyboardShouldPersistTaps="handled"
+                    keyboardShouldPersistTaps="always"
                     ItemSeparatorComponent={() => <View className="h-px bg-gray-100" />}
                   />
                 </View>
@@ -471,7 +599,7 @@ export default function ManagerQuickOrderScreen() {
             {/* Empty State */}
             {!searchQuery.trim() && (
               <View className="flex-1 items-center justify-center -mt-16">
-                <Ionicons name="flash-outline" size={56} color={colors.gray[300]} />
+                <Ionicons name="search-outline" size={56} color={colors.gray[300]} />
                 <Text className="text-base font-medium text-gray-500 mt-3">Start typing to search</Text>
                 <Text className="text-sm text-gray-400 mt-1">salmon, avocado, nori...</Text>
               </View>
@@ -483,22 +611,31 @@ export default function ManagerQuickOrderScreen() {
                 <Ionicons name="alert-circle-outline" size={56} color={colors.gray[300]} />
                 <Text className="text-base font-medium text-gray-500 mt-3">No items found</Text>
                 <Text className="text-sm text-gray-400 mt-1">Try a different search term</Text>
+                <TouchableOpacity
+                  onPress={handleOpenQuickCreate}
+                  className="mt-4 bg-primary-500 rounded-full px-4 py-2"
+                  activeOpacity={0.8}
+                >
+                  <Text className="text-white font-semibold text-sm">
+                    Add "{searchQuery.trim()}" to Inventory?
+                  </Text>
+                </TouchableOpacity>
               </View>
             )}
           </>
         ) : (
-          /* Quantity Entry State */
+          /* Quantity Entry State - Compact */
           <View className="flex-1">
             {/* Back button */}
             <TouchableOpacity onPress={handleBackToSearch} className="flex-row items-center mb-3">
               <Ionicons name="arrow-back" size={18} color={colors.gray[600]} />
-              <Text className="text-gray-600 ml-1 text-sm">Back to search</Text>
+              <Text className="text-gray-600 ml-1 text-sm">Back</Text>
             </TouchableOpacity>
 
-            {/* Item Card */}
+            {/* Compact Item Card */}
             {selectedItem && (
               <View className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                {/* Item Info */}
+                {/* Item Info - Compact */}
                 <View className="flex-row items-center mb-4">
                   <Text className="text-2xl mr-3">
                     {CATEGORY_EMOJI[selectedItem.category] || '📦'}
@@ -513,7 +650,7 @@ export default function ManagerQuickOrderScreen() {
                   </View>
                 </View>
 
-                {/* Quantity & Unit Row */}
+                {/* Quantity & Unit Row - Compact */}
                 <View className="flex-row items-center">
                   {/* Quantity Controls */}
                   <View className="flex-row items-center flex-1">
@@ -521,6 +658,7 @@ export default function ManagerQuickOrderScreen() {
                       onPress={() => {
                         const q = Math.max(1, (parseFloat(quantity) || 1) - 1);
                         setQuantity(q.toString());
+                        quantityInputRef.current?.focus();
                       }}
                       className="w-11 h-11 bg-gray-100 rounded-lg items-center justify-center"
                     >
@@ -542,6 +680,7 @@ export default function ManagerQuickOrderScreen() {
                       onPress={() => {
                         const q = (parseFloat(quantity) || 0) + 1;
                         setQuantity(q.toString());
+                        quantityInputRef.current?.focus();
                       }}
                       className="w-11 h-11 bg-gray-100 rounded-lg items-center justify-center"
                     >
@@ -549,10 +688,13 @@ export default function ManagerQuickOrderScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Unit Toggle */}
+                  {/* Unit Toggle - Compact */}
                   <View className="flex-row ml-3">
                     <TouchableOpacity
-                      onPress={() => setSelectedUnit('pack')}
+                      onPress={() => {
+                        setSelectedUnit('pack');
+                        quantityInputRef.current?.focus();
+                      }}
                       className={`px-4 py-2 rounded-l-lg ${
                         selectedUnit === 'pack' ? 'bg-primary-500' : 'bg-gray-100'
                       }`}
@@ -564,7 +706,10 @@ export default function ManagerQuickOrderScreen() {
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => setSelectedUnit('base')}
+                      onPress={() => {
+                        setSelectedUnit('base');
+                        quantityInputRef.current?.focus();
+                      }}
                       className={`px-4 py-2 rounded-r-lg ${
                         selectedUnit === 'base' ? 'bg-primary-500' : 'bg-gray-100'
                       }`}
@@ -582,6 +727,148 @@ export default function ManagerQuickOrderScreen() {
           </View>
         )}
       </View>
+
+      {/* Quick Create Modal */}
+      <Modal
+        visible={showQuickCreate}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowQuickCreate(false)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="flex-1"
+          >
+            <View className="bg-white px-4 py-4 border-b border-gray-200 flex-row items-center justify-between">
+              <TouchableOpacity onPress={() => setShowQuickCreate(false)}>
+                <Text className="text-primary-500 font-medium">Cancel</Text>
+              </TouchableOpacity>
+              <Text className="text-lg font-bold text-gray-900">Add Item</Text>
+              <View style={{ width: 60 }} />
+            </View>
+
+            <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
+              <View className="mb-4">
+                <Text className="text-sm font-medium text-gray-700 mb-2">Item Name *</Text>
+                <TextInput
+                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                  value={newItemName}
+                  onChangeText={setNewItemName}
+                  placeholder="e.g., Salmon (Sushi Grade)"
+                  placeholderTextColor="#9CA3AF"
+                  autoCapitalize="words"
+                />
+              </View>
+
+              <View className="mb-4">
+                <Text className="text-sm font-medium text-gray-700 mb-2">Category *</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {QUICK_CREATE_CATEGORIES.map((cat) => {
+                    const isSelected = newItemCategory === cat;
+                    return (
+                      <TouchableOpacity
+                        key={cat}
+                        className={`px-3 py-2 rounded-lg ${
+                          isSelected ? 'bg-primary-500' : 'bg-gray-100'
+                        }`}
+                        onPress={() => setNewItemCategory(cat)}
+                      >
+                        <Text className={`text-sm font-medium ${
+                          isSelected ? 'text-white' : 'text-gray-700'
+                        }`}>
+                          {CATEGORY_LABELS[cat] || cat}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View className="mb-4">
+                <Text className="text-sm font-medium text-gray-700 mb-2">Supplier *</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {QUICK_CREATE_SUPPLIERS.map((sup) => {
+                    const isSelected = newItemSupplier === sup;
+                    return (
+                      <TouchableOpacity
+                        key={sup}
+                        className={`px-3 py-2 rounded-lg ${
+                          isSelected ? 'bg-primary-500' : 'bg-gray-100'
+                        }`}
+                        onPress={() => setNewItemSupplier(sup)}
+                      >
+                        <Text className={`text-sm font-medium ${
+                          isSelected ? 'text-white' : 'text-gray-700'
+                        }`}>
+                          {sup === 'fish_supplier' ? 'Fish Supplier' : sup === 'asian_market' ? 'Asian Market' : 'Main Distributor'}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View className="flex-row gap-3 mb-4">
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">Base Unit *</Text>
+                  <TextInput
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                    value={newItemBaseUnit}
+                    onChangeText={setNewItemBaseUnit}
+                    placeholder="e.g., lb"
+                    placeholderTextColor="#9CA3AF"
+                    autoCapitalize="none"
+                  />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-medium text-gray-700 mb-2">Pack Unit *</Text>
+                  <TextInput
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                    value={newItemPackUnit}
+                    onChangeText={setNewItemPackUnit}
+                    placeholder="e.g., case"
+                    placeholderTextColor="#9CA3AF"
+                    autoCapitalize="none"
+                  />
+                </View>
+              </View>
+
+              <View className="mb-6">
+                <Text className="text-sm font-medium text-gray-700 mb-2">Pack Size *</Text>
+                <View className="flex-row items-center">
+                  <TextInput
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 w-24"
+                    value={newItemPackSize}
+                    onChangeText={setNewItemPackSize}
+                    placeholder="1"
+                    placeholderTextColor="#9CA3AF"
+                    keyboardType="decimal-pad"
+                  />
+                  <Text className="text-gray-500 ml-3">
+                    {newItemBaseUnit || 'units'} per {newItemPackUnit || 'pack'}
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View className="bg-white border-t border-gray-200 px-4 py-4">
+              <TouchableOpacity
+                className={`rounded-xl py-4 items-center flex-row justify-center ${
+                  isCreatingItem ? 'bg-primary-300' : 'bg-primary-500'
+                }`}
+                onPress={handleCreateItem}
+                disabled={isCreatingItem}
+              >
+                <Ionicons name="add-circle" size={20} color="white" />
+                <Text className="text-white font-bold text-lg ml-2">
+                  {isCreatingItem ? 'Adding...' : 'Add Item'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
 
       {/* Android: Add to Cart button above keyboard */}
       {Platform.OS === 'android' && isKeyboardVisible && screenState === 'quantity' && selectedItem && (
@@ -617,7 +904,7 @@ export default function ManagerQuickOrderScreen() {
           style={{
             opacity: toastOpacity,
             position: 'absolute',
-            top: 120,
+            top: 80,
             left: 20,
             right: 20,
           }}

@@ -8,12 +8,11 @@ import {
   Alert,
   Platform,
   TextInput,
-  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import * as Clipboard from 'expo-clipboard';
 import { useAuthStore, useOrderStore, useFulfillmentStore } from '@/store';
 import { colors, CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS } from '@/constants';
 import { OrderWithDetails, InventoryItem, SupplierCategory, ItemCategory } from '@/types';
@@ -31,7 +30,7 @@ interface AggregatedItem {
     locationName: string;
     shortCode: string;
     quantity: number;
-    orderedBy: string;
+    orderedBy: string[];
   }>;
   orderIds: string[];
 }
@@ -72,7 +71,6 @@ export default function FulfillmentScreen() {
   const [expandedSuppliers, setExpandedSuppliers] = useState<Set<SupplierCategory>>(
     new Set(['fish_supplier', 'main_distributor', 'asian_market'])
   );
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [isFulfilling, setIsFulfilling] = useState(false);
   const [editedQuantities, setEditedQuantities] = useState<Record<string, number>>({});
 
@@ -150,13 +148,17 @@ export default function FulfillmentScreen() {
           );
           if (locationEntry) {
             locationEntry.quantity += orderItem.quantity;
+            const orderedByName = order.user?.name || 'Unknown';
+            if (!locationEntry.orderedBy.includes(orderedByName)) {
+              locationEntry.orderedBy.push(orderedByName);
+            }
           } else {
             existing.locationBreakdown.push({
               locationId: order.location_id,
               locationName: order.location?.name || 'Unknown',
               shortCode: order.location?.short_code || '??',
               quantity: orderItem.quantity,
-              orderedBy: order.user?.name || 'Unknown',
+              orderedBy: [order.user?.name || 'Unknown'],
             });
           }
         } else {
@@ -171,7 +173,7 @@ export default function FulfillmentScreen() {
                 locationName: order.location?.name || 'Unknown',
                 shortCode: order.location?.short_code || '??',
                 quantity: orderItem.quantity,
-                orderedBy: order.user?.name || 'Unknown',
+                orderedBy: [order.user?.name || 'Unknown'],
               },
             ],
             orderIds: [order.id],
@@ -262,20 +264,6 @@ export default function FulfillmentScreen() {
     });
   }, []);
 
-  // Toggle category expansion within supplier
-  const toggleCategory = useCallback((supplierCategory: SupplierCategory, category: ItemCategory) => {
-    const key = `${supplierCategory}-${category}`;
-    setExpandedCategories((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(key)) {
-        newSet.delete(key);
-      } else {
-        newSet.add(key);
-      }
-      return newSet;
-    });
-  }, []);
-
   // Handle toggle check
   const handleToggleCheck = useCallback((item: AggregatedItem) => {
     if (Platform.OS !== 'web') {
@@ -297,94 +285,57 @@ export default function FulfillmentScreen() {
     return editedQuantities[item.aggregateKey] ?? item.totalQuantity;
   }, [editedQuantities]);
 
-  // Generate export message for a supplier
-  const generateExportMessage = useCallback((supplierGroup: SupplierGroup) => {
-    const today = new Date().toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
-
-    let message = `Hi, I'd like to place an order:\n\n`;
-    message += `ORDER - Babytuna\n`;
-    message += `Supplier: ${SUPPLIER_CATEGORY_LABELS[supplierGroup.supplierCategory]}\n`;
-    message += `Date: ${today}\n\n`;
-
-    const printableCategories = supplierGroup.categoryGroups
-      .map((categoryGroup) => {
-        const lines = categoryGroup.items
-          .map((item) => {
-            const qty = getDisplayQuantity(item);
-            if (qty <= 0) return null;
-            const unitLabel = item.unitType === 'pack'
-              ? item.inventoryItem.pack_unit
-              : item.inventoryItem.base_unit;
-            return `- ${item.inventoryItem.name}: ${qty} ${unitLabel}`;
-          })
-          .filter(Boolean) as string[];
+  const buildConfirmationItems = useCallback((supplierGroup: SupplierGroup) => {
+    const items = supplierGroup.categoryGroups.flatMap((categoryGroup) => {
+      return categoryGroup.items.map((item) => {
+        const qty = getDisplayQuantity(item);
+        if (qty <= 0) return null;
+        const unitLabel = item.unitType === 'pack'
+          ? item.inventoryItem.pack_unit
+          : item.inventoryItem.base_unit;
         return {
-          label: CATEGORY_LABELS[categoryGroup.category] || categoryGroup.category,
-          lines,
+          id: item.aggregateKey,
+          name: item.inventoryItem.name,
+          quantity: qty,
+          unitLabel,
+          details: item.locationBreakdown.map((loc) => ({
+            locationName: loc.locationName,
+            orderedBy: loc.orderedBy.length > 0 ? loc.orderedBy.join(', ') : 'Unknown',
+            quantity: loc.quantity,
+            shortCode: loc.shortCode,
+          })),
         };
-      })
-      .filter((category) => category.lines.length > 0);
+      }).filter(Boolean);
+    }).filter(Boolean) as Array<{
+      id: string;
+      name: string;
+      quantity: number;
+      unitLabel: string;
+      details: Array<{ locationName: string; orderedBy: string; quantity: number; shortCode: string }>;
+    }>;
 
-    if (printableCategories.length === 0) {
-      message += 'No items ready to order yet.\n\n';
-    } else {
-      printableCategories.forEach((category) => {
-        message += `${category.label}:\n`;
-        category.lines.forEach((line) => {
-          message += `${line}\n`;
-        });
-        message += '\n';
-      });
-    }
-
-    message += `Please confirm availability.\nThank you!`;
-
-    return message;
+    return items;
   }, [getDisplayQuantity]);
 
-  // Handle export for supplier
-  const handleExport = useCallback(async (supplierGroup: SupplierGroup) => {
+  const handleSend = useCallback((supplierGroup: SupplierGroup) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    const message = generateExportMessage(supplierGroup);
+    const items = buildConfirmationItems(supplierGroup);
+    if (items.length === 0) {
+      Alert.alert('Nothing to Send', 'All quantities are set to zero.');
+      return;
+    }
 
-    Alert.alert(
-      'Export Order',
-      'Choose an action',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Copy to Clipboard',
-          onPress: async () => {
-            await Clipboard.setStringAsync(message);
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }
-            Alert.alert('Copied!', 'Order copied to clipboard');
-          },
-        },
-        {
-          text: 'Share',
-          onPress: async () => {
-            try {
-              await Share.share({
-                message,
-                title: `${SUPPLIER_CATEGORY_LABELS[supplierGroup.supplierCategory]} Order`,
-              });
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to share');
-            }
-          },
-        },
-      ]
-    );
-  }, [generateExportMessage]);
+    router.push({
+      pathname: '/(manager)/fulfillment-confirmation',
+      params: {
+        supplier: supplierGroup.supplierCategory,
+        items: encodeURIComponent(JSON.stringify(items)),
+      },
+    } as any);
+  }, [buildConfirmationItems]);
 
   // Handle mark orders fulfilled
   const handleMarkFulfilled = useCallback(async () => {
@@ -534,36 +485,22 @@ export default function FulfillmentScreen() {
     categoryGroup: CategoryGroup
   ) => {
     const key = `${supplierCategory}-${categoryGroup.category}`;
-    const isExpanded = expandedCategories.has(key);
     const label = CATEGORY_LABELS[categoryGroup.category] || categoryGroup.category;
 
     return (
       <View key={key} className="mb-2">
-        <TouchableOpacity
-          className="flex-row items-center justify-between py-2 px-2 bg-gray-50 rounded-t-lg"
-          onPress={() => toggleCategory(supplierCategory, categoryGroup.category)}
-          activeOpacity={0.7}
-        >
-          <View className="flex-row items-center">
-            <Ionicons
-              name={isExpanded ? 'chevron-down' : 'chevron-forward'}
-              size={16}
-              color={colors.gray[500]}
-            />
-            <Text className="text-xs font-bold text-gray-500 uppercase tracking-wide ml-1">
-              {label} ({categoryGroup.items.length})
-            </Text>
-          </View>
-        </TouchableOpacity>
+        <View className="flex-row items-center justify-between py-2 px-2 bg-gray-50 rounded-t-lg">
+          <Text className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+            {label} ({categoryGroup.items.length})
+          </Text>
+        </View>
 
-        {isExpanded && (
-          <View className="bg-white rounded-b-lg border border-gray-200 border-t-0 overflow-hidden">
-            {categoryGroup.items.map((item) => renderItem(item, true))}
-          </View>
-        )}
+        <View className="bg-white rounded-b-lg border border-gray-200 border-t-0 overflow-hidden">
+          {categoryGroup.items.map((item) => renderItem(item, true))}
+        </View>
       </View>
     );
-  }, [expandedCategories, toggleCategory, renderItem]);
+  }, [renderItem]);
 
   // Render supplier section
   const renderSupplierSection = useCallback((supplierGroup: SupplierGroup) => {
@@ -591,15 +528,15 @@ export default function FulfillmentScreen() {
           </View>
 
           <View className="flex-row items-center">
-            {/* Export Button */}
+            {/* Send Button */}
             <TouchableOpacity
               onPress={(e) => {
                 e.stopPropagation();
-                handleExport(supplierGroup);
+                handleSend(supplierGroup);
               }}
-              className="mr-3 p-2 bg-white rounded-lg"
+              className="mr-3 px-3 py-1.5 bg-white rounded-lg border border-gray-200"
             >
-              <Ionicons name="share-outline" size={18} color={colors.gray[600]} />
+              <Text className="text-xs font-semibold text-gray-700">Send</Text>
             </TouchableOpacity>
 
             <Ionicons
@@ -620,16 +557,13 @@ export default function FulfillmentScreen() {
         )}
       </View>
     );
-  }, [expandedSuppliers, toggleSupplier, handleExport, renderCategorySection]);
+  }, [expandedSuppliers, toggleSupplier, handleSend, renderCategorySection]);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Header */}
-      <View className="bg-white px-5 py-4 border-b border-gray-100">
-        <Text className="text-2xl font-bold text-gray-900">Fulfillment</Text>
-        <Text className="text-sm text-gray-500 mt-1">
-          Grouped by supplier, then category
-        </Text>
+      <View className="bg-white px-4 py-3 border-b border-gray-100">
+        <Text className="text-xl font-bold text-gray-900">Fulfillment</Text>
       </View>
 
       {/* Content */}
@@ -655,29 +589,6 @@ export default function FulfillmentScreen() {
           </View>
         ) : (
           <>
-            {/* Progress Summary */}
-            <View className="bg-white rounded-xl p-4 mb-4 border border-gray-200">
-              <View className="flex-row items-center justify-between">
-                <View>
-                  <Text className="text-sm text-gray-500">Items Checked</Text>
-                  <Text className="text-2xl font-bold text-gray-900">
-                    {checkedCount} / {allItems.length}
-                  </Text>
-                </View>
-                <View className="w-16 h-16 rounded-full border-4 border-gray-200 items-center justify-center"
-                  style={{
-                    borderColor: allChecked ? '#22C55E' : checkedCount > 0 ? '#F97316' : '#E5E7EB',
-                  }}
-                >
-                  <Text className="text-lg font-bold" style={{
-                    color: allChecked ? '#22C55E' : checkedCount > 0 ? '#F97316' : '#9CA3AF',
-                  }}>
-                    {allItems.length > 0 ? Math.round((checkedCount / allItems.length) * 100) : 0}%
-                  </Text>
-                </View>
-              </View>
-            </View>
-
             {/* Supplier Groups */}
             {supplierGroups.map((group) => renderSupplierSection(group))}
           </>
