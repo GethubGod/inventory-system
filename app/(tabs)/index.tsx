@@ -36,6 +36,7 @@ const categories: ItemCategory[] = [
   'dairy_cold',
   'frozen',
   'sauces',
+  'alcohol',
   'packaging',
 ];
 
@@ -47,6 +48,7 @@ const CATEGORY_ICONS: Record<ItemCategory, keyof typeof Ionicons.glyphMap> = {
   dairy_cold: 'thermometer-outline',
   frozen: 'snow-outline',
   sauces: 'water-outline',
+  alcohol: 'wine-outline',
   packaging: 'archive-outline',
 };
 

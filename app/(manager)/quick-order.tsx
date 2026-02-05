@@ -39,6 +39,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
   dairy_cold: '🧊',
   frozen: '❄️',
   sauces: '🍶',
+  alcohol: '🍺',
   packaging: '📦',
 };
 
@@ -50,6 +51,7 @@ const QUICK_CREATE_CATEGORIES: ItemCategory[] = [
   'dairy_cold',
   'frozen',
   'sauces',
+  'alcohol',
   'packaging',
 ];
 

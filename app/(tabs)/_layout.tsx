@@ -1,10 +1,11 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useOrderStore, useDraftStore } from '@/store';
+import { useOrderStore, useDraftStore, useStockStore } from '@/store';
 
 export default function TabsLayout() {
   const cartTotal = useOrderStore((state) => state.getCartTotal());
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
+  const pendingStockCount = useStockStore((state) => state.pendingUpdates.length);
 
   return (
     <Tabs
@@ -79,6 +80,12 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="hardware-chip-outline" size={size} color={color} />
           ),
+          tabBarBadge: pendingStockCount > 0 ? pendingStockCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#F97316',
+            color: '#FFFFFF',
+            fontSize: 10,
+          },
         }}
       />
 

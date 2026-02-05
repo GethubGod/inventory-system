@@ -100,6 +100,7 @@ export const categoryColors: Record<string, string> = {
   frozen: '#06B6D4',
   sauces: '#EC4899',
   packaging: '#6B7280',
+  alcohol: '#7C3AED',
 } as const;
 
 // Status colors for orders

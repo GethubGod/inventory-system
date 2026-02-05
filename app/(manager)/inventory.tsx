@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,10 +15,21 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useInventoryStore, useAuthStore } from '@/store';
-import { InventoryItem, ItemCategory, SupplierCategory } from '@/types';
+import { useInventoryStore, useAuthStore, useStockStore } from '@/store';
+import {
+  InventoryItem,
+  ItemCategory,
+  SupplierCategory,
+  Location,
+  StorageAreaWithStatus,
+  AreaItemWithDetails,
+  CheckFrequency,
+} from '@/types';
 import { CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS, categoryColors, colors } from '@/constants';
 import { SpinningFish } from '@/components';
+import { supabase } from '@/lib/supabase';
+import { getCheckStatus, getStockLevel } from '@/store/stock.store';
+import { useStockNetworkStatus } from '@/hooks';
 
 const categories: ItemCategory[] = [
   'fish',
@@ -28,6 +39,7 @@ const categories: ItemCategory[] = [
   'dairy_cold',
   'frozen',
   'sauces',
+  'alcohol',
   'packaging',
 ];
 
@@ -36,6 +48,25 @@ const supplierCategories: SupplierCategory[] = [
   'main_distributor',
   'asian_market',
 ];
+
+const CATEGORY_EMOJI: Record<ItemCategory, string> = {
+  fish: '🐟',
+  protein: '🥩',
+  produce: '🥬',
+  dry: '🍚',
+  dairy_cold: '🧊',
+  frozen: '❄️',
+  sauces: '🍶',
+  alcohol: '🍺',
+  packaging: '📦',
+};
+
+const CHECK_FREQUENCY_LABELS: Record<CheckFrequency, string> = {
+  daily: 'Daily check required',
+  every_2_days: 'Every 2 days',
+  every_3_days: 'Every 3 days',
+  weekly: 'Weekly check required',
+};
 
 interface NewItemForm {
   name: string;
@@ -67,8 +98,30 @@ interface ParsedBulkItem {
   error?: string;
 }
 
+interface StockAreaWithLocation extends StorageAreaWithStatus {
+  location: Location;
+}
+
+interface StockItemWithArea extends AreaItemWithDetails {
+  area: StockAreaWithLocation;
+  location: Location;
+}
+
+const getRelativeTime = (timestamp: string | null) => {
+  if (!timestamp) return 'Never checked';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return 'Never checked';
+  const diffMs = Date.now() - date.getTime();
+  const hours = Math.round(diffMs / (1000 * 60 * 60));
+  const days = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+};
+
 export default function ManagerInventoryScreen() {
-  const { user } = useAuthStore();
+  const { user, locations } = useAuthStore();
+  const isOnline = useStockStore((state) => state.isOnline);
+  useStockNetworkStatus();
   const {
     fetchItems,
     getFilteredItems,
@@ -93,6 +146,15 @@ export default function ManagerInventoryScreen() {
   const [bulkPackUnit, setBulkPackUnit] = useState('case');
   const [bulkPackSize, setBulkPackSize] = useState('1');
 
+  const [stockLocationFilter, setStockLocationFilter] = useState<string>('all');
+  const [showStockLocationModal, setShowStockLocationModal] = useState(false);
+  const [stockAreas, setStockAreas] = useState<StockAreaWithLocation[]>([]);
+  const [stockItems, setStockItems] = useState<StockItemWithArea[]>([]);
+  const [isStockLoading, setIsStockLoading] = useState(false);
+  const [stockError, setStockError] = useState<string | null>(null);
+  const [showLowSection, setShowLowSection] = useState(false);
+  const [showOkSection, setShowOkSection] = useState(false);
+
   useEffect(() => {
     // Force refresh on mount
     useInventoryStore.setState({ lastFetched: null });
@@ -106,7 +168,108 @@ export default function ManagerInventoryScreen() {
     setRefreshing(false);
   };
 
+  const fetchStockLevels = useCallback(async () => {
+    setIsStockLoading(true);
+    setStockError(null);
+    try {
+      let query = supabase
+        .from('storage_areas')
+        .select(
+          `
+            *,
+            location:locations(*),
+            area_items(
+              *,
+              inventory_item:inventory_items(*)
+            )
+          `
+        )
+        .eq('active', true)
+        .order('sort_order', { ascending: true });
+
+      if (stockLocationFilter !== 'all') {
+        query = query.eq('location_id', stockLocationFilter);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const rawAreas = (data || []) as any[];
+      const nextAreas: StockAreaWithLocation[] = [];
+      const nextItems: StockItemWithArea[] = [];
+
+      rawAreas.forEach((area) => {
+        const location = area.location as Location;
+        const areaItems = (area.area_items || []) as AreaItemWithDetails[];
+        const withStatus: StockAreaWithLocation = {
+          ...area,
+          location,
+          item_count: areaItems.length,
+          check_status: getCheckStatus(area),
+        };
+        nextAreas.push(withStatus);
+
+        areaItems.forEach((item: any) => {
+          nextItems.push({
+            ...item,
+            inventory_item: item.inventory_item,
+            stock_level: getStockLevel(item),
+            area: withStatus,
+            location,
+          });
+        });
+      });
+
+      setStockAreas(nextAreas);
+      setStockItems(nextItems);
+    } catch (err: any) {
+      setStockError(err?.message ?? 'Failed to load stock levels.');
+    } finally {
+      setIsStockLoading(false);
+    }
+  }, [stockLocationFilter]);
+
+  useEffect(() => {
+    fetchStockLevels();
+  }, [fetchStockLevels]);
+
   const filteredItems = getFilteredItems();
+
+  const criticalItems = useMemo(
+    () => stockItems.filter((item) => item.current_quantity < item.min_quantity),
+    [stockItems]
+  );
+
+  const lowItems = useMemo(
+    () =>
+      stockItems.filter(
+        (item) =>
+          item.current_quantity >= item.min_quantity &&
+          item.current_quantity < item.min_quantity * 1.5
+      ),
+    [stockItems]
+  );
+
+  const okItems = useMemo(
+    () => stockItems.filter((item) => item.current_quantity >= item.min_quantity * 1.5),
+    [stockItems]
+  );
+
+  const overdueStations = useMemo(
+    () => stockAreas.filter((area) => area.check_status === 'overdue'),
+    [stockAreas]
+  );
+
+  const sortedCritical = useMemo(() => {
+    return [...criticalItems].sort((a, b) => {
+      const urgencyA = a.current_quantity <= 0 ? 0 : 1;
+      const urgencyB = b.current_quantity <= 0 ? 0 : 1;
+      if (urgencyA !== urgencyB) return urgencyA - urgencyB;
+      const belowA = a.min_quantity > 0 ? (a.min_quantity - a.current_quantity) / a.min_quantity : 0;
+      const belowB = b.min_quantity > 0 ? (b.min_quantity - b.current_quantity) / b.min_quantity : 0;
+      return belowB - belowA;
+    });
+  }, [criticalItems]);
 
   const handleAddItem = useCallback(async () => {
     // Validation
@@ -294,6 +457,318 @@ export default function ManagerInventoryScreen() {
     );
   };
 
+  const stockLocationLabel = useMemo(() => {
+    if (stockLocationFilter === 'all') return 'All Locations';
+    const match = locations.find((loc) => loc.id === stockLocationFilter);
+    return match?.name ?? 'Select Location';
+  }, [stockLocationFilter, locations]);
+
+  const renderStockItem = (item: StockItemWithArea, tone: 'critical' | 'low') => {
+    const reorderQuantity = Math.max(item.max_quantity - item.current_quantity, 0);
+    const showLocation = stockLocationFilter === 'all';
+    return (
+      <View key={item.id} className="rounded-2xl bg-white px-4 py-3 mb-3 border border-gray-100">
+        <View className="flex-row justify-between items-start">
+          <View className="flex-1 pr-3">
+            <View className="flex-row items-center">
+              <Text className="text-lg mr-2">
+                {CATEGORY_EMOJI[item.inventory_item.category] ?? '📦'}
+              </Text>
+              <Text className="text-sm font-semibold text-gray-900">
+                {item.inventory_item.name}
+              </Text>
+            </View>
+            <Text className="text-xs text-gray-500 mt-1">
+              Current: {item.current_quantity} {item.unit_type} • Min: {item.min_quantity} {item.unit_type}
+            </Text>
+            <Text className="text-xs text-gray-400 mt-1">
+              {item.area.name} {showLocation ? `• ${item.location.name}` : ''}
+            </Text>
+          </View>
+          <View className="items-end">
+            <Text className={`text-xs font-semibold ${tone === 'critical' ? 'text-red-600' : 'text-amber-600'}`}>
+              Reorder {reorderQuantity}
+            </Text>
+            <Text className="text-xs text-gray-400 mt-1">
+              {getRelativeTime(item.last_updated_at)}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  const renderStockItemsList = (items: StockItemWithArea[], tone: 'critical' | 'low') => {
+    if (stockLocationFilter !== 'all') {
+      return items.map((item) => renderStockItem(item, tone));
+    }
+
+    const grouped = items.reduce<Record<string, StockItemWithArea[]>>((acc, item) => {
+      const key = item.location.name;
+      acc[key] = acc[key] || [];
+      acc[key].push(item);
+      return acc;
+    }, {});
+
+    return Object.entries(grouped).map(([locationName, groupedItems]) => (
+      <View key={locationName} className="mb-3">
+        <Text className="text-xs font-semibold text-gray-500 mb-2">{locationName}</Text>
+        {groupedItems.map((item) => renderStockItem(item, tone))}
+      </View>
+    ));
+  };
+
+  const renderInventoryHeader = () => (
+    <>
+      <View className="px-4 pt-4">
+        <View className="flex-row items-center justify-between">
+          <Text className="text-lg font-bold text-gray-900">Stock Levels</Text>
+          <View className="flex-row items-center">
+            <TouchableOpacity
+              className="flex-row items-center bg-gray-100 rounded-full px-3 py-1 mr-2"
+              onPress={() => setShowStockLocationModal(true)}
+            >
+              <Ionicons name="location-outline" size={14} color={colors.gray[600]} />
+              <Text className="ml-1 text-xs font-semibold text-gray-600">{stockLocationLabel}</Text>
+              <Ionicons name="chevron-down" size={12} color={colors.gray[500]} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              className="h-8 w-8 rounded-full bg-gray-100 items-center justify-center"
+              onPress={fetchStockLevels}
+            >
+              <Ionicons name="refresh" size={16} color={colors.gray[600]} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {!isOnline && (
+          <View className="mt-3 rounded-2xl bg-amber-100 px-4 py-3">
+            <Text className="text-xs font-semibold text-amber-800">
+              Offline mode - showing last synced stock data.
+            </Text>
+          </View>
+        )}
+
+        {stockError && (
+          <View className="mt-3 rounded-2xl bg-red-50 px-4 py-3">
+            <Text className="text-xs text-red-700">{stockError}</Text>
+          </View>
+        )}
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingVertical: 12 }}
+        >
+          <View className="rounded-2xl bg-red-50 px-4 py-3 mr-3 min-w-[140px]">
+            <Text className="text-xs text-red-600">🔴 Need Reorder</Text>
+            <Text className="text-lg font-bold text-red-700 mt-1">{criticalItems.length}</Text>
+          </View>
+          <View className="rounded-2xl bg-amber-50 px-4 py-3 mr-3 min-w-[140px]">
+            <Text className="text-xs text-amber-600">🟡 Running Low</Text>
+            <Text className="text-lg font-bold text-amber-700 mt-1">{lowItems.length}</Text>
+          </View>
+          <View className="rounded-2xl bg-green-50 px-4 py-3 mr-3 min-w-[140px]">
+            <Text className="text-xs text-green-600">🟢 Well Stocked</Text>
+            <Text className="text-lg font-bold text-green-700 mt-1">{okItems.length}</Text>
+          </View>
+          <View className="rounded-2xl bg-blue-50 px-4 py-3 min-w-[140px]">
+            <Text className="text-xs text-blue-600">📍 Stations Overdue</Text>
+            <Text className="text-lg font-bold text-blue-700 mt-1">{overdueStations.length}</Text>
+          </View>
+        </ScrollView>
+
+        <View className="mt-2">
+          <Text className="text-xs font-semibold text-gray-500 mb-2">
+            NEEDS REORDER ({criticalItems.length})
+          </Text>
+          {isStockLoading ? (
+            <Text className="text-xs text-gray-400">Loading stock levels...</Text>
+          ) : criticalItems.length === 0 ? (
+            <View className="rounded-2xl bg-white px-4 py-4 border border-gray-100">
+              <Text className="text-xs text-gray-500">All items are above minimum levels.</Text>
+            </View>
+          ) : (
+            <>
+              {renderStockItemsList(sortedCritical, 'critical')}
+              <TouchableOpacity
+                className="rounded-full border border-gray-200 py-3 items-center"
+                onPress={() => Alert.alert('Order Draft', 'Order draft creation is coming soon.')}
+              >
+                <Text className="text-sm font-semibold text-gray-600">
+                  Create Order from Suggestions
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+
+        <View className="mt-5">
+          <TouchableOpacity
+            className="flex-row items-center justify-between"
+            onPress={() => setShowLowSection((prev) => !prev)}
+          >
+            <Text className="text-xs font-semibold text-gray-500">
+              RUNNING LOW ({lowItems.length})
+            </Text>
+            <Ionicons
+              name={showLowSection ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={colors.gray[500]}
+            />
+          </TouchableOpacity>
+          {showLowSection && (
+            <View className="mt-3">
+              {lowItems.length === 0 ? (
+                <Text className="text-xs text-gray-400">No low stock items.</Text>
+              ) : (
+                renderStockItemsList(lowItems, 'low')
+              )}
+            </View>
+          )}
+        </View>
+
+        <View className="mt-5">
+          <TouchableOpacity
+            className="flex-row items-center justify-between"
+            onPress={() => setShowOkSection((prev) => !prev)}
+          >
+            <Text className="text-xs font-semibold text-gray-500">
+              WELL STOCKED ({okItems.length})
+            </Text>
+            <Ionicons
+              name={showOkSection ? 'chevron-up' : 'chevron-down'}
+              size={16}
+              color={colors.gray[500]}
+            />
+          </TouchableOpacity>
+          {showOkSection && (
+            <View className="mt-3">
+              {okItems.length === 0 ? (
+                <Text className="text-xs text-gray-400">No items are currently well stocked.</Text>
+              ) : (
+                okItems.map((item) => (
+                  <View key={item.id} className="rounded-2xl bg-white px-4 py-3 mb-3 border border-gray-100">
+                    <Text className="text-sm font-semibold text-gray-900">
+                      {item.inventory_item.name}
+                    </Text>
+                    <Text className="text-xs text-gray-500 mt-1">
+                      {item.current_quantity} {item.unit_type} • {CATEGORY_LABELS[item.inventory_item.category]}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </View>
+          )}
+        </View>
+
+        <View className="mt-6">
+          <Text className="text-xs font-semibold text-gray-500 mb-2">STATION STATUS</Text>
+          {stockAreas.length === 0 ? (
+            <View className="rounded-2xl bg-white px-4 py-4 border border-gray-100">
+              <Text className="text-xs text-gray-500">No stations configured.</Text>
+            </View>
+          ) : (
+            stockAreas.map((area) => (
+              <View
+                key={area.id}
+                className={`rounded-2xl px-4 py-3 mb-3 border ${
+                  area.check_status === 'overdue' ? 'border-red-200 bg-red-50' : 'border-gray-100 bg-white'
+                }`}
+              >
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center">
+                    <Text className="mr-2 text-sm">
+                      {area.check_status === 'overdue'
+                        ? '🔴'
+                        : area.check_status === 'due_soon'
+                        ? '🟡'
+                        : '🟢'}
+                    </Text>
+                    <Text className="text-lg mr-2">{area.icon || '📦'}</Text>
+                    <View>
+                      <Text className="text-sm font-semibold text-gray-900">{area.name}</Text>
+                      <Text className="text-xs text-gray-500">
+                        Last checked: {getRelativeTime(area.last_checked_at)}
+                      </Text>
+                      <Text className="text-xs text-gray-400">
+                        {CHECK_FREQUENCY_LABELS[area.check_frequency]}
+                      </Text>
+                    </View>
+                  </View>
+                  <View className="items-end">
+                    <Text className="text-xs text-gray-500">{area.location.name}</Text>
+                    {area.check_status === 'overdue' && (
+                      <Text className="text-xs font-semibold text-red-600">OVERDUE</Text>
+                    )}
+                  </View>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      </View>
+
+      {/* Search Bar */}
+      <View className="px-4 py-3 bg-white border-b border-gray-200 mt-6">
+        <View className="flex-row items-center bg-gray-100 rounded-xl px-4 py-2">
+          <Ionicons name="search-outline" size={20} color="#9CA3AF" />
+          <TextInput
+            className="flex-1 ml-2 text-gray-900"
+            placeholder="Search inventory..."
+            placeholderTextColor="#9CA3AF"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Category Filter */}
+      <View className="bg-white border-b border-gray-200">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }}
+        >
+          {[null, ...categories].map((category) => {
+            const isSelected = selectedCategory === category;
+            const color = category ? categoryColors[category] : '#F97316';
+            return (
+              <TouchableOpacity
+                key={category || 'all'}
+                className="px-4 py-2 rounded-full mr-2"
+                style={{
+                  backgroundColor: isSelected ? color : color + '20',
+                }}
+                onPress={() => setSelectedCategory(category)}
+              >
+                <Text
+                  style={{ color: isSelected ? '#FFFFFF' : color }}
+                  className="font-medium"
+                >
+                  {category ? CATEGORY_LABELS[category] : 'All'}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* Item Count */}
+      <View className="px-4 py-2 bg-gray-50">
+        <Text className="text-gray-500 text-sm">
+          {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''}
+        </Text>
+      </View>
+    </>
+  );
+
   const CategoryPicker = ({ value, onChange }: { value: ItemCategory; onChange: (v: ItemCategory) => void }) => (
     <View className="flex-row flex-wrap gap-2">
       {categories.map((cat) => {
@@ -364,71 +839,13 @@ export default function ManagerInventoryScreen() {
         </View>
       </View>
 
-      {/* Search Bar */}
-      <View className="px-4 py-3 bg-white border-b border-gray-200">
-        <View className="flex-row items-center bg-gray-100 rounded-xl px-4 py-2">
-          <Ionicons name="search-outline" size={20} color="#9CA3AF" />
-          <TextInput
-            className="flex-1 ml-2 text-gray-900"
-            placeholder="Search inventory..."
-            placeholderTextColor="#9CA3AF"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-
-      {/* Category Filter */}
-      <View className="bg-white border-b border-gray-200">
-        <FlatList
-          horizontal
-          data={[null, ...categories]}
-          keyExtractor={(item) => item || 'all'}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }}
-          renderItem={({ item: category }) => {
-            const isSelected = selectedCategory === category;
-            const color = category ? categoryColors[category] : '#F97316';
-
-            return (
-              <TouchableOpacity
-                className="px-4 py-2 rounded-full mr-2"
-                style={{
-                  backgroundColor: isSelected ? color : color + '20',
-                }}
-                onPress={() => setSelectedCategory(category)}
-              >
-                <Text
-                  style={{ color: isSelected ? '#FFFFFF' : color }}
-                  className="font-medium"
-                >
-                  {category ? CATEGORY_LABELS[category] : 'All'}
-                </Text>
-              </TouchableOpacity>
-            );
-          }}
-        />
-      </View>
-
-      {/* Item Count */}
-      <View className="px-4 py-2 bg-gray-50">
-        <Text className="text-gray-500 text-sm">
-          {filteredItems.length} item{filteredItems.length !== 1 ? 's' : ''}
-        </Text>
-      </View>
-
       {/* Inventory List */}
       <FlatList
         data={filteredItems}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 16 }}
+        contentContainerStyle={{ padding: 16, paddingTop: 0 }}
+        ListHeaderComponent={renderInventoryHeader}
         ListEmptyComponent={() => (
           <View className="flex-1 items-center justify-center py-16">
             <Ionicons name="cube-outline" size={48} color="#D1D5DB" />
@@ -454,6 +871,47 @@ export default function ManagerInventoryScreen() {
           />
         }
       />
+
+      {/* Stock Location Modal */}
+      <Modal
+        visible={showStockLocationModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowStockLocationModal(false)}
+      >
+        <View className="flex-1 bg-black/40 justify-center px-6">
+          <View className="bg-white rounded-2xl p-4">
+            <Text className="text-base font-semibold text-gray-900 mb-3">Select Location</Text>
+            <TouchableOpacity
+              className="py-3"
+              onPress={() => {
+                setStockLocationFilter('all');
+                setShowStockLocationModal(false);
+              }}
+            >
+              <Text className="text-sm text-gray-700">All Locations</Text>
+            </TouchableOpacity>
+            {locations.map((loc) => (
+              <TouchableOpacity
+                key={loc.id}
+                className="py-3"
+                onPress={() => {
+                  setStockLocationFilter(loc.id);
+                  setShowStockLocationModal(false);
+                }}
+              >
+                <Text className="text-sm text-gray-700">{loc.name}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              className="mt-2 py-3 items-center"
+              onPress={() => setShowStockLocationModal(false)}
+            >
+              <Text className="text-sm font-semibold text-primary-500">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Add Item Modal */}
       <Modal

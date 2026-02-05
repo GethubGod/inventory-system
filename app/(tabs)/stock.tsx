@@ -8,6 +8,8 @@ import {
   Animated,
   Alert,
   Linking,
+  Modal,
+  useWindowDimensions,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,7 +18,7 @@ import { useFocusEffect, router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { useAuthStore, useStockStore } from '@/store';
-import { useNfcScanner } from '@/hooks';
+import { useNfcScanner, useStockNetworkStatus } from '@/hooks';
 import { QrScannerModal } from '@/components';
 import { CheckFrequency, StorageAreaWithStatus } from '@/types';
 
@@ -82,11 +84,15 @@ export default function UpdateStockScreen() {
     isLoading,
     error,
     fetchStorageAreas,
+    prefetchAreaItems,
     syncPendingUpdates,
+    lastSyncAt,
   } = useStockStore();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [showBypassModal, setShowBypassModal] = useState(false);
+  const [showSyncToast, setShowSyncToast] = useState(false);
 
   const {
     isSupported,
@@ -99,6 +105,10 @@ export default function UpdateStockScreen() {
   } = useNfcScanner();
 
   const pulse = useRef(new Animated.Value(0)).current;
+  const { height: screenHeight } = useWindowDimensions();
+  const nfcCardHeight = Math.max(320, screenHeight * 0.5);
+
+  useStockNetworkStatus();
 
   const locationLabel = useMemo(
     () => getLocationLabel(location?.name ?? null, location?.short_code ?? null),
@@ -129,9 +139,12 @@ export default function UpdateStockScreen() {
 
   useEffect(() => {
     if (location?.id) {
-      fetchStorageAreas(location.id);
+      fetchStorageAreas(location.id).then(() => {
+        const areaIds = useStockStore.getState().storageAreas.map((area) => area.id);
+        prefetchAreaItems(areaIds);
+      });
     }
-  }, [location?.id, fetchStorageAreas]);
+  }, [location?.id, fetchStorageAreas, prefetchAreaItems]);
 
   useFocusEffect(
     useCallback(() => {
@@ -165,6 +178,23 @@ export default function UpdateStockScreen() {
     stopScanning();
     setShowQrModal(true);
   }, [stopScanning]);
+
+  const handleBypassOpen = useCallback(() => {
+    stopScanning();
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setShowBypassModal(true);
+  }, [stopScanning]);
+
+  const handleBypassSelect = useCallback(
+    (areaId: string) => {
+      setShowBypassModal(false);
+      router.push({
+        pathname: '/stock/[areaId]',
+        params: { areaId, scanMethod: 'manual' },
+      });
+    },
+    [router]
+  );
 
   const handleOpenSettings = useCallback(() => {
     Linking.openSettings();
@@ -225,9 +255,24 @@ export default function UpdateStockScreen() {
   }, [showQrModal, isEnabled, startScanning]);
 
   useEffect(() => {
+    if (!showBypassModal && !showQrModal && isEnabled) {
+      startScanning();
+    }
+  }, [showBypassModal, showQrModal, isEnabled, startScanning]);
+
+  useEffect(() => {
     if (!lastScannedTag) return;
     handleDetectedTag(lastScannedTag);
   }, [lastScannedTag, handleDetectedTag]);
+
+  useEffect(() => {
+    if (!lastSyncAt) return;
+    if (pendingUpdates.length === 0) {
+      setShowSyncToast(true);
+      const timer = setTimeout(() => setShowSyncToast(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [lastSyncAt, pendingUpdates.length]);
 
   const pulseScale = pulse.interpolate({
     inputRange: [0, 1],
@@ -242,7 +287,7 @@ export default function UpdateStockScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{ paddingBottom: 32, flexGrow: 1 }}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
         }
@@ -259,10 +304,10 @@ export default function UpdateStockScreen() {
         )}
 
         {!isSupported && nfcError && (
-          <View className="mx-4 mt-4 rounded-2xl bg-blue-50 px-4 py-3">
-            <Text className="text-sm font-semibold text-blue-700">{nfcError}</Text>
-            <Text className="text-xs text-blue-600 mt-1">
-              Use QR scanning to update stock.
+          <View className="mx-4 mt-4 rounded-full bg-blue-50 px-4 py-2 flex-row items-center">
+            <Ionicons name="information-circle-outline" size={16} color={colors.info} />
+            <Text className="ml-2 text-xs font-semibold text-blue-700">
+              NFC unavailable in Expo Go — use QR.
             </Text>
           </View>
         )}
@@ -307,8 +352,11 @@ export default function UpdateStockScreen() {
         </View>
 
         <View className="px-4 mt-4">
-          <View className="rounded-3xl bg-white px-5 py-6 shadow-sm border border-gray-100">
-            <View className="items-center justify-center">
+          <View
+            className="rounded-3xl bg-white px-5 py-6 shadow-sm border border-gray-100"
+            style={{ minHeight: nfcCardHeight }}
+          >
+            <View className="flex-1 items-center justify-center pt-6">
               <View className="relative items-center justify-center">
                 <Animated.View
                   style={[
@@ -319,9 +367,13 @@ export default function UpdateStockScreen() {
                     },
                   ]}
                 />
-                <View className="h-16 w-16 rounded-2xl bg-orange-100 items-center justify-center">
+                <TouchableOpacity
+                  className="h-16 w-16 rounded-2xl bg-orange-100 items-center justify-center"
+                  onLongPress={handleBypassOpen}
+                  delayLongPress={600}
+                >
                   <Ionicons name="phone-portrait-outline" size={32} color={colors.primary[600]} />
-                </View>
+                </TouchableOpacity>
               </View>
               <Text className="mt-4 text-lg font-semibold text-gray-900">
                 Tap NFC Tag to Start
@@ -329,12 +381,12 @@ export default function UpdateStockScreen() {
               <Text className="mt-1 text-sm text-gray-500 text-center">
                 {isSupported || !nfcError
                   ? 'Hold your phone near the NFC tag at any storage station.'
-                  : 'NFC is not available on this device. Use QR scanning instead.'}
+                  : 'NFC unavailable. Use QR instead.'}
               </Text>
             </View>
 
             <TouchableOpacity
-              className="mt-5 rounded-full border border-orange-200 px-4 py-2 flex-row items-center justify-center"
+              className="mt-6 rounded-full border border-orange-200 px-4 py-2 flex-row items-center justify-center"
               onPress={handleScanQr}
             >
               <Ionicons name="qr-code-outline" size={16} color={colors.primary[600]} />
@@ -424,11 +476,58 @@ export default function UpdateStockScreen() {
           )}
         </View>
       </ScrollView>
+      {showSyncToast && (
+        <View style={styles.syncToast}>
+          <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+          <Text style={styles.syncToastText}>Updates synced</Text>
+        </View>
+      )}
       <QrScannerModal
         visible={showQrModal}
         onClose={() => setShowQrModal(false)}
         onScan={handleDetectedQr}
       />
+      <Modal
+        visible={showBypassModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowBypassModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <View className="flex-row items-center justify-between mb-3">
+              <Text className="text-base font-semibold text-gray-900">Select Station</Text>
+              <TouchableOpacity onPress={() => setShowBypassModal(false)}>
+                <Ionicons name="close" size={20} color={colors.gray[600]} />
+              </TouchableOpacity>
+            </View>
+            <Text className="text-xs text-gray-500 mb-3">
+              Bypass scanning and choose a station manually.
+            </Text>
+            <ScrollView style={{ maxHeight: 320 }}>
+              {storageAreas.length === 0 ? (
+                <Text className="text-sm text-gray-500">No stations available.</Text>
+              ) : (
+                storageAreas.map((area) => (
+                  <TouchableOpacity
+                    key={area.id}
+                    className="py-3 border-b border-gray-100"
+                    onPress={() => handleBypassSelect(area.id)}
+                  >
+                    <View className="flex-row items-center">
+                      <Text className="text-lg mr-2">{area.icon || '📦'}</Text>
+                      <Text className="text-sm font-semibold text-gray-900">{area.name}</Text>
+                    </View>
+                    <Text className="text-xs text-gray-400 mt-1">
+                      Last checked: {formatLastChecked(area.last_checked_at)}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -446,5 +545,35 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 999,
     marginTop: 6,
+  },
+  syncToast: {
+    position: 'absolute',
+    bottom: 24,
+    left: 24,
+    right: 24,
+    backgroundColor: '#16A34A',
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  syncToastText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    maxHeight: '80%',
   },
 });

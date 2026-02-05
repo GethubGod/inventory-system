@@ -48,6 +48,7 @@ interface UpdateItemStockOptions {
 
 interface StockState {
   storageAreas: StorageAreaWithStatus[];
+  areaItemsById: Record<string, AreaItemWithDetails[]>;
   currentAreaItems: AreaItemWithDetails[];
   currentSession: StockCheckSession | null;
   currentAreaId: string | null;
@@ -60,6 +61,7 @@ interface StockState {
 
   fetchStorageAreas: (locationId: string) => Promise<void>;
   fetchAreaItems: (areaId: string) => Promise<void>;
+  prefetchAreaItems: (areaIds: string[]) => Promise<void>;
   startSession: (areaId: string, scanMethod: StockScanMethod) => Promise<void>;
   completeSession: () => Promise<void>;
   abandonSession: () => Promise<void>;
@@ -156,6 +158,7 @@ export const useStockStore = create<StockState>()(
   persist(
     (set, get) => ({
       storageAreas: [],
+      areaItemsById: {},
       currentAreaItems: [],
       currentSession: null,
       currentAreaId: null,
@@ -183,6 +186,20 @@ export const useStockStore = create<StockState>()(
       },
 
       fetchAreaItems: async (areaId) => {
+        const { isOnline, areaItemsById } = get();
+        if (!isOnline) {
+          const cached = areaItemsById[areaId];
+          if (cached) {
+            set({
+              currentAreaItems: cached,
+              currentAreaId: areaId,
+              currentItemIndex: 0,
+              error: 'Offline mode: showing cached data.',
+            });
+            return;
+          }
+        }
+
         set({ isLoading: true, error: null });
         try {
           const items = await getAreaItems(areaId);
@@ -194,11 +211,40 @@ export const useStockStore = create<StockState>()(
             currentAreaItems: withStock,
             currentAreaId: areaId,
             currentItemIndex: 0,
+            areaItemsById: { ...get().areaItemsById, [areaId]: withStock },
           });
         } catch (error: any) {
-          set({ error: error?.message ?? 'Failed to load area items.' });
+          const cached = areaItemsById[areaId];
+          if (cached) {
+            set({
+              currentAreaItems: cached,
+              currentAreaId: areaId,
+              currentItemIndex: 0,
+              error: 'Offline mode: showing cached data.',
+            });
+          } else {
+            set({ error: error?.message ?? 'Failed to load area items.' });
+          }
         } finally {
           set({ isLoading: false });
+        }
+      },
+
+      prefetchAreaItems: async (areaIds) => {
+        if (!get().isOnline || areaIds.length === 0) return;
+        for (const areaId of areaIds) {
+          try {
+            const items = await getAreaItems(areaId);
+            const withStock = items.map((item) => ({
+              ...item,
+              stock_level: getStockLevel(item),
+            }));
+            set((state) => ({
+              areaItemsById: { ...state.areaItemsById, [areaId]: withStock },
+            }));
+          } catch (_) {
+            // Ignore prefetch failures
+          }
         }
       },
 
@@ -335,8 +381,8 @@ export const useStockStore = create<StockState>()(
           createdAt: now,
         };
 
-        set((state) => ({
-          currentAreaItems: state.currentAreaItems.map((entry) =>
+        set((state) => {
+          const updatedItems = state.currentAreaItems.map((entry) =>
             entry.id === areaItemId
               ? {
                   ...entry,
@@ -349,14 +395,19 @@ export const useStockStore = create<StockState>()(
                   }),
                 }
               : entry
-          ),
-          currentSession: state.currentSession
-            ? {
-                ...state.currentSession,
-                items_checked: state.currentSession.items_checked + 1,
-              }
-            : state.currentSession,
-        }));
+          );
+          const areaId = item.area_id;
+          return {
+            currentAreaItems: updatedItems,
+            areaItemsById: { ...state.areaItemsById, [areaId]: updatedItems },
+            currentSession: state.currentSession
+              ? {
+                  ...state.currentSession,
+                  items_checked: state.currentSession.items_checked + 1,
+                }
+              : state.currentSession,
+          };
+        });
 
         if (!isOnline) {
           get().queueUpdate(pendingUpdate);
@@ -508,6 +559,8 @@ export const useStockStore = create<StockState>()(
       name: 'stock-storage',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
+        storageAreas: state.storageAreas,
+        areaItemsById: state.areaItemsById,
         pendingUpdates: state.pendingUpdates,
         lastSyncAt: state.lastSyncAt,
       }),

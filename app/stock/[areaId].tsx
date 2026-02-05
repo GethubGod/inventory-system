@@ -19,6 +19,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, CATEGORY_LABELS } from '@/constants';
 import { useAuthStore, useStockStore } from '@/store';
+import { useStockNetworkStatus } from '@/hooks';
 import { ItemCategory, StockUpdateMethod, QuickSelectValue } from '@/types';
 import { supabase } from '@/lib/supabase';
 
@@ -30,6 +31,7 @@ const CATEGORY_EMOJI: Record<ItemCategory, string> = {
   dairy_cold: '🧊',
   frozen: '❄️',
   sauces: '🍶',
+  alcohol: '🍺',
   packaging: '📦',
 };
 
@@ -91,6 +93,8 @@ export default function StockCountingScreen() {
     currentItemIndex,
     isLoading,
     isOnline,
+    pendingUpdates,
+    currentSession,
     fetchAreaItems,
     startSession,
     updateItemStock,
@@ -111,6 +115,8 @@ export default function StockCountingScreen() {
   const [isSaving, setIsSaving] = useState(false);
 
   const quantityInputRef = useRef<TextInput>(null);
+
+  useStockNetworkStatus();
 
   const area = useMemo(
     () => storageAreas.find((entry) => entry.id === areaId) ?? null,
@@ -231,8 +237,19 @@ export default function StockCountingScreen() {
         });
 
         if (shouldComplete) {
+          const completedAt = new Date().toISOString();
+          const checked = currentSession?.items_checked ?? 0;
+          const skipped = currentSession?.items_skipped ?? 0;
           await completeSession();
-          router.back();
+          router.replace({
+            pathname: '/stock/completion',
+            params: {
+              areaId,
+              checked: String(checked),
+              skipped: String(skipped),
+              completedAt,
+            },
+          });
           return;
         }
 
@@ -257,6 +274,9 @@ export default function StockCountingScreen() {
       isSaving,
       uploadPhoto,
       user?.id,
+      currentSession?.items_checked,
+      currentSession?.items_skipped,
+      areaId,
     ]
   );
 
@@ -338,6 +358,16 @@ export default function StockCountingScreen() {
     ]);
   }, [handleSaveItem, abandonSession]);
 
+  const handleFinishEarly = useCallback(() => {
+    Alert.alert('Finish Early?', 'Finish this session with the items counted so far?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Finish Early',
+        onPress: () => handleSaveItem(false, true),
+      },
+    ]);
+  }, [handleSaveItem]);
+
   if (!areaId) {
     return null;
   }
@@ -378,9 +408,23 @@ export default function StockCountingScreen() {
           </View>
         </View>
 
-        {isLoading || !currentItem ? (
+        {!isOnline && (
+          <View className="mx-4 mt-3 rounded-2xl bg-amber-100 px-4 py-3">
+            <Text className="text-sm font-semibold text-amber-800">
+              Offline mode - {pendingUpdates.length} updates pending
+            </Text>
+          </View>
+        )}
+
+        {isLoading ? (
           <View className="flex-1 items-center justify-center">
             <Text className="text-gray-500">Loading items...</Text>
+          </View>
+        ) : currentAreaItems.length === 0 ? (
+          <View className="flex-1 items-center justify-center px-6">
+            <Text className="text-gray-500 text-center">
+              No items assigned to this station.
+            </Text>
           </View>
         ) : (
           <View className="flex-1 px-4 pb-6">
@@ -510,6 +554,15 @@ export default function StockCountingScreen() {
                 <Image source={{ uri: photoUri }} style={styles.photoPreview} />
               </View>
             ) : null}
+
+            {!isLastItem && (
+              <TouchableOpacity
+                className="mt-3 items-center"
+                onPress={handleFinishEarly}
+              >
+                <Text className="text-sm font-semibold text-gray-500">Finish Early</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               className="mt-6 rounded-full bg-orange-500 py-4 items-center"

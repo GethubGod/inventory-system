@@ -34,6 +34,7 @@ import {
   scheduleReminder,
   cancelReminder,
 } from '@/services/notificationService';
+import { seedStations } from '@/services';
 
 // ============================================
 // PROFILE SECTION
@@ -43,6 +44,25 @@ function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) 
   const { avatarUri, setAvatarUri, hapticFeedback } = useSettingsStore();
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(user?.name || '');
+  const [isSeedingStations, setIsSeedingStations] = useState(false);
+
+  const handleSeedStations = async () => {
+    if (isSeedingStations) return;
+    setIsSeedingStations(true);
+    try {
+      const result = await seedStations();
+      const warningText =
+        result.warnings.length > 0 ? `\n\nWarnings:\n- ${result.warnings.join('\n- ')}` : '';
+      Alert.alert(
+        'Seed Complete',
+        `Created ${result.createdAreas} stations, ${result.createdItems} items, and linked ${result.upsertedLinks} item mappings.${warningText}`
+      );
+    } catch (error: any) {
+      Alert.alert('Seed Failed', error?.message ?? 'Unable to seed stations.');
+    } finally {
+      setIsSeedingStations(false);
+    }
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -182,6 +202,21 @@ function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) 
       >
         <Ionicons name="key-outline" size={18} color={colors.primary[600]} />
         <Text className="text-primary-600 font-semibold ml-2">Change Password</Text>
+      </TouchableOpacity>
+
+      {/* Seed Stations (Temporary) */}
+      <TouchableOpacity
+        onPress={handleSeedStations}
+        disabled={isSeedingStations}
+        className={`mt-3 rounded-xl py-3.5 items-center flex-row justify-center ${
+          isSeedingStations ? 'bg-gray-200' : 'bg-orange-100'
+        }`}
+        activeOpacity={0.7}
+      >
+        <Ionicons name="flask-outline" size={18} color={colors.primary[600]} />
+        <Text className="text-orange-700 font-semibold ml-2">
+          {isSeedingStations ? 'Seeding Stations...' : 'Seed Stations'}
+        </Text>
       </TouchableOpacity>
     </View>
   );

@@ -24,6 +24,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
   dairy_cold: '🧊',
   frozen: '❄️',
   sauces: '🍶',
+  alcohol: '🍺',
   packaging: '📦',
 };
 

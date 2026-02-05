@@ -6,7 +6,8 @@ export type ItemCategory =
   | 'dairy_cold'
   | 'frozen'
   | 'sauces'
-  | 'packaging';
+  | 'packaging'
+  | 'alcohol';
 
 export type SupplierCategory =
   | 'fish_supplier'

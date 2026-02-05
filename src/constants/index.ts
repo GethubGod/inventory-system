@@ -9,6 +9,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   frozen: 'Frozen',
   sauces: 'Sauces',
   packaging: 'Packaging',
+  alcohol: 'Alcohol & Beverages',
 };
 
 export const SUPPLIER_CATEGORY_LABELS: Record<string, string> = {
