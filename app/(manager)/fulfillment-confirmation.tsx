@@ -14,7 +14,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
-import { SUPPLIER_CATEGORY_LABELS, CATEGORY_LABELS, colors } from '@/constants';
+import { SUPPLIER_CATEGORY_LABELS, colors } from '@/constants';
 import { useSettingsStore } from '@/store';
 
 interface ConfirmationDetail {
@@ -24,10 +24,18 @@ interface ConfirmationDetail {
   shortCode?: string;
 }
 
+type LocationGroup = 'sushi' | 'poki';
+
+const LOCATION_GROUP_LABELS: Record<LocationGroup, string> = {
+  sushi: 'Sushi',
+  poki: 'Poki',
+};
+
 interface ConfirmationItem {
   id: string;
   name: string;
   category: string;
+  locationGroup: LocationGroup;
   quantity: number;
   unitLabel: string;
   details: ConfirmationDetail[];
@@ -63,23 +71,27 @@ export default function FulfillmentConfirmationScreen() {
       return 'No items to order.';
     }
 
-    const grouped = items.reduce<Record<string, ConfirmationItem[]>>((acc, item) => {
-      const category = item.category || 'uncategorized';
-      if (!acc[category]) {
-        acc[category] = [];
+    const groupOrder: LocationGroup[] = ['sushi', 'poki'];
+    const grouped = items.reduce<Record<LocationGroup, ConfirmationItem[]>>((acc, item) => {
+      const group = item.locationGroup || 'sushi';
+      if (!acc[group]) {
+        acc[group] = [];
       }
-      acc[category].push(item);
+      acc[group].push(item);
       return acc;
-    }, {});
+    }, { sushi: [], poki: [] });
 
-    return Object.entries(grouped)
-      .map(([category, categoryItems]) => {
-        const label = CATEGORY_LABELS[category] || category;
-        const lines = categoryItems
+    return groupOrder
+      .map((group) => {
+        const groupItems = grouped[group];
+        if (!groupItems || groupItems.length === 0) return null;
+        const label = LOCATION_GROUP_LABELS[group].toUpperCase();
+        const lines = groupItems
           .map((item) => `- ${item.name}: ${item.quantity} ${item.unitLabel}`)
           .join('\n');
-        return `${label}:\n${lines}`;
+        return `--- ${label} ---\n${lines}`;
       })
+      .filter(Boolean)
       .join('\n\n');
   }, [items]);
 
@@ -102,6 +114,17 @@ export default function FulfillmentConfirmationScreen() {
     }, exportFormat.template);
     return filled.replace(/\\n/g, '\n');
   }, [exportFormat.template, formattedItems, supplierLabel]);
+
+  const groupedItems = useMemo(() => {
+    return items.reduce(
+      (acc, item) => {
+        const group = item.locationGroup || 'sushi';
+        acc[group].push(item);
+        return acc;
+      },
+      { sushi: [] as ConfirmationItem[], poki: [] as ConfirmationItem[] }
+    );
+  }, [items]);
 
   const toggleExpand = useCallback((id: string) => {
     setExpandedItems((prev) => {
@@ -223,106 +246,124 @@ export default function FulfillmentConfirmationScreen() {
             <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
               Order Items ({items.length})
             </Text>
-            {items.map((item) => {
-              const isExpanded = expandedItems.has(item.id);
+            {(['sushi', 'poki'] as LocationGroup[]).map((group) => {
+              const groupItems = groupedItems[group];
+              if (!groupItems || groupItems.length === 0) return null;
+              const label = LOCATION_GROUP_LABELS[group].toUpperCase();
+
               return (
-                <View key={item.id} className="bg-white rounded-2xl border border-gray-100 mb-4">
-                  <TouchableOpacity
-                    onPress={() => toggleExpand(item.id)}
-                    className="flex-row items-center px-4 py-3"
-                    activeOpacity={0.7}
-                  >
-                    <View className="flex-1">
-                      <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      <Text className="text-sm text-gray-500 mt-1">
-                        {item.quantity} {item.unitLabel}
-                      </Text>
-                    </View>
-                    <Ionicons
-                      name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={18}
-                      color={colors.gray[400]}
-                    />
-                  </TouchableOpacity>
+                <View key={group} className="mb-6">
+                  <View className="flex-row items-center mb-3">
+                    <View className="flex-1 h-px bg-gray-200" />
+                    <Text className="text-xs font-semibold text-gray-500 uppercase tracking-widest mx-3">
+                      {label}
+                    </Text>
+                    <View className="flex-1 h-px bg-gray-200" />
+                  </View>
 
-                  {isExpanded && (
-                    <View className="px-4 pb-4">
-                      {/* Quantity Controls */}
-                      <View className="flex-row items-center justify-between mb-3">
-                        <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                          Quantity
-                        </Text>
-                        <View className="flex-row items-center">
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              handleQuantityChange(item.id, item.quantity - 1);
-                            }}
-                            className="w-8 h-8 bg-gray-100 rounded-lg items-center justify-center"
-                          >
-                            <Ionicons name="remove" size={16} color={colors.gray[600]} />
-                          </TouchableOpacity>
-
-                          <TextInput
-                            value={item.quantity.toString()}
-                            onChangeText={(text) => {
-                              const num = parseFloat(text) || 1;
-                              handleQuantityChange(item.id, num);
-                            }}
-                            keyboardType="decimal-pad"
-                            className="mx-3 text-center text-base font-semibold text-gray-900 min-w-[60px]"
+                  {groupItems.map((item) => {
+                    const isExpanded = expandedItems.has(item.id);
+                    return (
+                      <View key={item.id} className="bg-white rounded-2xl border border-gray-100 mb-4">
+                        <TouchableOpacity
+                          onPress={() => toggleExpand(item.id)}
+                          className="flex-row items-center px-4 py-3"
+                          activeOpacity={0.7}
+                        >
+                          <View className="flex-1">
+                            <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
+                              {item.name}
+                            </Text>
+                            <Text className="text-sm text-gray-500 mt-1">
+                              {item.quantity} {item.unitLabel}
+                            </Text>
+                          </View>
+                          <Ionicons
+                            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                            size={18}
+                            color={colors.gray[400]}
                           />
+                        </TouchableOpacity>
 
-                          <TouchableOpacity
-                            onPress={(e) => {
-                              e.stopPropagation();
-                              handleQuantityChange(item.id, item.quantity + 1);
-                            }}
-                            className="w-8 h-8 bg-gray-100 rounded-lg items-center justify-center"
-                          >
-                            <Ionicons name="add" size={16} color={colors.gray[600]} />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
+                        {isExpanded && (
+                          <View className="px-4 pb-4">
+                            {/* Quantity Controls */}
+                            <View className="flex-row items-center justify-between mb-3">
+                              <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                                Quantity
+                              </Text>
+                              <View className="flex-row items-center">
+                                <TouchableOpacity
+                                  onPress={(e) => {
+                                    e.stopPropagation();
+                                    handleQuantityChange(item.id, item.quantity - 1);
+                                  }}
+                                  className="w-8 h-8 bg-gray-100 rounded-lg items-center justify-center"
+                                >
+                                  <Ionicons name="remove" size={16} color={colors.gray[600]} />
+                                </TouchableOpacity>
 
-                      {/* Delete */}
-                      <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleDelete(item.id, item.name);
-                        }}
-                        className="flex-row items-center mb-3"
-                      >
-                        <Ionicons name="trash-outline" size={16} color={colors.error} />
-                        <Text className="text-sm text-red-500 font-medium ml-2">Remove Item</Text>
-                      </TouchableOpacity>
+                                <TextInput
+                                  value={item.quantity.toString()}
+                                  onChangeText={(text) => {
+                                    const num = parseFloat(text) || 1;
+                                    handleQuantityChange(item.id, num);
+                                  }}
+                                  keyboardType="decimal-pad"
+                                  className="mx-3 text-center text-base font-semibold text-gray-900 min-w-[60px]"
+                                />
 
-                      {/* Details */}
-                      <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                        Details
-                      </Text>
-                      <View className="bg-gray-50 rounded-xl p-3">
-                        {item.details.length === 0 ? (
-                          <Text className="text-sm text-gray-400">No detail records</Text>
-                        ) : (
-                          item.details.map((detail, index) => (
-                            <View
-                              key={`${item.id}-${index}`}
-                              className={`py-2 ${index < item.details.length - 1 ? 'border-b border-gray-200' : ''}`}
-                            >
-                              <View className="flex-row items-center justify-between">
-                                <Text className="text-sm text-gray-700">{detail.locationName}</Text>
-                                <Text className="text-sm font-medium text-gray-700">{detail.quantity}</Text>
+                                <TouchableOpacity
+                                  onPress={(e) => {
+                                    e.stopPropagation();
+                                    handleQuantityChange(item.id, item.quantity + 1);
+                                  }}
+                                  className="w-8 h-8 bg-gray-100 rounded-lg items-center justify-center"
+                                >
+                                  <Ionicons name="add" size={16} color={colors.gray[600]} />
+                                </TouchableOpacity>
                               </View>
-                              <Text className="text-xs text-gray-500 mt-1">Ordered by {detail.orderedBy}</Text>
                             </View>
-                          ))
+
+                            {/* Delete */}
+                            <TouchableOpacity
+                              onPress={(e) => {
+                                e.stopPropagation();
+                                handleDelete(item.id, item.name);
+                              }}
+                              className="flex-row items-center mb-3"
+                            >
+                              <Ionicons name="trash-outline" size={16} color={colors.error} />
+                              <Text className="text-sm text-red-500 font-medium ml-2">Remove Item</Text>
+                            </TouchableOpacity>
+
+                            {/* Details */}
+                            <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                              Details
+                            </Text>
+                            <View className="bg-gray-50 rounded-xl p-3">
+                              {item.details.length === 0 ? (
+                                <Text className="text-sm text-gray-400">No detail records</Text>
+                              ) : (
+                                item.details.map((detail, index) => (
+                                  <View
+                                    key={`${item.id}-${index}`}
+                                    className={`py-2 ${index < item.details.length - 1 ? 'border-b border-gray-200' : ''}`}
+                                  >
+                                    <View className="flex-row items-center justify-between">
+                                      <Text className="text-sm text-gray-700">{detail.locationName}</Text>
+                                      <Text className="text-sm font-medium text-gray-700">{detail.quantity}</Text>
+                                    </View>
+                                    <Text className="text-xs text-gray-500 mt-1">Ordered by {detail.orderedBy}</Text>
+                                  </View>
+                                ))
+                              )}
+                            </View>
+                          </View>
                         )}
                       </View>
-                    </View>
-                  )}
+                    );
+                  })}
                 </View>
               );
             })}
