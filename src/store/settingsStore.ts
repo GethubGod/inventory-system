@@ -11,10 +11,12 @@ import {
   ReminderSettings,
   Reminder,
   ExportFormatSettings,
+  InventoryView,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_REMINDER_SETTINGS,
   DEFAULT_DISPLAY_SETTINGS,
   DEFAULT_EXPORT_FORMAT_SETTINGS,
+  DEFAULT_INVENTORY_VIEW,
 } from '@/types/settings';
 
 interface SettingsState {
@@ -36,6 +38,7 @@ interface SettingsState {
   // Reminders
   reminders: ReminderSettings;
   exportFormat: ExportFormatSettings;
+  inventoryView: InventoryView;
 
   // Display Actions
   setFontSize: (size: FontSize) => void;
@@ -62,6 +65,7 @@ interface SettingsState {
 
   // Export Format Actions
   setExportFormat: (settings: Partial<ExportFormatSettings>) => void;
+  setInventoryView: (view: InventoryView) => void;
 
   // Reset
   resetDisplayToDefaults: () => void;
@@ -91,6 +95,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       // Export Format - Initial State
       exportFormat: DEFAULT_EXPORT_FORMAT_SETTINGS,
+      inventoryView: DEFAULT_INVENTORY_VIEW,
 
       // Display Actions
       setFontSize: (fontSize) => set({ fontSize }),
@@ -178,6 +183,8 @@ export const useSettingsStore = create<SettingsState>()(
           exportFormat: { ...state.exportFormat, ...settings },
         })),
 
+      setInventoryView: (inventoryView) => set({ inventoryView }),
+
       // Reset Actions
       resetDisplayToDefaults: () =>
         set({
@@ -203,6 +210,7 @@ export const useSettingsStore = create<SettingsState>()(
           notifications: DEFAULT_NOTIFICATION_SETTINGS,
           reminders: DEFAULT_REMINDER_SETTINGS,
           exportFormat: DEFAULT_EXPORT_FORMAT_SETTINGS,
+          inventoryView: DEFAULT_INVENTORY_VIEW,
         }),
     }),
     {

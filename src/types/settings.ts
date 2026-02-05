@@ -6,6 +6,7 @@ export type UIScale = 'compact' | 'default' | 'large';
 export type ButtonSize = 'small' | 'medium' | 'large';
 export type Theme = 'light' | 'system' | 'dark';
 export type RepeatType = 'daily' | 'weekly' | 'custom';
+export type InventoryView = 'list' | 'compact';
 
 export interface QuietHours {
   enabled: boolean;
@@ -85,6 +86,8 @@ export const DEFAULT_EXPORT_FORMAT_SETTINGS: ExportFormatSettings = {
   template:
     "Hi, I'd like to place an order:\n\nORDER - Babytuna\nSupplier: {{supplier}}\nDate: {{date}}\n\n{{items}}\n\nPlease confirm availability.\nThank you!",
 };
+
+export const DEFAULT_INVENTORY_VIEW: InventoryView = 'list';
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   fontSize: 'normal',

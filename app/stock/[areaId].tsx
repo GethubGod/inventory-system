@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
+import { StatusBar } from 'expo-status-bar';
 import { colors, CATEGORY_LABELS } from '@/constants';
 import { useAuthStore, useSettingsStore, useStockStore } from '@/store';
 import { useStockNetworkStatus } from '@/hooks';
@@ -386,7 +387,8 @@ export default function StockCountingScreen() {
   const currentSkipCount = currentItem ? skippedItemCounts[currentItem.id] ?? 0 : 0;
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'bottom', 'left', 'right']}>
+      <StatusBar style="dark" />
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -439,10 +441,9 @@ export default function StockCountingScreen() {
               </Text>
             </View>
           ) : (
-            <View className="flex-1 px-4">
-              <View className="flex-1 justify-center">
-                <Animated.View style={{ transform: [{ translateX: slideAnim }] }}>
-                  <View className="rounded-3xl bg-white px-6 py-7 border border-gray-100 shadow-sm">
+            <View className="flex-1 px-4 pb-4">
+              <Animated.View style={{ transform: [{ translateX: slideAnim }], flex: 1 }}>
+                <View className="flex-1 mt-4 rounded-3xl bg-white px-6 py-6 border border-gray-100 shadow-sm">
                   <View className="items-center">
                     <Text className="text-5xl">
                       {CATEGORY_EMOJI[currentItem.inventory_item.category] ?? '📦'}
@@ -461,28 +462,7 @@ export default function StockCountingScreen() {
                       </View>
                     ) : null}
 
-                    <View className="mt-4 w-full rounded-2xl border border-gray-200 overflow-hidden">
-                      <View className="flex-row">
-                        <View className="flex-1 items-center py-2 border-r border-gray-200">
-                          <Text className="text-xs text-gray-500">Min</Text>
-                          <Text className="text-sm font-semibold text-gray-900">
-                            {currentItem.min_quantity} {currentItem.unit_type}
-                          </Text>
-                        </View>
-                        <View className="flex-1 items-center py-2">
-                          <Text className="text-xs text-gray-500">Max</Text>
-                          <Text className="text-sm font-semibold text-gray-900">
-                            {currentItem.max_quantity} {currentItem.unit_type}
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-
-                    <Text className="mt-3 text-xs text-gray-400 text-center">
-                      Last count: {currentItem.current_quantity} {currentItem.unit_type} •{' '}
-                      {getRelativeTimeLabel(currentItem.last_updated_at)}
-                      {currentItem.last_updated_by ? ' by team member' : ''}
-                    </Text>
+                    <View className="mt-2" />
                   </View>
 
                   <View className="my-5 h-px bg-gray-200" />
@@ -526,65 +506,64 @@ export default function StockCountingScreen() {
                       </TouchableOpacity>
                     </View>
                   </View>
+
+                  <View className="mt-auto pt-5">
+                    <View className="flex-row items-center justify-between">
+                      <TouchableOpacity
+                        className="flex-1 rounded-full border border-gray-200 py-3 mr-2 items-center"
+                        onPress={handleSkip}
+                      >
+                        <Text className="text-sm font-semibold text-gray-600">Skip</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        className="flex-1 rounded-full border border-gray-200 py-3 mr-2 items-center"
+                        onPress={handleAddNote}
+                      >
+                        <Text className="text-sm font-semibold text-gray-600">Add Note</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        className="flex-1 rounded-full border border-gray-200 py-3 items-center"
+                        onPress={handlePhoto}
+                      >
+                        <Text className="text-sm font-semibold text-gray-600">📷 Photo</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {note ? (
+                      <View className="mt-3 rounded-2xl bg-blue-50 px-4 py-3">
+                        <Text className="text-xs text-blue-700">Note: {note}</Text>
+                      </View>
+                    ) : null}
+
+                    {photoUri ? (
+                      <View className="mt-3 rounded-2xl bg-white px-4 py-3 border border-gray-100">
+                        <View className="flex-row items-center justify-between">
+                          <Text className="text-xs text-gray-500">Photo attached</Text>
+                          <TouchableOpacity onPress={() => setPhotoUri(null)}>
+                            <Ionicons name="close" size={16} color={colors.gray[400]} />
+                          </TouchableOpacity>
+                        </View>
+                        <Image source={{ uri: photoUri }} style={styles.photoPreview} />
+                      </View>
+                    ) : null}
+
+                    <TouchableOpacity
+                      className="mt-4 rounded-2xl bg-orange-500 py-4 items-center"
+                      onPress={() => handleSaveItem(true, isLastItem)}
+                      disabled={isSaving}
+                    >
+                      <Text className="text-base font-semibold text-white">
+                        {isSaving ? 'Saving...' : isLastItem ? 'Finish' : 'Next Item →'}
+                      </Text>
+                    </TouchableOpacity>
+
+                    <Text className="mt-2 text-xs text-gray-400 text-center">Finish later</Text>
                   </View>
-                </Animated.View>
-              </View>
+                </View>
+              </Animated.View>
             </View>
           )}
         </View>
-
-        {currentAreaItems.length > 0 && !isLoading ? (
-          <View className="border-t border-gray-200 bg-gray-50 px-4 pt-3 pb-4">
-            <View className="flex-row items-center justify-between">
-              <TouchableOpacity
-                className="flex-1 rounded-full border border-gray-200 py-3 mr-2 items-center"
-                onPress={handleSkip}
-              >
-                <Text className="text-sm font-semibold text-gray-600">Skip</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="flex-1 rounded-full border border-gray-200 py-3 mr-2 items-center"
-                onPress={handleAddNote}
-              >
-                <Text className="text-sm font-semibold text-gray-600">Add Note</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="flex-1 rounded-full border border-gray-200 py-3 items-center"
-                onPress={handlePhoto}
-              >
-                <Text className="text-sm font-semibold text-gray-600">📷 Photo</Text>
-              </TouchableOpacity>
-            </View>
-
-            {note ? (
-              <View className="mt-3 rounded-2xl bg-blue-50 px-4 py-3">
-                <Text className="text-xs text-blue-700">Note: {note}</Text>
-              </View>
-            ) : null}
-
-            {photoUri ? (
-              <View className="mt-3 rounded-2xl bg-white px-4 py-3 border border-gray-100">
-                <View className="flex-row items-center justify-between">
-                  <Text className="text-xs text-gray-500">Photo attached</Text>
-                  <TouchableOpacity onPress={() => setPhotoUri(null)}>
-                    <Ionicons name="close" size={16} color={colors.gray[400]} />
-                  </TouchableOpacity>
-                </View>
-                <Image source={{ uri: photoUri }} style={styles.photoPreview} />
-              </View>
-            ) : null}
-
-            <TouchableOpacity
-              className="mt-4 rounded-2xl bg-orange-500 py-4 items-center"
-              onPress={() => handleSaveItem(true, isLastItem)}
-              disabled={isSaving}
-            >
-              <Text className="text-base font-semibold text-white">
-                {isSaving ? 'Saving...' : isLastItem ? 'Finish' : 'Next Item →'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
       </KeyboardAvoidingView>
 
       {showToast && (

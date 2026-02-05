@@ -1,6 +1,9 @@
 import { supabase } from '@/lib/supabase';
 import {
   AreaItemWithDetails,
+  CheckFrequency,
+  InventoryItem,
+  Location,
   StockCheckSession,
   StockScanMethod,
   StockUpdate,
@@ -14,6 +17,25 @@ export interface StorageAreaWithCount extends StorageArea {
 }
 
 export type AreaItemWithInventory = Omit<AreaItemWithDetails, 'stock_level'>;
+
+export interface InventoryWithStock {
+  id: string;
+  inventory_item: InventoryItem;
+  location: Location;
+  area_ids: string[];
+  area_names: string[];
+  areas: {
+    id: string;
+    name: string;
+    check_frequency: CheckFrequency;
+    last_checked_at: string | null;
+  }[];
+  current_quantity: number;
+  min_quantity: number;
+  max_quantity: number;
+  unit_type: string;
+  last_updated_at: string | null;
+}
 
 interface CreateSessionInput {
   area_id: string;
@@ -246,4 +268,101 @@ export async function getStockHistory(
   if (error) throw error;
 
   return (data || []) as StockUpdate[];
+}
+
+export async function getInventoryWithStock(locationId?: string): Promise<InventoryWithStock[]> {
+  let query = supabase
+    .from('area_items')
+    .select(
+      `
+        id,
+        current_quantity,
+        min_quantity,
+        max_quantity,
+        unit_type,
+        last_updated_at,
+        inventory_item:inventory_items(*),
+        area:storage_areas(
+          id,
+          name,
+          location_id,
+          check_frequency,
+          last_checked_at,
+          location:locations(*)
+        )
+      `
+    );
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const rows = (data || []) as any[];
+  const grouped = new Map<string, InventoryWithStock>();
+
+  rows.forEach((row) => {
+    const inventoryItem = row.inventory_item as InventoryItem;
+    const area = row.area as {
+      id: string;
+      name: string;
+      location_id: string;
+      check_frequency: CheckFrequency;
+      last_checked_at: string | null;
+      location: Location;
+    };
+    const key = `${inventoryItem.id}-${area.location_id}`;
+    const current = Number(row.current_quantity ?? 0);
+    const min = Number(row.min_quantity ?? 0);
+    const max = Number(row.max_quantity ?? 0);
+    const unit = row.unit_type || inventoryItem.base_unit || 'each';
+    const lastUpdated = row.last_updated_at as string | null;
+
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        id: key,
+        inventory_item: inventoryItem,
+        location: area.location,
+        area_ids: [area.id],
+        area_names: [area.name],
+        areas: [
+          {
+            id: area.id,
+            name: area.name,
+            check_frequency: area.check_frequency,
+            last_checked_at: area.last_checked_at,
+          },
+        ],
+        current_quantity: current,
+        min_quantity: min,
+        max_quantity: max,
+        unit_type: unit,
+        last_updated_at: lastUpdated ?? null,
+      });
+      return;
+    }
+
+    const existing = grouped.get(key)!;
+    existing.current_quantity += current;
+    existing.min_quantity += min;
+    existing.max_quantity += max;
+    existing.area_ids = Array.from(new Set([...existing.area_ids, area.id]));
+    existing.area_names = Array.from(new Set([...existing.area_names, area.name]));
+    existing.areas = [
+      ...existing.areas,
+      {
+        id: area.id,
+        name: area.name,
+        check_frequency: area.check_frequency,
+        last_checked_at: area.last_checked_at,
+      },
+    ];
+    if (lastUpdated && (!existing.last_updated_at || lastUpdated > existing.last_updated_at)) {
+      existing.last_updated_at = lastUpdated;
+    }
+  });
+
+  const result = Array.from(grouped.values());
+  if (locationId) {
+    return result.filter((item) => item.location.id === locationId);
+  }
+  return result;
 }
