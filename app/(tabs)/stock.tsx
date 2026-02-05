@@ -7,6 +7,7 @@ import {
   RefreshControl,
   Animated,
   Alert,
+  Linking,
   StyleSheet,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,6 +16,8 @@ import { useFocusEffect, router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { useAuthStore, useStockStore } from '@/store';
+import { useNfcScanner } from '@/hooks';
+import { QrScannerModal } from '@/components';
 import { CheckFrequency, StorageAreaWithStatus } from '@/types';
 
 const CHECK_FREQUENCY_LABELS: Record<CheckFrequency, string> = {
@@ -83,7 +86,17 @@ export default function UpdateStockScreen() {
   } = useStockStore();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isListening, setIsListening] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+
+  const {
+    isSupported,
+    isEnabled,
+    isScanning,
+    startScanning,
+    stopScanning,
+    lastScannedTag,
+    error: nfcError,
+  } = useNfcScanner();
 
   const pulse = useRef(new Animated.Value(0)).current;
 
@@ -122,23 +135,16 @@ export default function UpdateStockScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      let isActive = true;
-
       if (location?.id) {
         fetchStorageAreas(location.id);
       }
 
-      if (isActive) {
-        setIsListening(true);
-        // TODO: Initialize NFC listeners using react-native-nfc-manager.
-      }
+      startScanning();
 
       return () => {
-        isActive = false;
-        setIsListening(false);
-        // TODO: Stop NFC listeners and clean up.
+        stopScanning();
       };
-    }, [location?.id, fetchStorageAreas])
+    }, [location?.id, fetchStorageAreas, startScanning, stopScanning])
   );
 
   const onRefresh = useCallback(async () => {
@@ -156,30 +162,40 @@ export default function UpdateStockScreen() {
   }, []);
 
   const handleScanQr = useCallback(() => {
-    Alert.alert(
-      'QR Scan',
-      'QR scanning is not configured yet. Add a QR scanner to enable this flow.'
-    );
+    stopScanning();
+    setShowQrModal(true);
+  }, [stopScanning]);
+
+  const handleOpenSettings = useCallback(() => {
+    Linking.openSettings();
   }, []);
 
   const handleDetectedTag = useCallback(
     async (tagId: string) => {
-      const match = storageAreas.find((area) => area.nfc_tag_id === tagId);
+      const normalized = tagId.toLowerCase();
+      const match = storageAreas.find(
+        (area) => area.nfc_tag_id?.toLowerCase() === normalized
+      );
       if (!match) {
         Alert.alert('Unregistered Tag', 'This NFC tag is not registered.');
+        startScanning();
         return;
       }
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.push({ pathname: '/stock/[areaId]', params: { areaId: match.id } });
+      router.push({
+        pathname: '/stock/[areaId]',
+        params: { areaId: match.id, scanMethod: 'nfc' },
+      });
     },
-    [storageAreas]
+    [storageAreas, startScanning]
   );
 
   const handleDetectedQr = useCallback(
     async (value: string) => {
+      const normalized = value.toLowerCase();
       const match =
-        storageAreas.find((area) => area.qr_code === value) ||
+        storageAreas.find((area) => area.qr_code?.toLowerCase() === normalized) ||
         storageAreas.find((area) => area.id === value);
 
       if (!match) {
@@ -188,7 +204,10 @@ export default function UpdateStockScreen() {
       }
 
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.push({ pathname: '/stock/[areaId]', params: { areaId: match.id } });
+      router.push({
+        pathname: '/stock/[areaId]',
+        params: { areaId: match.id, scanMethod: 'qr' },
+      });
     },
     [storageAreas]
   );
@@ -198,6 +217,17 @@ export default function UpdateStockScreen() {
       syncPendingUpdates();
     }
   }, [isOnline, pendingUpdates.length, syncPendingUpdates]);
+
+  useEffect(() => {
+    if (!showQrModal && isEnabled) {
+      startScanning();
+    }
+  }, [showQrModal, isEnabled, startScanning]);
+
+  useEffect(() => {
+    if (!lastScannedTag) return;
+    handleDetectedTag(lastScannedTag);
+  }, [lastScannedTag, handleDetectedTag]);
 
   const pulseScale = pulse.interpolate({
     inputRange: [0, 1],
@@ -225,6 +255,31 @@ export default function UpdateStockScreen() {
             <Text className="text-xs text-amber-700 mt-1">
               Pending updates: {pendingUpdates.length}
             </Text>
+          </View>
+        )}
+
+        {!isSupported && nfcError && (
+          <View className="mx-4 mt-4 rounded-2xl bg-blue-50 px-4 py-3">
+            <Text className="text-sm font-semibold text-blue-700">{nfcError}</Text>
+            <Text className="text-xs text-blue-600 mt-1">
+              Use QR scanning to update stock.
+            </Text>
+          </View>
+        )}
+
+        {isSupported && !isEnabled && (
+          <View className="mx-4 mt-4 rounded-2xl bg-amber-100 px-4 py-3 flex-row items-center justify-between">
+            <View className="flex-1 pr-3">
+              <Text className="text-sm font-semibold text-amber-800">
+                NFC is turned off. Enable it in Settings to scan tags.
+              </Text>
+            </View>
+            <TouchableOpacity
+              className="rounded-full bg-amber-600 px-3 py-2"
+              onPress={handleOpenSettings}
+            >
+              <Text className="text-xs font-semibold text-white">Open Settings</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -272,7 +327,9 @@ export default function UpdateStockScreen() {
                 Tap NFC Tag to Start
               </Text>
               <Text className="mt-1 text-sm text-gray-500 text-center">
-                Hold your phone near the NFC tag at any storage station.
+                {isSupported || !nfcError
+                  ? 'Hold your phone near the NFC tag at any storage station.'
+                  : 'NFC is not available on this device. Use QR scanning instead.'}
               </Text>
             </View>
 
@@ -292,12 +349,18 @@ export default function UpdateStockScreen() {
           </View>
         </View>
 
+        {nfcError && isSupported && isEnabled && (
+          <View className="mx-4 mt-3 rounded-2xl bg-red-50 px-4 py-3">
+            <Text className="text-xs text-red-700">{nfcError}</Text>
+          </View>
+        )}
+
         <View className="px-4 mt-6">
           <View className="flex-row items-center justify-between mb-2">
             <Text className="text-xs font-semibold text-gray-500 tracking-widest">
               STATION STATUS
             </Text>
-            {isListening && (
+            {isScanning && (
               <View className="flex-row items-center">
                 <View className="h-2 w-2 rounded-full bg-green-500 mr-2" />
                 <Text className="text-xs text-gray-400">Listening for NFC</Text>
@@ -361,6 +424,11 @@ export default function UpdateStockScreen() {
           )}
         </View>
       </ScrollView>
+      <QrScannerModal
+        visible={showQrModal}
+        onClose={() => setShowQrModal(false)}
+        onScan={handleDetectedQr}
+      />
     </SafeAreaView>
   );
 }

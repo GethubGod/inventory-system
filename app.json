@@ -34,7 +34,19 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Camera access is required to scan QR codes."
+        }
+      ],
+      [
+        "react-native-nfc-manager",
+        {
+          "nfcPermission": "NFC access is required to scan tags."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
