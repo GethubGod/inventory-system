@@ -4,6 +4,7 @@ import {
   Text,
   TouchableOpacity,
   TextInput,
+  Animated,
   StyleSheet,
   Alert,
   Modal,
@@ -11,6 +12,7 @@ import {
   Platform,
   Image,
   Linking,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,9 +20,9 @@ import { useLocalSearchParams, router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, CATEGORY_LABELS } from '@/constants';
-import { useAuthStore, useStockStore } from '@/store';
+import { useAuthStore, useSettingsStore, useStockStore } from '@/store';
 import { useStockNetworkStatus } from '@/hooks';
-import { ItemCategory, StockUpdateMethod, QuickSelectValue } from '@/types';
+import { ItemCategory, StockUpdateMethod } from '@/types';
 import { supabase } from '@/lib/supabase';
 
 const CATEGORY_EMOJI: Record<ItemCategory, string> = {
@@ -58,35 +60,13 @@ function toNumber(value: string): number {
   return Math.max(0, numeric);
 }
 
-function getQuickRanges(min: number, max: number, par: number | null) {
-  const safeMin = Math.max(0, Math.round(min));
-  const safeMax = Math.max(safeMin, Math.round(max));
-  const safePar = Math.min(Math.max(par ?? Math.round((safeMin + safeMax) / 2), safeMin), safeMax);
-
-  const lowMax = Math.max(safeMin - 1, 1);
-  const goodMax = Math.max(safeMin, Math.min(safePar, safeMax));
-  const fullMin = Math.min(Math.max(safePar + 1, safeMin), safeMax);
-
-  const formatRange = (start: number, end: number) =>
-    start === end ? `${start}` : `${start}-${end}`;
-
-  return {
-    empty: { label: '0', value: 0 },
-    low: {
-      label: safeMin <= 1 ? '1' : formatRange(1, lowMax),
-      value: safeMin <= 1 ? 1 : lowMax,
-    },
-    good: { label: formatRange(safeMin, goodMax), value: safePar },
-    full: { label: formatRange(fullMin, safeMax), value: safeMax },
-  } as const;
-}
-
 export default function StockCountingScreen() {
   const params = useLocalSearchParams();
   const areaId = Array.isArray(params.areaId) ? params.areaId[0] : params.areaId;
   const scanMethod = parseScanMethod(params.scanMethod);
 
   const { user } = useAuthStore();
+  const { reduceMotion } = useSettingsStore();
   const {
     storageAreas,
     currentAreaItems,
@@ -95,17 +75,16 @@ export default function StockCountingScreen() {
     isOnline,
     pendingUpdates,
     currentSession,
+    skippedItemCounts,
     fetchAreaItems,
     startSession,
     updateItemStock,
     skipItem,
     nextItem,
     completeSession,
-    abandonSession,
   } = useStockStore();
 
   const [quantityValue, setQuantityValue] = useState('0');
-  const [selectedQuick, setSelectedQuick] = useState<QuickSelectValue | null>(null);
   const [note, setNote] = useState<string>('');
   const [noteDraft, setNoteDraft] = useState('');
   const [showNoteModal, setShowNoteModal] = useState(false);
@@ -113,8 +92,13 @@ export default function StockCountingScreen() {
   const [pendingPhotoUri, setPendingPhotoUri] = useState<string | null>(null);
   const [showPhotoPreview, setShowPhotoPreview] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
 
   const quantityInputRef = useRef<TextInput>(null);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const { width: screenWidth } = useWindowDimensions();
 
   useStockNetworkStatus();
 
@@ -141,34 +125,17 @@ export default function StockCountingScreen() {
   useEffect(() => {
     if (!currentItem) return;
     setQuantityValue(String(currentItem.current_quantity ?? 0));
-    setSelectedQuick(null);
     setNote('');
     setNoteDraft('');
     setPhotoUri(null);
   }, [currentItem?.id]);
 
-  const quickRanges = useMemo(() => {
-    if (!currentItem) return null;
-    return getQuickRanges(currentItem.min_quantity, currentItem.max_quantity, currentItem.par_level);
-  }, [currentItem]);
-
-  const handleSelectQuick = useCallback(
-    (key: QuickSelectValue) => {
-      if (!quickRanges) return;
-      setSelectedQuick(key);
-      setQuantityValue(String(quickRanges[key].value));
-    },
-    [quickRanges]
-  );
-
   const handleChangeQuantity = useCallback((value: string) => {
-    setSelectedQuick(null);
-    setQuantityValue(value.replace(/[^0-9.]/g, ''));
+    setQuantityValue(value.replace(/[^0-9]/g, ''));
   }, []);
 
   const handleIncrement = useCallback(
     async (delta: number) => {
-      setSelectedQuick(null);
       const nextValue = toNumber(quantityValue) + delta;
       setQuantityValue(String(Math.max(0, nextValue)));
       await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -184,6 +151,57 @@ export default function StockCountingScreen() {
       });
     });
   }, [quantityValue]);
+
+  useEffect(() => {
+    if (!currentItem) return;
+    const timer = setTimeout(() => {
+      quantityInputRef.current?.focus();
+      handleQuantityFocus();
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [currentItem?.id, handleQuantityFocus]);
+
+  const showInlineToast = useCallback((message: string) => {
+    setToastMessage(message);
+    setShowToast(true);
+    Animated.sequence([
+      Animated.timing(toastOpacity, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+      Animated.delay(900),
+      Animated.timing(toastOpacity, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start(() => setShowToast(false));
+  }, [toastOpacity]);
+
+  const animateToNext = useCallback(
+    (advance: () => void) => {
+      if (reduceMotion) {
+        advance();
+        return;
+      }
+
+      Animated.timing(slideAnim, {
+        toValue: -screenWidth,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        advance();
+        slideAnim.setValue(screenWidth);
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      });
+    },
+    [reduceMotion, screenWidth, slideAnim]
+  );
 
   const uploadPhoto = useCallback(
     async (uri: string, itemId: string) => {
@@ -226,11 +244,9 @@ export default function StockCountingScreen() {
           }
         }
 
-        const method: StockUpdateMethod = selectedQuick ? 'quick_select' : scanMethod;
-        const quickSelectValue = selectedQuick ?? null;
+        const method: StockUpdateMethod = scanMethod;
 
         await updateItemStock(currentItem.id, quantity, method, {
-          quickSelectValue,
           notes: note || null,
           photoUrl,
           updatedBy: user?.id ?? undefined,
@@ -238,7 +254,7 @@ export default function StockCountingScreen() {
 
         if (shouldComplete) {
           const completedAt = new Date().toISOString();
-          const checked = currentSession?.items_checked ?? 0;
+          const checked = (currentSession?.items_checked ?? 0) + 1;
           const skipped = currentSession?.items_skipped ?? 0;
           await completeSession();
           router.replace({
@@ -254,7 +270,7 @@ export default function StockCountingScreen() {
         }
 
         if (shouldAdvance) {
-          nextItem();
+          animateToNext(() => nextItem());
         }
       } finally {
         setIsSaving(false);
@@ -263,7 +279,6 @@ export default function StockCountingScreen() {
     [
       currentItem,
       quantityValue,
-      selectedQuick,
       scanMethod,
       note,
       photoUri,
@@ -277,12 +292,18 @@ export default function StockCountingScreen() {
       currentSession?.items_checked,
       currentSession?.items_skipped,
       areaId,
+      animateToNext,
     ]
   );
 
   const handleSkip = useCallback(() => {
-    skipItem();
-  }, [skipItem]);
+    if (!currentItem) return;
+    const prevCount = skippedItemCounts[currentItem.id] ?? 0;
+    if (prevCount === 0) {
+      showInlineToast('Moved to end of list');
+    }
+    animateToNext(() => skipItem());
+  }, [animateToNext, currentItem, skippedItemCounts, skipItem, showInlineToast]);
 
   const handleAddNote = useCallback(() => {
     setNoteDraft(note);
@@ -292,6 +313,7 @@ export default function StockCountingScreen() {
   const handleSaveNote = useCallback(() => {
     setNote(noteDraft);
     setShowNoteModal(false);
+    setTimeout(() => quantityInputRef.current?.focus(), 80);
   }, [noteDraft]);
 
   const handlePhoto = useCallback(async () => {
@@ -325,6 +347,7 @@ export default function StockCountingScreen() {
     }
     setPendingPhotoUri(null);
     setShowPhotoPreview(false);
+    setTimeout(() => quantityInputRef.current?.focus(), 80);
   }, [pendingPhotoUri]);
 
   const handleRetakePhoto = useCallback(async () => {
@@ -334,189 +357,185 @@ export default function StockCountingScreen() {
   }, [handlePhoto]);
 
   const handleBack = useCallback(() => {
-    Alert.alert('Exit Counting?', 'You have unsaved progress. Exit anyway?', [
-      {
-        text: 'Continue Counting',
-        style: 'cancel',
-      },
-      {
-        text: 'Save & Exit',
-        onPress: async () => {
-          await handleSaveItem(false, false);
-          await abandonSession();
-          router.back();
-        },
-      },
-      {
-        text: 'Discard',
-        style: 'destructive',
-        onPress: async () => {
-          await abandonSession();
-          router.back();
-        },
-      },
-    ]);
-  }, [handleSaveItem, abandonSession]);
+    const counted = (currentSession?.items_checked ?? 0) + (currentSession?.items_skipped ?? 0);
+    if (counted === 0) {
+      router.back();
+      return;
+    }
 
-  const handleFinishEarly = useCallback(() => {
-    Alert.alert('Finish Early?', 'Finish this session with the items counted so far?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Finish Early',
-        onPress: () => handleSaveItem(false, true),
-      },
-    ]);
-  }, [handleSaveItem]);
+    Alert.alert(
+      'Exit Counting?',
+      `You've counted ${counted} item${counted === 1 ? '' : 's'}. Save progress and exit?`,
+      [
+        { text: 'Keep Counting', style: 'cancel' },
+        {
+          text: 'Save & Exit',
+          onPress: () => handleSaveItem(false, true),
+        },
+      ]
+    );
+  }, [handleSaveItem, currentSession?.items_checked, currentSession?.items_skipped]);
 
   if (!areaId) {
     return null;
   }
 
-  const progressPercent = totalItems > 0 ? (currentItemIndex + 1) / totalItems : 0;
+  const countedItems = (currentSession?.items_checked ?? 0) + (currentSession?.items_skipped ?? 0);
+  const progressIndex = totalItems > 0 ? Math.min(countedItems + 1, totalItems) : 0;
+  const progressPercent = totalItems > 0 ? progressIndex / totalItems : 0;
+  const currentSkipCount = currentItem ? skippedItemCounts[currentItem.id] ?? 0 : 0;
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         className="flex-1"
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 12 : 0}
       >
-        <View className="px-4 pt-4">
-          <View className="flex-row items-center justify-between">
-            <TouchableOpacity onPress={handleBack}>
-              <Ionicons name="chevron-back" size={24} color={colors.gray[800]} />
-            </TouchableOpacity>
-            <View className="flex-1 items-center">
-              <Text className="text-base font-semibold text-gray-900">
-                {area?.name ?? 'Storage Area'}
-              </Text>
+        <View className="flex-1">
+          <View className="px-4 pt-4">
+            <View className="flex-row items-center justify-between">
+              <TouchableOpacity onPress={handleBack}>
+                <Ionicons name="chevron-back" size={24} color={colors.gray[800]} />
+              </TouchableOpacity>
+              <View className="flex-1 items-center">
+                <Text className="text-base font-semibold text-gray-900">
+                  {area?.name ?? 'Storage Area'}
+                </Text>
+              </View>
               <Text className="text-xs text-gray-500">
-                {totalItems > 0 ? `${currentItemIndex + 1} of ${totalItems} items` : 'Loading...'}
+                {totalItems > 0 ? `${progressIndex} of ${totalItems} items` : 'Loading...'}
               </Text>
             </View>
-            <View style={{ width: 24 }} />
+
+            <View className="mt-3 h-2 w-full rounded-full bg-gray-200">
+              <View
+                style={{
+                  height: '100%',
+                  borderRadius: 999,
+                  backgroundColor: colors.primary[500],
+                  width: `${Math.round(progressPercent * 100)}%`,
+                }}
+              />
+            </View>
           </View>
 
-          <View className="mt-3 h-2 w-full rounded-full bg-gray-200">
-            <View
-              style={{
-                height: '100%',
-                borderRadius: 999,
-                backgroundColor: colors.primary[500],
-                width: `${Math.round(progressPercent * 100)}%`,
-              }}
-            />
-          </View>
+          {!isOnline && (
+            <View className="mx-4 mt-3 rounded-2xl bg-amber-100 px-4 py-3">
+              <Text className="text-sm font-semibold text-amber-800">
+                Offline mode - {pendingUpdates.length} updates pending
+              </Text>
+            </View>
+          )}
+
+          {isLoading ? (
+            <View className="flex-1 items-center justify-center">
+              <Text className="text-gray-500">Loading items...</Text>
+            </View>
+          ) : currentAreaItems.length === 0 ? (
+            <View className="flex-1 items-center justify-center px-6">
+              <Text className="text-gray-500 text-center">
+                No items assigned to this station.
+              </Text>
+            </View>
+          ) : (
+            <View className="flex-1 px-4">
+              <View className="flex-1 justify-center">
+                <Animated.View style={{ transform: [{ translateX: slideAnim }] }}>
+                  <View className="rounded-3xl bg-white px-6 py-7 border border-gray-100 shadow-sm">
+                  <View className="items-center">
+                    <Text className="text-5xl">
+                      {CATEGORY_EMOJI[currentItem.inventory_item.category] ?? '📦'}
+                    </Text>
+                    <Text className="mt-4 text-2xl font-bold text-gray-900 text-center">
+                      {currentItem.inventory_item.name}
+                    </Text>
+                    <Text className="mt-1 text-sm text-gray-500">
+                      {CATEGORY_LABELS[currentItem.inventory_item.category]}
+                    </Text>
+                    {currentSkipCount > 0 ? (
+                      <View className="mt-2 rounded-full bg-amber-100 px-3 py-1">
+                        <Text className="text-xs font-semibold text-amber-700">
+                          {currentSkipCount >= 2 ? 'Skipped' : 'Skipped once'}
+                        </Text>
+                      </View>
+                    ) : null}
+
+                    <View className="mt-4 w-full rounded-2xl border border-gray-200 overflow-hidden">
+                      <View className="flex-row">
+                        <View className="flex-1 items-center py-2 border-r border-gray-200">
+                          <Text className="text-xs text-gray-500">Min</Text>
+                          <Text className="text-sm font-semibold text-gray-900">
+                            {currentItem.min_quantity} {currentItem.unit_type}
+                          </Text>
+                        </View>
+                        <View className="flex-1 items-center py-2">
+                          <Text className="text-xs text-gray-500">Max</Text>
+                          <Text className="text-sm font-semibold text-gray-900">
+                            {currentItem.max_quantity} {currentItem.unit_type}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    <Text className="mt-3 text-xs text-gray-400 text-center">
+                      Last count: {currentItem.current_quantity} {currentItem.unit_type} •{' '}
+                      {getRelativeTimeLabel(currentItem.last_updated_at)}
+                      {currentItem.last_updated_by ? ' by team member' : ''}
+                    </Text>
+                  </View>
+
+                  <View className="my-5 h-px bg-gray-200" />
+
+                  <Text className="text-center text-sm font-semibold text-gray-600">
+                    How many {currentItem.unit_type}?
+                  </Text>
+
+                  <View className="mt-4 items-center">
+                    <View className="flex-row items-center">
+                      <TouchableOpacity
+                        className="h-12 w-12 rounded-full bg-gray-100 items-center justify-center"
+                        onPress={() => handleIncrement(-1)}
+                      >
+                        <Ionicons name="remove" size={22} color={colors.gray[700]} />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        activeOpacity={1}
+                        onPress={() => quantityInputRef.current?.focus()}
+                        className="mx-5"
+                      >
+                        <TextInput
+                          ref={quantityInputRef}
+                          value={quantityValue}
+                          onChangeText={handleChangeQuantity}
+                          onFocus={handleQuantityFocus}
+                          keyboardType="number-pad"
+                          autoFocus
+                          blurOnSubmit={false}
+                          className="text-5xl font-bold text-gray-900 text-center min-w-[120px]"
+                          returnKeyType="done"
+                        />
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        className="h-12 w-12 rounded-full bg-gray-100 items-center justify-center"
+                        onPress={() => handleIncrement(1)}
+                      >
+                        <Ionicons name="add" size={22} color={colors.gray[700]} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  </View>
+                </Animated.View>
+              </View>
+            </View>
+          )}
         </View>
 
-        {!isOnline && (
-          <View className="mx-4 mt-3 rounded-2xl bg-amber-100 px-4 py-3">
-            <Text className="text-sm font-semibold text-amber-800">
-              Offline mode - {pendingUpdates.length} updates pending
-            </Text>
-          </View>
-        )}
-
-        {isLoading ? (
-          <View className="flex-1 items-center justify-center">
-            <Text className="text-gray-500">Loading items...</Text>
-          </View>
-        ) : currentAreaItems.length === 0 ? (
-          <View className="flex-1 items-center justify-center px-6">
-            <Text className="text-gray-500 text-center">
-              No items assigned to this station.
-            </Text>
-          </View>
-        ) : (
-          <View className="flex-1 px-4 pb-6">
-            <View className="mt-5 rounded-3xl bg-white px-5 py-6 shadow-sm border border-gray-100">
-              <View className="items-center">
-                <Text className="text-5xl">
-                  {CATEGORY_EMOJI[currentItem.inventory_item.category] ?? '📦'}
-                </Text>
-                <Text className="mt-3 text-2xl font-bold text-gray-900 text-center">
-                  {currentItem.inventory_item.name}
-                </Text>
-                <Text className="mt-1 text-sm text-gray-500">
-                  {CATEGORY_LABELS[currentItem.inventory_item.category]}
-                </Text>
-                <Text className="mt-3 text-sm text-gray-700">
-                  Min: {currentItem.min_quantity} {currentItem.unit_type} • Max: {currentItem.max_quantity} {currentItem.unit_type}
-                </Text>
-                <Text className="mt-1 text-xs text-gray-400">
-                  Last count: {currentItem.current_quantity} {currentItem.unit_type} • {getRelativeTimeLabel(currentItem.last_updated_at)}
-                  {currentItem.last_updated_by ? ' by team member' : ''}
-                </Text>
-              </View>
-
-              <View className="mt-6 items-center">
-                <View className="flex-row items-center">
-                  <TouchableOpacity
-                    className="h-12 w-12 rounded-full bg-gray-100 items-center justify-center"
-                    onPress={() => handleIncrement(-1)}
-                  >
-                    <Ionicons name="remove" size={22} color={colors.gray[700]} />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    activeOpacity={1}
-                    onPress={() => quantityInputRef.current?.focus()}
-                    className="mx-4"
-                  >
-                    <TextInput
-                      ref={quantityInputRef}
-                      value={quantityValue}
-                      onChangeText={handleChangeQuantity}
-                      onFocus={handleQuantityFocus}
-                      keyboardType="decimal-pad"
-                      className="text-4xl font-bold text-gray-900 text-center min-w-[120px]"
-                      returnKeyType="done"
-                    />
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    className="h-12 w-12 rounded-full bg-gray-100 items-center justify-center"
-                    onPress={() => handleIncrement(1)}
-                  >
-                    <Ionicons name="add" size={22} color={colors.gray[700]} />
-                  </TouchableOpacity>
-                </View>
-                <Text className="mt-2 text-sm text-gray-500">{currentItem.unit_type}</Text>
-              </View>
-
-              {quickRanges && (
-                <View className="mt-6">
-                  <View className="flex-row justify-between">
-                    {(['empty', 'low', 'good', 'full'] as QuickSelectValue[]).map((key) => {
-                      const isActive = selectedQuick === key;
-                      return (
-                        <TouchableOpacity
-                          key={key}
-                          className={`flex-1 rounded-2xl border px-3 py-2 mr-2 ${
-                            isActive
-                              ? 'border-orange-500 bg-orange-50'
-                              : 'border-gray-200 bg-white'
-                          }`}
-                          onPress={() => handleSelectQuick(key)}
-                        >
-                          <Text
-                            className={`text-sm font-semibold text-center ${
-                              isActive ? 'text-orange-600' : 'text-gray-700'
-                            }`}
-                          >
-                            {key.charAt(0).toUpperCase() + key.slice(1)}
-                          </Text>
-                          <Text className="text-xs text-gray-500 text-center mt-1">
-                            {quickRanges[key].label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              )}
-            </View>
-
-            <View className="mt-5 flex-row items-center justify-between">
+        {currentAreaItems.length > 0 && !isLoading ? (
+          <View className="border-t border-gray-200 bg-gray-50 px-4 pt-3 pb-4">
+            <View className="flex-row items-center justify-between">
               <TouchableOpacity
                 className="flex-1 rounded-full border border-gray-200 py-3 mr-2 items-center"
                 onPress={handleSkip}
@@ -555,17 +574,8 @@ export default function StockCountingScreen() {
               </View>
             ) : null}
 
-            {!isLastItem && (
-              <TouchableOpacity
-                className="mt-3 items-center"
-                onPress={handleFinishEarly}
-              >
-                <Text className="text-sm font-semibold text-gray-500">Finish Early</Text>
-              </TouchableOpacity>
-            )}
-
             <TouchableOpacity
-              className="mt-6 rounded-full bg-orange-500 py-4 items-center"
+              className="mt-4 rounded-2xl bg-orange-500 py-4 items-center"
               onPress={() => handleSaveItem(true, isLastItem)}
               disabled={isSaving}
             >
@@ -574,8 +584,14 @@ export default function StockCountingScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        )}
+        ) : null}
       </KeyboardAvoidingView>
+
+      {showToast && (
+        <Animated.View style={[styles.toast, { opacity: toastOpacity }]}>
+          <Text className="text-white text-center font-medium">{toastMessage}</Text>
+        </Animated.View>
+      )}
 
       <Modal visible={showNoteModal} transparent animationType="fade" onRequestClose={() => setShowNoteModal(false)}>
         <View style={styles.modalOverlay}>
@@ -696,5 +712,16 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: 16,
     marginTop: 16,
+  },
+  toast: {
+    position: 'absolute',
+    top: 110,
+    left: 20,
+    right: 20,
+    backgroundColor: '#111827',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    alignItems: 'center',
   },
 });

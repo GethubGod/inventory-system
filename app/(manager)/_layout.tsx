@@ -42,7 +42,7 @@ export default function ManagerLayout() {
       <Tabs.Screen
         name="quick-order"
         options={{
-          title: 'Quick Order',
+          title: 'Quick',
           tabBarIcon: ({ color, size }) => (
             <View>
               <Ionicons name="flash-outline" size={size} color={color} />

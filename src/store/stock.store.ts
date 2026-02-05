@@ -58,6 +58,7 @@ interface StockState {
   pendingUpdates: PendingUpdate[];
   isOnline: boolean;
   lastSyncAt: string | null;
+  skippedItemCounts: Record<string, number>;
 
   fetchStorageAreas: (locationId: string) => Promise<void>;
   fetchAreaItems: (areaId: string) => Promise<void>;
@@ -168,6 +169,7 @@ export const useStockStore = create<StockState>()(
       pendingUpdates: [],
       isOnline: true,
       lastSyncAt: null,
+      skippedItemCounts: {},
 
       fetchStorageAreas: async (locationId) => {
         set({ isLoading: true, error: null });
@@ -194,6 +196,7 @@ export const useStockStore = create<StockState>()(
               currentAreaItems: cached,
               currentAreaId: areaId,
               currentItemIndex: 0,
+              skippedItemCounts: {},
               error: 'Offline mode: showing cached data.',
             });
             return;
@@ -211,6 +214,7 @@ export const useStockStore = create<StockState>()(
             currentAreaItems: withStock,
             currentAreaId: areaId,
             currentItemIndex: 0,
+            skippedItemCounts: {},
             areaItemsById: { ...get().areaItemsById, [areaId]: withStock },
           });
         } catch (error: any) {
@@ -220,6 +224,7 @@ export const useStockStore = create<StockState>()(
               currentAreaItems: cached,
               currentAreaId: areaId,
               currentItemIndex: 0,
+              skippedItemCounts: {},
               error: 'Offline mode: showing cached data.',
             });
           } else {
@@ -268,6 +273,7 @@ export const useStockStore = create<StockState>()(
             currentSession: session,
             currentAreaId: areaId,
             currentItemIndex: 0,
+            skippedItemCounts: {},
           });
         } catch (error: any) {
           set({ error: error?.message ?? 'Failed to start stock check session.' });
@@ -439,20 +445,39 @@ export const useStockStore = create<StockState>()(
       },
 
       skipItem: () => {
-        const { currentAreaItems, currentItemIndex, currentSession } = get();
+        const { currentAreaItems, currentItemIndex, currentSession, skippedItemCounts, currentAreaId } =
+          get();
         if (currentAreaItems.length === 0) return;
 
-        const nextIndex = Math.min(currentItemIndex + 1, currentAreaItems.length - 1);
-        set({ currentItemIndex: nextIndex });
+        const item = currentAreaItems[currentItemIndex];
+        if (!item) return;
 
-        if (currentSession) {
-          set({
-            currentSession: {
-              ...currentSession,
-              items_skipped: currentSession.items_skipped + 1,
-            },
-          });
-        }
+        const prevCount = skippedItemCounts[item.id] ?? 0;
+        const nextCount = Math.min(prevCount + 1, 2);
+        const nextCounts = { ...skippedItemCounts, [item.id]: nextCount };
+
+        const reordered = [...currentAreaItems];
+        reordered.splice(currentItemIndex, 1);
+        reordered.push(item);
+
+        const nextIndex = currentItemIndex < reordered.length - 1 ? currentItemIndex : 0;
+        const shouldCountAsSkipped = nextCount === 2;
+
+        set((state) => ({
+          currentAreaItems: reordered,
+          areaItemsById: currentAreaId
+            ? { ...state.areaItemsById, [currentAreaId]: reordered }
+            : state.areaItemsById,
+          currentItemIndex: nextIndex,
+          skippedItemCounts: nextCounts,
+          currentSession:
+            shouldCountAsSkipped && state.currentSession
+              ? {
+                  ...state.currentSession,
+                  items_skipped: state.currentSession.items_skipped + 1,
+                }
+              : state.currentSession,
+        }));
       },
 
       nextItem: () => {
