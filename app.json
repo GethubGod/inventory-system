@@ -4,11 +4,11 @@
     "slug": "babytuna",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/babytuna-logo-icon.png",
     "scheme": "babytuna",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/images/babytuna-logo.png",
       "resizeMode": "contain",
       "backgroundColor": "#F97316"
     },
@@ -17,11 +17,15 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.babytuna.inventory"
+      "bundleIdentifier": "com.babytuna.inventory",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Camera access is required to scan QR codes.",
+        "NSMicrophoneUsageDescription": "Microphone access is required to record video."
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/images/babytuna-logo-icon.png",
         "backgroundColor": "#000000"
       },
       "package": "com.babytuna.inventory"
@@ -29,7 +33,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/images/babytuna-logo-icon.png"
     },
     "plugins": [
       "expo-router",
@@ -38,7 +42,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Camera access is required to scan QR codes."
+          "cameraPermission": "Camera access is required to scan QR codes.",
+          "microphonePermission": "Microphone access is required to record video."
         }
       ],
       [

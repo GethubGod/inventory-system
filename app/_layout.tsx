@@ -1,10 +1,14 @@
 import { useEffect } from 'react';
-import { View } from 'react-native';
+import { LogBox, View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '@/store';
 import { useOrderSubscription } from '@/hooks';
 import '../global.css';
+
+LogBox.ignoreLogs([
+  "SafeAreaView has been deprecated and will be removed in a future release. Please use 'react-native-safe-area-context' instead.",
+]);
 
 // Separate component for subscription to avoid hook issues
 function OrderSubscriptionProvider({ children }: { children: React.ReactNode }) {
