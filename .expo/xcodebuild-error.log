@@ -1,7 +1,0 @@
-** BUILD FAILED **
-
-
-The following build commands failed:
-	PhaseScriptExecution [CP-User]\ Generate\ app.config\ for\ prebuilt\ Constants.manifest /Users/david/Library/Developer/Xcode/DerivedData/Babytuna-ejosblomybvihoaigymyxiznmixn/Build/Intermediates.noindex/Pods.build/Debug-iphonesimulator/EXConstants.build/Script-46EB2E000202E0.sh (in target 'EXConstants' from project 'Pods')
-	Building workspace Babytuna with scheme Babytuna and configuration Debug
-(2 failures)
