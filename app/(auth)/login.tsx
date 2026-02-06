@@ -10,9 +10,10 @@ import {
 } from 'react-native';
 import { Link, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
-import { SpinningFish } from '@/components';
+import { AuthLogoHeader, SpinningFish } from '@/components';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -54,21 +55,29 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1 bg-black">
+      <StatusBar style="light" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
+        className="flex-1 bg-black"
       >
-        <View className="flex-1 justify-center px-6">
+        <View className="flex-1 px-6 pt-10 pb-8">
           {/* Logo */}
-          <View className="items-center mb-10">
-            <Text className="text-6xl mb-2">🐟</Text>
-            <Text className="text-3xl font-bold text-gray-900">Babytuna</Text>
-            <Text className="text-gray-500 mt-1">Inventory Management</Text>
+          <View className="items-center mb-6">
+            <AuthLogoHeader size={128} />
           </View>
 
           {/* Login Form Card */}
-          <View className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+          <View
+            className="bg-white rounded-2xl p-6 border border-gray-100"
+            style={{
+              elevation: 8,
+              shadowColor: '#000',
+              shadowOpacity: 0.25,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 6 },
+            }}
+          >
             <Text className="text-2xl font-bold text-gray-900 mb-6 text-center">
               Welcome Back
             </Text>
@@ -154,7 +163,7 @@ export default function LoginScreen() {
 
           {/* Sign Up Link */}
           <View className="flex-row justify-center mt-8">
-            <Text className="text-gray-500 text-base">
+            <Text className="text-gray-300 text-base">
               Don't have an account?{' '}
             </Text>
             <Link href="/(auth)/signup" asChild>

@@ -5,6 +5,7 @@ export { StatusFilter } from './StatusFilter';
 export { OrderCard } from './OrderCard';
 export { SpinningFish } from './SpinningFish';
 export { QrScannerModal } from './QrScannerModal';
+export { AuthLogoHeader } from './AuthLogoHeader';
 
 // Settings components
 export * from './settings';

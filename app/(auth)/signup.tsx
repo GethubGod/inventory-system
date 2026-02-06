@@ -11,10 +11,11 @@ import {
 } from 'react-native';
 import { Link, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
 import { UserRole } from '@/types';
-import { SpinningFish } from '@/components';
+import { AuthLogoHeader, SpinningFish } from '@/components';
 
 export default function SignUpScreen() {
   const [name, setName] = useState('');
@@ -135,27 +136,35 @@ export default function SignUpScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1 bg-black">
+      <StatusBar style="light" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
+        className="flex-1 bg-black"
       >
         <ScrollView
-          className="flex-1"
+          className="flex-1 bg-black"
           contentContainerStyle={{ paddingVertical: 24 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <View className="px-6">
             {/* Logo */}
-            <View className="items-center mb-6">
-              <Text className="text-5xl mb-1">🐟</Text>
-              <Text className="text-2xl font-bold text-gray-900">Babytuna</Text>
-              <Text className="text-gray-500 text-sm">Inventory Management</Text>
+            <View className="items-center pt-2 mb-6">
+              <AuthLogoHeader size={128} />
             </View>
 
             {/* Sign Up Form Card */}
-            <View className="bg-white rounded-2xl p-6 shadow-lg border border-gray-100">
+            <View
+              className="bg-white rounded-2xl p-6 border border-gray-100"
+              style={{
+                elevation: 8,
+                shadowColor: '#000',
+                shadowOpacity: 0.25,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 6 },
+              }}
+            >
               <Text className="text-2xl font-bold text-gray-900 mb-6 text-center">
                 Create Account
               </Text>
@@ -291,7 +300,7 @@ export default function SignUpScreen() {
 
             {/* Sign In Link */}
             <View className="flex-row justify-center mt-6">
-              <Text className="text-gray-500 text-base">
+              <Text className="text-gray-300 text-base">
                 Already have an account?{' '}
               </Text>
               <Link href="/(auth)/login" asChild>
