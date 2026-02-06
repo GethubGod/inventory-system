@@ -110,7 +110,8 @@ export async function getAreaItems(areaId: string): Promise<AreaItemWithInventor
         inventory_item:inventory_items(*)
       `
     )
-    .eq('area_id', areaId);
+    .eq('area_id', areaId)
+    .eq('active', true);
 
   if (error) throw error;
 
@@ -276,10 +277,14 @@ export async function getInventoryWithStock(locationId?: string): Promise<Invent
     .select(
       `
         id,
+        active,
         current_quantity,
         min_quantity,
         max_quantity,
+        par_level,
         unit_type,
+        order_unit,
+        conversion_factor,
         last_updated_at,
         inventory_item:inventory_items(*),
         area:storage_areas(
@@ -291,7 +296,8 @@ export async function getInventoryWithStock(locationId?: string): Promise<Invent
           location:locations(*)
         )
       `
-    );
+    )
+    .eq('active', true);
 
   const { data, error } = await query;
   if (error) throw error;

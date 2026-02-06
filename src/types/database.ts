@@ -119,6 +119,9 @@ export interface AreaItem {
   par_level: number | null;
   current_quantity: number;
   unit_type: string;
+  order_unit: string | null;
+  conversion_factor: number | null;
+  active: boolean;
   last_updated_at: string | null;
   last_updated_by: string | null;
   notes: string | null;

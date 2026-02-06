@@ -17,7 +17,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useAuthStore, useInventoryStore, useOrderStore, useSettingsStore } from '@/store';
 import {
   ItemCategory,
@@ -26,6 +25,7 @@ import {
 import { CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS, categoryColors, colors } from '@/constants';
 import { SpinningFish } from '@/components';
 import { getInventoryWithStock, InventoryWithStock } from '@/lib/api/stock';
+import { supabase } from '@/lib/supabase';
 import { getCheckStatus } from '@/store/stock.store';
 import { useStockNetworkStatus } from '@/hooks';
 
@@ -59,6 +59,9 @@ const CATEGORY_EMOJI: Record<ItemCategory, string> = {
   packaging: '📦',
 };
 
+const COUNT_UNITS = ['portion', 'each', 'lb', 'case', 'bag', 'bottle', 'jar', 'pack'] as const;
+const ORDER_UNITS = ['lb', 'case', 'each', 'bag', 'bottle', 'jar', 'pack'] as const;
+
 const REORDER_BAR_HEIGHT = 72;
 
 const STATUS_COLORS = {
@@ -75,6 +78,23 @@ type InventoryStockItem = InventoryWithStock & {
   fillPercent: number;
   areaLabel: string;
 };
+
+interface AreaItemEdit {
+  id: string;
+  area_id: string;
+  unit_type: string;
+  min_quantity: number;
+  max_quantity: number;
+  par_level: number | null;
+  order_unit: string | null;
+  conversion_factor: number | null;
+  active: boolean;
+  area: {
+    id: string;
+    name: string;
+    location_id: string;
+  };
+}
 
 interface NewItemForm {
   name: string;
@@ -118,7 +138,6 @@ export default function ManagerInventoryScreen() {
   const { addToCart, getTotalCartCount } = useOrderStore();
   const { inventoryView, setInventoryView } = useSettingsStore();
   useStockNetworkStatus();
-  const tabBarHeight = useBottomTabBarHeight();
   const cartCount = getTotalCartCount();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -149,6 +168,24 @@ export default function ManagerInventoryScreen() {
   const [toastMessage, setToastMessage] = useState('');
   const [addedKeys, setAddedKeys] = useState<Record<string, boolean>>({});
   const toastOpacity = useRef(new Animated.Value(0)).current;
+
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingItem, setEditingItem] = useState<InventoryStockItem | null>(null);
+  const [editAreas, setEditAreas] = useState<AreaItemEdit[]>([]);
+  const [areaOptions, setAreaOptions] = useState<{ id: string; name: string }[]>([]);
+  const [selectedAreaItemId, setSelectedAreaItemId] = useState<string | null>(null);
+  const [showAreaPicker, setShowAreaPicker] = useState(false);
+  const [showCountUnitPicker, setShowCountUnitPicker] = useState(false);
+  const [showOrderUnitPicker, setShowOrderUnitPicker] = useState(false);
+  const [editForm, setEditForm] = useState({
+    unit_type: 'each',
+    min: '',
+    par: '',
+    max: '',
+    order_unit: 'case',
+    conversion: '',
+  });
+  const [isEditSaving, setIsEditSaving] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 150);
@@ -299,6 +336,229 @@ export default function ManagerInventoryScreen() {
     router.push('/(manager)/cart');
   }, [addToCart, showToastMessage, stockWithStatus]);
 
+  const applyAreaItemToForm = useCallback((areaItem: AreaItemEdit) => {
+    setSelectedAreaItemId(areaItem.id);
+    setEditForm({
+      unit_type: areaItem.unit_type || 'each',
+      min: String(areaItem.min_quantity ?? ''),
+      par: areaItem.par_level != null ? String(areaItem.par_level) : '',
+      max: String(areaItem.max_quantity ?? ''),
+      order_unit: areaItem.order_unit || areaItem.unit_type || 'case',
+      conversion: areaItem.conversion_factor != null ? String(areaItem.conversion_factor) : '',
+    });
+  }, []);
+
+  const openEditModal = useCallback(async (item: InventoryStockItem) => {
+    setEditingItem(item);
+    setShowEditModal(true);
+    try {
+      const { data, error } = await supabase
+        .from('area_items')
+        .select(
+          `
+          id,
+          area_id,
+          unit_type,
+          min_quantity,
+          max_quantity,
+          par_level,
+          order_unit,
+          conversion_factor,
+          active,
+          area:storage_areas(
+            id,
+            name,
+            location_id
+          )
+        `
+        )
+        .eq('inventory_item_id', item.inventory_item.id)
+        .eq('active', true);
+
+      if (error) throw error;
+
+      const areaItems = (data || [])
+        .map((row: any) => ({
+          ...row,
+          area: row.area,
+        }))
+        .filter((row: any) => row.area?.location_id === item.location.id) as AreaItemEdit[];
+
+      setEditAreas(areaItems);
+
+      const { data: areas } = await supabase
+        .from('storage_areas')
+        .select('id,name')
+        .eq('location_id', item.location.id)
+        .eq('active', true)
+        .order('sort_order', { ascending: true });
+
+      setAreaOptions((areas || []) as { id: string; name: string }[]);
+
+      if (areaItems.length > 0) {
+        applyAreaItemToForm(areaItems[0]);
+      } else {
+        setSelectedAreaItemId(null);
+      }
+    } catch (err: any) {
+      Alert.alert('Error', err?.message ?? 'Failed to load item settings.');
+    }
+  }, [applyAreaItemToForm]);
+
+  const selectedAreaItem = useMemo(() => {
+    return editAreas.find((area) => area.id === selectedAreaItemId) ?? null;
+  }, [editAreas, selectedAreaItemId]);
+
+  const handleChangeUnitType = useCallback(
+    (nextUnit: string) => {
+      if (nextUnit === editForm.unit_type) {
+        setShowCountUnitPicker(false);
+        return;
+      }
+
+      const hasValues = Number(editForm.min) > 0 || Number(editForm.par) > 0 || Number(editForm.max) > 0;
+      if (!hasValues) {
+        setEditForm((prev) => ({ ...prev, unit_type: nextUnit }));
+        setShowCountUnitPicker(false);
+        return;
+      }
+
+      Alert.alert(
+        'Update Stock Levels?',
+        'Changing the counting unit may require updating min/max values. Update now?',
+        [
+          {
+            text: 'Keep Values',
+            style: 'cancel',
+            onPress: () => {
+              setEditForm((prev) => ({ ...prev, unit_type: nextUnit }));
+              setShowCountUnitPicker(false);
+            },
+          },
+          {
+            text: 'Reset Values',
+            onPress: () => {
+              setEditForm((prev) => ({
+                ...prev,
+                unit_type: nextUnit,
+                min: '',
+                par: '',
+                max: '',
+              }));
+              setShowCountUnitPicker(false);
+            },
+          },
+        ]
+      );
+    },
+    [editForm]
+  );
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!selectedAreaItem || !editingItem) return;
+
+    const min = Number(editForm.min);
+    const max = Number(editForm.max);
+    const par = editForm.par ? Number(editForm.par) : null;
+
+    if (Number.isNaN(min) || Number.isNaN(max) || min < 0 || max < 0) {
+      Alert.alert('Invalid Values', 'Please enter valid minimum and maximum values.');
+      return;
+    }
+
+    if (min >= max) {
+      Alert.alert('Invalid Range', 'Minimum must be less than maximum.');
+      return;
+    }
+
+    if (par !== null && (par <= min || par >= max)) {
+      Alert.alert('Invalid Par Level', 'Par level must be between min and max.');
+      return;
+    }
+
+    const conversion = editForm.conversion ? Number(editForm.conversion) : null;
+    if (editForm.conversion && (Number.isNaN(conversion) || conversion <= 0)) {
+      Alert.alert('Invalid Conversion', 'Conversion factor must be a positive number.');
+      return;
+    }
+
+    setIsEditSaving(true);
+    try {
+      const { error } = await supabase
+        .from('area_items')
+        .update({
+          unit_type: editForm.unit_type,
+          min_quantity: min,
+          max_quantity: max,
+          par_level: par,
+          order_unit: editForm.order_unit,
+          conversion_factor: conversion,
+        })
+        .eq('id', selectedAreaItem.id);
+
+      if (error) throw error;
+
+      showToastMessage('✓ Stock settings updated');
+      setShowEditModal(false);
+      fetchInventoryStock();
+    } catch (err: any) {
+      Alert.alert('Save Failed', err?.message ?? 'Unable to save changes.');
+    } finally {
+      setIsEditSaving(false);
+    }
+  }, [selectedAreaItem, editingItem, editForm, fetchInventoryStock, showToastMessage]);
+
+  const handleMoveArea = useCallback(async (areaId: string) => {
+    if (!selectedAreaItem) return;
+    setShowAreaPicker(false);
+    try {
+      const { error } = await supabase
+        .from('area_items')
+        .update({ area_id: areaId })
+        .eq('id', selectedAreaItem.id);
+
+      if (error) throw error;
+
+      showToastMessage('✓ Item moved to new area');
+      setShowEditModal(false);
+      fetchInventoryStock();
+    } catch (err: any) {
+      Alert.alert('Move Failed', err?.message ?? 'Unable to move item.');
+    }
+  }, [selectedAreaItem, fetchInventoryStock, showToastMessage]);
+
+  const handleDeactivateAreaItem = useCallback(() => {
+    if (!selectedAreaItem || !editingItem) return;
+
+    Alert.alert(
+      'Deactivate Item',
+      `Remove ${editingItem.inventory_item.name} from ${selectedAreaItem.area.name}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Deactivate',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('area_items')
+                .update({ active: false })
+                .eq('id', selectedAreaItem.id);
+
+              if (error) throw error;
+
+              showToastMessage('✓ Item deactivated');
+              setShowEditModal(false);
+              fetchInventoryStock();
+            } catch (err: any) {
+              Alert.alert('Deactivate Failed', err?.message ?? 'Unable to deactivate item.');
+            }
+          },
+        },
+      ]
+    );
+  }, [selectedAreaItem, editingItem, fetchInventoryStock, showToastMessage]);
+
   const handleAddItem = useCallback(async () => {
     if (!form.name.trim()) {
       Alert.alert('Error', 'Please enter an item name');
@@ -430,7 +690,7 @@ export default function ManagerInventoryScreen() {
     const added = addedKeys[key];
 
     return (
-      <TouchableOpacity activeOpacity={0.9} className="mb-4">
+      <TouchableOpacity activeOpacity={0.9} className="mb-4" onPress={() => openEditModal(item)}>
         <View className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
           <View className="flex-row items-start justify-between">
             <View className="flex-row items-center flex-1 pr-2">
@@ -466,7 +726,10 @@ export default function ManagerInventoryScreen() {
             {item.status === 'critical' && reorderQty > 0 ? (
               <TouchableOpacity
                 className={`px-3 py-1.5 rounded-full border ${added ? 'border-green-500' : 'border-orange-500'}`}
-                onPress={() => handleAddToReorder(item)}
+                onPress={(event) => {
+                  event.stopPropagation?.();
+                  handleAddToReorder(item);
+                }}
               >
                 <Text className={`text-xs font-semibold ${added ? 'text-green-600' : 'text-orange-600'}`}>
                   {added ? '✓ Added' : `Reorder ${reorderQty}`}
@@ -486,7 +749,11 @@ export default function ManagerInventoryScreen() {
     const added = addedKeys[key];
 
     return (
-      <View className="bg-white border border-gray-100 rounded-2xl mb-2 overflow-hidden">
+      <TouchableOpacity
+        activeOpacity={0.9}
+        className="bg-white border border-gray-100 rounded-2xl mb-2 overflow-hidden"
+        onPress={() => openEditModal(item)}
+      >
         <View className="flex-row items-center px-4 py-3">
           <Text className="text-lg mr-2">{CATEGORY_EMOJI[item.inventory_item.category] ?? '📦'}</Text>
           <View className="flex-1">
@@ -500,14 +767,17 @@ export default function ManagerInventoryScreen() {
             {item.status === 'critical' && reorderQty > 0 ? (
               <TouchableOpacity
                 className={`h-8 w-8 rounded-full items-center justify-center border ${added ? 'border-green-500' : 'border-orange-500'}`}
-                onPress={() => handleAddToReorder(item)}
+                onPress={(event) => {
+                  event.stopPropagation?.();
+                  handleAddToReorder(item);
+                }}
               >
                 <Ionicons name={added ? 'checkmark' : 'add'} size={16} color={added ? '#16A34A' : '#F97316'} />
               </TouchableOpacity>
             ) : null}
           </View>
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -688,9 +958,7 @@ export default function ManagerInventoryScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={{
             paddingHorizontal: 16,
-            paddingBottom:
-              tabBarHeight +
-              (stats.reorder > 0 ? REORDER_BAR_HEIGHT + 16 : 24),
+            paddingBottom: stats.reorder > 0 ? REORDER_BAR_HEIGHT + 16 : 24,
           }}
           ListEmptyComponent={() => (isStockLoading ? (
             <View className="items-center justify-center py-16">
@@ -709,7 +977,7 @@ export default function ManagerInventoryScreen() {
         {stats.reorder > 0 && (
           <View
             className="absolute bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-4"
-            style={{ paddingTop: 12, paddingBottom: 12, bottom: tabBarHeight }}
+            style={{ paddingTop: 12, paddingBottom: 12, bottom: 0 }}
           >
             <TouchableOpacity
               className="rounded-2xl bg-orange-500 py-4 items-center"
@@ -738,6 +1006,227 @@ export default function ManagerInventoryScreen() {
           </View>
         </Animated.View>
       )}
+
+      {/* Edit Item Modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="bg-white px-4 py-4 border-b border-gray-200 flex-row items-center justify-between">
+            <Text className="text-lg font-bold text-gray-900">Edit Stock Settings</Text>
+            <TouchableOpacity onPress={() => setShowEditModal(false)}>
+              <Ionicons name="close" size={20} color={colors.gray[500]} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
+            {editingItem && selectedAreaItem ? (
+              <>
+                <View className="bg-white rounded-2xl p-4 border border-gray-100">
+                  <View className="flex-row items-center">
+                    <Text className="text-2xl mr-3">
+                      {CATEGORY_EMOJI[editingItem.inventory_item.category] ?? '📦'}
+                    </Text>
+                    <View className="flex-1">
+                      <Text className="text-base font-semibold text-gray-900">
+                        {editingItem.inventory_item.name}
+                      </Text>
+                      <Text className="text-xs text-gray-500 mt-1">
+                        {selectedAreaItem.area.name} • {editingItem.location.name}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                <View className="mt-5 bg-white rounded-2xl p-4 border border-gray-100">
+                  <Text className="text-xs font-semibold text-gray-500 mb-3">COUNTING UNIT</Text>
+                  <TouchableOpacity
+                    className="border border-gray-200 rounded-xl px-4 py-3 flex-row items-center justify-between"
+                    onPress={() => setShowCountUnitPicker(true)}
+                  >
+                    <Text className="text-sm font-medium text-gray-900">
+                      {editForm.unit_type}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color={colors.gray[400]} />
+                  </TouchableOpacity>
+
+                  <Text className="text-xs font-semibold text-gray-500 mt-5 mb-3">
+                    STOCK LEVELS (in {editForm.unit_type})
+                  </Text>
+                  <View>
+                    <View className="mb-4">
+                      <Text className="text-xs text-gray-500 mb-2">Minimum • Reorder when below</Text>
+                      <TextInput
+                        className="border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                        keyboardType="number-pad"
+                        value={editForm.min}
+                        onChangeText={(value) => setEditForm((prev) => ({ ...prev, min: value }))}
+                      />
+                    </View>
+                    <View className="mb-4">
+                      <Text className="text-xs text-gray-500 mb-2">Par Level • Ideal amount</Text>
+                      <TextInput
+                        className="border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                        keyboardType="number-pad"
+                        value={editForm.par}
+                        onChangeText={(value) => setEditForm((prev) => ({ ...prev, par: value }))}
+                      />
+                    </View>
+                    <View>
+                      <Text className="text-xs text-gray-500 mb-2">Maximum • Order up to</Text>
+                      <TextInput
+                        className="border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                        keyboardType="number-pad"
+                        value={editForm.max}
+                        onChangeText={(value) => setEditForm((prev) => ({ ...prev, max: value }))}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                <View className="mt-5 bg-white rounded-2xl p-4 border border-gray-100">
+                  <Text className="text-xs font-semibold text-gray-500 mb-3">REORDER SETTINGS</Text>
+                  <Text className="text-xs text-gray-500 mb-2">Order in</Text>
+                  <TouchableOpacity
+                    className="border border-gray-200 rounded-xl px-4 py-3 flex-row items-center justify-between"
+                    onPress={() => setShowOrderUnitPicker(true)}
+                  >
+                    <Text className="text-sm font-medium text-gray-900">
+                      {editForm.order_unit}
+                    </Text>
+                    <Ionicons name="chevron-down" size={16} color={colors.gray[400]} />
+                  </TouchableOpacity>
+
+                  <Text className="text-xs text-gray-500 mt-4 mb-2">Conversion • {editForm.unit_type} per {editForm.order_unit}</Text>
+                  <TextInput
+                    className="border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                    keyboardType="number-pad"
+                    value={editForm.conversion}
+                    onChangeText={(value) => setEditForm((prev) => ({ ...prev, conversion: value }))}
+                  />
+                  {editForm.conversion ? (
+                    <Text className="text-xs text-gray-400 mt-2">
+                      {editForm.conversion} {editForm.unit_type} = 1 {editForm.order_unit}
+                    </Text>
+                  ) : null}
+                </View>
+
+                <View className="mt-5 bg-white rounded-2xl p-4 border border-gray-100">
+                  <TouchableOpacity
+                    className="py-3"
+                    onPress={() => setShowAreaPicker(true)}
+                  >
+                    <Text className="text-sm font-semibold text-gray-900">Move to Different Area</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity className="py-3" onPress={handleDeactivateAreaItem}>
+                    <Text className="text-sm font-semibold text-red-600">Deactivate Item</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : (
+              <View className="items-center justify-center py-20">
+                <Text className="text-gray-500">No editable settings found.</Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <View className="bg-white border-t border-gray-200 px-4 py-4">
+            <TouchableOpacity
+              className={`rounded-xl py-4 items-center ${isEditSaving ? 'bg-primary-300' : 'bg-primary-500'}`}
+              onPress={handleSaveEdit}
+              disabled={isEditSaving || !selectedAreaItem}
+            >
+              <Text className="text-white font-semibold">
+                {isEditSaving ? 'Saving...' : 'Save Changes'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Count Unit Picker */}
+      <Modal
+        visible={showCountUnitPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCountUnitPicker(false)}
+      >
+        <View className="flex-1 bg-black/40 justify-end">
+          <View className="bg-white rounded-t-2xl p-4">
+            <Text className="text-base font-semibold text-gray-900 mb-2">Select Counting Unit</Text>
+            {COUNT_UNITS.map((unit) => (
+              <TouchableOpacity
+                key={unit}
+                className="py-3"
+                onPress={() => handleChangeUnitType(unit)}
+              >
+                <Text className="text-sm text-gray-700">{unit}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity className="py-3 items-center" onPress={() => setShowCountUnitPicker(false)}>
+              <Text className="text-sm font-semibold text-primary-500">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Order Unit Picker */}
+      <Modal
+        visible={showOrderUnitPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowOrderUnitPicker(false)}
+      >
+        <View className="flex-1 bg-black/40 justify-end">
+          <View className="bg-white rounded-t-2xl p-4">
+            <Text className="text-base font-semibold text-gray-900 mb-2">Select Order Unit</Text>
+            {ORDER_UNITS.map((unit) => (
+              <TouchableOpacity
+                key={unit}
+                className="py-3"
+                onPress={() => {
+                  setEditForm((prev) => ({ ...prev, order_unit: unit }));
+                  setShowOrderUnitPicker(false);
+                }}
+              >
+                <Text className="text-sm text-gray-700">{unit}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity className="py-3 items-center" onPress={() => setShowOrderUnitPicker(false)}>
+              <Text className="text-sm font-semibold text-primary-500">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Move Area Modal */}
+      <Modal
+        visible={showAreaPicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAreaPicker(false)}
+      >
+        <View className="flex-1 bg-black/40 justify-end">
+          <View className="bg-white rounded-t-2xl p-4">
+            <Text className="text-base font-semibold text-gray-900 mb-2">Move to Area</Text>
+            {areaOptions.map((area) => (
+              <TouchableOpacity
+                key={area.id}
+                className="py-3"
+                onPress={() => handleMoveArea(area.id)}
+              >
+                <Text className="text-sm text-gray-700">{area.name}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity className="py-3 items-center" onPress={() => setShowAreaPicker(false)}>
+              <Text className="text-sm font-semibold text-primary-500">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Location Modal */}
       <Modal
