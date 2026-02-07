@@ -15,6 +15,7 @@ export type SupplierCategory =
   | 'asian_market';
 
 export type UserRole = 'employee' | 'manager';
+export type AuthProvider = 'email' | 'google' | 'apple';
 
 export type OrderStatus = 'draft' | 'submitted' | 'processing' | 'fulfilled' | 'cancelled' | 'cancel_requested';
 
@@ -43,6 +44,16 @@ export interface User {
   role: UserRole;
   default_location_id: string | null;
   created_at: string;
+}
+
+export interface Profile {
+  id: string;
+  full_name: string | null;
+  role: UserRole | null;
+  profile_completed: boolean;
+  provider: AuthProvider | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface InventoryItem {
@@ -198,6 +209,11 @@ export interface Database {
         Row: User;
         Insert: Omit<User, 'id' | 'created_at'>;
         Update: Partial<Omit<User, 'id' | 'created_at'>>;
+      };
+      profiles: {
+        Row: Profile;
+        Insert: Omit<Profile, 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<Profile, 'id' | 'created_at' | 'updated_at'>>;
       };
       inventory_items: {
         Row: InventoryItem;

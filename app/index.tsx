@@ -4,7 +4,7 @@ import { useAuthStore } from '@/store';
 import { SpinningFish } from '@/components';
 
 export default function Index() {
-  const { session, user, isLoading, isInitialized, viewMode } = useAuthStore();
+  const { session, user, profile, isLoading, isInitialized, viewMode } = useAuthStore();
 
   // Show loading state while initializing
   if (!isInitialized || isLoading) {
@@ -20,8 +20,15 @@ export default function Index() {
     return <Redirect href="/(auth)/login" />;
   }
 
-  // Route based on viewMode for managers, employees always go to tabs
-  if (user?.role === 'manager' && viewMode === 'manager') {
+  // Force onboarding until profile is completed.
+  if (!profile?.profile_completed) {
+    return <Redirect href="/(auth)/complete-profile" />;
+  }
+
+  const role = user?.role ?? profile.role;
+
+  // Route based on viewMode for managers, employees always go to tabs.
+  if (role === 'manager' && viewMode === 'manager') {
     return <Redirect href="/(manager)" />;
   }
 

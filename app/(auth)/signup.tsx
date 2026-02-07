@@ -14,18 +14,23 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
-import { UserRole } from '@/types';
 import { AuthLogoHeader, SpinningFish } from '@/components';
+
+const ACCESS_CODE_REGEX = /^\d{4}$/;
 
 export default function SignUpScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
+  const [accessCode, setAccessCode] = useState('');
+  const [showAccessCode, setShowAccessCode] = useState(false);
+  const [accessCodeError, setAccessCodeError] = useState<string | null>(null);
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
 
   const { signUp, isLoading } = useAuthStore();
+
+  const sanitizeAccessCode = (value: string) => value.replace(/\D/g, '').slice(0, 4);
 
   const handleSignUp = async () => {
     if (!name.trim()) {
@@ -44,25 +49,19 @@ export default function SignUpScreen() {
       Alert.alert('Error', 'Password must be at least 6 characters');
       return;
     }
-    if (!selectedRole) {
-      Alert.alert('Error', 'Please select your role');
+    if (!ACCESS_CODE_REGEX.test(accessCode)) {
+      setAccessCodeError('Access code must be exactly 4 digits.');
       return;
     }
 
     try {
-      const user = await signUp(
+      await signUp(
         email.trim(),
         password,
         name.trim(),
-        selectedRole
+        accessCode
       );
-
-      // Route based on role
-      if (user.role === 'manager') {
-        router.replace('/(manager)');
-      } else {
-        router.replace('/(tabs)');
-      }
+      router.replace('/');
     } catch (error: any) {
       Alert.alert('Sign Up Failed', error.message || 'Failed to create account');
     }
@@ -75,64 +74,6 @@ export default function SignUpScreen() {
         ? 'bg-white border-2 border-primary-500'
         : 'bg-gray-100 border-2 border-transparent'
     }`;
-  };
-
-  const RoleCard = ({
-    role,
-    icon,
-    title,
-    description,
-  }: {
-    role: UserRole;
-    icon: keyof typeof Ionicons.glyphMap;
-    title: string;
-    description: string;
-  }) => {
-    const isSelected = selectedRole === role;
-    return (
-      <TouchableOpacity
-        className={`flex-1 p-4 rounded-2xl border-2 ${
-          isSelected
-            ? 'border-primary-500 bg-primary-50'
-            : 'border-gray-200 bg-white'
-        }`}
-        onPress={() => setSelectedRole(role)}
-        activeOpacity={0.7}
-      >
-        <View className="items-center">
-          <View
-            className={`w-12 h-12 rounded-full items-center justify-center mb-2 ${
-              isSelected ? 'bg-primary-500' : 'bg-gray-100'
-            }`}
-          >
-            <Ionicons
-              name={icon}
-              size={24}
-              color={isSelected ? 'white' : '#6B7280'}
-            />
-          </View>
-          <Text
-            className={`font-bold text-base ${
-              isSelected ? 'text-primary-700' : 'text-gray-900'
-            }`}
-          >
-            {title}
-          </Text>
-          <Text
-            className={`text-xs mt-1 text-center ${
-              isSelected ? 'text-primary-600' : 'text-gray-500'
-            }`}
-          >
-            {description}
-          </Text>
-          {isSelected && (
-            <View className="absolute top-2 right-2">
-              <Ionicons name="checkmark-circle" size={20} color="#F97316" />
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
   };
 
   return (
@@ -257,25 +198,56 @@ export default function SignUpScreen() {
                 </Text>
               </View>
 
-              {/* Role Selection */}
+              {/* Access Code */}
               <View className="mb-6">
                 <Text className="text-sm font-medium text-gray-700 mb-3">
-                  Select Your Role
+                  Access Code
                 </Text>
-                <View className="flex-row gap-3">
-                  <RoleCard
-                    role="employee"
-                    icon="person-outline"
-                    title="Employee"
-                    description="Submit orders"
+                <View className={getInputStyle('accessCode')} style={{ height: 48 }}>
+                  <Ionicons
+                    name="key-outline"
+                    size={20}
+                    color={focusedInput === 'accessCode' ? '#F97316' : '#9CA3AF'}
                   />
-                  <RoleCard
-                    role="manager"
-                    icon="briefcase-outline"
-                    title="Manager"
-                    description="Fulfill orders"
+                  <TextInput
+                    className="flex-1 ml-3 text-gray-900 text-base"
+                    placeholder="Enter 4-digit code"
+                    placeholderTextColor="#9CA3AF"
+                    value={accessCode}
+                    onChangeText={(value) => {
+                      setAccessCode(sanitizeAccessCode(value));
+                      if (accessCodeError) {
+                        setAccessCodeError(null);
+                      }
+                    }}
+                    secureTextEntry={!showAccessCode}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    onFocus={() => setFocusedInput('accessCode')}
+                    onBlur={() => {
+                      setFocusedInput(null);
+                      if (accessCode.length > 0 && !ACCESS_CODE_REGEX.test(accessCode)) {
+                        setAccessCodeError('Access code must be exactly 4 digits.');
+                      }
+                    }}
                   />
+                  <TouchableOpacity
+                    onPress={() => setShowAccessCode(!showAccessCode)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Ionicons
+                      name={showAccessCode ? 'eye-off-outline' : 'eye-outline'}
+                      size={20}
+                      color="#9CA3AF"
+                    />
+                  </TouchableOpacity>
                 </View>
+                <Text className="text-xs text-gray-400 mt-1.5 ml-1">
+                  Enter the 4-digit code provided by your manager.
+                </Text>
+                {accessCodeError ? (
+                  <Text className="text-xs text-red-500 mt-1.5 ml-1">{accessCodeError}</Text>
+                ) : null}
               </View>
 
               {/* Create Account Button */}

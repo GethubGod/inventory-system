@@ -17,6 +17,8 @@
     "@react-native-community/netinfo": "^11.5.2",
     "@supabase/supabase-js": "^2.45.0",
     "expo": "~54.0.33",
+    "expo-auth-session": "~7.0.8",
+    "expo-web-browser": "~15.0.8",
     "expo-camera": "^17.0.10",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",

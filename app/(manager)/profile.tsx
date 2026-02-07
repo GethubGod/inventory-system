@@ -9,6 +9,7 @@ import {
   Image,
   TextInput,
   Linking,
+  Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -34,7 +35,9 @@ import {
   scheduleReminder,
   cancelReminder,
 } from '@/services/notificationService';
-import { seedStations } from '@/services';
+import { seedStations, updateAccessCodes } from '@/services';
+
+const ACCESS_CODE_REGEX = /^\d{4}$/;
 
 // ============================================
 // PROFILE SECTION
@@ -455,6 +458,189 @@ function NotificationsSection() {
 }
 
 // ============================================
+// ACCESS CODES SECTION
+// ============================================
+function AccessCodesSection() {
+  const { user } = useAuthStore();
+
+  const [employeeAccessCode, setEmployeeAccessCode] = useState('');
+  const [managerAccessCode, setManagerAccessCode] = useState('');
+  const [showEmployeeAccessCode, setShowEmployeeAccessCode] = useState(false);
+  const [showManagerAccessCode, setShowManagerAccessCode] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSaved, setIsSaved] = useState(false);
+
+  const sanitizeCode = (value: string) => value.replace(/\D/g, '').slice(0, 4);
+  const canShare = (code: string) => ACCESS_CODE_REGEX.test(code);
+
+  const handleShare = async (role: 'employee' | 'manager') => {
+    const code = role === 'employee' ? employeeAccessCode : managerAccessCode;
+    const roleLabel = role === 'employee' ? 'Employee' : 'Manager';
+    try {
+      await Share.share({
+        message: `Your ${roleLabel.toLowerCase()} access code for Babytuna is: ${code}\n\nUse this code when creating your account.`,
+      });
+    } catch {
+      // User cancelled share
+    }
+  };
+
+  const handleUpdateCodes = async () => {
+    if (user?.role !== 'manager') {
+      Alert.alert('Access Denied', 'Only managers can update access codes.');
+      return;
+    }
+
+    if (!ACCESS_CODE_REGEX.test(employeeAccessCode) || !ACCESS_CODE_REGEX.test(managerAccessCode)) {
+      setErrorMessage('Both access codes must be exactly 4 digits.');
+      return;
+    }
+
+    if (employeeAccessCode === managerAccessCode) {
+      setErrorMessage('Employee and manager codes cannot be the same.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setErrorMessage(null);
+
+      await updateAccessCodes({
+        employeeAccessCode,
+        managerAccessCode,
+      });
+
+      setIsSaved(true);
+      Alert.alert('Success', 'Access codes updated.', [
+        {
+          text: 'Share Employee Code',
+          onPress: () => handleShare('employee'),
+        },
+        { text: 'OK' },
+      ]);
+    } catch (error: any) {
+      Alert.alert('Update Failed', error?.message || 'Unable to update access codes.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <View className="px-4 py-4">
+      <Text className="text-sm text-gray-500 mb-4">
+        Set the 4-digit access codes used during sign up.
+      </Text>
+
+      <View className="mb-4">
+        <Text className="text-sm font-medium text-gray-700 mb-2">Employee Access Code</Text>
+        <View className="flex-row items-center px-4 rounded-xl bg-gray-100 border-2 border-transparent">
+          <Ionicons name="person-outline" size={20} color="#9CA3AF" />
+          <TextInput
+            className="flex-1 ml-3 text-gray-900 text-base"
+            placeholder="4-digit employee code"
+            placeholderTextColor="#9CA3AF"
+            value={employeeAccessCode}
+            onChangeText={(value) => {
+              setEmployeeAccessCode(sanitizeCode(value));
+              setIsSaved(false);
+              if (errorMessage) setErrorMessage(null);
+            }}
+            keyboardType="number-pad"
+            maxLength={4}
+            secureTextEntry={!showEmployeeAccessCode}
+          />
+          <TouchableOpacity
+            onPress={() => setShowEmployeeAccessCode(!showEmployeeAccessCode)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons
+              name={showEmployeeAccessCode ? 'eye-off-outline' : 'eye-outline'}
+              size={20}
+              color="#9CA3AF"
+            />
+          </TouchableOpacity>
+          {canShare(employeeAccessCode) && (
+            <TouchableOpacity
+              onPress={() => handleShare('employee')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              className="ml-2"
+            >
+              <Ionicons name="share-outline" size={20} color={colors.primary[500]} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <View className="mb-4">
+        <Text className="text-sm font-medium text-gray-700 mb-2">Manager Access Code</Text>
+        <View className="flex-row items-center px-4 rounded-xl bg-gray-100 border-2 border-transparent">
+          <Ionicons name="briefcase-outline" size={20} color="#9CA3AF" />
+          <TextInput
+            className="flex-1 ml-3 text-gray-900 text-base"
+            placeholder="4-digit manager code"
+            placeholderTextColor="#9CA3AF"
+            value={managerAccessCode}
+            onChangeText={(value) => {
+              setManagerAccessCode(sanitizeCode(value));
+              setIsSaved(false);
+              if (errorMessage) setErrorMessage(null);
+            }}
+            keyboardType="number-pad"
+            maxLength={4}
+            secureTextEntry={!showManagerAccessCode}
+          />
+          <TouchableOpacity
+            onPress={() => setShowManagerAccessCode(!showManagerAccessCode)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons
+              name={showManagerAccessCode ? 'eye-off-outline' : 'eye-outline'}
+              size={20}
+              color="#9CA3AF"
+            />
+          </TouchableOpacity>
+          {canShare(managerAccessCode) && (
+            <TouchableOpacity
+              onPress={() => handleShare('manager')}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              className="ml-2"
+            >
+              <Ionicons name="share-outline" size={20} color={colors.primary[500]} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {errorMessage ? (
+        <Text className="text-xs text-red-500 mb-3">{errorMessage}</Text>
+      ) : null}
+
+      {isSaved ? (
+        <View className="bg-green-50 rounded-xl py-2.5 px-4 mb-3 flex-row items-center">
+          <Ionicons name="checkmark-circle" size={18} color="#22C55E" />
+          <Text className="text-green-700 font-medium ml-2 text-sm">Codes saved successfully</Text>
+        </View>
+      ) : null}
+
+      <TouchableOpacity
+        className={`rounded-xl items-center justify-center ${
+          isSaving ? 'bg-primary-300' : 'bg-primary-500'
+        }`}
+        style={{ height: 48 }}
+        onPress={handleUpdateCodes}
+        disabled={isSaving}
+        activeOpacity={0.8}
+      >
+        <Text className="text-white font-semibold text-base">
+          {isSaving ? 'Updating...' : 'Update Codes'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ============================================
 // ABOUT & SUPPORT SECTION
 // ============================================
 function AboutSection() {
@@ -516,6 +702,7 @@ function AboutSection() {
 export default function ManagerSettingsScreen() {
   const { user, signOut, setViewMode } = useAuthStore();
   const { hapticFeedback } = useSettingsStore();
+  const isManager = user?.role === 'manager';
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
@@ -590,7 +777,19 @@ export default function ManagerSettingsScreen() {
           <NotificationsSection />
         </ExpandableSection>
 
-        {/* Section 4: About & Support */}
+        {/* Section 4: Access Codes */}
+        {isManager && (
+          <ExpandableSection
+            title="Access Codes"
+            icon="key-outline"
+            iconColor="#F97316"
+            iconBgColor="#FFEDD5"
+          >
+            <AccessCodesSection />
+          </ExpandableSection>
+        )}
+
+        {/* Section 5: About & Support */}
         <ExpandableSection
           title="About & Support"
           icon="information-circle-outline"
