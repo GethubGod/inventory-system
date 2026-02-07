@@ -126,7 +126,10 @@ export const useAuthStore = create<AuthState>()(
 
       fetchUser: async () => {
         const { session } = get();
-        if (!session?.user) return null;
+        if (!session?.user) {
+          set({ user: null, location: null });
+          return null;
+        }
 
         const { data: user } = await supabase
           .from('users')
@@ -149,6 +152,8 @@ export const useAuthStore = create<AuthState>()(
               set({ location });
             }
           }
+        } else {
+          set({ user: null, location: null });
         }
 
         return user;
@@ -218,6 +223,7 @@ export const useAuthStore = create<AuthState>()(
             options: {
               redirectTo: OAUTH_REDIRECT_URI,
               skipBrowserRedirect: true,
+              scopes: provider === 'google' ? 'email profile' : 'name email',
             },
           });
 
@@ -237,7 +243,7 @@ export const useAuthStore = create<AuthState>()(
           const { code, errorDescription, accessToken, refreshToken } = parseOAuthResultUrl(result.url);
 
           if (errorDescription) {
-            throw new Error(errorDescription);
+            throw new Error(decodeURIComponent(errorDescription));
           }
 
           if (code) {
@@ -321,21 +327,8 @@ export const useAuthStore = create<AuthState>()(
           set({ session: data.session });
           await get().fetchProfile();
 
-          const fetchedUser = await get().fetchUser();
-          const user: User =
-            fetchedUser ??
-            ({
-              id: data.user.id,
-              email: data.user.email ?? email.trim(),
-              name: normalizedName,
-              role,
-              default_location_id: locationId || null,
-              created_at: new Date().toISOString(),
-            } as User);
-
-          if (!fetchedUser) {
-            set({ user });
-          }
+          const user = await get().fetchUser();
+          if (!user) throw new Error('User profile not found');
 
           // Fetch location if set
           if (locationId) {
@@ -406,9 +399,7 @@ export const useAuthStore = create<AuthState>()(
               })
               .eq('id', session.user.id);
 
-            if (updateUserError) {
-              console.error('Failed to update user row:', updateUserError);
-            }
+            if (updateUserError) throw updateUserError;
           } else {
             const { error: insertUserError } = await supabase
               .from('users')
@@ -420,27 +411,12 @@ export const useAuthStore = create<AuthState>()(
                 default_location_id: null,
               } as any);
 
-            if (insertUserError) {
-              console.error('Failed to insert user row:', insertUserError);
-            }
+            if (insertUserError) throw insertUserError;
           }
 
           await get().fetchProfile();
-          const fetchedUser = await get().fetchUser();
-          const user: User =
-            fetchedUser ??
-            ({
-              id: session.user.id,
-              email: session.user.email ?? '',
-              name: normalizedName,
-              role,
-              default_location_id: null,
-              created_at: new Date().toISOString(),
-            } as User);
-
-          if (!fetchedUser) {
-            set({ user });
-          }
+          const user = await get().fetchUser();
+          if (!user) throw new Error('User profile not found');
 
           return user;
         } finally {

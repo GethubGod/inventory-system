@@ -20,8 +20,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
-  const [oauthLoadingProvider, setOauthLoadingProvider] = useState<'google' | 'apple' | null>(null);
-  const { signIn, signInWithOAuth, isLoading } = useAuthStore();
+  const { signIn, isLoading } = useAuthStore();
 
   const handleLogin = async () => {
     if (!email.trim()) {
@@ -38,27 +37,6 @@ export default function LoginScreen() {
       router.replace('/');
     } catch (error: any) {
       Alert.alert('Sign In Failed', error.message || 'Invalid email or password');
-    }
-  };
-
-  const handleOAuthSignIn = async (provider: 'google' | 'apple') => {
-    setOauthLoadingProvider(provider);
-    try {
-      await signInWithOAuth(provider);
-      router.replace('/');
-    } catch (error: any) {
-      const message = error?.message || 'OAuth failed. Please try again.';
-      if (message.toLowerCase().includes('cancel')) {
-        Alert.alert('Sign In Cancelled', 'OAuth sign-in was cancelled.');
-        return;
-      }
-      if (message.toLowerCase().includes('missing session')) {
-        Alert.alert('Sign In Failed', 'Missing session after redirect. Please try again.');
-        return;
-      }
-      Alert.alert('Sign In Failed', message);
-    } finally {
-      setOauthLoadingProvider(null);
     }
   };
 
@@ -99,40 +77,7 @@ export default function LoginScreen() {
               Welcome Back
             </Text>
 
-            {/* OAuth Buttons */}
-            <View className="mb-5">
-              <TouchableOpacity
-                className="h-12 rounded-xl border border-gray-200 bg-white flex-row items-center justify-center"
-                onPress={() => handleOAuthSignIn('google')}
-                disabled={isLoading || oauthLoadingProvider !== null}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="logo-google" size={18} color="#111827" />
-                <Text className="ml-2 text-gray-900 font-semibold text-base">
-                  {oauthLoadingProvider === 'google' ? 'Connecting...' : 'Continue with Google'}
-                </Text>
-              </TouchableOpacity>
-
-              {Platform.OS === 'ios' && (
-                <TouchableOpacity
-                  className="h-12 mt-3 rounded-xl border border-gray-200 bg-white flex-row items-center justify-center"
-                  onPress={() => handleOAuthSignIn('apple')}
-                  disabled={isLoading || oauthLoadingProvider !== null}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="logo-apple" size={20} color="#111827" />
-                  <Text className="ml-2 text-gray-900 font-semibold text-base">
-                    {oauthLoadingProvider === 'apple' ? 'Connecting...' : 'Continue with Apple'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            <View className="flex-row items-center mb-5">
-              <View className="flex-1 h-px bg-gray-200" />
-              <Text className="mx-3 text-xs text-gray-400 font-medium">OR</Text>
-              <View className="flex-1 h-px bg-gray-200" />
-            </View>
+    
 
             {/* Email Input */}
             <View className="mb-4">
@@ -202,7 +147,7 @@ export default function LoginScreen() {
                 }`}
                 style={{ height: 52 }}
                 onPress={handleLogin}
-                disabled={isLoading || oauthLoadingProvider !== null}
+                disabled={isLoading}
                 activeOpacity={0.8}
               >
               {isLoading ? (

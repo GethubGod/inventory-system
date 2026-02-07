@@ -1,11 +1,20 @@
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useOrderStore, useDraftStore, useStockStore } from '@/store';
+import { useAuthStore, useOrderStore, useDraftStore, useStockStore } from '@/store';
 
 export default function TabsLayout() {
+  const { session, profile } = useAuthStore();
   const cartTotal = useOrderStore((state) => state.getCartTotal());
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
   const pendingStockCount = useStockStore((state) => state.pendingUpdates.length);
+
+  if (!session) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  if (!profile?.profile_completed) {
+    return <Redirect href="/(auth)/complete-profile" />;
+  }
 
   return (
     <Tabs

@@ -1,4 +1,4 @@
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useAuthStore } from '@/store';
 import { SpinningFish } from '@/components';

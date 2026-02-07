@@ -1,11 +1,24 @@
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text } from 'react-native';
-import { useOrderStore } from '@/store';
+import { useAuthStore, useOrderStore } from '@/store';
 
 export default function ManagerLayout() {
+  const { session, profile, user } = useAuthStore();
   const { getTotalCartCount } = useOrderStore();
   const cartCount = getTotalCartCount();
+
+  if (!session) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  if (!profile?.profile_completed) {
+    return <Redirect href="/(auth)/complete-profile" />;
+  }
+
+  if ((user?.role ?? profile.role) !== 'manager') {
+    return <Redirect href="/(tabs)" />;
+  }
 
   return (
     <Tabs

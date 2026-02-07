@@ -31,8 +31,8 @@ for each row execute function public.set_org_settings_updated_at();
 insert into public.org_settings (org_id, employee_access_code, manager_access_code)
 values (
   '00000000-0000-0000-0000-000000000001'::uuid,
-  crypt('1234', gen_salt('bf')),
-  crypt('9999', gen_salt('bf'))
+  extensions.crypt('1234', extensions.gen_salt('bf')),
+  extensions.crypt('9999', extensions.gen_salt('bf'))
 )
 on conflict (org_id) do nothing;
 
@@ -42,7 +42,7 @@ create or replace function public.get_access_code_role(p_access_code text)
 returns text
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 declare
   settings_row public.org_settings%rowtype;
@@ -60,11 +60,11 @@ begin
     return null;
   end if;
 
-  if settings_row.manager_access_code = crypt(p_access_code, settings_row.manager_access_code) then
+  if settings_row.manager_access_code = extensions.crypt(p_access_code, settings_row.manager_access_code) then
     return 'manager';
   end if;
 
-  if settings_row.employee_access_code = crypt(p_access_code, settings_row.employee_access_code) then
+  if settings_row.employee_access_code = extensions.crypt(p_access_code, settings_row.employee_access_code) then
     return 'employee';
   end if;
 
@@ -80,7 +80,7 @@ create or replace function public.update_org_access_codes(
 returns void
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   if p_employee_access_code is null or p_employee_access_code !~ '^[0-9]{4}$' then
@@ -97,8 +97,8 @@ begin
 
   update public.org_settings
   set
-    employee_access_code = crypt(p_employee_access_code, gen_salt('bf')),
-    manager_access_code = crypt(p_manager_access_code, gen_salt('bf')),
+    employee_access_code = extensions.crypt(p_employee_access_code, extensions.gen_salt('bf')),
+    manager_access_code = extensions.crypt(p_manager_access_code, extensions.gen_salt('bf')),
     updated_by = p_updated_by,
     updated_at = now()
   where org_id = '00000000-0000-0000-0000-000000000001'::uuid;
@@ -111,8 +111,8 @@ begin
       updated_by
     ) values (
       '00000000-0000-0000-0000-000000000001'::uuid,
-      crypt(p_employee_access_code, gen_salt('bf')),
-      crypt(p_manager_access_code, gen_salt('bf')),
+      extensions.crypt(p_employee_access_code, extensions.gen_salt('bf')),
+      extensions.crypt(p_manager_access_code, extensions.gen_salt('bf')),
       p_updated_by
     );
   end if;

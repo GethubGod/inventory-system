@@ -14,27 +14,35 @@ const ACCESS_CODE_REGEX = /^\d{4}$/;
 
 async function getFunctionErrorMessage(error: unknown): Promise<string | null> {
   if (error && typeof error === 'object' && 'context' in error) {
-    const context = (error as { context?: Response }).context;
-    if (context && typeof context.json === 'function') {
-      try {
-        const payload = await context.json();
-        if (typeof payload?.error === 'string') {
-          return payload.error;
+    const context = (error as { context?: any }).context;
+
+    if (context) {
+      // Newer supabase-js: context is the already-parsed JSON body
+      if (typeof context === 'object' && !(context instanceof Response) && typeof context.error === 'string') {
+        return context.error;
+      }
+
+      // Older supabase-js: context is a Response object
+      if (typeof context.json === 'function') {
+        try {
+          const payload = await context.json();
+          if (typeof payload?.error === 'string') {
+            return payload.error;
+          }
+        } catch {
+          // body already consumed or not JSON – fall through
         }
-      } catch {
-        // Ignore parse errors and fallback to generic messages.
       }
     }
   }
 
   if (error && typeof error === 'object' && 'message' in error) {
-    try {
-      const message = (error as { message?: unknown }).message;
-      if (typeof message === 'string') {
-        return message;
-      }
-    } catch {
-      return null;
+    const message = (error as { message?: unknown }).message;
+    if (
+      typeof message === 'string' &&
+      !message.toLowerCase().includes('edge function returned a non-2xx')
+    ) {
+      return message;
     }
   }
 
@@ -85,12 +93,35 @@ export async function updateAccessCodes({
     throw new Error('Employee and manager codes cannot be the same.');
   }
 
-  const { error } = await supabase.rpc('manager_update_access_codes', {
-    p_employee_code: employeeCode,
-    p_manager_code: managerCode,
-  });
+  const { data, error } = await supabase.functions.invoke<{ success?: boolean }>(
+    'update-access-codes',
+    {
+      body: {
+        employeeAccessCode: employeeCode,
+        managerAccessCode: managerCode,
+      },
+    }
+  );
 
   if (error) {
-    throw new Error(error.message || 'Unable to update access codes.');
+    const message = (await getFunctionErrorMessage(error)) ?? '';
+
+    if (message.toLowerCase().includes('only managers')) {
+      throw new Error('Only managers can update access codes.');
+    }
+
+    if (message.toLowerCase().includes('4 digits')) {
+      throw new Error('Both access codes must be exactly 4 digits.');
+    }
+
+    if (message.toLowerCase().includes('must be different')) {
+      throw new Error('Employee and manager codes cannot be the same.');
+    }
+
+    throw new Error(message || 'Unable to update access codes.');
+  }
+
+  if (data?.success !== true) {
+    throw new Error('Unable to update access codes.');
   }
 }
