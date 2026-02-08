@@ -42,6 +42,9 @@ function OrderListCard({ order }: { order: OrderWithDetails }) {
   };
 
   const itemCount = order.order_items?.length || 0;
+  const noteCount = order.order_items?.filter(
+    (line) => typeof line.note === 'string' && line.note.trim().length > 0
+  ).length || 0;
   const locationName = order.location?.name || 'Unknown Location';
 
   return (
@@ -87,6 +90,12 @@ function OrderListCard({ order }: { order: OrderWithDetails }) {
         <Text className="text-gray-600 text-sm ml-1">{locationName}</Text>
         <Text className="text-gray-400 mx-2">•</Text>
         <Text className="text-gray-600 text-sm">{itemCount} item{itemCount !== 1 ? 's' : ''}</Text>
+        {noteCount > 0 && (
+          <>
+            <Text className="text-gray-400 mx-2">•</Text>
+            <Text className="text-blue-700 text-sm">{noteCount} note{noteCount !== 1 ? 's' : ''}</Text>
+          </>
+        )}
       </View>
     </TouchableOpacity>
   );

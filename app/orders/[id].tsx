@@ -243,6 +243,9 @@ export default function OrderDetailScreen() {
       item.unit_type === 'base'
         ? item.inventory_item.base_unit
         : item.inventory_item.pack_unit;
+    const lineNote = typeof item.note === 'string' && item.note.trim().length > 0
+      ? item.note.trim()
+      : null;
 
     return (
       <View
@@ -268,6 +271,12 @@ export default function OrderDetailScreen() {
                 {CATEGORY_LABELS[item.inventory_item.category]}
               </Text>
             </View>
+            {lineNote && (
+              <View className="mt-2 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-2">
+                <Text className="text-[11px] font-semibold text-blue-700">Note</Text>
+                <Text className="text-sm text-blue-800 mt-0.5">{lineNote}</Text>
+              </View>
+            )}
           </View>
           <View className="items-end">
             <Text className="text-gray-900 font-bold text-xl">

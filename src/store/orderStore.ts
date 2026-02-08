@@ -17,6 +17,7 @@ export interface CartItem {
   decidedQuantity: number | null;
   decidedBy: string | null;
   decidedAt: string | null;
+  note: string | null;
 }
 
 export interface AddToCartOptions {
@@ -26,6 +27,7 @@ export interface AddToCartOptions {
   decidedQuantity?: number | null;
   decidedBy?: string | null;
   decidedAt?: string | null;
+  note?: string | null;
 }
 
 interface UpdateCartItemOptions {
@@ -78,6 +80,7 @@ interface OrderState {
     decidedQuantity: number,
     decidedBy: string
   ) => void;
+  setCartItemNote: (locationId: string, cartItemId: string, note: string | null) => void;
 
   // Cart getters
   getCartItems: (locationId: string) => CartItem[];
@@ -109,6 +112,8 @@ interface OrderState {
 const createCartItemId = () =>
   `cart_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
+let orderItemsNoteColumnAvailable: boolean | null = null;
+
 function toValidNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim().length > 0) {
@@ -116,6 +121,12 @@ function toValidNumber(value: unknown): number | null {
     if (Number.isFinite(parsed)) return parsed;
   }
   return null;
+}
+
+function normalizeNote(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function getEffectiveQuantity(item: CartItem): number {
@@ -153,6 +164,7 @@ function normalizeCartItem(raw: any): CartItem | null {
       decidedQuantity,
       decidedBy: typeof raw?.decidedBy === 'string' ? raw.decidedBy : null,
       decidedAt: typeof raw?.decidedAt === 'string' ? raw.decidedAt : null,
+      note: normalizeNote(raw?.note),
     };
     return item;
   }
@@ -174,6 +186,7 @@ function normalizeCartItem(raw: any): CartItem | null {
     decidedQuantity,
     decidedBy: typeof raw?.decidedBy === 'string' ? raw.decidedBy : null,
     decidedAt: typeof raw?.decidedAt === 'string' ? raw.decidedAt : null,
+    note: normalizeNote(raw?.note),
   };
   return item;
 }
@@ -209,6 +222,7 @@ function mergeCartItem(
         unitType: incoming.unitType,
         quantityRequested: nextQuantity,
         quantity: nextQuantity,
+        note: existing.note ?? incoming.note ?? null,
       };
       return destination.map((item, idx) => (idx === existingIndex ? merged : item));
     }
@@ -264,7 +278,69 @@ function toOrderItemInsert(orderId: string, item: CartItem): Omit<OrderItem, 'id
     decided_quantity: item.decidedQuantity,
     decided_by: item.decidedBy,
     decided_at: item.decidedAt,
+    note: item.note,
   };
+}
+
+function stripOrderItemNote(
+  item: Omit<OrderItem, 'id' | 'created_at'>
+): Omit<Omit<OrderItem, 'id' | 'created_at'>, 'note'> {
+  const { note: _note, ...rest } = item;
+  return rest;
+}
+
+function isMissingOrderItemNoteColumnError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { code?: string; message?: string };
+  if (err.code !== 'PGRST204') return false;
+  const message = typeof err.message === 'string' ? err.message : '';
+  return message.includes("'note'") && message.includes("'order_items'");
+}
+
+async function insertOrderItemsWithFallback(
+  orderItems: Omit<OrderItem, 'id' | 'created_at'>[],
+  options?: { includeInventorySelect?: boolean }
+) {
+  const includeInventorySelect = options?.includeInventorySelect === true;
+  const shouldSendNote = orderItemsNoteColumnAvailable !== false;
+  const payload = shouldSendNote ? orderItems : orderItems.map(stripOrderItemNote);
+
+  let query = (supabase as any).from('order_items').insert(payload);
+  if (includeInventorySelect) {
+    query = query.select(`
+      *,
+      inventory_item:inventory_items(*)
+    `);
+  }
+
+  const firstAttempt = await query;
+  if (!firstAttempt.error) {
+    if (shouldSendNote) {
+      orderItemsNoteColumnAvailable = true;
+    }
+    return firstAttempt;
+  }
+
+  if (!shouldSendNote || !isMissingOrderItemNoteColumnError(firstAttempt.error)) {
+    throw firstAttempt.error;
+  }
+
+  // Fallback for environments that have not applied the note migration yet.
+  orderItemsNoteColumnAvailable = false;
+  const fallbackPayload = orderItems.map(stripOrderItemNote);
+  let fallbackQuery = (supabase as any).from('order_items').insert(fallbackPayload);
+  if (includeInventorySelect) {
+    fallbackQuery = fallbackQuery.select(`
+      *,
+      inventory_item:inventory_items(*)
+    `);
+  }
+
+  const fallbackAttempt = await fallbackQuery;
+  if (fallbackAttempt.error) {
+    throw fallbackAttempt.error;
+  }
+  return fallbackAttempt;
 }
 
 export const useOrderStore = create<OrderState>()(
@@ -286,6 +362,7 @@ export const useOrderStore = create<OrderState>()(
         const locationCart = getLocationCart(cartByLocation, locationId);
 
         const inputMode: OrderInputMode = options?.inputMode ?? 'quantity';
+        const note = normalizeNote(options?.note);
 
         if (inputMode === 'quantity') {
           const quantityRequested = toValidNumber(options?.quantityRequested ?? quantity);
@@ -306,6 +383,7 @@ export const useOrderStore = create<OrderState>()(
             decidedBy: typeof options?.decidedBy === 'string' ? options.decidedBy : null,
             decidedAt: typeof options?.decidedAt === 'string' ? options.decidedAt : null,
             quantity: quantityRequested,
+            note,
           };
 
           const mergedCart = mergeCartItem(locationCart, nextItem);
@@ -336,6 +414,7 @@ export const useOrderStore = create<OrderState>()(
           decidedBy: typeof options?.decidedBy === 'string' ? options.decidedBy : null,
           decidedAt: typeof options?.decidedAt === 'string' ? options.decidedAt : null,
           quantity: decidedQuantity ?? 0,
+          note,
         };
 
         const mergedCart = mergeCartItem(locationCart, nextItem);
@@ -540,6 +619,27 @@ export const useOrderStore = create<OrderState>()(
             decidedBy,
             decidedAt: new Date().toISOString(),
             quantity: normalizedQuantity,
+          };
+        });
+
+        set({
+          cartByLocation: {
+            ...cartByLocation,
+            [locationId]: nextCart,
+          },
+        });
+      },
+
+      setCartItemNote: (locationId, cartItemId, note) => {
+        const { cartByLocation } = get();
+        const locationCart = getLocationCart(cartByLocation, locationId);
+        const normalized = normalizeNote(note);
+
+        const nextCart = locationCart.map((item) => {
+          if (item.id !== cartItemId) return item;
+          return {
+            ...item,
+            note: normalized,
           };
         });
 
@@ -763,11 +863,7 @@ export const useOrderStore = create<OrderState>()(
             toOrderItemInsert(order.id, item)
           );
 
-          const { error: itemsError } = await (supabase as any)
-            .from('order_items')
-            .insert(orderItems);
-
-          if (itemsError) throw itemsError;
+          await insertOrderItemsWithFallback(orderItems);
 
           clearLocationCart(locationId);
           return order;
@@ -811,15 +907,9 @@ export const useOrderStore = create<OrderState>()(
             toOrderItemInsert(order.id, item)
           );
 
-          const { data: createdItems, error: itemsError } = await (supabase as any)
-            .from('order_items')
-            .insert(orderItemsToInsert)
-            .select(`
-              *,
-              inventory_item:inventory_items(*)
-            `);
-
-          if (itemsError) throw itemsError;
+          const { data: createdItems } = await insertOrderItemsWithFallback(orderItemsToInsert, {
+            includeInventorySelect: true,
+          });
 
           // Build the full order with details
           const orderWithDetails: OrderWithDetails = {

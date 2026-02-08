@@ -8,6 +8,7 @@ import {
   Platform,
   Modal,
   Pressable,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -41,7 +42,6 @@ export default function CartScreen() {
     getCartItems,
     getCartLocationIds,
     getTotalCartCount,
-    getUndecidedRemainingItems,
     addToCart,
     updateCartItem,
     removeFromCart,
@@ -50,6 +50,7 @@ export default function CartScreen() {
     clearLocationCart,
     clearAllCarts,
     createAndSubmitOrder,
+    setCartItemNote,
   } = useOrderStore();
   const { items } = useInventoryStore();
   const { user, locations } = useAuthStore();
@@ -64,7 +65,9 @@ export default function CartScreen() {
   // Item menu state
   const [showItemMenu, setShowItemMenu] = useState(false);
   const [showItemLocationModal, setShowItemLocationModal] = useState(false);
+  const [showItemNoteModal, setShowItemNoteModal] = useState(false);
   const [itemLocationAction, setItemLocationAction] = useState<'add' | 'move' | null>(null);
+  const [itemNoteDraft, setItemNoteDraft] = useState('');
   const [menuItem, setMenuItem] = useState<{
     locationId: string;
     item: CartItemWithDetails;
@@ -105,15 +108,6 @@ export default function CartScreen() {
       return newSet;
     });
   }, []);
-
-  // Handle quantity change
-  const handleQuantityChange = useCallback((locationId: string, itemId: string, newQuantity: number, unitType: 'base' | 'pack') => {
-    // Backward-compatible helper retained for existing calls.
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    updateCartItem(locationId, itemId, newQuantity, unitType);
-  }, [updateCartItem]);
 
   const handleItemValueChange = useCallback(
     (locationId: string, item: CartItemWithDetails, nextValue: number, unitType: UnitType) => {
@@ -225,6 +219,56 @@ export default function CartScreen() {
     setMenuItem(null);
   }, [menuItem, updateCartItem]);
 
+  const handleToggleItemMode = useCallback(() => {
+    if (!menuItem) return;
+
+    const { locationId, item } = menuItem;
+    const currentValue =
+      item.inputMode === 'quantity'
+        ? item.quantityRequested ?? item.quantity
+        : item.remainingReported ?? 0;
+
+    if (item.inputMode === 'quantity') {
+      updateCartItem(locationId, item.inventoryItemId, Math.max(0, currentValue), item.unitType, {
+        cartItemId: item.id,
+        inputMode: 'remaining',
+        remainingReported: Math.max(0, currentValue),
+      });
+    } else {
+      const nextQuantity = Math.max(1, item.decidedQuantity ?? currentValue ?? 1);
+      updateCartItem(locationId, item.inventoryItemId, nextQuantity, item.unitType, {
+        cartItemId: item.id,
+        inputMode: 'quantity',
+        quantityRequested: nextQuantity,
+        clearDecision: true,
+      });
+    }
+
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setShowItemMenu(false);
+    setMenuItem(null);
+  }, [menuItem, updateCartItem]);
+
+  const handleOpenItemNoteModal = useCallback(() => {
+    if (!menuItem) return;
+    setItemNoteDraft(menuItem.item.note ?? '');
+    setShowItemMenu(false);
+    setShowItemNoteModal(true);
+  }, [menuItem]);
+
+  const handleSaveItemNote = useCallback(() => {
+    if (!menuItem) return;
+    setCartItemNote(menuItem.locationId, menuItem.item.id, itemNoteDraft);
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setShowItemNoteModal(false);
+    setItemNoteDraft('');
+    setMenuItem(null);
+  }, [menuItem, itemNoteDraft, setCartItemNote]);
+
   const handleOpenItemLocationModal = useCallback((action: 'add' | 'move') => {
     setItemLocationAction(action);
     setShowItemMenu(false);
@@ -248,6 +292,7 @@ export default function CartScreen() {
         addToCart(toLocationId, menuItem.item.inventoryItemId, qty, menuItem.item.unitType, {
           inputMode: 'quantity',
           quantityRequested: qty,
+          note: menuItem.item.note,
         });
       } else {
         const remaining = menuItem.item.remainingReported ?? 0;
@@ -257,6 +302,7 @@ export default function CartScreen() {
           decidedQuantity: menuItem.item.decidedQuantity,
           decidedBy: menuItem.item.decidedBy,
           decidedAt: menuItem.item.decidedAt,
+          note: menuItem.item.note,
         });
       }
     } else {
@@ -378,9 +424,18 @@ export default function CartScreen() {
             <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
               {inventoryItem.name}
             </Text>
-            {isRemainingMode && (
-              <View className="self-start mt-1 px-2 py-0.5 rounded-full bg-amber-100">
-                <Text className="text-[10px] font-semibold text-amber-700">Remaining</Text>
+            {(isRemainingMode || item.note) && (
+              <View className="flex-row items-center mt-1">
+                {isRemainingMode && (
+                  <View className="self-start px-2 py-0.5 rounded-full bg-amber-100">
+                    <Text className="text-[10px] font-semibold text-amber-700">Remaining</Text>
+                  </View>
+                )}
+                {item.note && (
+                  <View className={`self-start px-2 py-0.5 rounded-full bg-blue-100 ${isRemainingMode ? 'ml-2' : ''}`}>
+                    <Text className="text-[10px] font-semibold text-blue-700">Note</Text>
+                  </View>
+                )}
               </View>
             )}
           </View>
@@ -467,13 +522,27 @@ export default function CartScreen() {
             </View>
 
             {isRemainingMode ? (
-              <Text className="text-xs text-gray-500 mt-2">
-                Manager will set final order quantity before submission.
-              </Text>
+              <>
+                {item.note && (
+                  <Text className="text-xs text-blue-700 mt-2">
+                    Note: {item.note}
+                  </Text>
+                )}
+                <Text className="text-xs text-gray-500 mt-2">
+                  Please confirm quantity before submitting
+                </Text>
+              </>
             ) : (
-              <Text className="text-xs text-gray-400 mt-2">
-                {inventoryItem.pack_size} {inventoryItem.base_unit} per {inventoryItem.pack_unit}
-              </Text>
+              <>
+                {item.note && (
+                  <Text className="text-xs text-blue-700 mt-2">
+                    Note: {item.note}
+                  </Text>
+                )}
+                <Text className="text-xs text-gray-400 mt-2">
+                  {inventoryItem.pack_size} {inventoryItem.base_unit} per {inventoryItem.pack_unit}
+                </Text>
+              </>
             )}
           </View>
         )}
@@ -485,7 +554,6 @@ export default function CartScreen() {
   const renderLocationSection = useCallback((location: Location) => {
     const cartWithDetails = getCartWithDetails(location.id);
     const itemCount = cartWithDetails.length;
-    const undecidedRemainingCount = getUndecidedRemainingItems(location.id).length;
 
     return (
       <View key={location.id} className="mb-4">
@@ -533,14 +601,6 @@ export default function CartScreen() {
           {cartWithDetails.map((item) => renderCartItem(location.id, item))}
         </View>
 
-        {undecidedRemainingCount > 0 && (
-          <View className="px-4 py-2 border-l border-r border-gray-200 bg-amber-50">
-            <Text className="text-xs text-amber-700 font-medium">
-              {undecidedRemainingCount} remaining item{undecidedRemainingCount === 1 ? '' : 's'} will require manager decision during review.
-            </Text>
-          </View>
-        )}
-
         {/* Submit Order Button */}
         <TouchableOpacity
           onPress={() => handleSubmitOrder(location.id, location.name)}
@@ -565,7 +625,7 @@ export default function CartScreen() {
         </TouchableOpacity>
       </View>
     );
-  }, [getCartWithDetails, getUndecidedRemainingItems, renderCartItem, handleClearLocationCart, handleSubmitOrder, submittingLocation, handleOpenCartLocationModal]);
+  }, [getCartWithDetails, renderCartItem, handleClearLocationCart, handleSubmitOrder, submittingLocation, handleOpenCartLocationModal]);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
@@ -730,10 +790,35 @@ export default function CartScreen() {
 
             <TouchableOpacity
               onPress={handleDuplicateItem}
-              className="flex-row items-center py-3"
+              className={`flex-row items-center py-3 ${menuItem?.item.inputMode === 'remaining' ? 'opacity-50' : ''}`}
+              disabled={menuItem?.item.inputMode === 'remaining'}
             >
               <Ionicons name="copy-outline" size={20} color={colors.gray[600]} />
               <Text className="text-base text-gray-800 ml-3">Duplicate item</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleToggleItemMode}
+              className="flex-row items-center py-3"
+            >
+              <Ionicons
+                name={menuItem?.item.inputMode === 'remaining' ? 'list-outline' : 'albums-outline'}
+                size={20}
+                color={colors.gray[600]}
+              />
+              <Text className="text-base text-gray-800 ml-3">
+                {menuItem?.item.inputMode === 'remaining' ? 'Change to Order' : 'Change to Remaining'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={handleOpenItemNoteModal}
+              className="flex-row items-center py-3"
+            >
+              <Ionicons name="create-outline" size={20} color={colors.gray[600]} />
+              <Text className="text-base text-gray-800 ml-3">
+                {menuItem?.item.note ? 'Edit Note' : 'Add Note'}
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -763,6 +848,75 @@ export default function CartScreen() {
             >
               <Text className="text-gray-500 font-medium text-center">Cancel</Text>
             </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Item Note Modal */}
+      <Modal
+        visible={showItemNoteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowItemNoteModal(false);
+          setItemNoteDraft('');
+          setMenuItem(null);
+        }}
+      >
+        <Pressable
+          className="flex-1 bg-black/40 justify-end"
+          onPress={() => {
+            setShowItemNoteModal(false);
+            setItemNoteDraft('');
+            setMenuItem(null);
+          }}
+        >
+          <Pressable
+            className="bg-white rounded-t-3xl px-6 pt-4 pb-6"
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View className="items-center pb-3">
+              <View className="w-10 h-1 bg-gray-300 rounded-full" />
+            </View>
+            <Text className="text-lg font-bold text-gray-900 mb-1">
+              {menuItem?.item.note ? 'Edit Note' : 'Add Note'}
+            </Text>
+            <Text className="text-sm text-gray-500 mb-4">
+              {menuItem?.item.inventoryItem?.name || 'Item'}
+            </Text>
+
+            <TextInput
+              value={itemNoteDraft}
+              onChangeText={setItemNoteDraft}
+              placeholder="Add special request for manager..."
+              placeholderTextColor={colors.gray[400]}
+              multiline
+              maxLength={240}
+              textAlignVertical="top"
+              className="min-h-[110px] border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 bg-gray-50"
+            />
+            <Text className="text-xs text-gray-400 mt-2">
+              {itemNoteDraft.length}/240
+            </Text>
+
+            <View className="flex-row mt-5">
+              <TouchableOpacity
+                onPress={() => {
+                  setShowItemNoteModal(false);
+                  setItemNoteDraft('');
+                  setMenuItem(null);
+                }}
+                className="flex-1 py-3 rounded-xl bg-gray-100 mr-2 items-center"
+              >
+                <Text className="text-gray-700 font-semibold">Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveItemNote}
+                className="flex-1 py-3 rounded-xl bg-primary-500 ml-2 items-center"
+              >
+                <Text className="text-white font-semibold">Save Note</Text>
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>

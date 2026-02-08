@@ -29,6 +29,7 @@ interface AggregatedItem {
   hasRemainingMode: boolean;
   unresolvedRemainingCount: number;
   remainingReportedTotal: number;
+  notes: string[];
   locationBreakdown: Array<{
     locationId: string;
     locationName: string;
@@ -36,6 +37,7 @@ interface AggregatedItem {
     quantity: number;
     remainingReported: number;
     hasUndecidedRemaining: boolean;
+    notes: string[];
     orderedBy: string[];
     orderIds: string[];
   }>;
@@ -67,6 +69,7 @@ interface LocationGroupedItem {
   hasRemainingMode: boolean;
   unresolvedRemainingCount: number;
   remainingReportedTotal: number;
+  notes: string[];
   locationBreakdown: Array<{
     locationId: string;
     locationName: string;
@@ -74,6 +77,7 @@ interface LocationGroupedItem {
     quantity: number;
     remainingReported: number;
     hasUndecidedRemaining: boolean;
+    notes: string[];
     orderedBy: string[];
     orderIds: string[];
   }>;
@@ -125,6 +129,7 @@ export default function FulfillmentScreen() {
   const [isFulfilling, setIsFulfilling] = useState(false);
   const [editedQuantities, setEditedQuantities] = useState<Record<string, number>>({});
   const [reviewedRemainingKeys, setReviewedRemainingKeys] = useState<Set<string>>(new Set());
+  const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
 
   // Fetch pending orders
   const fetchPendingOrders = async () => {
@@ -179,6 +184,9 @@ export default function FulfillmentScreen() {
         if (!item) return;
 
         const isRemainingMode = orderItem.input_mode === 'remaining';
+        const lineNote = typeof orderItem.note === 'string' && orderItem.note.trim().length > 0
+          ? orderItem.note.trim()
+          : null;
         const remainingReported = isRemainingMode
           ? Math.max(0, Number(orderItem.remaining_reported ?? 0))
           : 0;
@@ -194,10 +202,12 @@ export default function FulfillmentScreen() {
             : Math.max(0, decidedQuantity as number)
           : Math.max(0, Number(orderItem.quantity ?? 0));
 
+        const aggregateModeKey = isRemainingMode ? 'remaining' : 'quantity';
         const aggregateKey = [
           item.name.trim().toLowerCase(),
           item.supplier_category,
           item.category,
+          aggregateModeKey,
           orderItem.unit_type,
           item.base_unit,
           item.pack_unit,
@@ -209,6 +219,9 @@ export default function FulfillmentScreen() {
           existing.totalQuantity += lineQuantity;
           existing.hasRemainingMode = existing.hasRemainingMode || isRemainingMode;
           existing.remainingReportedTotal += remainingReported;
+          if (lineNote && !existing.notes.includes(lineNote)) {
+            existing.notes.push(lineNote);
+          }
           if (hasUndecidedRemaining) {
             existing.unresolvedRemainingCount += 1;
           }
@@ -224,6 +237,9 @@ export default function FulfillmentScreen() {
             locationEntry.remainingReported += remainingReported;
             locationEntry.hasUndecidedRemaining =
               locationEntry.hasUndecidedRemaining || hasUndecidedRemaining;
+            if (lineNote && !locationEntry.notes.includes(lineNote)) {
+              locationEntry.notes.push(lineNote);
+            }
             const orderedByName = order.user?.name || 'Unknown';
             if (!locationEntry.orderedBy.includes(orderedByName)) {
               locationEntry.orderedBy.push(orderedByName);
@@ -239,6 +255,7 @@ export default function FulfillmentScreen() {
               quantity: lineQuantity,
               remainingReported,
               hasUndecidedRemaining,
+              notes: lineNote ? [lineNote] : [],
               orderedBy: [order.user?.name || 'Unknown'],
               orderIds: [order.id],
             });
@@ -252,6 +269,7 @@ export default function FulfillmentScreen() {
             hasRemainingMode: isRemainingMode,
             unresolvedRemainingCount: hasUndecidedRemaining ? 1 : 0,
             remainingReportedTotal: remainingReported,
+            notes: lineNote ? [lineNote] : [],
             locationBreakdown: [
               {
                 locationId: order.location_id,
@@ -260,6 +278,7 @@ export default function FulfillmentScreen() {
                 quantity: lineQuantity,
                 remainingReported,
                 hasUndecidedRemaining,
+                notes: lineNote ? [lineNote] : [],
                 orderedBy: [order.user?.name || 'Unknown'],
                 orderIds: [order.id],
               },
@@ -361,6 +380,18 @@ export default function FulfillmentScreen() {
     }
   }, []);
 
+  const toggleNoteExpansion = useCallback((noteKey: string) => {
+    setExpandedNotes((prev) => {
+      const next = new Set(prev);
+      if (next.has(noteKey)) {
+        next.delete(noteKey);
+      } else {
+        next.add(noteKey);
+      }
+      return next;
+    });
+  }, []);
+
   // Get displayed quantity (edited or original)
   const getDisplayQuantity = useCallback((itemKey: string, fallbackQuantity: number) => {
     return editedQuantities[itemKey] ?? fallbackQuantity;
@@ -381,11 +412,12 @@ export default function FulfillmentScreen() {
           quantity: number;
           remainingReportedTotal: number;
           unresolvedRemainingCount: number;
+          notes: Set<string>;
           breakdown: AggregatedItem['locationBreakdown'];
           orderIds: Set<string>;
         }> = {
-          sushi: { quantity: 0, remainingReportedTotal: 0, unresolvedRemainingCount: 0, breakdown: [], orderIds: new Set() },
-          poki: { quantity: 0, remainingReportedTotal: 0, unresolvedRemainingCount: 0, breakdown: [], orderIds: new Set() },
+          sushi: { quantity: 0, remainingReportedTotal: 0, unresolvedRemainingCount: 0, notes: new Set(), breakdown: [], orderIds: new Set() },
+          poki: { quantity: 0, remainingReportedTotal: 0, unresolvedRemainingCount: 0, notes: new Set(), breakdown: [], orderIds: new Set() },
         };
 
         item.locationBreakdown.forEach((loc) => {
@@ -395,6 +427,7 @@ export default function FulfillmentScreen() {
           if (loc.hasUndecidedRemaining) {
             groupMap[group].unresolvedRemainingCount += 1;
           }
+          loc.notes.forEach((note) => groupMap[group].notes.add(note));
           groupMap[group].breakdown.push(loc);
           loc.orderIds.forEach((id) => groupMap[group].orderIds.add(id));
         });
@@ -412,6 +445,7 @@ export default function FulfillmentScreen() {
             hasRemainingMode: item.hasRemainingMode,
             unresolvedRemainingCount: info.unresolvedRemainingCount,
             remainingReportedTotal: info.remainingReportedTotal,
+            notes: Array.from(info.notes),
             locationBreakdown: info.breakdown,
             orderIds: Array.from(info.orderIds),
           });
@@ -436,50 +470,70 @@ export default function FulfillmentScreen() {
   const allChecked = checkedCount === allItems.length && allItems.length > 0;
 
   const buildConfirmationItems = useCallback((supplierGroup: SupplierGroup) => {
-    const items = buildLocationGroupedItems(supplierGroup).map((item) => {
-      const qty = getDisplayQuantity(item.key, item.totalQuantity);
-      if (qty <= 0) return null;
-      const unitLabel = item.unitType === 'pack'
-        ? item.inventoryItem.pack_unit
-        : item.inventoryItem.base_unit;
-      return {
-        id: item.key,
-        name: item.inventoryItem.name,
-        category: item.inventoryItem.category,
-        locationGroup: item.locationGroup,
-        quantity: qty,
-        unitLabel,
-        inputMode: item.hasRemainingMode ? 'remaining' : 'quantity',
-        remainingReported: item.hasRemainingMode ? item.remainingReportedTotal : null,
-        managerDecided: item.hasRemainingMode,
-        details: item.locationBreakdown.map((loc) => ({
-          locationName: loc.locationName,
-          orderedBy: loc.orderedBy.length > 0 ? loc.orderedBy.join(', ') : 'Unknown',
-          quantity: loc.quantity,
-          remainingReported: loc.remainingReported,
-          shortCode: loc.shortCode,
-        })),
-      };
-    }).filter(Boolean) as Array<{
+    const merged = new Map<string, {
       id: string;
       name: string;
       category: ItemCategory;
       locationGroup: LocationGroup;
       quantity: number;
       unitLabel: string;
-      inputMode: 'quantity' | 'remaining';
-      remainingReported: number | null;
-      managerDecided: boolean;
       details: Array<{
         locationName: string;
         orderedBy: string;
         quantity: number;
-        remainingReported: number;
         shortCode: string;
       }>;
-    }>;
+    }>();
 
-    return items;
+    buildLocationGroupedItems(supplierGroup).forEach((item) => {
+      const qty = getDisplayQuantity(item.key, item.totalQuantity);
+      if (qty <= 0) return;
+
+      const unitLabel = item.unitType === 'pack'
+        ? item.inventoryItem.pack_unit
+        : item.inventoryItem.base_unit;
+      const mergeKey = [
+        item.locationGroup,
+        item.inventoryItem.id,
+        item.unitType,
+      ].join('|');
+
+      const incomingDetails = item.locationBreakdown.map((loc) => ({
+        locationName: loc.locationName,
+        orderedBy: loc.orderedBy.length > 0 ? loc.orderedBy.join(', ') : 'Unknown',
+        quantity: loc.quantity,
+        shortCode: loc.shortCode,
+      }));
+
+      const existing = merged.get(mergeKey);
+      if (!existing) {
+        merged.set(mergeKey, {
+          id: mergeKey,
+          name: item.inventoryItem.name,
+          category: item.inventoryItem.category,
+          locationGroup: item.locationGroup,
+          quantity: qty,
+          unitLabel,
+          details: incomingDetails,
+        });
+        return;
+      }
+
+      existing.quantity += qty;
+      incomingDetails.forEach((detail) => {
+        const detailKey = `${detail.locationName}|${detail.orderedBy}|${detail.shortCode}`;
+        const existingDetail = existing.details.find(
+          (row) => `${row.locationName}|${row.orderedBy}|${row.shortCode}` === detailKey
+        );
+        if (existingDetail) {
+          existingDetail.quantity += detail.quantity;
+        } else {
+          existing.details.push(detail);
+        }
+      });
+    });
+
+    return Array.from(merged.values());
   }, [buildLocationGroupedItems, getDisplayQuantity]);
 
   const handleSend = useCallback((supplierGroup: SupplierGroup) => {
@@ -570,7 +624,16 @@ export default function FulfillmentScreen() {
       : item.inventoryItem.base_unit;
     const displayQty = getDisplayQuantity(key, item.totalQuantity);
     const numericQty = Number.isFinite(displayQty) ? displayQty : 0;
+    const displayQtyText = Number.isFinite(displayQty) ? displayQty.toString() : '0';
     const decisionPending = isDecisionPending(item);
+
+    const itemNotes = item.notes
+      .map((note) => note.trim())
+      .filter((note) => note.length > 0);
+    const itemNotePreview = itemNotes.join(' • ');
+    const itemNoteKey = `${key}-note`;
+    const itemNoteExpanded = expandedNotes.has(itemNoteKey);
+    const itemNoteCanExpand = itemNotePreview.length > 120 || itemNotes.length > 1;
 
     return (
       <View key={key}>
@@ -612,6 +675,32 @@ export default function FulfillmentScreen() {
                 </Text>
               </View>
             )}
+
+            {itemNotes.length > 0 && (
+              <View className="mt-1.5 rounded-md bg-blue-50 border border-blue-100 px-2.5 py-2">
+                <Text className="text-[11px] font-semibold text-blue-700 mb-1">Notes</Text>
+                <Text
+                  className="text-[12px] leading-4 text-blue-900"
+                  numberOfLines={itemNoteExpanded ? undefined : 3}
+                >
+                  {itemNotePreview}
+                </Text>
+                {itemNoteCanExpand && (
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      toggleNoteExpansion(itemNoteKey);
+                    }}
+                    className="mt-1 self-start"
+                  >
+                    <Text className="text-[11px] font-semibold text-blue-700">
+                      {itemNoteExpanded ? 'Show less' : 'Show more'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
             {decisionPending && (
               <Text className="text-[11px] text-red-600 mt-1">Set final order quantity before send.</Text>
             )}
@@ -631,7 +720,7 @@ export default function FulfillmentScreen() {
 
             <TextInput
               className="w-12 h-7 text-center text-sm font-bold text-gray-900"
-              value={displayQty.toString()}
+              value={displayQtyText}
               onChangeText={(text) => {
                 const sanitized = text.replace(/[^0-9.]/g, '');
                 const num = parseFloat(sanitized);
@@ -672,25 +761,70 @@ export default function FulfillmentScreen() {
         {/* Location Breakdown (shown when expanded) */}
         {showLocationBreakdown && item.locationBreakdown.length > 1 && (
           <View className="bg-gray-50 px-12 py-2 border-b border-gray-100">
-            {item.locationBreakdown.map((loc) => (
-              <View key={loc.locationId} className="flex-row items-center py-1">
-                <View className="w-6 h-6 bg-primary-100 rounded-full items-center justify-center mr-2">
-                  <Text className="text-xs font-bold text-primary-700">{loc.shortCode}</Text>
-                </View>
-                <View className="flex-1">
-                  <Text className="text-xs text-gray-600">{loc.locationName}</Text>
-                  {item.hasRemainingMode && (loc.hasUndecidedRemaining || loc.remainingReported > 0) && (
-                    <Text className="text-[11px] text-amber-700">Remaining {loc.remainingReported}</Text>
+            {item.locationBreakdown.map((loc) => {
+              const locationNotes = loc.notes
+                .map((note) => note.trim())
+                .filter((note) => note.length > 0);
+              const locationNotePreview = locationNotes.join(' • ');
+              const locationNoteKey = `${key}-loc-${loc.locationId}-note`;
+              const locationNoteExpanded = expandedNotes.has(locationNoteKey);
+              const locationNoteCanExpand =
+                locationNotePreview.length > 90 || locationNotes.length > 1;
+
+              return (
+                <View key={loc.locationId} className="py-1.5">
+                  <View className="flex-row items-center">
+                    <View className="w-6 h-6 bg-primary-100 rounded-full items-center justify-center mr-2">
+                      <Text className="text-xs font-bold text-primary-700">{loc.shortCode}</Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-xs text-gray-600">{loc.locationName}</Text>
+                      {item.hasRemainingMode && (loc.hasUndecidedRemaining || loc.remainingReported > 0) && (
+                        <Text className="text-[11px] text-amber-700">Remaining {loc.remainingReported}</Text>
+                      )}
+                    </View>
+                    <Text className="text-xs font-medium text-gray-700">{loc.quantity}</Text>
+                  </View>
+
+                  {locationNotes.length > 0 && (
+                    <View className="ml-8 mt-1 rounded-md bg-blue-50 border border-blue-100 px-2 py-1.5">
+                      <Text
+                        className="text-[11px] leading-4 text-blue-800"
+                        numberOfLines={locationNoteExpanded ? undefined : 2}
+                      >
+                        {locationNotePreview}
+                      </Text>
+                      {locationNoteCanExpand && (
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            toggleNoteExpansion(locationNoteKey);
+                          }}
+                          className="mt-1 self-start"
+                        >
+                          <Text className="text-[11px] font-semibold text-blue-700">
+                            {locationNoteExpanded ? 'Show less' : 'Show more'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   )}
                 </View>
-                <Text className="text-xs font-medium text-gray-700">{loc.quantity}</Text>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
       </View>
     );
-  }, [checkedOtherItems, getDisplayQuantity, isDecisionPending, handleToggleCheck, handleQuantityChange]);
+  }, [
+    checkedOtherItems,
+    expandedNotes,
+    getDisplayQuantity,
+    handleQuantityChange,
+    handleToggleCheck,
+    isDecisionPending,
+    toggleNoteExpansion,
+  ]);
 
   // Render supplier section
   const renderSupplierSection = useCallback((supplierGroup: SupplierGroup) => {
@@ -727,22 +861,23 @@ export default function FulfillmentScreen() {
           </View>
 
           <View className="flex-row items-center">
+            <Ionicons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={colors.gray[500]}
+            />
+
             {/* Send Button */}
             <TouchableOpacity
               onPress={(e) => {
                 e.stopPropagation();
                 handleSend(supplierGroup);
               }}
-              className="mr-3 px-3 py-1.5 bg-white rounded-lg border border-gray-200"
+              className="ml-3 px-4 py-2.5 bg-primary-500 rounded-xl border border-primary-600 flex-row items-center"
             >
-              <Text className="text-xs font-semibold text-gray-700">Send</Text>
+              <Ionicons name="paper-plane" size={14} color="white" />
+              <Text className="text-sm font-bold text-white ml-1.5">Send</Text>
             </TouchableOpacity>
-
-            <Ionicons
-              name={isExpanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={colors.gray[500]}
-            />
           </View>
         </TouchableOpacity>
 
@@ -755,6 +890,8 @@ export default function FulfillmentScreen() {
               const sortedItems = [...section.items].sort((a, b) =>
                 a.inventoryItem.name.localeCompare(b.inventoryItem.name)
               );
+              const remainingItems = sortedItems.filter((item) => item.hasRemainingMode);
+              const regularItems = sortedItems.filter((item) => !item.hasRemainingMode);
 
               return (
                 <View key={`${supplierGroup.supplierCategory}-${section.group}`} className="mb-3">
@@ -769,7 +906,7 @@ export default function FulfillmentScreen() {
                             {locationLabel}
                           </Text>
                           <Text className="text-sm text-gray-500">
-                            {sortedItems.length} item{sortedItems.length !== 1 ? 's' : ''}
+                            {sortedItems.length} item{sortedItems.length !== 1 ? 's' : ''} • {remainingItems.length} remaining
                           </Text>
                         </View>
                       </View>
@@ -777,7 +914,40 @@ export default function FulfillmentScreen() {
                   </View>
 
                   <View className="bg-white px-4 border border-gray-200 border-t-0 rounded-b-xl overflow-hidden">
-                    {sortedItems.map((item) => renderItem(item, true))}
+                    {remainingItems.length > 0 && (
+                      <View className="pt-3">
+                        <View className="mx-2 mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex-row items-center justify-between">
+                          <View className="flex-row items-center">
+                            <Ionicons name="alert-circle-outline" size={14} color="#B45309" />
+                            <Text className="ml-2 text-xs font-semibold text-amber-800">
+                              Remaining Items
+                            </Text>
+                          </View>
+                          <Text className="text-xs font-semibold text-amber-800">
+                            {remainingItems.length}
+                          </Text>
+                        </View>
+                        <View className="rounded-lg overflow-hidden border border-amber-100">
+                          {remainingItems.map((item) => renderItem(item, true))}
+                        </View>
+                      </View>
+                    )}
+
+                    {regularItems.length > 0 && (
+                      <View className="pt-3 pb-3">
+                        <View className="mx-2 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 flex-row items-center justify-between">
+                          <Text className="text-xs font-semibold text-gray-700">
+                            Regular Items
+                          </Text>
+                          <Text className="text-xs font-semibold text-gray-700">
+                            {regularItems.length}
+                          </Text>
+                        </View>
+                        <View className="rounded-lg overflow-hidden border border-gray-100">
+                          {regularItems.map((item) => renderItem(item, true))}
+                        </View>
+                      </View>
+                    )}
                   </View>
                 </View>
               );

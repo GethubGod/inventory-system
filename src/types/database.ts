@@ -97,6 +97,7 @@ export interface OrderItem {
   decided_quantity: number | null;
   decided_by: string | null;
   decided_at: string | null;
+  note: string | null;
   created_at: string;
 }
 
