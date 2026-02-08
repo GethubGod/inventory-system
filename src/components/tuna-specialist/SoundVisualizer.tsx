@@ -5,401 +5,581 @@ type VisualizerState = 'idle' | 'listening' | 'processing' | 'speaking';
 
 interface SoundVisualizerProps {
   state: VisualizerState;
-  intensity?: number;
 }
 
 const COLORS = {
-  idle: '#F97316',
-  listening: '#22C55E',
-  processing: '#F97316',
-  speaking: '#3B82F6',
+  orange: '#F97316',
+  green: '#22C55E',
+  blue: '#3B82F6',
 };
 
-const SIZE = 200;
+const SIZE = 220;
 
-export function SoundVisualizer({ state, intensity = 0.5 }: SoundVisualizerProps) {
-  // Animated values for 4 concentric rings
-  const ring1Scale = useRef(new Animated.Value(1)).current;
-  const ring2Scale = useRef(new Animated.Value(0.85)).current;
-  const ring3Scale = useRef(new Animated.Value(0.7)).current;
-  const ring4Scale = useRef(new Animated.Value(0.55)).current;
+export function SoundVisualizer({ state }: SoundVisualizerProps) {
+  // --- Color cross-fade opacities ---
+  const orangeOpacity = useRef(new Animated.Value(1)).current;
+  const greenOpacity = useRef(new Animated.Value(0)).current;
+  const blueOpacity = useRef(new Animated.Value(0)).current;
 
-  const ring1Opacity = useRef(new Animated.Value(0.15)).current;
-  const ring2Opacity = useRef(new Animated.Value(0.1)).current;
-  const ring3Opacity = useRef(new Animated.Value(0.08)).current;
-  const ring4Opacity = useRef(new Animated.Value(0.05)).current;
+  // --- Ring scale values ---
+  const outermostScale = useRef(new Animated.Value(0.9)).current;
+  const outermostOpacity = useRef(new Animated.Value(0)).current;
+  const outerScale = useRef(new Animated.Value(1)).current;
+  const outerOpacity = useRef(new Animated.Value(0.1)).current;
+  const middleScale = useRef(new Animated.Value(1)).current;
+  const middleOpacity = useRef(new Animated.Value(0.15)).current;
+  const innerGlowScale = useRef(new Animated.Value(1)).current;
+  const innerGlowOpacity = useRef(new Animated.Value(0.15)).current;
+  const coreScale = useRef(new Animated.Value(1)).current;
+  const coreOpacity = useRef(new Animated.Value(0.85)).current;
 
-  const rotation = useRef(new Animated.Value(0)).current;
+  // --- Rotation for processing ---
+  const middleRotation = useRef(new Animated.Value(0)).current;
 
-  // Color overlay opacities (cross-fade between colors)
-  const idleOpacity = useRef(new Animated.Value(1)).current;
-  const listeningOpacity = useRef(new Animated.Value(0)).current;
-  const processingOpacity = useRef(new Animated.Value(0)).current;
-  const speakingOpacity = useRef(new Animated.Value(0)).current;
-
+  // Track running animations for cleanup
   const animationsRef = useRef<Animated.CompositeAnimation[]>([]);
 
-  const stopAnimations = () => {
+  const stopAll = () => {
     animationsRef.current.forEach((a) => a.stop());
     animationsRef.current = [];
   };
 
-  useEffect(() => {
-    stopAnimations();
+  const run = (anim: Animated.CompositeAnimation) => {
+    animationsRef.current.push(anim);
+    anim.start();
+  };
 
-    // Cross-fade colors
-    const colorFade = Animated.parallel([
-      Animated.timing(idleOpacity, {
-        toValue: state === 'idle' ? 1 : 0,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.timing(listeningOpacity, {
-        toValue: state === 'listening' ? 1 : 0,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.timing(processingOpacity, {
-        toValue: state === 'processing' ? 1 : 0,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-      Animated.timing(speakingOpacity, {
-        toValue: state === 'speaking' ? 1 : 0,
-        duration: 400,
-        useNativeDriver: true,
-      }),
-    ]);
-    colorFade.start();
+  useEffect(() => {
+    stopAll();
+
+    // --- Cross-fade colors ---
+    const isOrange = state === 'idle' || state === 'processing';
+    const isGreen = state === 'listening';
+    const isBlue = state === 'speaking';
+
+    run(
+      Animated.parallel([
+        Animated.timing(orangeOpacity, {
+          toValue: isOrange ? 1 : 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(greenOpacity, {
+          toValue: isGreen ? 1 : 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(blueOpacity, {
+          toValue: isBlue ? 1 : 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
 
     if (state === 'idle') {
-      // Gentle breathing pulse
-      const breathe = Animated.loop(
-        Animated.sequence([
-          Animated.parallel([
-            Animated.timing(ring1Scale, {
-              toValue: 1.05,
-              duration: 1500,
-              easing: Easing.inOut(Easing.ease),
-              useNativeDriver: true,
-            }),
-            Animated.timing(ring1Opacity, {
-              toValue: 0.2,
-              duration: 1500,
-              useNativeDriver: true,
-            }),
-          ]),
-          Animated.parallel([
-            Animated.timing(ring1Scale, {
-              toValue: 0.95,
-              duration: 1500,
-              easing: Easing.inOut(Easing.ease),
-              useNativeDriver: true,
-            }),
-            Animated.timing(ring1Opacity, {
-              toValue: 0.12,
-              duration: 1500,
-              useNativeDriver: true,
-            }),
-          ]),
-        ]),
-      );
-
-      // Subtle outer rings
-      const outerBreath = Animated.loop(
-        Animated.sequence([
-          Animated.timing(ring2Scale, {
-            toValue: 0.9,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(ring2Scale, {
-            toValue: 0.8,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-
-      animationsRef.current = [breathe, outerBreath];
-      breathe.start();
-      outerBreath.start();
-
-      // Reset other rings
-      Animated.parallel([
-        Animated.timing(ring3Scale, { toValue: 0.7, duration: 300, useNativeDriver: true }),
-        Animated.timing(ring4Scale, { toValue: 0.55, duration: 300, useNativeDriver: true }),
-        Animated.timing(ring2Opacity, { toValue: 0.08, duration: 300, useNativeDriver: true }),
-        Animated.timing(ring3Opacity, { toValue: 0.05, duration: 300, useNativeDriver: true }),
-        Animated.timing(ring4Opacity, { toValue: 0.03, duration: 300, useNativeDriver: true }),
-      ]).start();
-    } else if (state === 'listening') {
-      // Dynamic pulsing rings — more rings visible, varied timing
-      const intensityFactor = 0.5 + intensity * 0.5;
-
-      const ring1Pulse = Animated.loop(
-        Animated.sequence([
-          Animated.parallel([
-            Animated.timing(ring1Scale, {
-              toValue: 1.0 + 0.15 * intensityFactor,
-              duration: 300 + Math.random() * 100,
-              easing: Easing.out(Easing.ease),
-              useNativeDriver: true,
-            }),
-            Animated.timing(ring1Opacity, {
-              toValue: 0.3 * intensityFactor,
-              duration: 300,
-              useNativeDriver: true,
-            }),
-          ]),
-          Animated.parallel([
-            Animated.timing(ring1Scale, {
-              toValue: 0.92,
-              duration: 350 + Math.random() * 100,
-              easing: Easing.in(Easing.ease),
-              useNativeDriver: true,
-            }),
-            Animated.timing(ring1Opacity, {
-              toValue: 0.15,
-              duration: 350,
-              useNativeDriver: true,
-            }),
-          ]),
-        ]),
-      );
-
-      const ring2Pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(ring2Scale, {
-            toValue: 0.85 + 0.12 * intensityFactor,
-            duration: 400 + Math.random() * 150,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(ring2Scale, {
-            toValue: 0.78,
-            duration: 450 + Math.random() * 150,
-            easing: Easing.in(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-
-      const ring3Pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(ring3Scale, {
-            toValue: 0.7 + 0.1 * intensityFactor,
-            duration: 500 + Math.random() * 200,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(ring3Scale, {
-            toValue: 0.62,
-            duration: 550 + Math.random() * 200,
-            easing: Easing.in(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-
-      const ring4Pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(ring4Scale, {
-            toValue: 0.55 + 0.08 * intensityFactor,
-            duration: 600,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(ring4Scale, {
-            toValue: 0.48,
-            duration: 650,
-            easing: Easing.in(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-
-      // Show all rings
-      Animated.parallel([
-        Animated.timing(ring2Opacity, { toValue: 0.15, duration: 200, useNativeDriver: true }),
-        Animated.timing(ring3Opacity, { toValue: 0.12, duration: 200, useNativeDriver: true }),
-        Animated.timing(ring4Opacity, { toValue: 0.08, duration: 200, useNativeDriver: true }),
-      ]).start();
-
-      animationsRef.current = [ring1Pulse, ring2Pulse, ring3Pulse, ring4Pulse];
-      ring1Pulse.start();
-      ring2Pulse.start();
-      ring3Pulse.start();
-      ring4Pulse.start();
-    } else if (state === 'processing') {
-      // Contract + rotate
-      Animated.parallel([
-        Animated.timing(ring1Scale, { toValue: 0.85, duration: 400, useNativeDriver: true }),
-        Animated.timing(ring2Scale, { toValue: 0.72, duration: 400, useNativeDriver: true }),
-        Animated.timing(ring3Scale, { toValue: 0.6, duration: 400, useNativeDriver: true }),
-        Animated.timing(ring4Scale, { toValue: 0.48, duration: 400, useNativeDriver: true }),
-        Animated.timing(ring1Opacity, { toValue: 0.25, duration: 400, useNativeDriver: true }),
-        Animated.timing(ring2Opacity, { toValue: 0.15, duration: 400, useNativeDriver: true }),
-        Animated.timing(ring3Opacity, { toValue: 0.1, duration: 400, useNativeDriver: true }),
-        Animated.timing(ring4Opacity, { toValue: 0.05, duration: 400, useNativeDriver: true }),
-      ]).start();
-
-      const spin = Animated.loop(
-        Animated.timing(rotation, {
-          toValue: 1,
-          duration: 3000,
-          easing: Easing.linear,
+      // Hide outermost ring
+      run(
+        Animated.timing(outermostOpacity, {
+          toValue: 0,
+          duration: 300,
           useNativeDriver: true,
         }),
       );
 
-      // Subtle shimmer on inner ring
-      const shimmer = Animated.loop(
-        Animated.sequence([
-          Animated.timing(ring1Opacity, {
-            toValue: 0.3,
-            duration: 800,
-            useNativeDriver: true,
-          }),
-          Animated.timing(ring1Opacity, {
-            toValue: 0.18,
-            duration: 800,
-            useNativeDriver: true,
-          }),
-        ]),
-      );
-
-      animationsRef.current = [spin, shimmer];
-      spin.start();
-      shimmer.start();
-    } else if (state === 'speaking') {
-      // Smooth, rhythmic pulsing — more uniform than listening
-      rotation.setValue(0);
-
-      const ring1Pulse = Animated.loop(
-        Animated.sequence([
-          Animated.parallel([
-            Animated.timing(ring1Scale, {
+      // Outer ring: slow pulse
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(outerScale, {
               toValue: 1.08,
-              duration: 500,
+              duration: 2000,
               easing: Easing.inOut(Easing.ease),
               useNativeDriver: true,
             }),
-            Animated.timing(ring1Opacity, {
-              toValue: 0.25,
-              duration: 500,
+            Animated.timing(outerScale, {
+              toValue: 0.95,
+              duration: 2000,
+              easing: Easing.inOut(Easing.ease),
               useNativeDriver: true,
             }),
           ]),
-          Animated.parallel([
-            Animated.timing(ring1Scale, {
+        ),
+      );
+      run(
+        Animated.timing(outerOpacity, {
+          toValue: 0.1,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      );
+
+      // Middle ring: offset pulse
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(1000),
+            Animated.timing(middleScale, {
+              toValue: 1.06,
+              duration: 2000,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(middleScale, {
+              toValue: 0.96,
+              duration: 2000,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
+      run(
+        Animated.timing(middleOpacity, {
+          toValue: 0.15,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      );
+
+      // Stop rotation
+      middleRotation.setValue(0);
+
+      // Inner glow: breathing
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(innerGlowScale, {
+              toValue: 1.1,
+              duration: 1500,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(innerGlowScale, {
+              toValue: 0.9,
+              duration: 1500,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
+      run(
+        Animated.timing(innerGlowOpacity, {
+          toValue: 0.15,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      );
+
+      // Core: gentle pulse
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(coreScale, {
+              toValue: 1.04,
+              duration: 1800,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(coreScale, {
+              toValue: 0.97,
+              duration: 1800,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
+      run(
+        Animated.timing(coreOpacity, {
+          toValue: 0.85,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      );
+    } else if (state === 'listening') {
+      // Show outermost ring
+      run(
+        Animated.timing(outermostOpacity, {
+          toValue: 0.06,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      );
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(outermostScale, {
+              toValue: 1.15,
+              duration: 800,
+              easing: Easing.out(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(outermostScale, {
+              toValue: 0.9,
+              duration: 900,
+              easing: Easing.in(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
+
+      // Outer ring: dramatic pulse, staggered
+      run(
+        Animated.timing(outerOpacity, {
+          toValue: 0.15,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      );
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(outerScale, {
+              toValue: 1.25,
+              duration: 600,
+              easing: Easing.out(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(outerScale, {
+              toValue: 0.88,
+              duration: 700,
+              easing: Easing.in(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
+
+      // Middle ring: staggered ripple
+      run(
+        Animated.timing(middleOpacity, {
+          toValue: 0.2,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      );
+      middleRotation.setValue(0);
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(150),
+            Animated.timing(middleScale, {
+              toValue: 1.2,
+              duration: 550,
+              easing: Easing.out(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(middleScale, {
+              toValue: 0.85,
+              duration: 650,
+              easing: Easing.in(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
+
+      // Inner glow: energetic
+      run(
+        Animated.timing(innerGlowOpacity, {
+          toValue: 0.2,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      );
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.delay(250),
+            Animated.timing(innerGlowScale, {
+              toValue: 1.18,
+              duration: 500,
+              easing: Easing.out(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(innerGlowScale, {
+              toValue: 0.88,
+              duration: 600,
+              easing: Easing.in(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
+
+      // Core: aggressive pulse
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(coreScale, {
+              toValue: 1.15,
+              duration: 400,
+              easing: Easing.out(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(coreScale, {
+              toValue: 0.88,
+              duration: 500,
+              easing: Easing.in(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
+      run(
+        Animated.timing(coreOpacity, {
+          toValue: 0.95,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      );
+    } else if (state === 'processing') {
+      // Hide outermost
+      run(
+        Animated.timing(outermostOpacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      );
+
+      // Contract rings
+      run(
+        Animated.timing(outerScale, {
+          toValue: 0.85,
+          duration: 500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      );
+      run(
+        Animated.timing(outerOpacity, {
+          toValue: 0.12,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      );
+
+      // Middle ring: rotate
+      run(
+        Animated.timing(middleScale, {
+          toValue: 0.88,
+          duration: 500,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      );
+      run(
+        Animated.timing(middleOpacity, {
+          toValue: 0.2,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      );
+      run(
+        Animated.loop(
+          Animated.timing(middleRotation, {
+            toValue: 1,
+            duration: 3000,
+            easing: Easing.linear,
+            useNativeDriver: true,
+          }),
+        ),
+      );
+
+      // Inner glow: subtle breathing
+      run(
+        Animated.timing(innerGlowOpacity, {
+          toValue: 0.18,
+          duration: 400,
+          useNativeDriver: true,
+        }),
+      );
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(innerGlowScale, {
+              toValue: 1.05,
+              duration: 1000,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(innerGlowScale, {
+              toValue: 0.95,
+              duration: 1000,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
+
+      // Core: shimmer
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(coreOpacity, {
+              toValue: 0.95,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+            Animated.timing(coreOpacity, {
+              toValue: 0.7,
+              duration: 800,
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
+      run(
+        Animated.timing(coreScale, {
+          toValue: 0.92,
+          duration: 500,
+          useNativeDriver: true,
+        }),
+      );
+    } else if (state === 'speaking') {
+      // Hide outermost
+      run(
+        Animated.timing(outermostOpacity, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      );
+
+      middleRotation.setValue(0);
+
+      // All rings pulse IN SYNC
+      const d = 700;
+
+      run(
+        Animated.timing(outerOpacity, {
+          toValue: 0.12,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      );
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(outerScale, {
+              toValue: 1.1,
+              duration: d,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(outerScale, {
+              toValue: 0.93,
+              duration: d,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
+
+      run(
+        Animated.timing(middleOpacity, {
+          toValue: 0.16,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      );
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(middleScale, {
+              toValue: 1.08,
+              duration: d,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(middleScale, {
               toValue: 0.94,
-              duration: 500,
+              duration: d,
               easing: Easing.inOut(Easing.ease),
               useNativeDriver: true,
             }),
-            Animated.timing(ring1Opacity, {
-              toValue: 0.15,
-              duration: 500,
+          ]),
+        ),
+      );
+
+      run(
+        Animated.timing(innerGlowOpacity, {
+          toValue: 0.18,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      );
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(innerGlowScale, {
+              toValue: 1.06,
+              duration: d,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(innerGlowScale, {
+              toValue: 0.95,
+              duration: d,
+              easing: Easing.inOut(Easing.ease),
               useNativeDriver: true,
             }),
           ]),
-        ]),
+        ),
       );
 
-      const ring2Pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(ring2Scale, {
-            toValue: 0.9,
-            duration: 600,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-          Animated.timing(ring2Scale, {
-            toValue: 0.82,
-            duration: 600,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ]),
+      run(
+        Animated.timing(coreOpacity, {
+          toValue: 0.9,
+          duration: 300,
+          useNativeDriver: true,
+        }),
       );
-
-      Animated.parallel([
-        Animated.timing(ring2Opacity, { toValue: 0.12, duration: 200, useNativeDriver: true }),
-        Animated.timing(ring3Opacity, { toValue: 0.06, duration: 200, useNativeDriver: true }),
-        Animated.timing(ring4Opacity, { toValue: 0.03, duration: 200, useNativeDriver: true }),
-      ]).start();
-
-      animationsRef.current = [ring1Pulse, ring2Pulse];
-      ring1Pulse.start();
-      ring2Pulse.start();
+      run(
+        Animated.loop(
+          Animated.sequence([
+            Animated.timing(coreScale, {
+              toValue: 1.06,
+              duration: d,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+            Animated.timing(coreScale, {
+              toValue: 0.95,
+              duration: d,
+              easing: Easing.inOut(Easing.ease),
+              useNativeDriver: true,
+            }),
+          ]),
+        ),
+      );
     }
 
     return () => {
-      stopAnimations();
+      stopAll();
     };
-  }, [state, intensity]);
+  }, [state]);
 
-  const rotateInterp = rotation.interpolate({
+  const middleRotateInterp = middleRotation.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '360deg'],
   });
 
-  const renderRing = (
-    scale: Animated.Value,
-    opacity: Animated.Value,
-    sizeFactor: number,
-    extraStyle?: object,
-  ) => {
-    const ringSize = SIZE * sizeFactor;
-    return (
-      <Animated.View
-        style={[
-          {
-            position: 'absolute',
-            width: ringSize,
-            height: ringSize,
-            borderRadius: ringSize / 2,
-            transform: [{ scale }],
-            opacity,
-          },
-          extraStyle,
-        ]}
-      >
-        {/* Layer colored circles for cross-fading */}
-        <Animated.View
-          style={{
-            ...fillCircle(ringSize),
-            backgroundColor: COLORS.idle,
-            opacity: idleOpacity,
-          }}
-        />
-        <Animated.View
-          style={{
-            ...fillCircle(ringSize),
-            backgroundColor: COLORS.listening,
-            opacity: listeningOpacity,
-          }}
-        />
-        <Animated.View
-          style={{
-            ...fillCircle(ringSize),
-            backgroundColor: COLORS.processing,
-            opacity: processingOpacity,
-          }}
-        />
-        <Animated.View
-          style={{
-            ...fillCircle(ringSize),
-            backgroundColor: COLORS.speaking,
-            opacity: speakingOpacity,
-          }}
-        />
-      </Animated.View>
-    );
-  };
+  // Determine shadow color (can't animate, pick from state)
+  const shadowColor =
+    state === 'listening'
+      ? COLORS.green
+      : state === 'speaking'
+        ? COLORS.blue
+        : COLORS.orange;
+
+  const coreSize = 72;
 
   return (
     <View
@@ -410,69 +590,129 @@ export function SoundVisualizer({ state, intensity = 0.5 }: SoundVisualizerProps
         justifyContent: 'center',
       }}
     >
-      {/* Ring 4 (outermost) */}
-      {renderRing(ring4Scale, ring4Opacity, 1)}
-
-      {/* Ring 3 */}
-      {renderRing(ring3Scale, ring3Opacity, 0.85)}
-
-      {/* Ring 2 */}
-      {renderRing(ring2Scale, ring2Opacity, 0.7)}
-
-      {/* Ring 1 (innermost, may rotate during processing) */}
+      {/* Layer 1: Outermost ring (220x220) */}
       <Animated.View
         style={{
           position: 'absolute',
-          width: SIZE * 0.55,
-          height: SIZE * 0.55,
-          borderRadius: (SIZE * 0.55) / 2,
-          transform: [
-            { scale: ring1Scale },
-            { rotate: state === 'processing' ? rotateInterp : '0deg' },
-          ],
-          opacity: ring1Opacity,
-          alignItems: 'center',
-          justifyContent: 'center',
+          width: 220,
+          height: 220,
+          borderRadius: 110,
+          opacity: outermostOpacity,
+          transform: [{ scale: outermostScale }],
         }}
       >
-        <Animated.View
-          style={{
-            ...fillCircle(SIZE * 0.55),
-            backgroundColor: COLORS.idle,
-            opacity: idleOpacity,
-          }}
-        />
-        <Animated.View
-          style={{
-            ...fillCircle(SIZE * 0.55),
-            backgroundColor: COLORS.listening,
-            opacity: listeningOpacity,
-          }}
-        />
-        <Animated.View
-          style={{
-            ...fillCircle(SIZE * 0.55),
-            backgroundColor: COLORS.processing,
-            opacity: processingOpacity,
-          }}
-        />
-        <Animated.View
-          style={{
-            ...fillCircle(SIZE * 0.55),
-            backgroundColor: COLORS.speaking,
-            opacity: speakingOpacity,
-          }}
-        />
+        <ColoredBorderRing size={220} orangeOp={orangeOpacity} greenOp={greenOpacity} blueOp={blueOpacity} />
+      </Animated.View>
+
+      {/* Layer 2: Outer ring (180x180) */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          width: 180,
+          height: 180,
+          borderRadius: 90,
+          opacity: outerOpacity,
+          transform: [{ scale: outerScale }],
+        }}
+      >
+        <ColoredBorderRing size={180} orangeOp={orangeOpacity} greenOp={greenOpacity} blueOp={blueOpacity} />
+      </Animated.View>
+
+      {/* Layer 3: Middle ring (140x140) — rotates during processing */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          width: 140,
+          height: 140,
+          borderRadius: 70,
+          opacity: middleOpacity,
+          transform: [
+            { scale: middleScale },
+            { rotate: state === 'processing' ? middleRotateInterp : '0deg' },
+          ],
+        }}
+      >
+        <ColoredBorderRing size={140} orangeOp={orangeOpacity} greenOp={greenOpacity} blueOp={blueOpacity} />
+      </Animated.View>
+
+      {/* Layer 4: Inner glow (110x110) */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          width: 110,
+          height: 110,
+          borderRadius: 55,
+          opacity: innerGlowOpacity,
+          transform: [{ scale: innerGlowScale }],
+        }}
+      >
+        <ColoredFill size={110} orangeOp={orangeOpacity} greenOp={greenOpacity} blueOp={blueOpacity} />
+      </Animated.View>
+
+      {/* Layer 5: Core (72x72) with glow shadow */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          width: coreSize,
+          height: coreSize,
+          borderRadius: coreSize / 2,
+          opacity: coreOpacity,
+          transform: [{ scale: coreScale }],
+          shadowColor,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0.6,
+          shadowRadius: 25,
+          elevation: 15,
+        }}
+      >
+        <ColoredFill size={coreSize} orangeOp={orangeOpacity} greenOp={greenOpacity} blueOp={blueOpacity} />
       </Animated.View>
     </View>
   );
 }
 
-function fillCircle(size: number) {
-  return {
-    position: 'absolute' as const,
-    width: size,
-    height: size,
-    borderRadius: size / 2,
-  };
+// Sub-component: 3 overlapping border rings for color cross-fade
+function ColoredBorderRing({
+  size,
+  orangeOp,
+  greenOp,
+  blueOp,
+}: {
+  size: number;
+  orangeOp: Animated.Value;
+  greenOp: Animated.Value;
+  blueOp: Animated.Value;
+}) {
+  const r = size / 2;
+  const base = { position: 'absolute' as const, width: size, height: size, borderRadius: r, borderWidth: 1.5 };
+  return (
+    <>
+      <Animated.View style={[base, { borderColor: COLORS.orange, opacity: orangeOp }]} />
+      <Animated.View style={[base, { borderColor: COLORS.green, opacity: greenOp }]} />
+      <Animated.View style={[base, { borderColor: COLORS.blue, opacity: blueOp }]} />
+    </>
+  );
+}
+
+// Sub-component: 3 overlapping filled circles for color cross-fade
+function ColoredFill({
+  size,
+  orangeOp,
+  greenOp,
+  blueOp,
+}: {
+  size: number;
+  orangeOp: Animated.Value;
+  greenOp: Animated.Value;
+  blueOp: Animated.Value;
+}) {
+  const r = size / 2;
+  const base = { position: 'absolute' as const, width: size, height: size, borderRadius: r };
+  return (
+    <>
+      <Animated.View style={[base, { backgroundColor: COLORS.orange, opacity: orangeOp }]} />
+      <Animated.View style={[base, { backgroundColor: COLORS.green, opacity: greenOp }]} />
+      <Animated.View style={[base, { backgroundColor: COLORS.blue, opacity: blueOp }]} />
+    </>
+  );
 }

@@ -1,12 +1,20 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 import { Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import NetInfo from '@react-native-community/netinfo';
+import NetInfo, { NetInfoSubscription } from '@react-native-community/netinfo';
 import { supabase } from '@/lib/supabase';
 import type { EventSubscription } from 'expo-modules-core';
+
+// Lazy-load expo-speech-recognition to avoid crashing the entire app
+// when the native module isn't available (e.g. before dev client rebuild)
+let ExpoSpeechRecognitionModule: any = null;
+try {
+  ExpoSpeechRecognitionModule = require('expo-speech-recognition').ExpoSpeechRecognitionModule;
+} catch {
+  // Native module not available — voice features will be disabled
+}
 
 // --- Types ---
 
@@ -65,14 +73,20 @@ interface TunaSpecialistState {
   // Error
   error: string | null;
 
+  // Debug (only used in __DEV__)
+  lastRawResponse: string | null;
+
+  // Onboarding
+  hasSeenOnboarding: boolean;
+
   // Actions
   initVoice: () => void;
   destroyVoice: () => void;
   startListening: () => Promise<void>;
   stopListening: () => Promise<void>;
   sendToGemini: (locationShortCode: string) => Promise<void>;
+  sendTextToGemini: (text: string, locationShortCode: string) => Promise<void>;
   processOfflineQueue: (locationShortCode: string) => Promise<void>;
-  resolveAmbiguousItem: (cartIndex: number, alternativeAreaItemId: string) => void;
   removeCartItem: (index: number) => void;
   updateCartItemQuantity: (index: number, quantity: number) => void;
   clearCart: () => void;
@@ -84,8 +98,14 @@ interface TunaSpecialistState {
     quantity: number;
     unit: string;
   }>;
+  setOnboardingSeen: () => void;
   reset: () => void;
 }
+
+// --- Constants ---
+
+const MAX_OFFLINE_QUEUE = 20;
+const QUEUE_PROCESS_DELAY_MS = 500;
 
 // --- Helpers ---
 
@@ -115,8 +135,13 @@ async function invokeEdgeFunction(body: Record<string, unknown>, timeoutMs = 30_
   }
 }
 
-// --- Listener subscriptions (module-level) ---
-let subscriptions: EventSubscription[] = [];
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// --- Module-level subscriptions ---
+let voiceSubscriptions: EventSubscription[] = [];
+let netInfoUnsubscribe: NetInfoSubscription | null = null;
 
 const initialState = {
   isListening: false,
@@ -130,7 +155,140 @@ const initialState = {
   isOnline: true,
   offlineQueue: [] as OfflineQueueItem[],
   error: null as string | null,
+  lastRawResponse: null as string | null,
+  hasSeenOnboarding: false,
 };
+
+// --- Shared send logic ---
+
+async function performSendToGemini(
+  transcript: string,
+  locationShortCode: string,
+  set: Function,
+  get: () => TunaSpecialistState,
+) {
+  const { isOnline, geminiHistory, offlineQueue } = get();
+
+  // Offline: queue it
+  if (!isOnline) {
+    if (offlineQueue.length >= MAX_OFFLINE_QUEUE) {
+      set((state: TunaSpecialistState) => ({
+        conversation: [
+          ...state.conversation,
+          {
+            id: generateId(),
+            type: 'ai' as const,
+            text: 'Queue is full. Please connect to internet to process pending orders.',
+            timestamp: Date.now(),
+          },
+        ],
+        finalTranscript: null,
+      }));
+      return;
+    }
+
+    set((state: TunaSpecialistState) => ({
+      offlineQueue: [
+        ...state.offlineQueue,
+        { id: generateId(), transcript, timestamp: Date.now(), locationShortCode },
+      ],
+      conversation: [
+        ...state.conversation,
+        { id: generateId(), type: 'human' as const, text: transcript, timestamp: Date.now() },
+        {
+          id: generateId(),
+          type: 'ai' as const,
+          text: "No internet — I've saved your order. I'll process it when you're back online.",
+          timestamp: Date.now(),
+        },
+      ],
+      finalTranscript: null,
+    }));
+    return;
+  }
+
+  set({ isProcessing: true, currentSpeaker: 'ai' });
+
+  const humanMsg: ConversationMessage = {
+    id: generateId(),
+    type: 'human',
+    text: transcript,
+    timestamp: Date.now(),
+  };
+
+  const updatedHistory: GeminiMessage[] = [
+    ...geminiHistory,
+    { role: 'user', parts: [{ text: transcript }] },
+  ];
+
+  set((state: TunaSpecialistState) => ({
+    conversation: [...state.conversation, humanMsg],
+    geminiHistory: updatedHistory,
+  }));
+
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    const employeeId = user?.id;
+
+    const { data, error } = await invokeEdgeFunction({
+      transcript,
+      conversationHistory: updatedHistory,
+      employeeId,
+      locationShortCode,
+    });
+
+    if (error) throw error;
+
+    const { aiMessage, parsedItems = [], geminiTurn } = data as {
+      aiMessage: string;
+      parsedItems: TunaCartItem[];
+      geminiTurn: GeminiMessage;
+    };
+
+    // Store raw response for debug
+    if (__DEV__) {
+      set({ lastRawResponse: JSON.stringify(data, null, 2) });
+    }
+
+    const aiMsg: ConversationMessage = {
+      id: generateId(),
+      type: 'ai',
+      text: aiMessage,
+      timestamp: Date.now(),
+      parsedItems: parsedItems.length > 0 ? parsedItems : undefined,
+    };
+
+    if (parsedItems.length > 0) {
+      hapticNotification(Haptics.NotificationFeedbackType.Success);
+    }
+
+    set((state: TunaSpecialistState) => ({
+      conversation: [...state.conversation, aiMsg],
+      geminiHistory: [...state.geminiHistory, geminiTurn],
+      cartItems: [...state.cartItems, ...parsedItems],
+      isProcessing: false,
+      currentSpeaker: null,
+      finalTranscript: null,
+    }));
+  } catch (err) {
+    const isTimeout = err instanceof DOMException && err.name === 'AbortError';
+    const message = isTimeout
+      ? "I'm taking too long. Try again with a shorter order."
+      : "Something went wrong. Try again.";
+
+    hapticNotification(Haptics.NotificationFeedbackType.Error);
+
+    set((state: TunaSpecialistState) => ({
+      conversation: [
+        ...state.conversation,
+        { id: generateId(), type: 'ai' as const, text: message, timestamp: Date.now() },
+      ],
+      isProcessing: false,
+      currentSpeaker: null,
+      finalTranscript: null,
+    }));
+  }
+}
 
 // --- Store ---
 
@@ -141,23 +299,33 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
 
       initVoice: () => {
         // Clean up any existing listeners
-        subscriptions.forEach((s) => s.remove());
-        subscriptions = [];
+        voiceSubscriptions.forEach((s) => s.remove());
+        voiceSubscriptions = [];
 
-        subscriptions.push(
+        if (!ExpoSpeechRecognitionModule) {
+          set({ error: 'Voice recognition not available. Rebuild the dev client.' });
+          // Still subscribe to network changes
+          if (netInfoUnsubscribe) netInfoUnsubscribe();
+          netInfoUnsubscribe = NetInfo.addEventListener((state) => {
+            set({ isOnline: !!state.isConnected });
+          });
+          return;
+        }
+
+        voiceSubscriptions.push(
           ExpoSpeechRecognitionModule.addListener('start', () => {
             set({ isListening: true, currentSpeaker: 'human', error: null });
           }),
         );
 
-        subscriptions.push(
+        voiceSubscriptions.push(
           ExpoSpeechRecognitionModule.addListener('end', () => {
             set({ isListening: false });
           }),
         );
 
-        subscriptions.push(
-          ExpoSpeechRecognitionModule.addListener('result', (event) => {
+        voiceSubscriptions.push(
+          ExpoSpeechRecognitionModule.addListener('result', (event: any) => {
             const transcript = event.results[0]?.transcript ?? '';
             if (event.isFinal) {
               set({ finalTranscript: transcript, liveTranscript: '' });
@@ -167,44 +335,59 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
           }),
         );
 
-        subscriptions.push(
-          ExpoSpeechRecognitionModule.addListener('error', (event) => {
-            const message =
-              event.error === 'no-speech'
-                ? "I didn't catch that. Try speaking closer to the mic."
-                : `Speech recognition error: ${event.message || event.error}`;
+        voiceSubscriptions.push(
+          ExpoSpeechRecognitionModule.addListener('error', (event: any) => {
+            let message: string;
+            if (event.error === 'no-speech') {
+              message = "I didn't catch anything. Make sure to speak close to the phone.";
+            } else {
+              message = 'I had trouble hearing you. Move to a quieter spot and try again.';
+            }
+            hapticNotification(Haptics.NotificationFeedbackType.Error);
             set({ error: message, isListening: false, currentSpeaker: null });
           }),
         );
+
+        // Subscribe to network changes
+        if (netInfoUnsubscribe) netInfoUnsubscribe();
+        netInfoUnsubscribe = NetInfo.addEventListener((state) => {
+          set({ isOnline: !!state.isConnected });
+        });
       },
 
       destroyVoice: () => {
-        subscriptions.forEach((s) => s.remove());
-        subscriptions = [];
-        ExpoSpeechRecognitionModule.abort();
+        voiceSubscriptions.forEach((s) => s.remove());
+        voiceSubscriptions = [];
+        if (netInfoUnsubscribe) {
+          netInfoUnsubscribe();
+          netInfoUnsubscribe = null;
+        }
+        if (ExpoSpeechRecognitionModule) {
+          ExpoSpeechRecognitionModule.abort();
+        }
       },
 
       startListening: async () => {
         if (get().isListening || get().isProcessing) return;
 
+        if (!ExpoSpeechRecognitionModule) {
+          set({ error: 'Voice recognition not available. Rebuild the dev client.' });
+          return;
+        }
+
         try {
-          // Check connectivity
           const netState = await NetInfo.fetch();
           set({ isOnline: !!netState.isConnected });
 
-          // Request permissions
           const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
           if (!result.granted) {
-            set({ error: 'Microphone permission denied. Please enable it in Settings.' });
+            set({ error: 'Microphone and speech recognition access needed for Tuna Specialist.' });
             return;
           }
 
-          // Clear previous state
           set({ liveTranscript: '', finalTranscript: null, error: null });
-
           haptic(Haptics.ImpactFeedbackStyle.Light);
 
-          // Start on-device speech recognition
           ExpoSpeechRecognitionModule.start({
             lang: 'en-US',
             interimResults: true,
@@ -220,138 +403,24 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
 
       stopListening: async () => {
         try {
-          ExpoSpeechRecognitionModule.stop();
+          if (ExpoSpeechRecognitionModule) ExpoSpeechRecognitionModule.stop();
         } catch {
           // May already be stopped
         }
-
         haptic(Haptics.ImpactFeedbackStyle.Medium);
         set({ isListening: false });
       },
 
       sendToGemini: async (locationShortCode: string) => {
-        const { finalTranscript, isOnline, geminiHistory } = get();
+        const { finalTranscript } = get();
         if (!finalTranscript) return;
+        await performSendToGemini(finalTranscript, locationShortCode, set, get);
+      },
 
-        // Offline: queue it
-        if (!isOnline) {
-          set((state) => ({
-            offlineQueue: [
-              ...state.offlineQueue,
-              {
-                id: generateId(),
-                transcript: finalTranscript,
-                timestamp: Date.now(),
-                locationShortCode,
-              },
-            ],
-            conversation: [
-              ...state.conversation,
-              {
-                id: generateId(),
-                type: 'human' as const,
-                text: finalTranscript,
-                timestamp: Date.now(),
-              },
-              {
-                id: generateId(),
-                type: 'ai' as const,
-                text: "Saved! I'll process this when you're back online.",
-                timestamp: Date.now(),
-              },
-            ],
-            finalTranscript: null,
-          }));
-          return;
-        }
-
-        set({ isProcessing: true, currentSpeaker: 'ai' });
-
-        // Add human message to conversation
-        const humanMsg: ConversationMessage = {
-          id: generateId(),
-          type: 'human',
-          text: finalTranscript,
-          timestamp: Date.now(),
-        };
-
-        // Update gemini history with user turn
-        const updatedHistory: GeminiMessage[] = [
-          ...geminiHistory,
-          { role: 'user', parts: [{ text: finalTranscript }] },
-        ];
-
-        set((state) => ({
-          conversation: [...state.conversation, humanMsg],
-          geminiHistory: updatedHistory,
-        }));
-
-        try {
-          // Get current user ID
-          const { data: { user } } = await supabase.auth.getUser();
-          const employeeId = user?.id;
-
-          const { data, error } = await invokeEdgeFunction({
-            transcript: finalTranscript,
-            conversationHistory: updatedHistory,
-            employeeId,
-            locationShortCode,
-          });
-
-          if (error) throw error;
-
-          const {
-            aiMessage,
-            parsedItems = [],
-            geminiTurn,
-          } = data as {
-            aiMessage: string;
-            parsedItems: TunaCartItem[];
-            geminiTurn: GeminiMessage;
-          };
-
-          // Add AI message to conversation
-          const aiMsg: ConversationMessage = {
-            id: generateId(),
-            type: 'ai',
-            text: aiMessage,
-            timestamp: Date.now(),
-            parsedItems: parsedItems.length > 0 ? parsedItems : undefined,
-          };
-
-          if (parsedItems.length > 0) {
-            hapticNotification(Haptics.NotificationFeedbackType.Success);
-          }
-
-          set((state) => ({
-            conversation: [...state.conversation, aiMsg],
-            geminiHistory: [...state.geminiHistory, geminiTurn],
-            cartItems: [...state.cartItems, ...parsedItems],
-            isProcessing: false,
-            currentSpeaker: null,
-            finalTranscript: null,
-          }));
-        } catch (err) {
-          const message =
-            err instanceof DOMException && err.name === 'AbortError'
-              ? "Request timed out. Try again."
-              : "Something went wrong. Try again.";
-
-          set((state) => ({
-            conversation: [
-              ...state.conversation,
-              {
-                id: generateId(),
-                type: 'ai' as const,
-                text: message,
-                timestamp: Date.now(),
-              },
-            ],
-            isProcessing: false,
-            currentSpeaker: null,
-            finalTranscript: null,
-          }));
-        }
+      sendTextToGemini: async (text: string, locationShortCode: string) => {
+        // For debug panel: bypass STT, send text directly
+        set({ finalTranscript: text });
+        await performSendToGemini(text, locationShortCode, set, get);
       },
 
       processOfflineQueue: async (locationShortCode: string) => {
@@ -374,10 +443,9 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
 
             if (error) continue;
 
-            const { aiMessage, parsedItems = [], geminiTurn } = data as {
+            const { aiMessage, parsedItems = [] } = data as {
               aiMessage: string;
               parsedItems: TunaCartItem[];
-              geminiTurn: GeminiMessage;
             };
 
             processedIds.push(item.id);
@@ -388,15 +456,18 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
                 {
                   id: generateId(),
                   type: 'ai' as const,
-                  text: `[Offline] ${aiMessage}`,
+                  text: `[Queued] ${aiMessage}`,
                   timestamp: Date.now(),
                   parsedItems: parsedItems.length > 0 ? parsedItems : undefined,
                 },
               ],
               cartItems: [...state.cartItems, ...parsedItems],
             }));
+
+            // Small delay between calls to avoid rate limiting
+            await delay(QUEUE_PROCESS_DELAY_MS);
           } catch {
-            // Skip failed items, try again later
+            // Skip failed items
           }
         }
 
@@ -405,10 +476,6 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
             offlineQueue: state.offlineQueue.filter((q) => !processedIds.includes(q.id)),
           }));
         }
-      },
-
-      resolveAmbiguousItem: (cartIndex: number, alternativeAreaItemId: string) => {
-        // Reserved for future use
       },
 
       removeCartItem: (index: number) => {
@@ -429,7 +496,7 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
 
       clearCart: () => {
         hapicNotifyWarn();
-        set({ cartItems: [], conversation: [], geminiHistory: [] });
+        set({ cartItems: [], conversation: [], geminiHistory: [], offlineQueue: [] });
       },
 
       getCartForOrder: () => {
@@ -443,11 +510,15 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
         }));
       },
 
+      setOnboardingSeen: () => {
+        set({ hasSeenOnboarding: true });
+      },
+
       reset: () => {
-        if (get().isListening) {
+        if (get().isListening && ExpoSpeechRecognitionModule) {
           ExpoSpeechRecognitionModule.abort();
         }
-        set({ ...initialState });
+        set({ ...initialState, hasSeenOnboarding: get().hasSeenOnboarding });
       },
     }),
     {
@@ -456,6 +527,7 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
       partialize: (state) => ({
         cartItems: state.cartItems,
         offlineQueue: state.offlineQueue,
+        hasSeenOnboarding: state.hasSeenOnboarding,
       }),
     },
   ),

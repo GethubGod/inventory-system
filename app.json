@@ -20,7 +20,8 @@
       "bundleIdentifier": "com.babytuna.inventory",
       "infoPlist": {
         "NSCameraUsageDescription": "Camera access is required to scan QR codes.",
-        "NSMicrophoneUsageDescription": "Microphone access is required to record video."
+        "NSMicrophoneUsageDescription": "Microphone access is needed for voice ordering.",
+        "NSSpeechRecognitionUsageDescription": "Speech recognition is needed for voice ordering."
       }
     },
     "android": {
@@ -52,7 +53,13 @@
           "nfcPermission": "NFC access is required to scan tags."
         }
       ],
-      "@react-native-voice/voice"
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Microphone access is needed for voice ordering.",
+          "speechRecognitionPermission": "Speech recognition is needed for voice ordering."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

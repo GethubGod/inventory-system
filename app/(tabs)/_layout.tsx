@@ -1,12 +1,12 @@
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore, useOrderStore, useDraftStore, useStockStore, useTunaSpecialistStore } from '@/store';
+import { Sparkles } from 'lucide-react-native';
+import { useAuthStore, useOrderStore, useDraftStore, useTunaSpecialistStore } from '@/store';
 
 export default function TabsLayout() {
   const { session, profile } = useAuthStore();
   const cartTotal = useOrderStore((state) => state.getCartTotal());
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
-  const pendingStockCount = useStockStore((state) => state.pendingUpdates.length);
   const voiceCartCount = useTunaSpecialistStore((state) => state.cartItems.length);
 
   if (!session) {
@@ -69,23 +69,6 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Voice — Tuna Specialist */}
-      <Tabs.Screen
-        name="voice"
-        options={{
-          title: 'Voice',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="mic-outline" size={size} color={color} />
-          ),
-          tabBarBadge: voiceCartCount > 0 ? voiceCartCount : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: '#F97316',
-            color: '#FFFFFF',
-            fontSize: 10,
-          },
-        }}
-      />
-
       {/* Cart */}
       <Tabs.Screen
         name="cart"
@@ -103,15 +86,15 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Stock */}
+      {/* Voice — Tuna Specialist */}
       <Tabs.Screen
-        name="stock"
+        name="voice"
         options={{
-          title: 'Stock',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="hardware-chip-outline" size={size} color={color} />
+          title: 'Voice',
+          tabBarIcon: ({ color }) => (
+            <Sparkles size={24} color={color} />
           ),
-          tabBarBadge: pendingStockCount > 0 ? pendingStockCount : undefined,
+          tabBarBadge: voiceCartCount > 0 ? voiceCartCount : undefined,
           tabBarBadgeStyle: {
             backgroundColor: '#F97316',
             color: '#FFFFFF',
@@ -120,7 +103,7 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Settings (renamed from Home) */}
+      {/* Settings */}
       <Tabs.Screen
         name="settings"
         options={{
@@ -132,6 +115,12 @@ export default function TabsLayout() {
       />
 
       {/* Hidden screens */}
+      <Tabs.Screen
+        name="stock"
+        options={{
+          href: null,
+        }}
+      />
       <Tabs.Screen
         name="draft"
         options={{

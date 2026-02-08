@@ -953,6 +953,22 @@ export default function SettingsScreen() {
           <AboutSection />
         </ExpandableSection>
 
+        {/* Stock Levels */}
+        <View
+          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+          style={shadow.md}
+        >
+          <SettingsRow
+            icon="hardware-chip-outline"
+            iconColor="#EA580C"
+            iconBgColor="#FFEDD5"
+            title="Stock Levels"
+            subtitle="Update and view current stock"
+            onPress={() => router.push('/(tabs)/stock')}
+            showBorder={false}
+          />
+        </View>
+
         {/* Order History */}
         <View
           className="bg-white rounded-xl mx-4 overflow-hidden mb-4"

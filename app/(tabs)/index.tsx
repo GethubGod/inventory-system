@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Sparkles } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useInventoryStore, useAuthStore, useOrderStore } from '@/store';
@@ -345,6 +346,28 @@ export default function OrderScreen() {
               <Ionicons name="close-circle" size={20} color="#9CA3AF" />
             </TouchableOpacity>
           )}
+          <TouchableOpacity
+            onPress={() => router.navigate('/(tabs)/voice')}
+            activeOpacity={0.8}
+            accessibilityLabel="Voice order"
+            accessibilityRole="button"
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 16,
+              backgroundColor: '#F97316',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: 8,
+              shadowColor: '#F97316',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.3,
+              shadowRadius: 8,
+              elevation: 4,
+            }}
+          >
+            <Sparkles size={16} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
       </View>
 
