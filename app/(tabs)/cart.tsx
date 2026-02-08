@@ -18,7 +18,7 @@ import { useOrderStore, useInventoryStore, useAuthStore } from '@/store';
 import type { CartItem } from '@/store';
 import { colors } from '@/constants';
 import { Location, InventoryItem, UnitType } from '@/types';
-import { SpinningFish } from '@/components';
+import { OrderConfirmationPopup, SpinningFish } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 // Category emoji mapping
@@ -367,6 +367,11 @@ export default function CartScreen() {
 
   // Track which location is currently submitting
   const [submittingLocation, setSubmittingLocation] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    orderNumber: string;
+    locationName: string;
+    itemCount: number;
+  } | null>(null);
 
   // Handle submit order for location
   const handleSubmitOrder = useCallback(async (locationId: string, locationName: string) => {
@@ -387,13 +392,11 @@ export default function CartScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
       const order = await createAndSubmitOrder(locationId, user.id);
-      router.push({
-        pathname: '/order-confirmation',
-        params: {
-          orderNumber: order.order_number.toString(),
-          locationName: locationName,
-        },
-      } as any);
+      setConfirmation({
+        orderNumber: order.order_number.toString(),
+        locationName,
+        itemCount: order.order_items?.length ?? cartItems.length,
+      });
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to submit order');
     } finally {
@@ -826,6 +829,14 @@ export default function CartScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <OrderConfirmationPopup
+        visible={!!confirmation}
+        orderNumber={confirmation?.orderNumber ?? '---'}
+        locationName={confirmation?.locationName ?? 'Location'}
+        itemCount={confirmation?.itemCount ?? 0}
+        onClose={() => setConfirmation(null)}
+      />
 
       {/* Item Actions Menu */}
       <Modal

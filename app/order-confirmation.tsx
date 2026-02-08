@@ -14,7 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { useOrderStore } from '@/store';
 import { colors } from '@/constants';
 
-const AUTO_DISMISS_SECONDS = 5;
+const AUTO_DISMISS_SECONDS = 3;
 
 export default function OrderConfirmationScreen() {
   const { currentOrder } = useOrderStore();
@@ -35,7 +35,7 @@ export default function OrderConfirmationScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    router.replace('/(tabs)');
+    router.back();
   };
 
   useEffect(() => {
