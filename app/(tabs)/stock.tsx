@@ -7,7 +7,6 @@ import {
   RefreshControl,
   Animated,
   Alert,
-  Linking,
   Modal,
   useWindowDimensions,
   StyleSheet,
@@ -84,15 +83,11 @@ export default function UpdateStockScreen() {
     pendingUpdates,
     isOnline,
     isLoading,
-    error,
     fetchStorageAreas,
     prefetchAreaItems,
     syncPendingUpdates,
-    lastSyncAt,
     pausedSession,
-    sessionNotice,
     discardPausedSession,
-    setSessionNotice,
   } = useStockStore();
   const { reduceMotion } = useDisplayStore();
   const ds = useScaledStyles();
@@ -100,9 +95,6 @@ export default function UpdateStockScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [showBypassModal, setShowBypassModal] = useState(false);
-  const [showSyncToast, setShowSyncToast] = useState(false);
-  const [showSessionToast, setShowSessionToast] = useState(false);
-  const [sessionToastMessage, setSessionToastMessage] = useState('');
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
 
   const {
@@ -242,12 +234,11 @@ export default function UpdateStockScreen() {
           onPress: async () => {
             await cancelStockCountPausedNotifications();
             discardPausedSession();
-            setSessionNotice('Paused stock count discarded.');
           },
         },
       ]
     );
-  }, [discardPausedSession, pausedSessionForLocation, setSessionNotice]);
+  }, [discardPausedSession, pausedSessionForLocation]);
 
   const handleStationPress = useCallback((area: StorageAreaWithStatus) => {
     Alert.alert(
@@ -277,10 +268,6 @@ export default function UpdateStockScreen() {
     },
     [router]
   );
-
-  const handleOpenSettings = useCallback(() => {
-    Linking.openSettings();
-  }, []);
 
   const handleDetectedTag = useCallback(
     async (tagId: string) => {
@@ -347,25 +334,6 @@ export default function UpdateStockScreen() {
     handleDetectedTag(lastScannedTag);
   }, [lastScannedTag, handleDetectedTag]);
 
-  useEffect(() => {
-    if (!lastSyncAt) return;
-    if (pendingUpdates.length === 0) {
-      setShowSyncToast(true);
-      const timer = setTimeout(() => setShowSyncToast(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [lastSyncAt, pendingUpdates.length]);
-
-  useEffect(() => {
-    if (!sessionNotice) return;
-    setSessionToastMessage(sessionNotice);
-    setShowSessionToast(true);
-    setSessionNotice(null);
-
-    const timer = setTimeout(() => setShowSessionToast(false), 2200);
-    return () => clearTimeout(timer);
-  }, [sessionNotice, setSessionNotice]);
-
   const pulseScale = pulse.interpolate({
     inputRange: [0, 1],
     outputRange: [1, 1.5],
@@ -384,74 +352,6 @@ export default function UpdateStockScreen() {
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
         }
       >
-        {!isOnline && (
-          <View
-            className="mx-4 mt-4 rounded-2xl bg-amber-100"
-            style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
-          >
-            <Text
-              className="font-semibold text-amber-800"
-              style={{ fontSize: ds.fontSize(14) }}
-            >
-              You&apos;re offline. Updates will sync when connected.
-            </Text>
-            <Text
-              className="text-amber-700"
-              style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4) }}
-            >
-              Pending updates: {pendingUpdates.length}
-            </Text>
-          </View>
-        )}
-
-        {!isSupported && nfcError && (
-          <View
-            className="mx-4 mt-4 rounded-full bg-blue-50 flex-row items-center"
-            style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}
-          >
-            <Ionicons name="information-circle-outline" size={ds.icon(16)} color={colors.info} />
-            <Text
-              className="font-semibold text-blue-700"
-              style={{ fontSize: ds.fontSize(12), marginLeft: ds.spacing(8) }}
-            >
-              NFC unavailable in Expo Go — use QR.
-            </Text>
-          </View>
-        )}
-
-        {isSupported && !isEnabled && (
-          <View
-            className="mx-4 mt-4 rounded-2xl bg-amber-100 flex-row items-center justify-between"
-            style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
-          >
-            <View className="flex-1" style={{ paddingRight: ds.spacing(12) }}>
-              <Text
-                className="font-semibold text-amber-800"
-                style={{ fontSize: ds.fontSize(14) }}
-              >
-                NFC is turned off. Enable it in Settings to scan tags.
-              </Text>
-            </View>
-            <TouchableOpacity
-              className="rounded-full bg-amber-600"
-              style={{
-                paddingHorizontal: ds.buttonPadH,
-                paddingVertical: ds.spacing(8),
-                minHeight: ds.buttonH,
-                justifyContent: 'center',
-              }}
-              onPress={handleOpenSettings}
-            >
-              <Text
-                className="font-semibold text-white"
-                style={{ fontSize: ds.fontSize(12) }}
-              >
-                Open Settings
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         <View
           className="flex-row items-start justify-between"
           style={{
@@ -462,6 +362,19 @@ export default function UpdateStockScreen() {
         >
           <View className="flex-1" style={{ paddingRight: ds.spacing(12) }}>
             <View className="flex-row items-center">
+              <TouchableOpacity
+                onPress={() => router.back()}
+                style={{
+                  width: Math.max(44, ds.icon(40)),
+                  height: Math.max(44, ds.icon(40)),
+                  borderRadius: ds.radius(10),
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: ds.spacing(4),
+                }}
+              >
+                <Ionicons name="arrow-back" size={ds.icon(22)} color={colors.gray[700]} />
+              </TouchableOpacity>
               <BrandLogo variant="header" size={28} style={{ marginRight: ds.spacing(8) }} />
               <Text
                 className="font-bold text-gray-900"
@@ -711,22 +624,6 @@ export default function UpdateStockScreen() {
           </View>
         </View>
 
-        {nfcError && isSupported && isEnabled && (
-          <View
-            className="rounded-2xl bg-red-50"
-            style={{
-              marginHorizontal: ds.spacing(16),
-              marginTop: ds.spacing(12),
-              paddingHorizontal: ds.spacing(16),
-              paddingVertical: ds.spacing(12),
-            }}
-          >
-            <Text className="text-red-700" style={{ fontSize: ds.fontSize(12) }}>
-              {nfcError}
-            </Text>
-          </View>
-        )}
-
         <View style={{ paddingHorizontal: ds.spacing(16), marginTop: ds.spacing(24) }}>
           <View
             className="flex-row items-center justify-between"
@@ -754,21 +651,6 @@ export default function UpdateStockScreen() {
               </View>
             )}
           </View>
-
-          {error && (
-            <View
-              className="rounded-xl bg-red-50"
-              style={{
-                marginBottom: ds.spacing(12),
-                paddingHorizontal: ds.spacing(12),
-                paddingVertical: ds.spacing(8),
-              }}
-            >
-              <Text className="text-red-700" style={{ fontSize: ds.fontSize(12) }}>
-                {error}
-              </Text>
-            </View>
-          )}
 
           {storageAreas.length === 0 && !isLoading ? (
             <View
@@ -845,18 +727,6 @@ export default function UpdateStockScreen() {
           )}
         </View>
       </ScrollView>
-      {showSyncToast && (
-        <View style={styles.syncToast}>
-          <Ionicons name="checkmark-circle" size={ds.icon(16)} color="#FFFFFF" />
-          <Text style={[styles.syncToastText, { fontSize: ds.fontSize(13) }]}>Updates synced</Text>
-        </View>
-      )}
-      {showSessionToast && (
-        <View style={styles.sessionToast}>
-          <Ionicons name="information-circle" size={ds.icon(16)} color="#FFFFFF" />
-          <Text style={[styles.syncToastText, { fontSize: ds.fontSize(13) }]}>{sessionToastMessage}</Text>
-        </View>
-      )}
       <QrScannerModal
         visible={showQrModal}
         onClose={() => setShowQrModal(false)}
@@ -945,37 +815,6 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 999,
     marginTop: 6,
-  },
-  syncToast: {
-    position: 'absolute',
-    bottom: 24,
-    left: 24,
-    right: 24,
-    backgroundColor: '#16A34A',
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  syncToastText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  sessionToast: {
-    position: 'absolute',
-    bottom: 72,
-    left: 24,
-    right: 24,
-    backgroundColor: '#1F2937',
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   modalOverlay: {
     flex: 1,

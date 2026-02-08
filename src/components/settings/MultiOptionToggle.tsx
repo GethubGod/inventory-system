@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useDisplayStore } from '@/store';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 interface Option<T> {
   value: T;
@@ -22,6 +23,7 @@ export function MultiOptionToggle<T extends string | number>({
   onValueChange,
   disabled = false,
 }: MultiOptionToggleProps<T>) {
+  const ds = useScaledStyles();
   const { hapticFeedback } = useDisplayStore();
 
   const handleSelect = (optionValue: T) => {
@@ -41,22 +43,29 @@ export function MultiOptionToggle<T extends string | number>({
             key={String(option.value)}
             onPress={() => handleSelect(option.value)}
             disabled={disabled}
-            className={`flex-1 py-3 rounded-xl items-center border-2 ${
+            className={`flex-1 rounded-xl items-center justify-center border-2 ${
               index < options.length - 1 ? 'mr-2' : ''
             } ${
               isSelected
                 ? 'border-primary-500 bg-primary-50'
                 : 'border-gray-200 bg-gray-50'
             }`}
+            style={{
+              minHeight: Math.max(44, ds.buttonH),
+              paddingHorizontal: ds.spacing(8),
+              paddingVertical: ds.spacing(6),
+            }}
             activeOpacity={0.7}
           >
             {option.preview && (
-              <View className="mb-1">{option.preview}</View>
+              <View style={{ marginBottom: ds.spacing(4) }}>{option.preview}</View>
             )}
             <Text
-              className={`text-sm font-medium ${
+              className={`font-medium ${
                 isSelected ? 'text-primary-600' : 'text-gray-600'
               }`}
+              style={{ fontSize: ds.fontSize(14) }}
+              numberOfLines={1}
             >
               {option.label}
             </Text>

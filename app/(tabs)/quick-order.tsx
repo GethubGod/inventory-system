@@ -172,6 +172,8 @@ export default function QuickOrderScreen() {
   // Total cart count
   const totalCartCount = getTotalCartCount();
   const locationLabel = getLocationLabel(selectedLocation);
+  const headerIconButtonSize = Math.max(44, ds.icon(40));
+  const badgeSize = Math.max(18, ds.icon(20));
   const parsedQuantity = parseFloat(quantity);
   const parsedRemaining = parseFloat(remainingAmount);
   const canAddToCart =
@@ -422,7 +424,7 @@ export default function QuickOrderScreen() {
         </View>
         {isFirst && (
           <View className="flex-row items-center">
-            <Text style={{ fontSize: ds.fontSize(12) }} className="text-gray-400 mr-1">Enter</Text>
+            <Text style={{ fontSize: ds.fontSize(12), marginRight: ds.spacing(4) }} className="text-gray-400">Enter</Text>
             <Ionicons name="return-down-back" size={14} color={colors.gray[400]} />
           </View>
         )}
@@ -441,14 +443,20 @@ export default function QuickOrderScreen() {
           {screenState === 'quantity' && selectedItem && (
             <TouchableOpacity
               onPress={handleAddToCart}
-              className={`mx-3 my-2 py-4 rounded-xl items-center flex-row justify-center ${
+              className={`rounded-xl items-center flex-row justify-center ${
                 canAddToCart ? 'bg-primary-500' : 'bg-primary-300'
               }`}
+              style={{
+                minHeight: ds.buttonH,
+                paddingHorizontal: ds.spacing(16),
+                marginHorizontal: ds.spacing(12),
+                marginVertical: ds.spacing(8),
+              }}
               activeOpacity={0.8}
               disabled={!canAddToCart}
             >
-              <Ionicons name="cart" size={22} color="white" />
-              <Text className="text-white font-bold text-lg ml-2">
+              <Ionicons name="cart" size={ds.icon(20)} color="white" />
+              <Text style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }} className="text-white font-bold">
                 {addButtonText}
               </Text>
             </TouchableOpacity>
@@ -462,17 +470,17 @@ export default function QuickOrderScreen() {
                 router.push('/cart' as any);
               }}
               className="flex-row items-center justify-between bg-gray-50"
-              style={{ height: ds.spacing(44), paddingHorizontal: ds.spacing(16) }}
+              style={{ minHeight: Math.max(ds.rowH - ds.spacing(12), 44), paddingHorizontal: ds.spacing(16) }}
             >
               <View className="flex-row items-center">
-                <Ionicons name="cart" size={18} color={colors.gray[600]} />
-                <Text style={{ fontSize: ds.fontSize(13) }} className="font-medium text-gray-700 ml-2">
+                <Ionicons name="cart" size={ds.icon(18)} color={colors.gray[600]} />
+                <Text style={{ fontSize: ds.fontSize(13), marginLeft: ds.spacing(8) }} className="font-medium text-gray-700">
                   {totalCartCount} in cart
                 </Text>
               </View>
               <View className="flex-row items-center">
-                <Text style={{ fontSize: ds.fontSize(14) }} className="font-medium text-primary-600 mr-1">View</Text>
-                <Ionicons name="chevron-forward" size={16} color={colors.primary[600]} />
+                <Text style={{ fontSize: ds.fontSize(14), marginRight: ds.spacing(4) }} className="font-medium text-primary-600">View</Text>
+                <Ionicons name="chevron-forward" size={ds.icon(16)} color={colors.primary[600]} />
               </View>
             </TouchableOpacity>
           )}
@@ -485,29 +493,51 @@ export default function QuickOrderScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Compact Header with Location Selector */}
       <View className="bg-white border-b border-gray-200">
-        <View className="flex-row items-center px-3 py-2">
+        <View
+          className="flex-row items-center"
+          style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(8) }}
+        >
           {/* Back Button */}
           <TouchableOpacity
             onPress={() => router.back()}
-            className="p-2"
+            style={{
+              width: headerIconButtonSize,
+              height: headerIconButtonSize,
+              borderRadius: ds.radius(10),
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={22} color={colors.gray[700]} />
+            <Ionicons name="arrow-back" size={ds.icon(22)} color={colors.gray[700]} />
           </TouchableOpacity>
 
           {/* Location Dropdown */}
           <TouchableOpacity
             onPress={toggleLocationDropdown}
-            className="flex-1 flex-row items-center justify-center mx-2"
+            className="flex-1 flex-row items-center justify-center"
+            style={{ marginHorizontal: ds.spacing(6) }}
           >
-            <View className="flex-row items-center bg-gray-100 px-3 py-2 rounded-lg">
-              <Ionicons name="location" size={16} color={colors.primary[500]} />
-              <Text className="text-base font-semibold text-gray-900 mx-2" numberOfLines={1} ellipsizeMode="tail">
+            <View
+              className="flex-row items-center bg-gray-100"
+              style={{
+                borderRadius: ds.radius(10),
+                paddingHorizontal: ds.spacing(12),
+                minHeight: Math.max(44, ds.buttonH - ds.spacing(6)),
+              }}
+            >
+              <Ionicons name="location" size={ds.icon(16)} color={colors.primary[500]} />
+              <Text
+                className="font-semibold text-gray-900"
+                style={{ fontSize: ds.fontSize(16), marginHorizontal: ds.spacing(8), flexShrink: 1 }}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
                 {selectedLocation?.name || 'Select'}
               </Text>
               <Ionicons
                 name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
-                size={16}
+                size={ds.icon(16)}
                 color={colors.gray[500]}
               />
             </View>
@@ -516,15 +546,28 @@ export default function QuickOrderScreen() {
           {/* Cart Button */}
           <TouchableOpacity
             onPress={() => router.push('/cart' as any)}
-            className="p-2 relative"
+            className="relative"
+            style={{
+              width: headerIconButtonSize,
+              height: headerIconButtonSize,
+              borderRadius: ds.radius(10),
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
           >
-            <Ionicons name="cart-outline" size={22} color={colors.gray[700]} />
+            <Ionicons name="cart-outline" size={ds.icon(22)} color={colors.gray[700]} />
             {totalCartCount > 0 && (
               <View
-                className="absolute -top-1 -right-1 bg-primary-500 h-5 rounded-full items-center justify-center px-1"
-                style={{ minWidth: 20 }}
+                className="absolute bg-primary-500 rounded-full items-center justify-center"
+                style={{
+                  top: -ds.spacing(2),
+                  right: -ds.spacing(2),
+                  minWidth: badgeSize,
+                  height: badgeSize,
+                  paddingHorizontal: ds.spacing(4),
+                }}
               >
-                <Text className="text-white text-xs font-bold">
+                <Text style={{ fontSize: ds.fontSize(11) }} className="text-white font-bold">
                   {totalCartCount > 99 ? '99+' : totalCartCount}
                 </Text>
               </View>
@@ -543,28 +586,33 @@ export default function QuickOrderScreen() {
                 <TouchableOpacity
                   key={loc.id}
                   onPress={() => handleSelectLocation(loc)}
-                  className={`flex-row items-center justify-between px-4 py-3 ${
+                  className={`flex-row items-center justify-between ${
                     isSelected ? 'bg-primary-50' : ''
                   }`}
+                  style={{
+                    paddingHorizontal: ds.spacing(16),
+                    paddingVertical: ds.spacing(12),
+                    minHeight: ds.rowH,
+                  }}
                 >
                   <View className="flex-row items-center">
-                    <View className={`rounded-full items-center justify-center mr-3 ${
+                    <View className={`rounded-full items-center justify-center ${
                       isSelected ? 'bg-primary-500' : 'bg-gray-200'
-                    }`} style={{ width: ds.icon(32), height: ds.icon(32) }}>
-                      <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
+                    }`} style={{ width: ds.icon(32), height: ds.icon(32), marginRight: ds.spacing(12) }}>
+                      <Text style={{ fontSize: ds.fontSize(11) }} className={`font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
                         {loc.short_code}
                       </Text>
                     </View>
-                    <Text className={`text-base ${isSelected ? 'font-semibold text-primary-700' : 'text-gray-800'}`}>
+                    <Text style={{ fontSize: ds.fontSize(15) }} className={`${isSelected ? 'font-semibold text-primary-700' : 'text-gray-800'}`}>
                       {loc.name}
                     </Text>
                   </View>
                   <View className="flex-row items-center">
                     {cartCount > 0 && (
-                      <Text className="text-sm text-gray-500 mr-2">{cartCount} items</Text>
+                      <Text style={{ fontSize: ds.fontSize(13), marginRight: ds.spacing(8) }} className="text-gray-500">{cartCount} items</Text>
                     )}
                     {isSelected && (
-                      <Ionicons name="checkmark" size={18} color={colors.primary[500]} />
+                      <Ionicons name="checkmark" size={ds.icon(18)} color={colors.primary[500]} />
                     )}
                   </View>
                 </TouchableOpacity>
@@ -575,15 +623,21 @@ export default function QuickOrderScreen() {
       </View>
 
       {/* Main Content */}
-      <View className="flex-1 pt-3" style={{ paddingHorizontal: ds.spacing(16) }}>
+      <View
+        className="flex-1"
+        style={{ paddingHorizontal: ds.spacing(16), paddingTop: ds.spacing(12) }}
+      >
         {screenState === 'searching' ? (
           <>
             {/* Search Input with Ghost Text */}
             <View className="relative">
               <View className="bg-white border border-gray-200 shadow-sm overflow-hidden" style={{ borderRadius: ds.radius(12) }}>
-                <View className="flex-row items-center px-4" style={{ height: ds.buttonH }}>
-                  <Ionicons name="search" size={20} color={colors.gray[400]} />
-                  <View className="flex-1 ml-3 relative justify-center" style={{ height: ds.buttonH }}>
+                <View
+                  className="flex-row items-center"
+                  style={{ height: ds.buttonH, paddingHorizontal: ds.spacing(14) }}
+                >
+                  <Ionicons name="search" size={ds.icon(20)} color={colors.gray[400]} />
+                  <View className="flex-1 relative justify-center" style={{ height: ds.buttonH, marginLeft: ds.spacing(10) }}>
                     {ghostText && (
                       <View pointerEvents="none" className="absolute inset-0 flex-row items-center">
                         <Text style={{ fontSize: ds.fontSize(14) }} className="text-transparent">{searchQuery}</Text>
@@ -607,8 +661,11 @@ export default function QuickOrderScreen() {
                     />
                   </View>
                   {searchQuery.length > 0 && (
-                    <TouchableOpacity onPress={() => setSearchQuery('')} className="p-1">
-                      <Ionicons name="close-circle" size={20} color={colors.gray[400]} />
+                    <TouchableOpacity
+                      onPress={() => setSearchQuery('')}
+                      style={{ paddingHorizontal: ds.spacing(4), minHeight: 44, justifyContent: 'center' }}
+                    >
+                      <Ionicons name="close-circle" size={ds.icon(20)} color={colors.gray[400]} />
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity
@@ -623,7 +680,7 @@ export default function QuickOrderScreen() {
                       backgroundColor: '#F97316',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      marginLeft: 8,
+                      marginLeft: ds.spacing(8),
                       shadowColor: '#F97316',
                       shadowOffset: { width: 0, height: 2 },
                       shadowOpacity: 0.3,
@@ -638,7 +695,10 @@ export default function QuickOrderScreen() {
 
               {/* Suggestions Dropdown */}
               {filteredItems.length > 0 && searchQuery.trim() && (
-                <View className="absolute top-14 left-0 right-0 bg-white rounded-xl border border-gray-200 shadow-lg z-10 overflow-hidden">
+                <View
+                  className="absolute left-0 right-0 bg-white border border-gray-200 shadow-lg z-10 overflow-hidden"
+                  style={{ top: ds.buttonH + ds.spacing(4), borderRadius: ds.radius(12) }}
+                >
                   <FlatList
                     data={filteredItems}
                     keyExtractor={(item) => item.id}
@@ -652,25 +712,31 @@ export default function QuickOrderScreen() {
 
             {/* Empty State */}
             {!searchQuery.trim() && (
-              <View className="flex-1 items-center justify-center -mt-16">
-                <Ionicons name="search-outline" size={56} color={colors.gray[300]} />
-                <Text className="text-base font-medium text-gray-500 mt-3">Start typing to search</Text>
-                <Text className="text-sm text-gray-400 mt-1">salmon, avocado, nori...</Text>
+              <View className="flex-1 items-center justify-center" style={{ marginTop: -ds.spacing(64) }}>
+                <Ionicons name="search-outline" size={ds.icon(56)} color={colors.gray[300]} />
+                <Text style={{ fontSize: ds.fontSize(16), marginTop: ds.spacing(12) }} className="font-medium text-gray-500">Start typing to search</Text>
+                <Text style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(4) }} className="text-gray-400">salmon, avocado, nori...</Text>
               </View>
             )}
 
             {/* No results state */}
             {searchQuery.trim() && filteredItems.length === 0 && debouncedQuery === searchQuery && (
-              <View className="flex-1 items-center justify-center -mt-16">
-                <Ionicons name="alert-circle-outline" size={56} color={colors.gray[300]} />
-                <Text className="text-base font-medium text-gray-500 mt-3">No items found</Text>
-                <Text className="text-sm text-gray-400 mt-1">Try a different search term</Text>
+              <View className="flex-1 items-center justify-center" style={{ marginTop: -ds.spacing(64) }}>
+                <Ionicons name="alert-circle-outline" size={ds.icon(56)} color={colors.gray[300]} />
+                <Text style={{ fontSize: ds.fontSize(16), marginTop: ds.spacing(12) }} className="font-medium text-gray-500">No items found</Text>
+                <Text style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(4) }} className="text-gray-400">Try a different search term</Text>
                 <TouchableOpacity
                   onPress={handleOpenQuickCreate}
-                  className="mt-4 bg-primary-500 rounded-full px-4 py-2"
+                  className="bg-primary-500 rounded-full"
+                  style={{
+                    minHeight: ds.buttonH,
+                    paddingHorizontal: ds.buttonPadH,
+                    justifyContent: 'center',
+                    marginTop: ds.spacing(16),
+                  }}
                   activeOpacity={0.8}
                 >
-                  <Text className="text-white font-semibold text-sm">
+                  <Text style={{ fontSize: ds.buttonFont }} className="text-white font-semibold">
                     Add "{searchQuery.trim()}" to Inventory?
                   </Text>
                 </TouchableOpacity>
@@ -681,37 +747,45 @@ export default function QuickOrderScreen() {
           /* Quantity Entry State - Compact */
           <View className="flex-1">
             {/* Back button */}
-            <TouchableOpacity onPress={handleBackToSearch} className="flex-row items-center mb-3">
-              <Ionicons name="arrow-back" size={18} color={colors.gray[600]} />
-              <Text className="text-gray-600 ml-1 text-sm">Back</Text>
+            <TouchableOpacity
+              onPress={handleBackToSearch}
+              className="flex-row items-center"
+              style={{ marginBottom: ds.spacing(12), minHeight: 44 }}
+            >
+              <Ionicons name="arrow-back" size={ds.icon(18)} color={colors.gray[600]} />
+              <Text style={{ fontSize: ds.fontSize(14), marginLeft: ds.spacing(4) }} className="text-gray-600">Back</Text>
             </TouchableOpacity>
 
             {/* Compact Item Card */}
             {selectedItem && (
-              <View className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+              <View
+                className="bg-white shadow-sm border border-gray-100"
+                style={{ borderRadius: ds.radius(12), padding: ds.cardPad }}
+              >
                 {/* Item Info - Compact */}
-                <View className="flex-row items-center mb-4">
-                  <Text className="text-2xl mr-3">
+                <View className="flex-row items-center" style={{ marginBottom: ds.spacing(16) }}>
+                  <Text style={{ fontSize: ds.icon(30), marginRight: ds.spacing(12) }}>
                     {CATEGORY_EMOJI[selectedItem.category] || '📦'}
                   </Text>
                   <View className="flex-1">
-                    <Text className="text-lg font-semibold text-gray-900" numberOfLines={1} ellipsizeMode="tail">
+                    <Text style={{ fontSize: ds.fontSize(18) }} className="font-semibold text-gray-900" numberOfLines={1} ellipsizeMode="tail">
                       {selectedItem.name}
                     </Text>
-                    <Text className="text-xs text-gray-500">
+                    <Text style={{ fontSize: ds.fontSize(12) }} className="text-gray-500">
                       {selectedItem.pack_size} {selectedItem.base_unit}/{selectedItem.pack_unit}
                     </Text>
                   </View>
                 </View>
 
-                <View className="mb-3 flex-row">
+                <View className="flex-row" style={{ marginBottom: ds.spacing(12) }}>
                   <TouchableOpacity
                     onPress={() => setInputMode('quantity')}
-                    className={`flex-1 py-2 rounded-l-lg items-center ${
+                    className={`flex-1 rounded-l-lg items-center justify-center ${
                       inputMode === 'quantity' ? 'bg-primary-500' : 'bg-gray-100'
                     }`}
+                    style={{ minHeight: Math.max(44, ds.buttonH - ds.spacing(6)) }}
                   >
-                    <Text className={`text-xs font-semibold ${
+                    <Text style={{ fontSize: ds.fontSize(12) }} className={`font-semibold ${
                       inputMode === 'quantity' ? 'text-white' : 'text-gray-600'
                     }`}>
                       Order Qty
@@ -719,11 +793,12 @@ export default function QuickOrderScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => setInputMode('remaining')}
-                    className={`flex-1 py-2 rounded-r-lg items-center ${
+                    className={`flex-1 rounded-r-lg items-center justify-center ${
                       inputMode === 'remaining' ? 'bg-primary-500' : 'bg-gray-100'
                     }`}
+                    style={{ minHeight: Math.max(44, ds.buttonH - ds.spacing(6)) }}
                   >
-                    <Text className={`text-xs font-semibold ${
+                    <Text style={{ fontSize: ds.fontSize(12) }} className={`font-semibold ${
                       inputMode === 'remaining' ? 'text-white' : 'text-gray-600'
                     }`}>
                       Remaining
@@ -749,7 +824,7 @@ export default function QuickOrderScreen() {
                       className="bg-gray-100 rounded-lg items-center justify-center"
                       style={{ width: Math.max(44, ds.icon(44)), height: Math.max(44, ds.icon(44)) }}
                     >
-                      <Ionicons name="remove" size={22} color={colors.gray[700]} />
+                      <Ionicons name="remove" size={ds.icon(20)} color={colors.gray[700]} />
                     </TouchableOpacity>
 
                     <TextInput
@@ -757,8 +832,13 @@ export default function QuickOrderScreen() {
                       value={inputMode === 'quantity' ? quantity : remainingAmount}
                       onChangeText={inputMode === 'quantity' ? setQuantity : setRemainingAmount}
                       keyboardType="number-pad"
-                      className="mx-2 text-center text-2xl font-bold text-gray-900"
-                      style={{ width: ds.spacing(64), height: Math.max(44, ds.buttonH) }}
+                      className="text-center font-bold text-gray-900"
+                      style={{
+                        width: ds.spacing(72),
+                        height: Math.max(44, ds.buttonH),
+                        fontSize: ds.fontSize(24),
+                        marginHorizontal: ds.spacing(8),
+                      }}
                       selectTextOnFocus
                       inputAccessoryViewID={Platform.OS === 'ios' ? INPUT_ACCESSORY_ID : undefined}
                     />
@@ -777,22 +857,26 @@ export default function QuickOrderScreen() {
                       className="bg-gray-100 rounded-lg items-center justify-center"
                       style={{ width: Math.max(44, ds.icon(44)), height: Math.max(44, ds.icon(44)) }}
                     >
-                      <Ionicons name="add" size={22} color={colors.gray[700]} />
+                      <Ionicons name="add" size={ds.icon(20)} color={colors.gray[700]} />
                     </TouchableOpacity>
                   </View>
 
                   {/* Unit Toggle */}
-                  <View className="flex-row ml-3">
+                  <View className="flex-row" style={{ marginLeft: ds.spacing(12) }}>
                     <TouchableOpacity
                       onPress={() => {
                         setSelectedUnit('pack');
                         quantityInputRef.current?.focus();
                       }}
-                      className={`px-4 py-2 rounded-l-lg ${
+                      className={`rounded-l-lg justify-center ${
                         selectedUnit === 'pack' ? 'bg-primary-500' : 'bg-gray-100'
                       }`}
+                      style={{
+                        minHeight: 44,
+                        paddingHorizontal: ds.spacing(12),
+                      }}
                     >
-                      <Text className={`font-medium text-sm ${
+                      <Text style={{ fontSize: ds.fontSize(14) }} className={`font-medium ${
                         selectedUnit === 'pack' ? 'text-white' : 'text-gray-600'
                       }`}>
                         {selectedItem.pack_unit}
@@ -803,11 +887,15 @@ export default function QuickOrderScreen() {
                         setSelectedUnit('base');
                         quantityInputRef.current?.focus();
                       }}
-                      className={`px-4 py-2 rounded-r-lg ${
+                      className={`rounded-r-lg justify-center ${
                         selectedUnit === 'base' ? 'bg-primary-500' : 'bg-gray-100'
                       }`}
+                      style={{
+                        minHeight: 44,
+                        paddingHorizontal: ds.spacing(12),
+                      }}
                     >
-                      <Text className={`font-medium text-sm ${
+                      <Text style={{ fontSize: ds.fontSize(14) }} className={`font-medium ${
                         selectedUnit === 'base' ? 'text-white' : 'text-gray-600'
                       }`}>
                         {selectedItem.base_unit}
@@ -817,7 +905,7 @@ export default function QuickOrderScreen() {
                 </View>
 
                 {inputMode === 'remaining' && (
-                  <Text className="text-xs text-gray-500 mt-3">
+                  <Text style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(12) }} className="text-gray-500">
                     Enter how many are left. A manager will decide how many to order.
                   </Text>
                 )}
@@ -839,19 +927,28 @@ export default function QuickOrderScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             className="flex-1"
           >
-            <View className="bg-white px-4 py-4 border-b border-gray-200 flex-row items-center justify-between">
+            <View
+              className="bg-white border-b border-gray-200 flex-row items-center justify-between"
+              style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(14) }}
+            >
               <TouchableOpacity onPress={() => setShowQuickCreate(false)}>
-                <Text className="text-primary-500 font-medium">Cancel</Text>
+                <Text style={{ fontSize: ds.fontSize(14) }} className="text-primary-500 font-medium">Cancel</Text>
               </TouchableOpacity>
-              <Text className="text-lg font-bold text-gray-900">Add Item</Text>
-              <View style={{ width: 60 }} />
+              <Text style={{ fontSize: ds.fontSize(18) }} className="font-bold text-gray-900">Add Item</Text>
+              <View style={{ width: ds.spacing(64) }} />
             </View>
 
-            <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
-              <View className="mb-4">
-                <Text className="text-sm font-medium text-gray-700 mb-2">Item Name *</Text>
+            <ScrollView className="flex-1" contentContainerStyle={{ padding: ds.spacing(16) }}>
+              <View style={{ marginBottom: ds.spacing(16) }}>
+                <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Item Name *</Text>
                 <TextInput
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                  className="bg-white border border-gray-200 text-gray-900"
+                  style={{
+                    borderRadius: ds.radius(12),
+                    paddingHorizontal: ds.spacing(16),
+                    minHeight: ds.buttonH,
+                    fontSize: ds.fontSize(15),
+                  }}
                   value={newItemName}
                   onChangeText={setNewItemName}
                   placeholder="e.g., Salmon (Sushi Grade)"
@@ -860,20 +957,25 @@ export default function QuickOrderScreen() {
                 />
               </View>
 
-              <View className="mb-4">
-                <Text className="text-sm font-medium text-gray-700 mb-2">Category *</Text>
-                <View className="flex-row flex-wrap gap-2">
+              <View style={{ marginBottom: ds.spacing(16) }}>
+                <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Category *</Text>
+                <View className="flex-row flex-wrap" style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}>
                   {QUICK_CREATE_CATEGORIES.map((cat) => {
                     const isSelected = newItemCategory === cat;
                     return (
                       <TouchableOpacity
                         key={cat}
-                        className={`px-3 py-2 rounded-lg ${
+                        className={`rounded-lg ${
                           isSelected ? 'bg-primary-500' : 'bg-gray-100'
                         }`}
+                        style={{
+                          minHeight: Math.max(40, ds.buttonH - ds.spacing(10)),
+                          paddingHorizontal: ds.spacing(12),
+                          justifyContent: 'center',
+                        }}
                         onPress={() => setNewItemCategory(cat)}
                       >
-                        <Text className={`text-sm font-medium ${
+                        <Text style={{ fontSize: ds.fontSize(14) }} className={`font-medium ${
                           isSelected ? 'text-white' : 'text-gray-700'
                         }`}>
                           {CATEGORY_LABELS[cat] || cat}
@@ -884,20 +986,25 @@ export default function QuickOrderScreen() {
                 </View>
               </View>
 
-              <View className="mb-4">
-                <Text className="text-sm font-medium text-gray-700 mb-2">Supplier *</Text>
-                <View className="flex-row flex-wrap gap-2">
+              <View style={{ marginBottom: ds.spacing(16) }}>
+                <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Supplier *</Text>
+                <View className="flex-row flex-wrap" style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}>
                   {QUICK_CREATE_SUPPLIERS.map((sup) => {
                     const isSelected = newItemSupplier === sup;
                     return (
                       <TouchableOpacity
                         key={sup}
-                        className={`px-3 py-2 rounded-lg ${
+                        className={`rounded-lg ${
                           isSelected ? 'bg-primary-500' : 'bg-gray-100'
                         }`}
+                        style={{
+                          minHeight: Math.max(40, ds.buttonH - ds.spacing(10)),
+                          paddingHorizontal: ds.spacing(12),
+                          justifyContent: 'center',
+                        }}
                         onPress={() => setNewItemSupplier(sup)}
                       >
-                        <Text className={`text-sm font-medium ${
+                        <Text style={{ fontSize: ds.fontSize(14) }} className={`font-medium ${
                           isSelected ? 'text-white' : 'text-gray-700'
                         }`}>
                           {sup === 'fish_supplier' ? 'Fish Supplier' : sup === 'asian_market' ? 'Asian Market' : 'Main Distributor'}
@@ -908,11 +1015,17 @@ export default function QuickOrderScreen() {
                 </View>
               </View>
 
-              <View className="flex-row gap-3 mb-4">
+              <View className="flex-row" style={{ marginBottom: ds.spacing(16), columnGap: ds.spacing(12) }}>
                 <View className="flex-1">
-                  <Text className="text-sm font-medium text-gray-700 mb-2">Base Unit *</Text>
+                  <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Base Unit *</Text>
                   <TextInput
-                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                    className="bg-white border border-gray-200 text-gray-900"
+                    style={{
+                      borderRadius: ds.radius(12),
+                      paddingHorizontal: ds.spacing(16),
+                      minHeight: ds.buttonH,
+                      fontSize: ds.fontSize(15),
+                    }}
                     value={newItemBaseUnit}
                     onChangeText={setNewItemBaseUnit}
                     placeholder="e.g., lb"
@@ -921,9 +1034,15 @@ export default function QuickOrderScreen() {
                   />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-sm font-medium text-gray-700 mb-2">Pack Unit *</Text>
+                  <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Pack Unit *</Text>
                   <TextInput
-                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                    className="bg-white border border-gray-200 text-gray-900"
+                    style={{
+                      borderRadius: ds.radius(12),
+                      paddingHorizontal: ds.spacing(16),
+                      minHeight: ds.buttonH,
+                      fontSize: ds.fontSize(15),
+                    }}
                     value={newItemPackUnit}
                     onChangeText={setNewItemPackUnit}
                     placeholder="e.g., case"
@@ -933,34 +1052,45 @@ export default function QuickOrderScreen() {
                 </View>
               </View>
 
-              <View className="mb-6">
-                <Text className="text-sm font-medium text-gray-700 mb-2">Pack Size *</Text>
+              <View style={{ marginBottom: ds.spacing(24) }}>
+                <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Pack Size *</Text>
                 <View className="flex-row items-center">
                   <TextInput
-                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 w-24"
+                    className="bg-white border border-gray-200 text-gray-900"
+                    style={{
+                      width: ds.spacing(96),
+                      borderRadius: ds.radius(12),
+                      paddingHorizontal: ds.spacing(16),
+                      minHeight: ds.buttonH,
+                      fontSize: ds.fontSize(15),
+                    }}
                     value={newItemPackSize}
                     onChangeText={setNewItemPackSize}
                     placeholder="1"
                     placeholderTextColor="#9CA3AF"
                     keyboardType="decimal-pad"
                   />
-                  <Text className="text-gray-500 ml-3">
+                  <Text style={{ fontSize: ds.fontSize(14), marginLeft: ds.spacing(12) }} className="text-gray-500">
                     {newItemBaseUnit || 'units'} per {newItemPackUnit || 'pack'}
                   </Text>
                 </View>
               </View>
             </ScrollView>
 
-            <View className="bg-white border-t border-gray-200 px-4 py-4">
+            <View
+              className="bg-white border-t border-gray-200"
+              style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(14) }}
+            >
               <TouchableOpacity
-                className={`rounded-xl py-4 items-center flex-row justify-center ${
+                className={`rounded-xl items-center flex-row justify-center ${
                   isCreatingItem ? 'bg-primary-300' : 'bg-primary-500'
                 }`}
+                style={{ minHeight: ds.buttonH }}
                 onPress={handleCreateItem}
                 disabled={isCreatingItem}
               >
-                <Ionicons name="add-circle" size={20} color="white" />
-                <Text className="text-white font-bold text-lg ml-2">
+                <Ionicons name="add-circle" size={ds.icon(20)} color="white" />
+                <Text style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }} className="text-white font-bold">
                   {isCreatingItem ? 'Adding...' : 'Add Item'}
                 </Text>
               </TouchableOpacity>
@@ -979,17 +1109,18 @@ export default function QuickOrderScreen() {
             right: 0,
           }}
         >
-          <View className="bg-white border-t border-gray-200 px-3 py-2">
+          <View className="bg-white border-t border-gray-200" style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(8) }}>
             <TouchableOpacity
               onPress={handleAddToCart}
-              className={`py-4 rounded-xl items-center flex-row justify-center ${
+              className={`rounded-xl items-center flex-row justify-center ${
                 canAddToCart ? 'bg-primary-500' : 'bg-primary-300'
               }`}
+              style={{ minHeight: ds.buttonH }}
               activeOpacity={0.8}
               disabled={!canAddToCart}
             >
-              <Ionicons name="cart" size={22} color="white" />
-              <Text className="text-white font-bold text-lg ml-2">
+              <Ionicons name="cart" size={ds.icon(20)} color="white" />
+              <Text style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }} className="text-white font-bold">
                 {addButtonText}
               </Text>
             </TouchableOpacity>
@@ -1006,12 +1137,19 @@ export default function QuickOrderScreen() {
           style={{
             opacity: toastOpacity,
             position: 'absolute',
-            top: 80,
-            left: 20,
-            right: 20,
+            top: ds.spacing(80),
+            left: ds.spacing(20),
+            right: ds.spacing(20),
           }}
         >
-          <View className="bg-gray-900 rounded-xl px-4 py-3 shadow-lg">
+          <View
+            className="bg-gray-900 shadow-lg"
+            style={{
+              borderRadius: ds.radius(12),
+              paddingHorizontal: ds.spacing(16),
+              paddingVertical: ds.spacing(12),
+            }}
+          >
             <Text style={{ fontSize: ds.fontSize(13) }} className="text-white text-center font-medium">{toastMessage}</Text>
           </View>
         </Animated.View>

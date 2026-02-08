@@ -21,13 +21,12 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
 import { colors, CATEGORY_LABELS } from '@/constants';
-import { useAuthStore, useDisplayStore, useSettingsStore, useStockStore } from '@/store';
+import { useAuthStore, useDisplayStore, useStockStore } from '@/store';
 import { useStockNetworkStatus } from '@/hooks';
 import { ItemCategory, StockUpdateMethod } from '@/types';
 import { supabase } from '@/lib/supabase';
 import {
   cancelStockCountPausedNotifications,
-  scheduleStockCountPausedNotification,
 } from '@/services/notificationService';
 
 const CATEGORY_EMOJI: Record<ItemCategory, string> = {
@@ -74,7 +73,6 @@ export default function StockCountingScreen() {
 
   const { user, location } = useAuthStore();
   const { reduceMotion } = useDisplayStore();
-  const { stockSettings } = useSettingsStore();
   const {
     storageAreas,
     currentAreaItems,
@@ -436,20 +434,14 @@ export default function StockCountingScreen() {
     pauseCurrentSession(location?.id ?? null);
     setSessionNotice('Stock count paused.');
 
-    if (stockSettings.resumeReminders) {
-      await scheduleStockCountPausedNotification(area?.name ?? 'this station', areaId);
-    } else {
-      await cancelStockCountPausedNotifications();
-    }
+    await cancelStockCountPausedNotifications();
 
     router.replace('/(tabs)/stock');
   }, [
-    area?.name,
     areaId,
     location?.id,
     pauseCurrentSession,
     setSessionNotice,
-    stockSettings.resumeReminders,
   ]);
 
   const confirmPauseAndExit = useCallback(() => {

@@ -419,42 +419,52 @@ export default function CartScreen() {
         {/* Compact Row */}
         <TouchableOpacity
           onPress={() => toggleExpand(locationId, item.id)}
-          className="flex-row items-center py-3"
+          className="flex-row items-center"
+          style={{
+            minHeight: Math.max(ds.rowH, 60),
+            paddingVertical: ds.spacing(8),
+          }}
           activeOpacity={0.7}
         >
           <Text style={{ fontSize: ds.fontSize(18) }} className="mr-2">{emoji}</Text>
-          <View className="flex-1">
+          <View className="flex-1 mr-2">
             <Text style={{ fontSize: ds.fontSize(15) }} className="font-medium text-gray-900" numberOfLines={1} ellipsizeMode="tail">
               {inventoryItem.name}
             </Text>
-            {(isRemainingMode || item.note) && (
-              <View className="flex-row items-center mt-1">
-                {isRemainingMode && (
-                  <View className="self-start px-2 py-0.5 rounded-full bg-amber-100">
-                    <Text className="text-[10px] font-semibold text-amber-700">Remaining</Text>
-                  </View>
-                )}
-                {item.note && (
-                  <View className={`self-start px-2 py-0.5 rounded-full bg-blue-100 ${isRemainingMode ? 'ml-2' : ''}`}>
-                    <Text className="text-[10px] font-semibold text-blue-700">Note</Text>
-                  </View>
-                )}
-              </View>
-            )}
+            <View className="flex-row items-center flex-wrap mt-1">
+              <Text style={{ fontSize: ds.fontSize(13) }} className="font-semibold text-gray-700 mr-2">
+                {valueLabel}: {value} {unitLabel}
+              </Text>
+              {isRemainingMode && (
+                <View
+                  className="self-start rounded-full bg-amber-100"
+                  style={{ paddingHorizontal: ds.spacing(8), paddingVertical: ds.spacing(2), marginRight: ds.spacing(6) }}
+                >
+                  <Text style={{ fontSize: ds.fontSize(10) }} className="font-semibold text-amber-700">Remaining</Text>
+                </View>
+              )}
+              {item.note && (
+                <View
+                  className="self-start rounded-full bg-blue-100"
+                  style={{ paddingHorizontal: ds.spacing(8), paddingVertical: ds.spacing(2) }}
+                >
+                  <Text style={{ fontSize: ds.fontSize(10) }} className="font-semibold text-blue-700">Note</Text>
+                </View>
+              )}
+            </View>
           </View>
-          <Text style={{ fontSize: ds.fontSize(13) }} className="font-semibold text-gray-700 mr-2">
-            {valueLabel}: {value} {unitLabel}
-          </Text>
-          <Ionicons
-            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-            size={ds.icon(16)}
-            color={colors.gray[400]}
-          />
+          <View style={{ minWidth: Math.max(44, ds.icon(28)), alignItems: 'flex-end' }}>
+            <Ionicons
+              name={isExpanded ? 'chevron-up' : 'chevron-down'}
+              size={ds.icon(16)}
+              color={colors.gray[400]}
+            />
+          </View>
         </TouchableOpacity>
 
         {/* Expanded Controls */}
         {isExpanded && (
-          <View className="pb-3 pl-8">
+          <View className="pb-3 pl-8 pr-2">
             <View className="flex-row items-center justify-between">
               {/* Value Controls */}
               <View className="flex-row items-center">
@@ -466,7 +476,7 @@ export default function CartScreen() {
                   <Ionicons name="remove" size={ds.fontSize(18)} color={colors.gray[600]} />
                 </TouchableOpacity>
 
-                <Text style={{ fontSize: ds.fontSize(16) }} className="mx-3 font-bold text-gray-900 min-w-[60px] text-center">
+                <Text style={{ fontSize: ds.fontSize(16), minWidth: ds.spacing(56) }} className="mx-3 font-bold text-gray-900 text-center">
                   {value}
                 </Text>
 
@@ -479,37 +489,11 @@ export default function CartScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* Unit Toggle */}
-              <View className="flex-row mx-3">
-                <TouchableOpacity
-                  onPress={() => handleItemValueChange(locationId, item, value, 'pack')}
-                  style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(4), borderTopLeftRadius: ds.radius(8), borderBottomLeftRadius: ds.radius(8) }}
-                  className={unitType === 'pack' ? 'bg-primary-500' : 'bg-gray-100'}
-                >
-                  <Text style={{ fontSize: ds.fontSize(12) }} className={`font-medium ${
-                    unitType === 'pack' ? 'text-white' : 'text-gray-600'
-                  }`}>
-                    {inventoryItem.pack_unit}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handleItemValueChange(locationId, item, value, 'base')}
-                  style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(4), borderTopRightRadius: ds.radius(8), borderBottomRightRadius: ds.radius(8) }}
-                  className={unitType === 'base' ? 'bg-primary-500' : 'bg-gray-100'}
-                >
-                  <Text style={{ fontSize: ds.fontSize(12) }} className={`font-medium ${
-                    unitType === 'base' ? 'text-white' : 'text-gray-600'
-                  }`}>
-                    {inventoryItem.base_unit}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
               {/* Action Buttons */}
-              <View className="flex-row items-center">
+              <View className="flex-row items-center ml-2">
                 <TouchableOpacity
                   onPress={() => handleOpenItemMenu(locationId, item)}
-                  className="p-2 mr-1"
+                  style={{ padding: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Ionicons name="ellipsis-horizontal" size={ds.icon(18)} color={colors.gray[500]} />
@@ -518,12 +502,38 @@ export default function CartScreen() {
                 {/* Remove Button */}
                 <TouchableOpacity
                   onPress={() => handleRemoveItem(locationId, inventoryItem.id, inventoryItem.name, item.id)}
-                  className="p-2"
+                  style={{ padding: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Ionicons name="trash-outline" size={ds.icon(20)} color={colors.error} />
                 </TouchableOpacity>
               </View>
+            </View>
+
+            {/* Unit Toggle */}
+            <View className="flex-row mt-3 self-start">
+              <TouchableOpacity
+                onPress={() => handleItemValueChange(locationId, item, value, 'pack')}
+                style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(6), borderTopLeftRadius: ds.radius(8), borderBottomLeftRadius: ds.radius(8), minHeight: 44, justifyContent: 'center' }}
+                className={unitType === 'pack' ? 'bg-primary-500' : 'bg-gray-100'}
+              >
+                <Text style={{ fontSize: ds.fontSize(12) }} className={`font-medium ${
+                  unitType === 'pack' ? 'text-white' : 'text-gray-600'
+                }`}>
+                  {inventoryItem.pack_unit}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleItemValueChange(locationId, item, value, 'base')}
+                style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(6), borderTopRightRadius: ds.radius(8), borderBottomRightRadius: ds.radius(8), minHeight: 44, justifyContent: 'center' }}
+                className={unitType === 'base' ? 'bg-primary-500' : 'bg-gray-100'}
+              >
+                <Text style={{ fontSize: ds.fontSize(12) }} className={`font-medium ${
+                  unitType === 'base' ? 'text-white' : 'text-gray-600'
+                }`}>
+                  {inventoryItem.base_unit}
+                </Text>
+              </TouchableOpacity>
             </View>
 
             {isRemainingMode ? (
@@ -553,7 +563,7 @@ export default function CartScreen() {
         )}
       </View>
     );
-  }, [expandedItems, toggleExpand, handleItemValueChange, handleOpenItemMenu, handleRemoveItem]);
+  }, [ds, expandedItems, toggleExpand, handleItemValueChange, handleOpenItemMenu, handleRemoveItem]);
 
   // Render location section
   const renderLocationSection = useCallback((location: Location) => {
@@ -565,12 +575,14 @@ export default function CartScreen() {
         {/* Location Header */}
         <View style={{ paddingHorizontal: ds.spacing(16), borderTopLeftRadius: ds.radius(12), borderTopRightRadius: ds.radius(12) }} className="bg-white py-3 border border-gray-200 border-b-0">
           <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center">
+            <View className="flex-row items-center flex-1 mr-2">
               <View style={{ width: ds.icon(40), height: ds.icon(40), borderRadius: ds.icon(20) }} className="bg-primary-500 items-center justify-center mr-3">
                 <Text style={{ fontSize: ds.fontSize(13) }} className="text-white font-bold">{location.short_code}</Text>
               </View>
-              <View>
-                <Text style={{ fontSize: ds.fontSize(16) }} className="font-semibold text-gray-900">{location.name}</Text>
+              <View className="flex-1">
+                <Text style={{ fontSize: ds.fontSize(16) }} className="font-semibold text-gray-900" numberOfLines={1} ellipsizeMode="tail">
+                  {location.name}
+                </Text>
                 <Text style={{ fontSize: ds.fontSize(13) }} className="text-gray-500">
                   {itemCount} item{itemCount !== 1 ? 's' : ''} in cart
                 </Text>
@@ -590,16 +602,29 @@ export default function CartScreen() {
         <View style={{ paddingHorizontal: ds.spacing(16) }} className="bg-white border-l border-r border-gray-200">
           <TouchableOpacity
             onPress={() => handleOpenCartLocationModal(location)}
-            className="flex-row items-center justify-between py-3 border-b border-gray-100"
+            className="border-b border-gray-100"
+            style={{
+              minHeight: Math.max(ds.rowH, 60),
+              justifyContent: 'center',
+              paddingVertical: ds.spacing(8),
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <View className="flex-row items-center">
               <Ionicons name="location-outline" size={ds.icon(16)} color={colors.gray[500]} />
-              <Text style={{ fontSize: ds.fontSize(13) }} className="text-gray-600 ml-2">Order Location</Text>
-            </View>
-            <View className="flex-row items-center">
-              <Text style={{ fontSize: ds.fontSize(13) }} className="font-semibold text-gray-900 mr-1">
-                {location.name}
-              </Text>
+              <View style={{ marginLeft: ds.spacing(8), flex: 1, marginRight: ds.spacing(8) }}>
+                <Text style={{ fontSize: ds.fontSize(12) }} className="text-gray-600">
+                  Order Location
+                </Text>
+                <Text
+                  style={{ fontSize: ds.fontSize(14) }}
+                  className="font-semibold text-gray-900"
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {location.name}
+                </Text>
+              </View>
               <Ionicons name="chevron-down" size={ds.icon(16)} color={colors.gray[500]} />
             </View>
           </TouchableOpacity>
@@ -632,7 +657,7 @@ export default function CartScreen() {
         </TouchableOpacity>
       </View>
     );
-  }, [getCartWithDetails, renderCartItem, handleClearLocationCart, handleSubmitOrder, submittingLocation, handleOpenCartLocationModal]);
+  }, [ds, getCartWithDetails, renderCartItem, handleClearLocationCart, handleSubmitOrder, submittingLocation, handleOpenCartLocationModal]);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
@@ -647,11 +672,14 @@ export default function CartScreen() {
           contentContainerStyle={{ padding: ds.spacing(16), paddingBottom: ds.spacing(32) }}
         >
           {/* Summary Bar */}
-          <View style={{ paddingHorizontal: ds.spacing(16), borderRadius: ds.radius(12) }} className="flex-row justify-between items-center py-3 bg-white border border-gray-200 mb-4">
-            <Text style={{ fontSize: ds.fontSize(14) }} className="text-gray-600">
+          <View
+            style={{ paddingHorizontal: ds.spacing(16), borderRadius: ds.radius(12), minHeight: Math.max(52, ds.rowH - ds.spacing(8)) }}
+            className="flex-row items-center bg-white border border-gray-200 mb-4"
+          >
+            <Text style={{ fontSize: ds.fontSize(14) }} className="text-gray-600 flex-1" numberOfLines={2}>
               {totalCartCount} item{totalCartCount !== 1 ? 's' : ''} across {locationsWithCart.length} location{locationsWithCart.length !== 1 ? 's' : ''}
             </Text>
-            <TouchableOpacity onPress={handleClearAll}>
+            <TouchableOpacity onPress={handleClearAll} style={{ marginLeft: ds.spacing(10), minHeight: 44, justifyContent: 'center', paddingVertical: ds.spacing(4) }}>
               <Text style={{ fontSize: ds.fontSize(14) }} className="text-red-500 font-medium">Clear All</Text>
             </TouchableOpacity>
           </View>
@@ -721,39 +749,45 @@ export default function CartScreen() {
                 Move all items from {cartLocationToMove?.name || 'this cart'}
               </Text>
 
-              {locations.map((loc) => {
-                const isSelected = cartLocationToMove?.id === loc.id;
-                return (
-                  <TouchableOpacity
-                    key={loc.id}
-                    style={{ padding: ds.spacing(16), borderRadius: ds.radius(12) }}
-                    className={`flex-row items-center mb-3 border-2 ${
-                      isSelected ? 'border-primary-500 bg-primary-50' : 'border-gray-200 bg-white'
-                    }`}
-                    onPress={() => handleMoveCartLocation(loc.id, loc.name)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={{ width: ds.icon(44), height: ds.icon(44), borderRadius: ds.icon(22) }} className={`items-center justify-center ${
-                      isSelected ? 'bg-primary-500' : 'bg-gray-100'
-                    }`}>
-                      <Text style={{ fontSize: ds.fontSize(13) }} className={`font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
-                        {loc.short_code}
-                      </Text>
-                    </View>
-                    <View className="flex-1 ml-4">
-                      <Text style={{ fontSize: ds.fontSize(16) }} className="font-semibold text-gray-900">
-                        {loc.name}
-                      </Text>
+              <ScrollView
+                style={{ maxHeight: ds.spacing(360) }}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: ds.spacing(8) }}
+              >
+                {locations.map((loc) => {
+                  const isSelected = cartLocationToMove?.id === loc.id;
+                  return (
+                    <TouchableOpacity
+                      key={loc.id}
+                      style={{ padding: ds.spacing(16), borderRadius: ds.radius(12) }}
+                      className={`flex-row items-center mb-3 border-2 ${
+                        isSelected ? 'border-primary-500 bg-primary-50' : 'border-gray-200 bg-white'
+                      }`}
+                      onPress={() => handleMoveCartLocation(loc.id, loc.name)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ width: ds.icon(44), height: ds.icon(44), borderRadius: ds.icon(22) }} className={`items-center justify-center ${
+                        isSelected ? 'bg-primary-500' : 'bg-gray-100'
+                      }`}>
+                        <Text style={{ fontSize: ds.fontSize(13) }} className={`font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
+                          {loc.short_code}
+                        </Text>
+                      </View>
+                      <View className="flex-1 ml-4">
+                        <Text style={{ fontSize: ds.fontSize(16) }} className="font-semibold text-gray-900">
+                          {loc.name}
+                        </Text>
+                        {isSelected && (
+                          <Text style={{ fontSize: ds.fontSize(13) }} className="text-primary-600">Current location</Text>
+                        )}
+                      </View>
                       {isSelected && (
-                        <Text style={{ fontSize: ds.fontSize(13) }} className="text-primary-600">Current location</Text>
+                        <Ionicons name="checkmark-circle" size={ds.icon(20)} color={colors.primary[500]} />
                       )}
-                    </View>
-                    {isSelected && (
-                      <Ionicons name="checkmark-circle" size={ds.icon(20)} color={colors.primary[500]} />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
 
               <TouchableOpacity
                 onPress={() => {
@@ -969,37 +1003,43 @@ export default function CartScreen() {
                 {menuItem?.item.inventoryItem?.name || 'Item'}
               </Text>
 
-              {locations
-                .filter((loc) => loc.id !== menuItem?.locationId)
-                .map((loc) => {
-                  const cartCount = getCartItems(loc.id).length;
-                  return (
-                    <TouchableOpacity
-                      key={loc.id}
-                      style={{ padding: ds.spacing(16), borderRadius: ds.radius(12) }}
-                      className="flex-row items-center mb-3 border-2 border-gray-200 bg-white"
-                      onPress={() => handleApplyItemLocation(loc.id, loc.name)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={{ width: ds.icon(44), height: ds.icon(44), borderRadius: ds.icon(22) }} className="bg-primary-100 items-center justify-center">
-                        <Text style={{ fontSize: ds.fontSize(13) }} className="text-primary-600 font-bold">
-                          {loc.short_code}
-                        </Text>
-                      </View>
-                      <View className="flex-1 ml-4">
-                        <Text style={{ fontSize: ds.fontSize(16) }} className="font-semibold text-gray-900">
-                          {loc.name}
-                        </Text>
-                        {cartCount > 0 && (
-                          <Text style={{ fontSize: ds.fontSize(13) }} className="text-gray-500">
-                            {cartCount} item{cartCount !== 1 ? 's' : ''} in cart
+              <ScrollView
+                style={{ maxHeight: ds.spacing(360) }}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: ds.spacing(8) }}
+              >
+                {locations
+                  .filter((loc) => loc.id !== menuItem?.locationId)
+                  .map((loc) => {
+                    const cartCount = getCartItems(loc.id).length;
+                    return (
+                      <TouchableOpacity
+                        key={loc.id}
+                        style={{ padding: ds.spacing(16), borderRadius: ds.radius(12) }}
+                        className="flex-row items-center mb-3 border-2 border-gray-200 bg-white"
+                        onPress={() => handleApplyItemLocation(loc.id, loc.name)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={{ width: ds.icon(44), height: ds.icon(44), borderRadius: ds.icon(22) }} className="bg-primary-100 items-center justify-center">
+                          <Text style={{ fontSize: ds.fontSize(13) }} className="text-primary-600 font-bold">
+                            {loc.short_code}
                           </Text>
-                        )}
-                      </View>
-                      <Ionicons name="arrow-forward" size={ds.icon(20)} color={colors.primary[500]} />
-                    </TouchableOpacity>
-                  );
-                })}
+                        </View>
+                        <View className="flex-1 ml-4">
+                          <Text style={{ fontSize: ds.fontSize(16) }} className="font-semibold text-gray-900">
+                            {loc.name}
+                          </Text>
+                          {cartCount > 0 && (
+                            <Text style={{ fontSize: ds.fontSize(13) }} className="text-gray-500">
+                              {cartCount} item{cartCount !== 1 ? 's' : ''} in cart
+                            </Text>
+                          )}
+                        </View>
+                        <Ionicons name="arrow-forward" size={ds.icon(20)} color={colors.primary[500]} />
+                      </TouchableOpacity>
+                    );
+                  })}
+              </ScrollView>
 
               <TouchableOpacity
                 onPress={() => {

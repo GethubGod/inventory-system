@@ -288,7 +288,19 @@ export default function VoiceScreen() {
   if (!VOICE_FEATURE_ENABLED) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: ds.spacing(24) }}>
+        <ScrollView
+          className="flex-1"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{
+            flexGrow: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            paddingHorizontal: ds.spacing(24),
+            paddingTop: ds.spacing(16),
+            paddingBottom: Math.max(ds.spacing(24), insets.bottom + ds.spacing(16)),
+          }}
+        >
+          <View style={{ width: '100%', maxWidth: 560, alignItems: 'center' }}>
 
           {/* 1. LOGO WITH AI BADGE */}
           <View style={{ width: ds.icon(96), height: ds.icon(96), alignItems: 'center', justifyContent: 'center' }}>
@@ -445,7 +457,8 @@ export default function VoiceScreen() {
           <Text style={{ fontSize: ds.fontSize(12), color: '#9CA3AF', textAlign: 'center', marginTop: ds.spacing(16) }}>
             We're working hard on this ✨
           </Text>
-        </View>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -986,7 +999,17 @@ export default function VoiceScreen() {
             zIndex: 100,
           }}
         >
-          <View style={{ alignItems: 'center' }}>
+          <ScrollView
+            className="w-full"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{
+              flexGrow: 1,
+              justifyContent: 'center',
+              alignItems: 'center',
+              paddingVertical: ds.spacing(24),
+            }}
+          >
+          <View style={{ alignItems: 'center', width: '100%' }}>
             <View
               style={{
                 width: ds.icon(80),
@@ -1044,6 +1067,7 @@ export default function VoiceScreen() {
               <Text style={{ color: '#FFFFFF', fontSize: ds.buttonFont, fontWeight: '700' }}>Get Started</Text>
             </TouchableOpacity>
           </View>
+          </ScrollView>
         </View>
       )}
 

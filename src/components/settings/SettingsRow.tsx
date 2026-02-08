@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { useDisplayStore } from '@/store';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 export interface SettingsRowProps {
   icon?: keyof typeof Ionicons.glyphMap;
@@ -32,6 +33,7 @@ export function SettingsRow({
   disabled = false,
   showBorder = true,
 }: SettingsRowProps) {
+  const ds = useScaledStyles();
   const { hapticFeedback } = useDisplayStore();
 
   const handlePress = () => {
@@ -44,33 +46,47 @@ export function SettingsRow({
 
   const content = (
     <View
-      className={`bg-white px-4 py-4 flex-row items-center ${
+      className={`bg-white flex-row items-center ${
         showBorder ? 'border-b border-gray-100' : ''
       } ${disabled ? 'opacity-50' : ''}`}
+      style={{
+        paddingHorizontal: ds.spacing(16),
+        paddingVertical: ds.spacing(12),
+        minHeight: Math.max(ds.rowH, 56),
+      }}
     >
       {icon && (
         <View
-          className="w-10 h-10 rounded-xl items-center justify-center mr-4"
-          style={{ backgroundColor: iconBgColor || colors.gray[100] }}
+          className="items-center justify-center"
+          style={{
+            width: Math.max(40, ds.icon(40)),
+            height: Math.max(40, ds.icon(40)),
+            borderRadius: ds.radius(12),
+            marginRight: ds.spacing(14),
+            backgroundColor: iconBgColor || colors.gray[100],
+          }}
         >
-          <Ionicons name={icon} size={22} color={iconColor || colors.gray[500]} />
+          <Ionicons name={icon} size={ds.icon(22)} color={iconColor || colors.gray[500]} />
         </View>
       )}
       <View className="flex-1">
         <Text
-          className={`font-semibold text-base ${
+          className={`font-semibold ${
             destructive ? 'text-red-500' : 'text-gray-900'
           }`}
+          style={{ fontSize: ds.fontSize(16) }}
         >
           {title}
         </Text>
         {subtitle && (
-          <Text className="text-gray-500 text-sm mt-0.5">{subtitle}</Text>
+          <Text className="text-gray-500 mt-0.5" style={{ fontSize: ds.fontSize(14) }}>
+            {subtitle}
+          </Text>
         )}
       </View>
       {rightElement}
       {showChevron && !rightElement && (
-        <Ionicons name="chevron-forward" size={20} color={colors.gray[400]} />
+        <Ionicons name="chevron-forward" size={ds.icon(20)} color={colors.gray[400]} />
       )}
     </View>
   );
