@@ -51,7 +51,8 @@
         {
           "nfcPermission": "NFC access is required to scan tags."
         }
-      ]
+      ],
+      "@react-native-voice/voice"
     ],
     "experiments": {
       "typedRoutes": true

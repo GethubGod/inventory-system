@@ -9,3 +9,5 @@ export type { DraftItem } from './draftStore';
 export type { CartItem, OrderInputMode } from './orderStore';
 export type { FontSize } from './settingsStore';
 export type { PendingUpdate } from './stock.store';
+export { useTunaSpecialistStore } from './tunaSpecialistStore';
+export type { TunaCartItem, ConversationMessage } from './tunaSpecialistStore';

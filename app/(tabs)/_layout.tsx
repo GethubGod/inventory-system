@@ -1,12 +1,13 @@
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useAuthStore, useOrderStore, useDraftStore, useStockStore } from '@/store';
+import { useAuthStore, useOrderStore, useDraftStore, useStockStore, useTunaSpecialistStore } from '@/store';
 
 export default function TabsLayout() {
   const { session, profile } = useAuthStore();
   const cartTotal = useOrderStore((state) => state.getCartTotal());
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
   const pendingStockCount = useStockStore((state) => state.pendingUpdates.length);
+  const voiceCartCount = useTunaSpecialistStore((state) => state.cartItems.length);
 
   if (!session) {
     return <Redirect href="/(auth)/login" />;
@@ -60,6 +61,23 @@ export default function TabsLayout() {
             <Ionicons name="flash-outline" size={size} color={color} />
           ),
           tabBarBadge: draftCount > 0 ? draftCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#F97316',
+            color: '#FFFFFF',
+            fontSize: 10,
+          },
+        }}
+      />
+
+      {/* Voice — Tuna Specialist */}
+      <Tabs.Screen
+        name="voice"
+        options={{
+          title: 'Voice',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="mic-outline" size={size} color={color} />
+          ),
+          tabBarBadge: voiceCartCount > 0 ? voiceCartCount : undefined,
           tabBarBadgeStyle: {
             backgroundColor: '#F97316',
             color: '#FFFFFF',

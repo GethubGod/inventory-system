@@ -71,7 +71,7 @@ export default function OrderScreen() {
     addItem,
     isLoading: inventoryLoading,
   } = useInventoryStore();
-  const { getLocationCartTotal, getTotalCartCount } = useOrderStore();
+  const { getLocationCartTotal, getTotalCartCount, addToCart } = useOrderStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
