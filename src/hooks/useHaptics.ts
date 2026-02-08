@@ -1,9 +1,9 @@
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
-import { useSettingsStore } from '@/store';
+import { useDisplayStore } from '@/store';
 
 export function useHaptics() {
-  const { hapticFeedback } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
 
   const impact = (style = Haptics.ImpactFeedbackStyle.Light) => {
     if (hapticFeedback && Platform.OS !== 'web') {

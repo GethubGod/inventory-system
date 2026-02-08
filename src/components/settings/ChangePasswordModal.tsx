@@ -15,7 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
-import { useSettingsStore } from '@/store';
+import { useDisplayStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 
 interface ChangePasswordModalProps {
@@ -27,7 +27,7 @@ export function ChangePasswordModal({
   visible,
   onClose,
 }: ChangePasswordModalProps) {
-  const { hapticFeedback } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');

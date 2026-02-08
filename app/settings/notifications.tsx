@@ -7,11 +7,12 @@ import { useAuthStore, useSettingsStore } from '@/store';
 import { colors } from '@/constants';
 import { SettingToggle, TimePickerRow } from '@/components/settings';
 import { requestNotificationPermissions } from '@/services/notificationService';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 function NotificationsSection() {
-  const { user } = useAuthStore();
+  const { user, profile } = useAuthStore();
   const { notifications, setNotificationSettings, setQuietHours } = useSettingsStore();
-  const isManager = user?.role === 'manager';
+  const isManager = (user?.role ?? profile?.role) === 'manager';
 
   const handlePushToggle = async (enabled: boolean) => {
     if (enabled) {
@@ -132,17 +133,19 @@ function NotificationsSection() {
 }
 
 export default function NotificationsSettingsScreen() {
+  const ds = useScaledStyles();
+
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center">
+      <View className="bg-white border-b border-gray-100 flex-row items-center" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="p-2 mr-2"
+          style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={20} color={colors.gray[700]} />
+          <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
         </TouchableOpacity>
-        <Text className="text-lg font-bold text-gray-900">Notifications</Text>
+        <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>Notifications</Text>
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 32 }}>

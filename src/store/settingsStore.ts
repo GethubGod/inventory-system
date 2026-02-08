@@ -2,11 +2,6 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  FontSize,
-  TextScale,
-  UIScale,
-  ButtonSize,
-  Theme,
   NotificationSettings,
   ReminderSettings,
   Reminder,
@@ -15,22 +10,12 @@ import {
   StockSettings,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_REMINDER_SETTINGS,
-  DEFAULT_DISPLAY_SETTINGS,
   DEFAULT_EXPORT_FORMAT_SETTINGS,
   DEFAULT_INVENTORY_VIEW,
   DEFAULT_STOCK_SETTINGS,
 } from '@/types/settings';
 
 interface SettingsState {
-  // Display & Accessibility
-  fontSize: FontSize;
-  textScale: TextScale;
-  uiScale: UIScale;
-  buttonSize: ButtonSize;
-  theme: Theme;
-  hapticFeedback: boolean;
-  reduceMotion: boolean;
-
   // Profile
   avatarUri: string | null;
 
@@ -42,15 +27,6 @@ interface SettingsState {
   exportFormat: ExportFormatSettings;
   inventoryView: InventoryView;
   stockSettings: StockSettings;
-
-  // Display Actions
-  setFontSize: (size: FontSize) => void;
-  setTextScale: (scale: TextScale) => void;
-  setUIScale: (scale: UIScale) => void;
-  setButtonSize: (size: ButtonSize) => void;
-  setTheme: (theme: Theme) => void;
-  setHapticFeedback: (enabled: boolean) => void;
-  setReduceMotion: (enabled: boolean) => void;
 
   // Profile Actions
   setAvatarUri: (uri: string | null) => void;
@@ -72,22 +48,12 @@ interface SettingsState {
   setStockSettings: (settings: Partial<StockSettings>) => void;
 
   // Reset
-  resetDisplayToDefaults: () => void;
   resetAllToDefaults: () => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set, get) => ({
-      // Display & Accessibility - Initial State
-      fontSize: DEFAULT_DISPLAY_SETTINGS.fontSize,
-      textScale: DEFAULT_DISPLAY_SETTINGS.textScale,
-      uiScale: DEFAULT_DISPLAY_SETTINGS.uiScale,
-      buttonSize: DEFAULT_DISPLAY_SETTINGS.buttonSize,
-      theme: DEFAULT_DISPLAY_SETTINGS.theme,
-      hapticFeedback: DEFAULT_DISPLAY_SETTINGS.hapticFeedback,
-      reduceMotion: DEFAULT_DISPLAY_SETTINGS.reduceMotion,
-
       // Profile - Initial State
       avatarUri: null,
 
@@ -101,21 +67,6 @@ export const useSettingsStore = create<SettingsState>()(
       exportFormat: DEFAULT_EXPORT_FORMAT_SETTINGS,
       inventoryView: DEFAULT_INVENTORY_VIEW,
       stockSettings: DEFAULT_STOCK_SETTINGS,
-
-      // Display Actions
-      setFontSize: (fontSize) => set({ fontSize }),
-
-      setTextScale: (textScale) => set({ textScale }),
-
-      setUIScale: (uiScale) => set({ uiScale }),
-
-      setButtonSize: (buttonSize) => set({ buttonSize }),
-
-      setTheme: (theme) => set({ theme }),
-
-      setHapticFeedback: (hapticFeedback) => set({ hapticFeedback }),
-
-      setReduceMotion: (reduceMotion) => set({ reduceMotion }),
 
       // Profile Actions
       setAvatarUri: (avatarUri) => set({ avatarUri }),
@@ -196,26 +147,8 @@ export const useSettingsStore = create<SettingsState>()(
         })),
 
       // Reset Actions
-      resetDisplayToDefaults: () =>
-        set({
-          fontSize: DEFAULT_DISPLAY_SETTINGS.fontSize,
-          textScale: DEFAULT_DISPLAY_SETTINGS.textScale,
-          uiScale: DEFAULT_DISPLAY_SETTINGS.uiScale,
-          buttonSize: DEFAULT_DISPLAY_SETTINGS.buttonSize,
-          theme: DEFAULT_DISPLAY_SETTINGS.theme,
-          hapticFeedback: DEFAULT_DISPLAY_SETTINGS.hapticFeedback,
-          reduceMotion: DEFAULT_DISPLAY_SETTINGS.reduceMotion,
-        }),
-
       resetAllToDefaults: () =>
         set({
-          fontSize: DEFAULT_DISPLAY_SETTINGS.fontSize,
-          textScale: DEFAULT_DISPLAY_SETTINGS.textScale,
-          uiScale: DEFAULT_DISPLAY_SETTINGS.uiScale,
-          buttonSize: DEFAULT_DISPLAY_SETTINGS.buttonSize,
-          theme: DEFAULT_DISPLAY_SETTINGS.theme,
-          hapticFeedback: DEFAULT_DISPLAY_SETTINGS.hapticFeedback,
-          reduceMotion: DEFAULT_DISPLAY_SETTINGS.reduceMotion,
           avatarUri: null,
           notifications: DEFAULT_NOTIFICATION_SETTINGS,
           reminders: DEFAULT_REMINDER_SETTINGS,
@@ -230,6 +163,3 @@ export const useSettingsStore = create<SettingsState>()(
     }
   )
 );
-
-// Re-export FontSize type for backward compatibility
-export type { FontSize };

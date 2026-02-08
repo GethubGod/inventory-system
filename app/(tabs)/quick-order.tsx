@@ -25,6 +25,7 @@ import { useAuthStore, useInventoryStore, useOrderStore } from '@/store';
 import type { OrderInputMode } from '@/store';
 import { InventoryItem, UnitType, Location, ItemCategory, SupplierCategory } from '@/types';
 import { colors, CATEGORY_LABELS } from '@/constants';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -76,6 +77,7 @@ const getLocationLabel = (location: Location | null): string => {
 };
 
 export default function QuickOrderScreen() {
+  const ds = useScaledStyles();
   const { location: defaultLocation, locations, user } = useAuthStore();
   const { items, fetchItems, addItem } = useInventoryStore();
   const { addToCart, getTotalCartCount, getLocationCartTotal } = useOrderStore();
@@ -407,25 +409,26 @@ export default function QuickOrderScreen() {
     return (
       <TouchableOpacity
         onPress={() => handleSelectItem(item)}
-        className={`flex-row items-center px-4 py-3 ${isFirst ? 'bg-primary-50' : ''}`}
+        className={`flex-row items-center ${isFirst ? 'bg-primary-50' : ''}`}
+        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12), minHeight: ds.rowH }}
         activeOpacity={0.7}
       >
-        <Text className="text-2xl mr-3">{emoji}</Text>
+        <Text style={{ fontSize: ds.icon(32), marginRight: ds.spacing(12) }}>{emoji}</Text>
         <View className="flex-1">
-          <Text className="text-base font-semibold text-gray-900">{item.name}</Text>
-          <Text className="text-sm text-gray-500">
+          <Text style={{ fontSize: ds.fontSize(15) }} className="font-semibold text-gray-900" numberOfLines={1} ellipsizeMode="tail">{item.name}</Text>
+          <Text style={{ fontSize: ds.fontSize(12) }} className="text-gray-500">
             {categoryLabel} • {item.pack_size} {item.base_unit}/{item.pack_unit}
           </Text>
         </View>
         {isFirst && (
           <View className="flex-row items-center">
-            <Text className="text-xs text-gray-400 mr-1">Enter</Text>
+            <Text style={{ fontSize: ds.fontSize(12) }} className="text-gray-400 mr-1">Enter</Text>
             <Ionicons name="return-down-back" size={14} color={colors.gray[400]} />
           </View>
         )}
       </TouchableOpacity>
     );
-  }, [handleSelectItem]);
+  }, [handleSelectItem, ds]);
 
   // Input accessory view for iOS - shows above keyboard
   const renderInputAccessory = () => {
@@ -458,16 +461,17 @@ export default function QuickOrderScreen() {
                 Keyboard.dismiss();
                 router.push('/cart' as any);
               }}
-              className="flex-row items-center justify-between px-4 py-2 bg-gray-50"
+              className="flex-row items-center justify-between bg-gray-50"
+              style={{ height: ds.spacing(44), paddingHorizontal: ds.spacing(16) }}
             >
               <View className="flex-row items-center">
                 <Ionicons name="cart" size={18} color={colors.gray[600]} />
-                <Text className="text-sm font-medium text-gray-700 ml-2">
+                <Text style={{ fontSize: ds.fontSize(13) }} className="font-medium text-gray-700 ml-2">
                   {totalCartCount} in cart
                 </Text>
               </View>
               <View className="flex-row items-center">
-                <Text className="text-sm font-medium text-primary-600 mr-1">View</Text>
+                <Text style={{ fontSize: ds.fontSize(14) }} className="font-medium text-primary-600 mr-1">View</Text>
                 <Ionicons name="chevron-forward" size={16} color={colors.primary[600]} />
               </View>
             </TouchableOpacity>
@@ -498,7 +502,7 @@ export default function QuickOrderScreen() {
           >
             <View className="flex-row items-center bg-gray-100 px-3 py-2 rounded-lg">
               <Ionicons name="location" size={16} color={colors.primary[500]} />
-              <Text className="text-base font-semibold text-gray-900 mx-2">
+              <Text className="text-base font-semibold text-gray-900 mx-2" numberOfLines={1} ellipsizeMode="tail">
                 {selectedLocation?.name || 'Select'}
               </Text>
               <Ionicons
@@ -544,9 +548,9 @@ export default function QuickOrderScreen() {
                   }`}
                 >
                   <View className="flex-row items-center">
-                    <View className={`w-8 h-8 rounded-full items-center justify-center mr-3 ${
+                    <View className={`rounded-full items-center justify-center mr-3 ${
                       isSelected ? 'bg-primary-500' : 'bg-gray-200'
-                    }`}>
+                    }`} style={{ width: ds.icon(32), height: ds.icon(32) }}>
                       <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
                         {loc.short_code}
                       </Text>
@@ -571,19 +575,19 @@ export default function QuickOrderScreen() {
       </View>
 
       {/* Main Content */}
-      <View className="flex-1 px-4 pt-3">
+      <View className="flex-1 pt-3" style={{ paddingHorizontal: ds.spacing(16) }}>
         {screenState === 'searching' ? (
           <>
             {/* Search Input with Ghost Text */}
             <View className="relative">
-              <View className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <View className="flex-row items-center px-4" style={{ height: 52 }}>
+              <View className="bg-white border border-gray-200 shadow-sm overflow-hidden" style={{ borderRadius: ds.radius(12) }}>
+                <View className="flex-row items-center px-4" style={{ height: ds.buttonH }}>
                   <Ionicons name="search" size={20} color={colors.gray[400]} />
-                  <View className="flex-1 ml-3 relative justify-center" style={{ height: 52 }}>
+                  <View className="flex-1 ml-3 relative justify-center" style={{ height: ds.buttonH }}>
                     {ghostText && (
                       <View pointerEvents="none" className="absolute inset-0 flex-row items-center">
-                        <Text className="text-lg text-transparent">{searchQuery}</Text>
-                        <Text className="text-lg text-gray-300">{ghostText}</Text>
+                        <Text style={{ fontSize: ds.fontSize(14) }} className="text-transparent">{searchQuery}</Text>
+                        <Text style={{ fontSize: ds.fontSize(14) }} className="text-gray-300">{ghostText}</Text>
                       </View>
                     )}
                     <TextInput
@@ -593,8 +597,8 @@ export default function QuickOrderScreen() {
                       onSubmitEditing={handleSearchSubmit}
                       placeholder="Type item name..."
                       placeholderTextColor={colors.gray[400]}
-                      className="text-lg text-gray-900"
-                      style={{ height: 52 }}
+                      className="text-gray-900"
+                      style={{ height: ds.buttonH, fontSize: ds.fontSize(14) }}
                       autoCapitalize="none"
                       autoCorrect={false}
                       autoFocus
@@ -613,9 +617,9 @@ export default function QuickOrderScreen() {
                     accessibilityLabel="Voice order"
                     accessibilityRole="button"
                     style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 16,
+                      width: Math.max(44, ds.icon(32)),
+                      height: Math.max(44, ds.icon(32)),
+                      borderRadius: ds.icon(16),
                       backgroundColor: '#F97316',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -627,7 +631,7 @@ export default function QuickOrderScreen() {
                       elevation: 4,
                     }}
                   >
-                    <Sparkles size={16} color="#FFFFFF" />
+                    <Sparkles size={ds.icon(16)} color="#FFFFFF" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -691,7 +695,7 @@ export default function QuickOrderScreen() {
                     {CATEGORY_EMOJI[selectedItem.category] || '📦'}
                   </Text>
                   <View className="flex-1">
-                    <Text className="text-lg font-semibold text-gray-900">
+                    <Text className="text-lg font-semibold text-gray-900" numberOfLines={1} ellipsizeMode="tail">
                       {selectedItem.name}
                     </Text>
                     <Text className="text-xs text-gray-500">
@@ -742,7 +746,8 @@ export default function QuickOrderScreen() {
                         }
                         quantityInputRef.current?.focus();
                       }}
-                      className="w-11 h-11 bg-gray-100 rounded-lg items-center justify-center"
+                      className="bg-gray-100 rounded-lg items-center justify-center"
+                      style={{ width: Math.max(44, ds.icon(44)), height: Math.max(44, ds.icon(44)) }}
                     >
                       <Ionicons name="remove" size={22} color={colors.gray[700]} />
                     </TouchableOpacity>
@@ -752,8 +757,8 @@ export default function QuickOrderScreen() {
                       value={inputMode === 'quantity' ? quantity : remainingAmount}
                       onChangeText={inputMode === 'quantity' ? setQuantity : setRemainingAmount}
                       keyboardType="number-pad"
-                      className="w-16 mx-2 text-center text-2xl font-bold text-gray-900"
-                      style={{ height: 44 }}
+                      className="mx-2 text-center text-2xl font-bold text-gray-900"
+                      style={{ width: ds.spacing(64), height: Math.max(44, ds.buttonH) }}
                       selectTextOnFocus
                       inputAccessoryViewID={Platform.OS === 'ios' ? INPUT_ACCESSORY_ID : undefined}
                     />
@@ -769,7 +774,8 @@ export default function QuickOrderScreen() {
                         }
                         quantityInputRef.current?.focus();
                       }}
-                      className="w-11 h-11 bg-gray-100 rounded-lg items-center justify-center"
+                      className="bg-gray-100 rounded-lg items-center justify-center"
+                      style={{ width: Math.max(44, ds.icon(44)), height: Math.max(44, ds.icon(44)) }}
                     >
                       <Ionicons name="add" size={22} color={colors.gray[700]} />
                     </TouchableOpacity>
@@ -1006,7 +1012,7 @@ export default function QuickOrderScreen() {
           }}
         >
           <View className="bg-gray-900 rounded-xl px-4 py-3 shadow-lg">
-            <Text className="text-white text-center font-medium">{toastMessage}</Text>
+            <Text style={{ fontSize: ds.fontSize(13) }} className="text-white text-center font-medium">{toastMessage}</Text>
           </View>
         </Animated.View>
       )}

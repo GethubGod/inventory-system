@@ -1,800 +1,26 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
   ScrollView,
-  TouchableOpacity,
   Platform,
   Alert,
-  Image,
-  TextInput,
-  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import * as ImagePicker from 'expo-image-picker';
-import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
-import { useAuthStore, useSettingsStore, useDraftStore } from '@/store';
-import { colors, shadow } from '@/constants';
-import {
-  ExpandableSection,
-  SettingsRow,
-  SettingToggle,
-  MultiOptionToggle,
-  TimePickerRow,
-  ChangePasswordModal,
-  ReminderModal,
-  ReminderListItem,
-} from '@/components/settings';
-import { Reminder, TEXT_SCALE_LABELS } from '@/types/settings';
-import {
-  requestNotificationPermissions,
-  scheduleReminder,
-  cancelReminder,
-  scheduleNoOrderTodayReminder,
-  scheduleBeforeClosingReminder,
-} from '@/services/notificationService';
+import { useAuthStore, useDisplayStore, useDraftStore } from '@/store';
+import { shadow } from '@/constants';
+import { SettingsRow } from '@/components/settings';
 import { BrandLogo } from '@/components';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
-// ============================================
-// PROFILE SECTION
-// ============================================
-function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) {
-  const { user, location } = useAuthStore();
-  const { avatarUri, setAvatarUri, hapticFeedback } = useSettingsStore();
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [tempName, setTempName] = useState(user?.name || '');
-
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Needed', 'Please allow photo library access to change your avatar.');
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      if (hapticFeedback && Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-      setAvatarUri(result.assets[0].uri);
-    }
-  };
-
-  const handleSaveName = () => {
-    // In a real app, this would update Supabase
-    setIsEditingName(false);
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-  };
-
-  const firstName = user?.name?.split(' ')[0] || 'User';
-
-  return (
-    <View className="px-4 py-4">
-      {/* Avatar */}
-      <TouchableOpacity onPress={pickImage} className="items-center mb-4">
-        <View className="w-20 h-20 rounded-full overflow-hidden bg-primary-500 items-center justify-center">
-          {avatarUri ? (
-            <Image source={{ uri: avatarUri }} className="w-full h-full" />
-          ) : (
-            <Text className="text-white font-bold text-3xl">
-              {firstName.charAt(0).toUpperCase()}
-            </Text>
-          )}
-        </View>
-        <Text className="text-primary-500 text-sm mt-2 font-medium">Change Photo</Text>
-      </TouchableOpacity>
-
-      {/* Full Name */}
-      <View className="mb-4">
-        <Text className="text-xs text-gray-500 uppercase tracking-wide mb-1">Full Name</Text>
-        {isEditingName ? (
-          <View className="flex-row items-center">
-            <TextInput
-              value={tempName}
-              onChangeText={setTempName}
-              className="flex-1 bg-gray-100 rounded-xl px-4 py-3 text-base text-gray-900"
-              autoFocus
-            />
-            <TouchableOpacity onPress={handleSaveName} className="ml-2 p-2">
-              <Ionicons name="checkmark" size={24} color={colors.primary[500]} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setIsEditingName(false)} className="p-2">
-              <Ionicons name="close" size={24} color={colors.gray[400]} />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            onPress={() => {
-              setTempName(user?.name || '');
-              setIsEditingName(true);
-            }}
-            className="flex-row items-center justify-between bg-gray-50 rounded-xl px-4 py-3"
-          >
-            <Text className="text-base text-gray-900">{user?.name || 'Not set'}</Text>
-            <Ionicons name="pencil" size={18} color={colors.gray[400]} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {/* Email */}
-      <View className="mb-4">
-        <Text className="text-xs text-gray-500 uppercase tracking-wide mb-1">Email</Text>
-        <View className="flex-row items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
-          <Text className="text-base text-gray-500">{user?.email || 'Not set'}</Text>
-          <Ionicons name="lock-closed" size={16} color={colors.gray[400]} />
-        </View>
-      </View>
-
-      {/* Role */}
-      <View className="mb-4">
-        <Text className="text-xs text-gray-500 uppercase tracking-wide mb-1">Role</Text>
-        <View className="flex-row items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
-          <Text className="text-base text-gray-500 capitalize">{user?.role || 'Employee'}</Text>
-          <Ionicons name="lock-closed" size={16} color={colors.gray[400]} />
-        </View>
-      </View>
-
-      {/* Location */}
-      <View className="mb-4">
-        <Text className="text-xs text-gray-500 uppercase tracking-wide mb-1">Location</Text>
-        <View className="flex-row items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
-          <View className="flex-row items-center">
-            <Ionicons name="location" size={16} color={colors.primary[500]} />
-            <Text className="text-base text-gray-500 ml-2">{location?.name || 'Not set'}</Text>
-          </View>
-          <Ionicons name="lock-closed" size={16} color={colors.gray[400]} />
-        </View>
-      </View>
-
-      {/* Change Password */}
-      <TouchableOpacity
-        onPress={onChangePassword}
-        className="bg-gray-100 rounded-xl py-3.5 items-center flex-row justify-center"
-        activeOpacity={0.7}
-      >
-        <Ionicons name="key-outline" size={18} color={colors.primary[600]} />
-        <Text className="text-primary-600 font-semibold ml-2">Change Password</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-// ============================================
-// DISPLAY & ACCESSIBILITY SECTION
-// ============================================
-function DisplaySection() {
-  const {
-    textScale,
-    setTextScale,
-    uiScale,
-    setUIScale,
-    buttonSize,
-    setButtonSize,
-    theme,
-    setTheme,
-    hapticFeedback,
-    setHapticFeedback,
-    reduceMotion,
-    setReduceMotion,
-    resetDisplayToDefaults,
-  } = useSettingsStore();
-
-  const handleReset = () => {
-    Alert.alert(
-      'Reset Display Settings',
-      'Reset all display and accessibility settings to defaults?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: () => {
-            if (hapticFeedback && Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            }
-            resetDisplayToDefaults();
-          },
-        },
-      ]
-    );
-  };
-
-  return (
-    <View>
-      {/* Text Size */}
-      <View className="px-4 py-4">
-        <Text className="text-base font-medium text-gray-900 mb-3">Text Size</Text>
-        <View className="flex-row justify-between mb-2">
-          {TEXT_SCALE_LABELS.map((label, index) => {
-            const scaleValue = [0.8, 0.9, 1.0, 1.1, 1.4][index] as 0.8 | 0.9 | 1.0 | 1.1 | 1.4;
-            const isSelected = textScale === scaleValue;
-            return (
-              <TouchableOpacity
-                key={label}
-                onPress={() => setTextScale(scaleValue)}
-                className={`px-3 py-2 rounded-lg ${
-                  isSelected ? 'bg-primary-500' : 'bg-gray-100'
-                }`}
-                activeOpacity={0.7}
-              >
-                <Text
-                  className={`text-sm font-medium ${
-                    isSelected ? 'text-white' : 'text-gray-600'
-                  }`}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <Text
-          className="text-gray-500 mt-2"
-          style={{ fontSize: 14 * textScale }}
-        >
-          Preview: The quick brown fox jumps over the lazy dog
-        </Text>
-      </View>
-
-      <View className="h-px bg-gray-100 mx-4" />
-
-      {/* UI Scale */}
-      <View className="px-4 py-4">
-        <Text className="text-base font-medium text-gray-900 mb-3">UI Scale</Text>
-        <MultiOptionToggle
-          options={[
-            { value: 'compact', label: 'Compact' },
-            { value: 'default', label: 'Default' },
-            { value: 'large', label: 'Large' },
-          ]}
-          value={uiScale}
-          onValueChange={setUIScale}
-        />
-        <Text className="text-xs text-gray-400 mt-2">
-          Affects button sizes, card padding, and spacing
-        </Text>
-      </View>
-
-      <View className="h-px bg-gray-100 mx-4" />
-
-      {/* Button Size */}
-      <View className="px-4 py-4">
-        <Text className="text-base font-medium text-gray-900 mb-3">Button Size</Text>
-        <MultiOptionToggle
-          options={[
-            { value: 'small', label: 'Small' },
-            { value: 'medium', label: 'Medium' },
-            { value: 'large', label: 'Large' },
-          ]}
-          value={buttonSize}
-          onValueChange={setButtonSize}
-        />
-        <View className="mt-3 items-center">
-          <TouchableOpacity
-            className="bg-primary-500 rounded-xl px-6 items-center justify-center"
-            style={{ height: buttonSize === 'small' ? 44 : buttonSize === 'medium' ? 52 : 60 }}
-          >
-            <Text className="text-white font-semibold">Sample Button</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View className="h-px bg-gray-100 mx-4" />
-
-      {/* Theme */}
-      <View className="px-4 py-4">
-        <Text className="text-base font-medium text-gray-900 mb-3">Theme</Text>
-        <MultiOptionToggle
-          options={[
-            {
-              value: 'light',
-              label: 'Light',
-              preview: <Ionicons name="sunny" size={16} color={theme === 'light' ? colors.primary[600] : colors.gray[500]} />,
-            },
-            {
-              value: 'system',
-              label: 'System',
-              preview: <Ionicons name="phone-portrait" size={16} color={theme === 'system' ? colors.primary[600] : colors.gray[500]} />,
-            },
-            {
-              value: 'dark',
-              label: 'Dark',
-              preview: <Ionicons name="moon" size={16} color={theme === 'dark' ? colors.primary[600] : colors.gray[500]} />,
-            },
-          ]}
-          value={theme}
-          onValueChange={setTheme}
-        />
-      </View>
-
-      <View className="h-px bg-gray-100 mx-4" />
-
-      {/* Haptic Feedback */}
-      <SettingToggle
-        title="Haptic Feedback"
-        subtitle="Vibration on button presses"
-        value={hapticFeedback}
-        onValueChange={setHapticFeedback}
-      />
-
-      {/* Reduce Motion */}
-      <SettingToggle
-        title="Reduce Motion"
-        subtitle="Minimize animations"
-        value={reduceMotion}
-        onValueChange={setReduceMotion}
-        showBorder={false}
-      />
-
-      <View className="h-px bg-gray-100 mx-4" />
-
-      {/* Reset */}
-      <TouchableOpacity onPress={handleReset} className="px-4 py-4">
-        <Text className="text-red-500 font-medium">Reset to Defaults</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-// ============================================
-// NOTIFICATIONS SECTION
-// ============================================
-function NotificationsSection() {
-  const { user, profile } = useAuthStore();
-  const { notifications, setNotificationSettings, setQuietHours, hapticFeedback } =
-    useSettingsStore();
-  const isManager = (user?.role ?? profile?.role) === 'manager';
-
-  const handlePushToggle = async (enabled: boolean) => {
-    if (enabled) {
-      const granted = await requestNotificationPermissions();
-      if (!granted) {
-        Alert.alert(
-          'Permission Required',
-          'Please enable notifications in your device settings.',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
-          ]
-        );
-        return;
-      }
-    }
-    setNotificationSettings({ pushEnabled: enabled });
-  };
-
-  return (
-    <View>
-      {/* Master Toggle */}
-      <SettingToggle
-        icon="notifications"
-        iconColor="#F59E0B"
-        iconBgColor="#FEF3C7"
-        title="Push Notifications"
-        subtitle="Receive alerts on your device"
-        value={notifications.pushEnabled}
-        onValueChange={handlePushToggle}
-      />
-
-      {notifications.pushEnabled && (
-        <>
-          <View className="px-4 py-2">
-            <Text className="text-xs text-gray-500 uppercase tracking-wide">
-              Notification Types
-            </Text>
-          </View>
-
-          <SettingToggle
-            title="Order Status Updates"
-            subtitle="When your orders are fulfilled"
-            value={notifications.orderStatus}
-            onValueChange={(v) => setNotificationSettings({ orderStatus: v })}
-          />
-
-          {isManager && (
-            <SettingToggle
-              title="New Orders"
-              subtitle="When employees submit orders"
-              value={notifications.newOrders}
-              onValueChange={(v) => setNotificationSettings({ newOrders: v })}
-            />
-          )}
-
-          <SettingToggle
-            title="Daily Summary"
-            subtitle="End of day order summary"
-            value={notifications.dailySummary}
-            onValueChange={(v) => setNotificationSettings({ dailySummary: v })}
-          />
-
-          <View className="h-px bg-gray-100 mx-4 my-2" />
-
-          <View className="px-4 py-2">
-            <Text className="text-xs text-gray-500 uppercase tracking-wide">
-              Sound & Vibration
-            </Text>
-          </View>
-
-          <SettingToggle
-            title="Sound"
-            subtitle="Play sound for notifications"
-            value={notifications.soundEnabled}
-            onValueChange={(v) => setNotificationSettings({ soundEnabled: v })}
-          />
-
-          <SettingToggle
-            title="Vibration"
-            subtitle="Vibrate for notifications"
-            value={notifications.vibrationEnabled}
-            onValueChange={(v) => setNotificationSettings({ vibrationEnabled: v })}
-          />
-
-          <View className="h-px bg-gray-100 mx-4 my-2" />
-
-          <SettingToggle
-            title="Quiet Hours"
-            subtitle="Silence notifications during set times"
-            value={notifications.quietHours.enabled}
-            onValueChange={(v) => setQuietHours({ enabled: v })}
-          />
-
-          {notifications.quietHours.enabled && (
-            <View className="px-4 pb-4">
-              <View className="bg-gray-50 rounded-xl px-4">
-                <TimePickerRow
-                  title="Start"
-                  value={notifications.quietHours.startTime}
-                  onTimeChange={(t) => setQuietHours({ startTime: t })}
-                />
-                <View className="h-px bg-gray-200" />
-                <TimePickerRow
-                  title="End"
-                  value={notifications.quietHours.endTime}
-                  onTimeChange={(t) => setQuietHours({ endTime: t })}
-                />
-              </View>
-              <Text className="text-xs text-gray-400 mt-2">
-                Notifications will be silenced during these hours
-              </Text>
-            </View>
-          )}
-        </>
-      )}
-    </View>
-  );
-}
-
-// ============================================
-// REMINDERS SECTION
-// ============================================
-function RemindersSection({
-  onAddReminder,
-  onEditReminder,
-}: {
-  onAddReminder: () => void;
-  onEditReminder: (reminder: Reminder) => void;
-}) {
-  const {
-    reminders,
-    setReminderSettings,
-    toggleReminder,
-    deleteReminder,
-    hapticFeedback,
-  } = useSettingsStore();
-
-  const ensureNotificationPermissions = async () => {
-    const granted = await requestNotificationPermissions();
-    if (!granted) {
-      Alert.alert(
-        'Permission Required',
-        'Please enable notifications in your device settings.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
-        ]
-      );
-      return false;
-    }
-    return true;
-  };
-
-  const handleReminderMasterToggle = async (enabled: boolean) => {
-    setReminderSettings({ enabled });
-
-    if (!enabled) {
-      await scheduleNoOrderTodayReminder(false);
-      await scheduleBeforeClosingReminder(false, reminders.closingTime);
-      return;
-    }
-
-    const permitted = await ensureNotificationPermissions();
-    if (!permitted) return;
-
-    if (reminders.noOrderTodayReminder) {
-      await scheduleNoOrderTodayReminder(true);
-    }
-    if (reminders.beforeClosingReminder) {
-      await scheduleBeforeClosingReminder(true, reminders.closingTime);
-    }
-  };
-
-  const handleNoOrderTodayToggle = async (enabled: boolean) => {
-    if (enabled) {
-      const permitted = await ensureNotificationPermissions();
-      if (!permitted) return;
-    }
-    setReminderSettings({ noOrderTodayReminder: enabled });
-    await scheduleNoOrderTodayReminder(enabled);
-  };
-
-  const handleBeforeClosingToggle = async (enabled: boolean) => {
-    if (enabled) {
-      const permitted = await ensureNotificationPermissions();
-      if (!permitted) return;
-    }
-    setReminderSettings({ beforeClosingReminder: enabled });
-    await scheduleBeforeClosingReminder(enabled, reminders.closingTime);
-  };
-
-  const handleClosingTimeChange = async (time: string) => {
-    setReminderSettings({ closingTime: time });
-    if (reminders.beforeClosingReminder) {
-      const permitted = await ensureNotificationPermissions();
-      if (!permitted) return;
-      await scheduleBeforeClosingReminder(true, time);
-    }
-  };
-
-  const handleDeleteReminder = (reminder: Reminder) => {
-    Alert.alert('Delete Reminder', `Delete "${reminder.name}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          if (hapticFeedback && Platform.OS !== 'web') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          }
-          await cancelReminder(reminder.id);
-          deleteReminder(reminder.id);
-        },
-      },
-    ]);
-  };
-
-  const handleToggleReminder = async (id: string) => {
-    toggleReminder(id);
-    const reminder = reminders.reminders.find((r) => r.id === id);
-    if (reminder) {
-      if (!reminder.enabled) {
-        // Was disabled, now enabling - schedule it
-        await scheduleReminder({ ...reminder, enabled: true });
-      } else {
-        // Was enabled, now disabling - cancel it
-        await cancelReminder(id);
-      }
-    }
-  };
-
-  return (
-    <View>
-      {/* Master Toggle */}
-      <SettingToggle
-        icon="alarm"
-        iconColor="#10B981"
-        iconBgColor="#D1FAE5"
-        title="Reminders"
-        subtitle="Get reminded to place orders"
-        value={reminders.enabled}
-        onValueChange={handleReminderMasterToggle}
-      />
-
-      {reminders.enabled && (
-        <>
-          <View className="px-4 py-2">
-            <Text className="text-xs text-gray-500 uppercase tracking-wide">
-              Quick Reminders
-            </Text>
-          </View>
-
-          <SettingToggle
-            title="No Order Today"
-            subtitle="Remind at 3 PM if no order placed"
-            value={reminders.noOrderTodayReminder}
-            onValueChange={handleNoOrderTodayToggle}
-          />
-
-          <SettingToggle
-            title="Before Closing"
-            subtitle="30 minutes before store closes"
-            value={reminders.beforeClosingReminder}
-            onValueChange={handleBeforeClosingToggle}
-          />
-
-          {reminders.beforeClosingReminder && (
-            <View className="px-4 pb-2">
-              <View className="bg-gray-50 rounded-xl px-4">
-                <TimePickerRow
-                  title="Closing Time"
-                  value={reminders.closingTime}
-                  onTimeChange={handleClosingTimeChange}
-                />
-              </View>
-            </View>
-          )}
-
-          <View className="h-px bg-gray-100 mx-4 my-2" />
-
-          <View className="px-4 py-2">
-            <Text className="text-xs text-gray-500 uppercase tracking-wide">
-              Custom Reminders
-            </Text>
-          </View>
-
-          {reminders.reminders.length === 0 ? (
-            <View className="px-4 py-4">
-              <Text className="text-gray-400 text-center">
-                No custom reminders yet
-              </Text>
-            </View>
-          ) : (
-            reminders.reminders.map((reminder) => (
-              <ReminderListItem
-                key={reminder.id}
-                reminder={reminder}
-                onToggle={() => handleToggleReminder(reminder.id)}
-                onEdit={() => onEditReminder(reminder)}
-                onDelete={() => handleDeleteReminder(reminder)}
-              />
-            ))
-          )}
-
-          <TouchableOpacity
-            onPress={onAddReminder}
-            className="mx-4 my-3 py-3 bg-gray-100 rounded-xl flex-row items-center justify-center"
-            activeOpacity={0.7}
-          >
-            <Ionicons name="add" size={20} color={colors.primary[500]} />
-            <Text className="text-primary-500 font-semibold ml-2">
-              Add Reminder
-            </Text>
-          </TouchableOpacity>
-        </>
-      )}
-    </View>
-  );
-}
-
-// ============================================
-// STOCK SECTION
-// ============================================
-function StockSection() {
-  const { stockSettings, setStockSettings } = useSettingsStore();
-
-  return (
-    <View>
-      <SettingToggle
-        icon="warning-outline"
-        iconColor="#EF4444"
-        iconBgColor="#FEE2E2"
-        title="Flag unusual quantities"
-        subtitle="Highlight suspiciously high stock counts in confirmation"
-        value={stockSettings.flagUnusualQuantities}
-        onValueChange={(value) => setStockSettings({ flagUnusualQuantities: value })}
-      />
-
-      <SettingToggle
-        icon="notifications-outline"
-        iconColor="#2563EB"
-        iconBgColor="#DBEAFE"
-        title="Resume reminders"
-        subtitle="Send a local reminder after pausing stock count"
-        value={stockSettings.resumeReminders}
-        onValueChange={(value) => setStockSettings({ resumeReminders: value })}
-        showBorder={false}
-      />
-    </View>
-  );
-}
-
-// ============================================
-// ABOUT & SUPPORT SECTION
-// ============================================
-function AboutSection() {
-  const appVersion = Constants.expoConfig?.version || '1.0.0';
-  const { hapticFeedback } = useSettingsStore();
-
-  const handleLink = (url: string) => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    Linking.openURL(url);
-  };
-
-  return (
-    <View>
-      {/* App Version */}
-      <View className="px-4 py-4 flex-row justify-between items-center border-b border-gray-100">
-        <Text className="text-base text-gray-900">App Version</Text>
-        <Text className="text-base text-gray-500">{appVersion}</Text>
-      </View>
-
-      <SettingsRow
-        icon="mail-outline"
-        iconColor="#3B82F6"
-        iconBgColor="#DBEAFE"
-        title="Contact Support"
-        subtitle="Get help with the app"
-        onPress={() => handleLink('mailto:support@babytuna.com?subject=Babytuna App Support')}
-      />
-
-      <SettingsRow
-        icon="chatbubble-outline"
-        iconColor="#10B981"
-        iconBgColor="#D1FAE5"
-        title="Send Feedback"
-        subtitle="Tell us what you think"
-        onPress={() => handleLink('mailto:feedback@babytuna.com?subject=Babytuna App Feedback')}
-      />
-
-      <View className="h-px bg-gray-100 mx-4" />
-
-      <SettingsRow
-        icon="document-text-outline"
-        iconColor="#6B7280"
-        iconBgColor="#F3F4F6"
-        title="Terms of Service"
-        onPress={() => handleLink('https://babytuna.com/terms')}
-      />
-
-      <SettingsRow
-        icon="shield-outline"
-        iconColor="#6B7280"
-        iconBgColor="#F3F4F6"
-        title="Privacy Policy"
-        onPress={() => handleLink('https://babytuna.com/privacy')}
-      />
-
-      <SettingsRow
-        icon="code-slash-outline"
-        iconColor="#6B7280"
-        iconBgColor="#F3F4F6"
-        title="Open Source Licenses"
-        onPress={() => handleLink('https://babytuna.com/licenses')}
-        showBorder={false}
-      />
-
-      {/* Footer */}
-      <View className="items-center py-6">
-        <Text className="text-gray-400 text-sm">Made with love by Babytuna</Text>
-      </View>
-    </View>
-  );
-}
-
-// ============================================
-// MAIN SETTINGS SCREEN
-// ============================================
 export default function SettingsScreen() {
+  const ds = useScaledStyles();
   const { user, profile, signOut, setViewMode } = useAuthStore();
-  const { hapticFeedback, addReminder, updateReminder } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
   const { getTotalItemCount, clearAllDrafts } = useDraftStore();
-
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showReminderModal, setShowReminderModal] = useState(false);
-  const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
 
   const isManager = (user?.role ?? profile?.role) === 'manager';
   const draftCount = getTotalItemCount();
@@ -850,26 +76,6 @@ export default function SettingsScreen() {
     );
   };
 
-  const handleSaveReminder = async (
-    reminderData: Omit<Reminder, 'id' | 'createdAt'>
-  ) => {
-    if (editingReminder) {
-      updateReminder(editingReminder.id, reminderData);
-      if (reminderData.enabled) {
-        await scheduleReminder({
-          ...reminderData,
-          id: editingReminder.id,
-          createdAt: editingReminder.createdAt,
-        });
-      } else {
-        await cancelReminder(editingReminder.id);
-      }
-    } else {
-      addReminder(reminderData);
-    }
-    setEditingReminder(null);
-  };
-
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       <ScrollView
@@ -877,83 +83,101 @@ export default function SettingsScreen() {
         contentContainerStyle={{ paddingBottom: 32 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
-        <View className="px-5 py-4 flex-row items-center">
+        <View className="flex-row items-center" style={{ paddingHorizontal: ds.spacing(20), paddingVertical: ds.spacing(16) }}>
           <BrandLogo variant="header" size={28} style={{ marginRight: 10 }} />
-          <Text className="text-2xl font-bold text-gray-900">Settings</Text>
+          <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(22) }}>Settings</Text>
         </View>
 
-        {/* Section 1: Profile */}
-        <ExpandableSection
-          title="Profile"
-          icon="person-outline"
-          iconColor="#3B82F6"
-          iconBgColor="#DBEAFE"
-          defaultExpanded={false}
+        <View
+          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+          style={shadow.md}
         >
-          <ProfileSection onChangePassword={() => setShowPasswordModal(true)} />
-        </ExpandableSection>
-
-        {/* Section 2: Display & Accessibility */}
-        <ExpandableSection
-          title="Display & Accessibility"
-          icon="eye-outline"
-          iconColor="#8B5CF6"
-          iconBgColor="#EDE9FE"
-        >
-          <DisplaySection />
-        </ExpandableSection>
-
-        {/* Section 3: Notifications */}
-        <ExpandableSection
-          title="Notifications"
-          icon="notifications-outline"
-          iconColor="#F59E0B"
-          iconBgColor="#FEF3C7"
-        >
-          <NotificationsSection />
-        </ExpandableSection>
-
-        {/* Section 4: Reminders */}
-        <ExpandableSection
-          title="Reminders"
-          icon="alarm-outline"
-          iconColor="#10B981"
-          iconBgColor="#D1FAE5"
-        >
-          <RemindersSection
-            onAddReminder={() => {
-              setEditingReminder(null);
-              setShowReminderModal(true);
-            }}
-            onEditReminder={(reminder) => {
-              setEditingReminder(reminder);
-              setShowReminderModal(true);
-            }}
+          <SettingsRow
+            icon="person-outline"
+            iconColor="#3B82F6"
+            iconBgColor="#DBEAFE"
+            title="Profile"
+            subtitle="Manage your account details"
+            onPress={() => router.push('/settings/profile')}
+            showBorder={false}
           />
-        </ExpandableSection>
+        </View>
 
-        {/* Section 5: Stock */}
-        <ExpandableSection
-          title="Stock"
-          icon="cube-outline"
-          iconColor="#EA580C"
-          iconBgColor="#FFEDD5"
+        <View
+          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+          style={shadow.md}
         >
-          <StockSection />
-        </ExpandableSection>
+          <SettingsRow
+            icon="eye-outline"
+            iconColor="#8B5CF6"
+            iconBgColor="#EDE9FE"
+            title="Display & Accessibility"
+            subtitle="Text size, theme, and interaction settings"
+            onPress={() => router.push('/settings/display-accessibility')}
+            showBorder={false}
+          />
+        </View>
 
-        {/* Section 6: About & Support */}
-        <ExpandableSection
-          title="About & Support"
-          icon="information-circle-outline"
-          iconColor="#6366F1"
-          iconBgColor="#E0E7FF"
+        <View
+          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+          style={shadow.md}
         >
-          <AboutSection />
-        </ExpandableSection>
+          <SettingsRow
+            icon="notifications-outline"
+            iconColor="#F59E0B"
+            iconBgColor="#FEF3C7"
+            title="Notifications"
+            subtitle="Control alerts, sounds, and quiet hours"
+            onPress={() => router.push('/settings/notifications')}
+            showBorder={false}
+          />
+        </View>
 
-        {/* Stock Levels */}
+        <View
+          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+          style={shadow.md}
+        >
+          <SettingsRow
+            icon="alarm-outline"
+            iconColor="#10B981"
+            iconBgColor="#D1FAE5"
+            title="Reminders"
+            subtitle="Configure quick and custom reminders"
+            onPress={() => router.push('/settings/reminders')}
+            showBorder={false}
+          />
+        </View>
+
+        <View
+          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+          style={shadow.md}
+        >
+          <SettingsRow
+            icon="cube-outline"
+            iconColor="#EA580C"
+            iconBgColor="#FFEDD5"
+            title="Stock"
+            subtitle="Tune stock warning preferences"
+            onPress={() => router.push('/settings/stock-settings')}
+            showBorder={false}
+          />
+        </View>
+
+        <View
+          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+          style={shadow.md}
+        >
+          <SettingsRow
+            icon="information-circle-outline"
+            iconColor="#6366F1"
+            iconBgColor="#E0E7FF"
+            title="About & Support"
+            subtitle="Version info, support, and policies"
+            onPress={() => router.push('/settings/about-support')}
+            showBorder={false}
+          />
+        </View>
+
         <View
           className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
           style={shadow.md}
@@ -969,7 +193,6 @@ export default function SettingsScreen() {
           />
         </View>
 
-        {/* Order History */}
         <View
           className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
           style={shadow.md}
@@ -985,7 +208,6 @@ export default function SettingsScreen() {
           />
         </View>
 
-        {/* Draft Items */}
         <View
           className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
           style={shadow.md}
@@ -1013,35 +235,31 @@ export default function SettingsScreen() {
           />
         </View>
 
-        {/* Manager Switch */}
         {isManager && (
-          <>
-            <View
-              className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-              style={shadow.md}
-            >
-              <SettingsRow
-                icon="people-outline"
-                iconColor="#2563EB"
-                iconBgColor="#DBEAFE"
-                title="User Management"
-                subtitle="Suspend inactive users and delete accounts"
-                onPress={() => router.push('/(manager)/settings/user-management')}
-              />
-              <SettingsRow
-                icon="swap-horizontal"
-                iconColor="#7C3AED"
-                iconBgColor="#EDE9FE"
-                title="Switch to Manager View"
-                subtitle="Manage orders and fulfillment"
-                onPress={handleSwitchToManager}
-                showBorder={false}
-              />
-            </View>
-          </>
+          <View
+            className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+            style={shadow.md}
+          >
+            <SettingsRow
+              icon="people-outline"
+              iconColor="#2563EB"
+              iconBgColor="#DBEAFE"
+              title="User Management"
+              subtitle="Suspend inactive users and delete accounts"
+              onPress={() => router.push('/(manager)/settings/user-management')}
+            />
+            <SettingsRow
+              icon="swap-horizontal"
+              iconColor="#7C3AED"
+              iconBgColor="#EDE9FE"
+              title="Switch to Manager View"
+              subtitle="Manage orders and fulfillment"
+              onPress={handleSwitchToManager}
+              showBorder={false}
+            />
+          </View>
         )}
 
-        {/* Sign Out */}
         <View
           className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
           style={shadow.md}
@@ -1058,7 +276,6 @@ export default function SettingsScreen() {
           />
         </View>
 
-        {/* Signed in as */}
         <View className="items-center mt-2">
           <Text className="text-gray-400 text-sm">
             Signed in as {user?.email}
@@ -1071,22 +288,6 @@ export default function SettingsScreen() {
           <Text className="text-xs text-gray-400 mt-1">Version {appVersion}</Text>
         </View>
       </ScrollView>
-
-      {/* Modals */}
-      <ChangePasswordModal
-        visible={showPasswordModal}
-        onClose={() => setShowPasswordModal(false)}
-      />
-
-      <ReminderModal
-        visible={showReminderModal}
-        reminder={editingReminder}
-        onClose={() => {
-          setShowReminderModal(false);
-          setEditingReminder(null);
-        }}
-        onSave={handleSaveReminder}
-      />
     </SafeAreaView>
   );
 }

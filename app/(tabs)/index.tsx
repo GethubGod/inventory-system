@@ -24,6 +24,7 @@ import { InventoryItem, ItemCategory, Location, SupplierCategory } from '@/types
 import { CATEGORY_LABELS, categoryColors, colors } from '@/constants';
 import { BrandLogo } from '@/components';
 import { InventoryItemCard } from '@/components/InventoryItemCard';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -61,6 +62,7 @@ const SUPPLIER_CATEGORIES: { value: SupplierCategory; label: string }[] = [
 ];
 
 export default function OrderScreen() {
+  const ds = useScaledStyles();
   const { location, locations, setLocation, fetchLocations, user } = useAuthStore();
   const {
     fetchItems,
@@ -248,15 +250,16 @@ export default function OrderScreen() {
         <View className="flex-row items-center justify-between px-4 py-3">
           <TouchableOpacity
             onPress={toggleLocationDropdown}
-            className="flex-row items-center bg-gray-100 px-3 py-2 rounded-xl flex-1 mr-3"
+            className="flex-row items-center bg-gray-100 rounded-xl flex-1 mr-3"
+            style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(8) }}
           >
             <BrandLogo variant="header" size={26} style={{ marginRight: 8 }} />
-            <Text className="text-base font-semibold text-gray-900 flex-1" numberOfLines={1}>
+            <Text className="font-semibold text-gray-900 flex-1" numberOfLines={1} style={{ fontSize: ds.fontSize(15) }}>
               {location?.name || 'Select Location'}
             </Text>
             <Ionicons
               name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
-              size={18}
+              size={ds.icon(18)}
               color={colors.gray[500]}
             />
           </TouchableOpacity>
@@ -264,19 +267,21 @@ export default function OrderScreen() {
           <View className="flex-row items-center">
             <TouchableOpacity
               onPress={handleOpenAddItemModal}
-              className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center mr-2"
+              className="rounded-full bg-gray-100 items-center justify-center mr-2"
+              style={{ width: Math.max(44, ds.icon(36)), height: Math.max(44, ds.icon(36)) }}
             >
-              <Ionicons name="add" size={20} color={colors.gray[700]} />
+              <Ionicons name="add" size={ds.icon(20)} color={colors.gray[700]} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push('/cart' as any)}
-              className="w-9 h-9 rounded-full bg-gray-100 items-center justify-center relative"
+              className="rounded-full bg-gray-100 items-center justify-center relative"
+              style={{ width: Math.max(44, ds.icon(36)), height: Math.max(44, ds.icon(36)) }}
             >
-              <Ionicons name="cart-outline" size={20} color={colors.gray[700]} />
+              <Ionicons name="cart-outline" size={ds.icon(20)} color={colors.gray[700]} />
               {totalCartCount > 0 && (
                 <View
-                  className="absolute -top-1 -right-1 bg-primary-500 h-5 rounded-full items-center justify-center px-1"
-                  style={{ minWidth: 20 }}
+                  className="absolute -top-1 -right-1 bg-primary-500 rounded-full items-center justify-center px-1"
+                  style={{ minWidth: 20, height: 20 }}
                 >
                   <Text className="text-white font-bold" style={{ fontSize: 10 }}>
                     {totalCartCount > 99 ? '99+' : totalCartCount}
@@ -330,11 +335,12 @@ export default function OrderScreen() {
       </View>
 
       {/* Search Bar */}
-      <View className="px-4 py-3 bg-white border-b border-gray-100">
-        <View className="flex-row items-center bg-gray-100 rounded-xl px-4 py-2.5">
-          <Ionicons name="search-outline" size={20} color="#9CA3AF" />
+      <View className="bg-white border-b border-gray-100" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}>
+        <View className="flex-row items-center bg-gray-100" style={{ borderRadius: ds.radius(12), paddingHorizontal: ds.spacing(16), height: ds.buttonH }}>
+          <Ionicons name="search-outline" size={ds.icon(20)} color="#9CA3AF" />
           <TextInput
-            className="flex-1 ml-2 text-gray-900 text-base"
+            className="flex-1 ml-2 text-gray-900"
+            style={{ fontSize: ds.fontSize(14) }}
             placeholder="Search inventory..."
             placeholderTextColor="#9CA3AF"
             value={searchQuery}
@@ -342,8 +348,8 @@ export default function OrderScreen() {
             autoCapitalize="none"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={20} color="#9CA3AF" />
+            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close-circle" size={ds.icon(20)} color="#9CA3AF" />
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -352,13 +358,13 @@ export default function OrderScreen() {
             accessibilityLabel="Voice order"
             accessibilityRole="button"
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
+              width: Math.max(44, ds.icon(32)),
+              height: Math.max(44, ds.icon(32)),
+              borderRadius: ds.icon(16),
               backgroundColor: '#F97316',
               alignItems: 'center',
               justifyContent: 'center',
-              marginLeft: 8,
+              marginLeft: ds.spacing(8),
               shadowColor: '#F97316',
               shadowOffset: { width: 0, height: 2 },
               shadowOpacity: 0.3,
@@ -366,7 +372,7 @@ export default function OrderScreen() {
               elevation: 4,
             }}
           >
-            <Sparkles size={16} color="#FFFFFF" />
+            <Sparkles size={ds.icon(16)} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
@@ -374,7 +380,7 @@ export default function OrderScreen() {
       {showCategoryGrid ? (
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+          contentContainerStyle={{ padding: ds.spacing(16), paddingBottom: 32 }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -383,19 +389,21 @@ export default function OrderScreen() {
             />
           }
         >
-          <Text className="text-xs text-gray-500 uppercase tracking-wide mb-3">
+          <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(12), marginBottom: ds.spacing(12) }}>
             Browse by Category
           </Text>
-          <View className="flex-row flex-wrap justify-between">
+          <View className="flex-row flex-wrap justify-between" style={{ gap: ds.spacing(10) }}>
             {categories.map((cat) => {
               const catColor = categoryColors[cat] || '#6B7280';
               return (
                 <TouchableOpacity
                   key={cat}
                   onPress={() => handleSelectCategory(cat)}
-                  className="bg-white rounded-2xl p-4 mb-4 border border-gray-100"
+                  className="bg-white border border-gray-100"
                   style={{
                     width: '48%',
+                    padding: ds.cardPad,
+                    borderRadius: ds.radius(14),
                     shadowColor: '#000',
                     shadowOffset: { width: 0, height: 1 },
                     shadowOpacity: 0.05,
@@ -404,15 +412,15 @@ export default function OrderScreen() {
                   }}
                 >
                   <View
-                    className="w-10 h-10 rounded-xl items-center justify-center mb-3"
-                    style={{ backgroundColor: catColor + '20' }}
+                    className="rounded-xl items-center justify-center"
+                    style={{ width: ds.icon(40), height: ds.icon(40), backgroundColor: catColor + '20', marginBottom: ds.spacing(12) }}
                   >
-                    <Ionicons name={CATEGORY_ICONS[cat]} size={20} color={catColor} />
+                    <Ionicons name={CATEGORY_ICONS[cat]} size={ds.icon(20)} color={catColor} />
                   </View>
-                  <Text className="text-base font-semibold text-gray-900">
+                  <Text className="font-semibold text-gray-900" numberOfLines={1} style={{ fontSize: ds.fontSize(13) }}>
                     {CATEGORY_LABELS[cat]}
                   </Text>
-                  <Text className="text-xs text-gray-400 mt-1">View items</Text>
+                  <Text className="text-gray-400" style={{ fontSize: ds.fontSize(11), marginTop: ds.spacing(4) }}>View items</Text>
                 </TouchableOpacity>
               );
             })}
@@ -420,17 +428,17 @@ export default function OrderScreen() {
         </ScrollView>
       ) : (
         <>
-          <View className="px-4 py-2 bg-white border-b border-gray-100 flex-row items-center justify-between">
-            <TouchableOpacity onPress={handleBackToCategories} className="flex-row items-center">
-              <Ionicons name="arrow-back" size={18} color={colors.gray[600]} />
-              <Text className="text-sm text-gray-600 ml-1">Categories</Text>
+          <View className="bg-white border-b border-gray-100 flex-row items-center justify-between" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
+            <TouchableOpacity onPress={handleBackToCategories} className="flex-row items-center" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="arrow-back" size={ds.icon(18)} color={colors.gray[600]} />
+              <Text className="text-gray-600 ml-1" style={{ fontSize: ds.fontSize(14) }}>Categories</Text>
             </TouchableOpacity>
             {selectedCategory ? (
-              <Text className="text-sm font-semibold text-gray-900">
+              <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(15) }}>
                 {CATEGORY_LABELS[selectedCategory]}
               </Text>
             ) : (
-              <Text className="text-sm text-gray-500">Search Results</Text>
+              <Text className="text-gray-500" style={{ fontSize: ds.fontSize(14) }}>Search Results</Text>
             )}
           </View>
 
@@ -439,8 +447,8 @@ export default function OrderScreen() {
             data={filteredItems}
             renderItem={renderItem}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={{ padding: 16 }}
-            ItemSeparatorComponent={() => <View className="h-3" />}
+            contentContainerStyle={{ padding: ds.spacing(16) }}
+            ItemSeparatorComponent={() => <View style={{ height: ds.spacing(12) }} />}
             ListEmptyComponent={() => (
               <View className="flex-1 items-center justify-center py-12">
                 <Ionicons name="cube-outline" size={48} color="#9CA3AF" />

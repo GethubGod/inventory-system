@@ -4,7 +4,7 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
-import { useSettingsStore } from '@/store';
+import { useDisplayStore } from '@/store';
 
 interface TimePickerRowProps {
   title: string;
@@ -20,7 +20,7 @@ export function TimePickerRow({
   disabled = false,
 }: TimePickerRowProps) {
   const [showPicker, setShowPicker] = useState(false);
-  const { hapticFeedback } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
 
   // Parse "HH:MM" string to Date
   const parseTime = (timeString: string): Date => {

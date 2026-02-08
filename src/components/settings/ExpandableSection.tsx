@@ -10,7 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors, shadow } from '@/constants';
-import { useSettingsStore } from '@/store';
+import { useDisplayStore } from '@/store';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -35,7 +35,7 @@ export function ExpandableSection({
   defaultExpanded = false,
 }: ExpandableSectionProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const { reduceMotion, hapticFeedback } = useSettingsStore();
+  const { reduceMotion, hapticFeedback } = useDisplayStore();
 
   const toggle = () => {
     if (hapticFeedback && Platform.OS !== 'web') {

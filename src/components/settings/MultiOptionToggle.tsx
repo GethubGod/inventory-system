@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { useSettingsStore } from '@/store';
+import { useDisplayStore } from '@/store';
 
 interface Option<T> {
   value: T;
@@ -22,7 +22,7 @@ export function MultiOptionToggle<T extends string | number>({
   onValueChange,
   disabled = false,
 }: MultiOptionToggleProps<T>) {
-  const { hapticFeedback } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
 
   const handleSelect = (optionValue: T) => {
     if (disabled) return;

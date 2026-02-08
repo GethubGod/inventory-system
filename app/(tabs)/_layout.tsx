@@ -1,13 +1,14 @@
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Sparkles } from 'lucide-react-native';
-import { useAuthStore, useOrderStore, useDraftStore, useTunaSpecialistStore } from '@/store';
+import { useAuthStore, useOrderStore, useDraftStore, useTunaSpecialistStore, useDisplayStore } from '@/store';
 
 export default function TabsLayout() {
   const { session, profile } = useAuthStore();
   const cartTotal = useOrderStore((state) => state.getCartTotal());
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
   const voiceCartCount = useTunaSpecialistStore((state) => state.cartItems.length);
+  const ds = useDisplayStore();
 
   if (!session) {
     return <Redirect href="/(auth)/login" />;
@@ -34,9 +35,12 @@ export default function TabsLayout() {
           height: 90,
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: Math.max(10, ds.scaledFontSize(10)),
           fontWeight: '600',
           marginTop: 4,
+        },
+        tabBarIconStyle: {
+          transform: [{ scale: ds.uiScale === 'large' ? 1.15 : ds.uiScale === 'compact' ? 0.95 : 1 }],
         },
         headerShown: false,
       }}

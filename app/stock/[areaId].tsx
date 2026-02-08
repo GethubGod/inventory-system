@@ -21,7 +21,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { StatusBar } from 'expo-status-bar';
 import { colors, CATEGORY_LABELS } from '@/constants';
-import { useAuthStore, useSettingsStore, useStockStore } from '@/store';
+import { useAuthStore, useDisplayStore, useSettingsStore, useStockStore } from '@/store';
 import { useStockNetworkStatus } from '@/hooks';
 import { ItemCategory, StockUpdateMethod } from '@/types';
 import { supabase } from '@/lib/supabase';
@@ -73,7 +73,8 @@ export default function StockCountingScreen() {
   const shouldResume = resumeParam === '1' || resumeParam === 'true';
 
   const { user, location } = useAuthStore();
-  const { reduceMotion, stockSettings } = useSettingsStore();
+  const { reduceMotion } = useDisplayStore();
+  const { stockSettings } = useSettingsStore();
   const {
     storageAreas,
     currentAreaItems,

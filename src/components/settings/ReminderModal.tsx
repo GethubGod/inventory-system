@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { Reminder, RepeatType } from '@/types/settings';
-import { useSettingsStore } from '@/store';
+import { useDisplayStore } from '@/store';
 import { TimePickerRow } from './TimePickerRow';
 
 interface ReminderModalProps {
@@ -40,7 +40,7 @@ export function ReminderModal({
   reminder,
   onSave,
 }: ReminderModalProps) {
-  const { hapticFeedback } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
 
   const [name, setName] = useState('');
   const [message, setMessage] = useState('');

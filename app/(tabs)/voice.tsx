@@ -19,6 +19,7 @@ import { Sparkles, Mic, MessageSquare, WifiOff } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore, useOrderStore, useTunaSpecialistStore } from '@/store';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { SoundVisualizer } from '@/components/tuna-specialist/SoundVisualizer';
 import { ConversationHistory } from '@/components/tuna-specialist/ConversationHistory';
 import { DebugPanel } from '@/components/tuna-specialist/DebugPanel';
@@ -32,6 +33,7 @@ const WARN_SECONDS = 55;
 const MAX_SECONDS = 60;
 
 export default function VoiceScreen() {
+  const ds = useScaledStyles();
   const insets = useSafeAreaInsets();
 
   // Auth / location
@@ -286,13 +288,13 @@ export default function VoiceScreen() {
   if (!VOICE_FEATURE_ENABLED) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#F9FAFB' }}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: ds.spacing(24) }}>
 
           {/* 1. LOGO WITH AI BADGE */}
-          <View style={{ width: 96, height: 96, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: ds.icon(96), height: ds.icon(96), alignItems: 'center', justifyContent: 'center' }}>
             <Image
               source={require('../../assets/images/babytuna-logo-black.png')}
-              style={{ width: 80, height: 80 }}
+              style={{ width: ds.icon(80), height: ds.icon(80) }}
               resizeMode="contain"
             />
             {/* AI sparkle badge */}
@@ -301,9 +303,9 @@ export default function VoiceScreen() {
                 position: 'absolute',
                 top: -2,
                 right: -2,
-                width: 30,
-                height: 30,
-                borderRadius: 15,
+                width: ds.icon(30),
+                height: ds.icon(30),
+                borderRadius: ds.icon(15),
                 backgroundColor: '#FFFFFF',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -314,19 +316,19 @@ export default function VoiceScreen() {
                 elevation: 4,
               }}
             >
-              <Sparkles size={16} color="#F97316" />
+              <Sparkles size={ds.icon(16)} color="#F97316" />
             </View>
           </View>
 
           {/* 2. TITLE */}
           <Text
             style={{
-              fontSize: 28,
+              fontSize: ds.fontSize(28),
               fontWeight: '800',
               color: '#1F2937',
               textAlign: 'center',
               letterSpacing: -0.5,
-              marginTop: 20,
+              marginTop: ds.spacing(20),
             }}
           >
             Tuna Specialist
@@ -340,27 +342,27 @@ export default function VoiceScreen() {
               backgroundColor: '#FFF7ED',
               borderWidth: 1,
               borderColor: '#FED7AA',
-              borderRadius: 20,
-              paddingVertical: 6,
-              paddingHorizontal: 16,
-              marginTop: 10,
-              gap: 8,
+              borderRadius: ds.radius(20),
+              paddingVertical: ds.spacing(6),
+              paddingHorizontal: ds.spacing(16),
+              marginTop: ds.spacing(10),
+              gap: ds.spacing(8),
             }}
           >
-            <Sparkles size={14} color="#F97316" />
-            <Text style={{ fontSize: 13, color: '#EA580C', fontWeight: '600' }}>Coming Soon</Text>
+            <Sparkles size={ds.icon(14)} color="#F97316" />
+            <Text style={{ fontSize: ds.fontSize(13), color: '#EA580C', fontWeight: '600' }}>Coming Soon</Text>
           </View>
 
           {/* 4. DESCRIPTION */}
           <Text
             style={{
-              fontSize: 15,
+              fontSize: ds.fontSize(15),
               color: '#6B7280',
               textAlign: 'center',
-              lineHeight: 22,
+              lineHeight: ds.fontSize(15) * 1.5,
               maxWidth: 300,
-              paddingHorizontal: 24,
-              marginTop: 16,
+              paddingHorizontal: ds.spacing(24),
+              marginTop: ds.spacing(16),
             }}
           >
             Your AI-powered voice ordering assistant. Speak naturally in English or Chinese — Tuna Specialist figures out the rest.
@@ -371,9 +373,9 @@ export default function VoiceScreen() {
             style={{
               width: '100%',
               backgroundColor: '#FFFFFF',
-              borderRadius: 16,
-              padding: 20,
-              marginTop: 24,
+              borderRadius: ds.radius(16),
+              padding: ds.spacing(20),
+              marginTop: ds.spacing(24),
               shadowColor: '#000000',
               shadowOffset: { width: 0, height: 1 },
               shadowOpacity: 0.06,
@@ -391,23 +393,23 @@ export default function VoiceScreen() {
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 12,
-                  marginTop: index > 0 ? 16 : 0,
+                  gap: ds.spacing(12),
+                  marginTop: index > 0 ? ds.spacing(16) : 0,
                 }}
               >
                 <View
                   style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
+                    width: ds.icon(36),
+                    height: ds.icon(36),
+                    borderRadius: ds.icon(18),
                     backgroundColor: '#FFF7ED',
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <row.Icon size={20} color="#F97316" />
+                  <row.Icon size={ds.icon(20)} color="#F97316" />
                 </View>
-                <Text style={{ fontSize: 14, color: '#374151', flex: 1 }}>{row.text}</Text>
+                <Text style={{ fontSize: ds.fontSize(14), color: '#374151', flex: 1 }}>{row.text}</Text>
               </View>
             ))}
           </View>
@@ -422,13 +424,13 @@ export default function VoiceScreen() {
             }
             activeOpacity={0.8}
             style={{
-              width: 220,
-              height: 50,
+              width: ds.spacing(220),
+              height: ds.buttonH + 4,
               backgroundColor: '#F97316',
-              borderRadius: 14,
+              borderRadius: ds.radius(14),
               alignItems: 'center',
               justifyContent: 'center',
-              marginTop: 24,
+              marginTop: ds.spacing(24),
               shadowColor: '#F97316',
               shadowOffset: { width: 0, height: 4 },
               shadowOpacity: 0.3,
@@ -436,11 +438,11 @@ export default function VoiceScreen() {
               elevation: 6,
             }}
           >
-            <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>Notify Me When Ready</Text>
+            <Text style={{ color: '#FFFFFF', fontSize: ds.buttonFont, fontWeight: '700' }}>Notify Me When Ready</Text>
           </TouchableOpacity>
 
           {/* 7. FOOTER */}
-          <Text style={{ fontSize: 12, color: '#9CA3AF', textAlign: 'center', marginTop: 16 }}>
+          <Text style={{ fontSize: ds.fontSize(12), color: '#9CA3AF', textAlign: 'center', marginTop: ds.spacing(16) }}>
             We're working hard on this ✨
           </Text>
         </View>
@@ -471,20 +473,20 @@ export default function VoiceScreen() {
           <View
             style={{
               backgroundColor: '#7C2D12',
-              paddingVertical: 8,
-              paddingHorizontal: 16,
+              paddingVertical: ds.spacing(8),
+              paddingHorizontal: ds.spacing(16),
               flexDirection: 'row',
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="cloud-offline-outline" size={16} color="#FDBA74" />
-            <Text style={{ color: '#FDBA74', fontSize: 12, fontWeight: '600', marginLeft: 6 }}>
+            <Ionicons name="cloud-offline-outline" size={ds.icon(16)} color="#FDBA74" />
+            <Text style={{ color: '#FDBA74', fontSize: ds.fontSize(12), fontWeight: '600', marginLeft: ds.spacing(6) }}>
               Offline — orders will be queued
             </Text>
             {offlineQueue.length > 0 && (
-              <View style={{ backgroundColor: 'rgba(253,186,116,0.2)', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, marginLeft: 8 }}>
-                <Text style={{ color: '#FDBA74', fontSize: 10, fontWeight: '700' }}>{offlineQueue.length} queued</Text>
+              <View style={{ backgroundColor: 'rgba(253,186,116,0.2)', borderRadius: ds.radius(8), paddingHorizontal: ds.spacing(6), paddingVertical: ds.spacing(2), marginLeft: ds.spacing(8) }}>
+                <Text style={{ color: '#FDBA74', fontSize: ds.fontSize(10), fontWeight: '700' }}>{offlineQueue.length} queued</Text>
               </View>
             )}
           </View>
@@ -496,9 +498,9 @@ export default function VoiceScreen() {
             flexDirection: 'row',
             justifyContent: 'space-between',
             alignItems: 'center',
-            paddingTop: insets.top + 8,
-            paddingHorizontal: 20,
-            paddingBottom: 8,
+            paddingTop: insets.top + ds.spacing(8),
+            paddingHorizontal: ds.spacing(20),
+            paddingBottom: ds.spacing(8),
           }}
         >
           {/* Location pill */}
@@ -512,39 +514,39 @@ export default function VoiceScreen() {
               flexDirection: 'row',
               alignItems: 'center',
               backgroundColor: 'rgba(255,255,255,0.08)',
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-              borderRadius: 20,
+              paddingHorizontal: ds.spacing(16),
+              paddingVertical: ds.spacing(8),
+              borderRadius: ds.radius(20),
             }}
           >
-            <Text style={{ fontSize: 13, color: '#E2E8F0', fontWeight: '600' }}>
+            <Text style={{ fontSize: ds.fontSize(13), color: '#E2E8F0', fontWeight: '600' }}>
               {location?.name || 'Select Location'}
             </Text>
             <Ionicons
               name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
-              size={14}
+              size={ds.icon(14)}
               color="#9CA3AF"
-              style={{ marginLeft: 6 }}
+              style={{ marginLeft: ds.spacing(6) }}
             />
           </TouchableOpacity>
 
           {/* Right side */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: ds.spacing(10) }}>
             {/* Conversation history */}
             {conversation.length > 0 && (
               <TouchableOpacity
                 onPress={() => setShowConversation(true)}
                 accessibilityLabel="View conversation history"
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 17,
+                  width: Math.max(44, ds.icon(34)),
+                  height: Math.max(44, ds.icon(34)),
+                  borderRadius: ds.radius(17),
                   backgroundColor: 'rgba(255,255,255,0.08)',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Ionicons name="chatbubbles-outline" size={17} color="#9CA3AF" />
+                <Ionicons name="chatbubbles-outline" size={ds.icon(17)} color="#9CA3AF" />
               </TouchableOpacity>
             )}
 
@@ -554,15 +556,15 @@ export default function VoiceScreen() {
                 onPress={() => setShowDebug((p) => !p)}
                 accessibilityLabel="Toggle debug panel"
                 style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 17,
+                  width: Math.max(44, ds.icon(34)),
+                  height: Math.max(44, ds.icon(34)),
+                  borderRadius: ds.radius(17),
                   backgroundColor: showDebug ? 'rgba(249,115,22,0.2)' : 'rgba(255,255,255,0.08)',
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Ionicons name="bug-outline" size={17} color={showDebug ? '#FDBA74' : '#9CA3AF'} />
+                <Ionicons name="bug-outline" size={ds.icon(17)} color={showDebug ? '#FDBA74' : '#9CA3AF'} />
               </TouchableOpacity>
             )}
 
@@ -571,15 +573,15 @@ export default function VoiceScreen() {
               <View
                 style={{
                   backgroundColor: '#F97316',
-                  borderRadius: 12,
-                  minWidth: 24,
-                  height: 24,
+                  borderRadius: ds.radius(12),
+                  minWidth: Math.max(24, ds.icon(24)),
+                  height: Math.max(24, ds.icon(24)),
                   justifyContent: 'center',
                   alignItems: 'center',
-                  paddingHorizontal: 7,
+                  paddingHorizontal: ds.spacing(7),
                 }}
               >
-                <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '700' }}>
+                <Text style={{ color: '#FFF', fontSize: ds.fontSize(12), fontWeight: '700' }}>
                   {cartItems.length}
                 </Text>
               </View>
@@ -589,7 +591,7 @@ export default function VoiceScreen() {
 
         {/* Location dropdown */}
         {showLocationDropdown && (
-          <View style={{ paddingHorizontal: 20, paddingBottom: 8 }}>
+          <View style={{ paddingHorizontal: ds.spacing(20), paddingBottom: ds.spacing(8) }}>
             {locations.map((loc) => {
               const isSelected = location?.id === loc.id;
               return (
@@ -600,22 +602,22 @@ export default function VoiceScreen() {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    paddingVertical: 10,
-                    paddingHorizontal: 12,
-                    borderRadius: 10,
+                    paddingVertical: ds.spacing(10),
+                    paddingHorizontal: ds.spacing(12),
+                    borderRadius: ds.radius(10),
                     backgroundColor: isSelected ? 'rgba(249,115,22,0.15)' : 'rgba(255,255,255,0.05)',
-                    marginBottom: 4,
+                    marginBottom: ds.spacing(4),
                   }}
                 >
                   <Ionicons
                     name={isSelected ? 'radio-button-on' : 'radio-button-off'}
-                    size={16}
+                    size={ds.icon(16)}
                     color={isSelected ? '#F97316' : '#6B7280'}
                   />
-                  <Text style={{ marginLeft: 8, fontSize: 14, color: isSelected ? '#F97316' : '#D1D5DB', fontWeight: isSelected ? '600' : '400' }}>
+                  <Text style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(14), color: isSelected ? '#F97316' : '#D1D5DB', fontWeight: isSelected ? '600' : '400' }}>
                     {loc.name}
                   </Text>
-                  <Text style={{ marginLeft: 6, fontSize: 12, color: '#6B7280' }}>
+                  <Text style={{ marginLeft: ds.spacing(6), fontSize: ds.fontSize(12), color: '#6B7280' }}>
                     {loc.short_code}
                   </Text>
                 </TouchableOpacity>
@@ -630,16 +632,16 @@ export default function VoiceScreen() {
         )}
 
         {/* ━━━ VOICE INTERACTION AREA ━━━ */}
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: ds.spacing(24) }}>
 
           {/* Branding — only idle, no conversation */}
           {isIdle && (
-            <View style={{ alignItems: 'center', marginBottom: 20 }}>
-              <Text style={{ fontSize: 32 }}>🐟</Text>
-              <Text style={{ fontSize: 22, fontWeight: '800', color: '#F9FAFB', letterSpacing: -0.5, marginTop: 4 }} accessibilityRole="header">
+            <View style={{ alignItems: 'center', marginBottom: ds.spacing(20) }}>
+              <Text style={{ fontSize: ds.fontSize(32) }}>🐟</Text>
+              <Text style={{ fontSize: ds.fontSize(22), fontWeight: '800', color: '#F9FAFB', letterSpacing: -0.5, marginTop: ds.spacing(4) }} accessibilityRole="header">
                 Tuna Specialist
               </Text>
-              <Text style={{ fontSize: 13, color: '#64748B', marginTop: 8 }}>
+              <Text style={{ fontSize: ds.fontSize(13), color: '#64748B', marginTop: ds.spacing(8) }}>
                 Your AI ordering assistant
               </Text>
             </View>
@@ -649,15 +651,15 @@ export default function VoiceScreen() {
           <SoundVisualizer state={vizState} />
 
           {/* Transcript Area (24px below visualizer) */}
-          <View style={{ marginTop: 24, alignItems: 'center', minHeight: 80, maxWidth: '100%' }}>
+          <View style={{ marginTop: ds.spacing(24), alignItems: 'center', minHeight: ds.spacing(80), maxWidth: '100%' }}>
 
             {/* Idle — no conversation */}
             {isIdle && (
               <View style={{ alignItems: 'center' }}>
-                <Text style={{ fontSize: 14, color: '#6B7280', textAlign: 'center' }}>
+                <Text style={{ fontSize: ds.fontSize(14), color: '#6B7280', textAlign: 'center' }}>
                   Tap the mic to start ordering
                 </Text>
-                <Text style={{ fontSize: 12, color: '#4B5563', marginTop: 4, textAlign: 'center' }}>
+                <Text style={{ fontSize: ds.fontSize(12), color: '#4B5563', marginTop: ds.spacing(4), textAlign: 'center' }}>
                   Speak in English or Chinese
                 </Text>
               </View>
@@ -668,17 +670,17 @@ export default function VoiceScreen() {
               <View style={{ alignItems: 'center' }}>
                 {liveTranscript ? (
                   <Text
-                    style={{ fontSize: 17, color: '#4ADE80', fontWeight: '600', textAlign: 'center', lineHeight: 24 }}
+                    style={{ fontSize: ds.fontSize(17), color: '#4ADE80', fontWeight: '600', textAlign: 'center', lineHeight: ds.fontSize(17) * 1.4 }}
                     accessibilityLiveRegion="polite"
                   >
                     {liveTranscript}
                   </Text>
                 ) : (
-                  <Animated.Text style={{ fontSize: 17, color: '#4ADE80', fontWeight: '600', opacity: listeningDotOpacity }}>
+                  <Animated.Text style={{ fontSize: ds.fontSize(17), color: '#4ADE80', fontWeight: '600', opacity: listeningDotOpacity }}>
                     Listening...
                   </Animated.Text>
                 )}
-                <Text style={{ fontSize: 12, color: recordingSeconds >= WARN_SECONDS ? '#FBBF24' : '#EF4444', marginTop: 8, textAlign: 'center' }}>
+                <Text style={{ fontSize: ds.fontSize(12), color: recordingSeconds >= WARN_SECONDS ? '#FBBF24' : '#EF4444', marginTop: ds.spacing(8), textAlign: 'center' }}>
                   0:{String(recordingSeconds).padStart(2, '0')}
                   {recordingSeconds >= WARN_SECONDS && ` — auto-stop in ${MAX_SECONDS - recordingSeconds}s`}
                 </Text>
@@ -689,11 +691,11 @@ export default function VoiceScreen() {
             {isProcessing && (
               <View style={{ alignItems: 'center' }}>
                 {lastHumanMsg && (
-                  <Text style={{ fontSize: 14, color: 'rgba(74,222,128,0.6)', textAlign: 'center', marginBottom: 8 }}>
+                  <Text style={{ fontSize: ds.fontSize(14), color: 'rgba(74,222,128,0.6)', textAlign: 'center', marginBottom: ds.spacing(8) }}>
                     {lastHumanMsg.text}
                   </Text>
                 )}
-                <Text style={{ fontSize: 13, color: '#F97316' }}>Thinking...</Text>
+                <Text style={{ fontSize: ds.fontSize(13), color: '#F97316' }}>Thinking...</Text>
               </View>
             )}
 
@@ -701,13 +703,13 @@ export default function VoiceScreen() {
             {!isListening && !isProcessing && conversation.length > 0 && (
               <View style={{ alignItems: 'center', maxWidth: '100%' }}>
                 {lastHumanMsg && (
-                  <Text style={{ fontSize: 14, color: 'rgba(74,222,128,0.6)', textAlign: 'center', marginBottom: 8 }} numberOfLines={2}>
+                  <Text style={{ fontSize: ds.fontSize(14), color: 'rgba(74,222,128,0.6)', textAlign: 'center', marginBottom: ds.spacing(8) }} numberOfLines={2}>
                     {lastHumanMsg.text}
                   </Text>
                 )}
                 {lastAiMsg && (
                   <Text
-                    style={{ fontSize: 15, color: '#F0F0F0', fontWeight: '500', textAlign: 'center', lineHeight: 22 }}
+                    style={{ fontSize: ds.fontSize(15), color: '#F0F0F0', fontWeight: '500', textAlign: 'center', lineHeight: ds.fontSize(15) * 1.5 }}
                     accessibilityLiveRegion="polite"
                   >
                     {lastAiMsg.text}
@@ -715,13 +717,13 @@ export default function VoiceScreen() {
                 )}
                 {/* Parsed items inline */}
                 {lastAiParsed && lastAiParsed.length > 0 && (
-                  <Text style={{ fontSize: 12, color: '#FB923C', marginTop: 6, textAlign: 'center' }}>
+                  <Text style={{ fontSize: ds.fontSize(12), color: '#FB923C', marginTop: ds.spacing(6), textAlign: 'center' }}>
                     Added: {lastAiParsed.map((it) => `${it.emoji} ${it.item_name} ×${it.quantity}`).join(', ')}
                   </Text>
                 )}
                 {conversation.length > 2 && (
-                  <TouchableOpacity onPress={() => setShowConversation(true)} style={{ marginTop: 10 }} accessibilityLabel="View full conversation">
-                    <Text style={{ fontSize: 11, color: '#64748B', textDecorationLine: 'underline' }}>
+                  <TouchableOpacity onPress={() => setShowConversation(true)} style={{ marginTop: ds.spacing(10) }} accessibilityLabel="View full conversation">
+                    <Text style={{ fontSize: ds.fontSize(11), color: '#64748B', textDecorationLine: 'underline' }}>
                       View history
                     </Text>
                   </TouchableOpacity>
@@ -731,15 +733,15 @@ export default function VoiceScreen() {
 
             {/* Error */}
             {error && !isListening && !isProcessing && (
-              <View style={{ alignItems: 'center', marginTop: 8 }}>
-                <Text style={{ fontSize: 13, color: '#FCA5A5', textAlign: 'center' }}>{error}</Text>
+              <View style={{ alignItems: 'center', marginTop: ds.spacing(8) }}>
+                <Text style={{ fontSize: ds.fontSize(13), color: '#FCA5A5', textAlign: 'center' }}>{error}</Text>
                 {permissionDenied && (
                   <TouchableOpacity
                     onPress={() => Linking.openSettings()}
-                    style={{ marginTop: 10, backgroundColor: 'rgba(249,115,22,0.2)', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 }}
+                    style={{ marginTop: ds.spacing(10), backgroundColor: 'rgba(249,115,22,0.2)', borderRadius: ds.radius(10), paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}
                     accessibilityLabel="Open device settings to grant microphone permission"
                   >
-                    <Text style={{ fontSize: 12, color: '#FDBA74', fontWeight: '600' }}>Open Settings</Text>
+                    <Text style={{ fontSize: ds.fontSize(12), color: '#FDBA74', fontWeight: '600' }}>Open Settings</Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -748,16 +750,16 @@ export default function VoiceScreen() {
         </View>
 
         {/* ━━━ MIC BUTTON ━━━ */}
-        <View style={{ alignItems: 'center', paddingVertical: 16 }}>
+        <View style={{ alignItems: 'center', paddingVertical: ds.spacing(16) }}>
           <Animated.View style={{ transform: [{ scale: isListening ? micPulseAnim : 1 }] }}>
             {/* Pulse ring */}
             {isListening && (
               <Animated.View
                 style={{
                   position: 'absolute',
-                  width: 88,
-                  height: 88,
-                  borderRadius: 44,
+                  width: ds.icon(88),
+                  height: ds.icon(88),
+                  borderRadius: ds.icon(44),
                   borderWidth: 2,
                   borderColor: 'rgba(239,68,68,0.4)',
                   top: -8,
@@ -775,9 +777,9 @@ export default function VoiceScreen() {
               }
               accessibilityRole="button"
               style={{
-                width: 72,
-                height: 72,
-                borderRadius: 36,
+                width: ds.icon(72),
+                height: ds.icon(72),
+                borderRadius: ds.icon(36),
                 alignItems: 'center',
                 justifyContent: 'center',
                 backgroundColor: isProcessing ? '#374151' : isListening ? '#EF4444' : '#F97316',
@@ -792,17 +794,17 @@ export default function VoiceScreen() {
               {isProcessing ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : isListening ? (
-                <Ionicons name="stop" size={24} color="#FFFFFF" />
+                <Ionicons name="stop" size={ds.icon(24)} color="#FFFFFF" />
               ) : (
-                <Ionicons name="mic" size={28} color="#FFFFFF" />
+                <Ionicons name="mic" size={ds.icon(28)} color="#FFFFFF" />
               )}
             </TouchableOpacity>
           </Animated.View>
 
           <Text
             style={{
-              fontSize: 12,
-              marginTop: 8,
+              fontSize: ds.fontSize(12),
+              marginTop: ds.spacing(8),
               color: isProcessing ? '#9CA3AF' : isListening ? '#EF4444' : '#6B7280',
             }}
           >
@@ -816,8 +818,8 @@ export default function VoiceScreen() {
             transform: [{ translateY: cartTranslateY }],
             maxHeight: '40%',
             backgroundColor: '#1A1F2E',
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
+            borderTopLeftRadius: ds.radius(24),
+            borderTopRightRadius: ds.radius(24),
             borderTopWidth: 1,
             borderTopColor: 'rgba(255,255,255,0.06)',
             paddingBottom: insets.bottom + 8,
@@ -832,37 +834,37 @@ export default function VoiceScreen() {
                   flexDirection: 'row',
                   alignItems: 'center',
                   justifyContent: 'space-between',
-                  paddingHorizontal: 16,
-                  paddingTop: 14,
-                  paddingBottom: 10,
+                  paddingHorizontal: ds.spacing(16),
+                  paddingTop: ds.spacing(14),
+                  paddingBottom: ds.spacing(10),
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#E2E8F0' }}>Items</Text>
+                  <Text style={{ fontSize: ds.fontSize(14), fontWeight: '700', color: '#E2E8F0' }}>Items</Text>
                   <View
                     style={{
                       backgroundColor: '#F97316',
-                      borderRadius: 10,
-                      minWidth: 20,
-                      height: 20,
+                      borderRadius: ds.radius(10),
+                      minWidth: ds.icon(20),
+                      height: ds.icon(20),
                       justifyContent: 'center',
                       alignItems: 'center',
-                      marginLeft: 8,
-                      paddingHorizontal: 6,
+                      marginLeft: ds.spacing(8),
+                      paddingHorizontal: ds.spacing(6),
                     }}
                   >
-                    <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '700' }}>{cartItems.length}</Text>
+                    <Text style={{ color: '#FFF', fontSize: ds.fontSize(11), fontWeight: '700' }}>{cartItems.length}</Text>
                   </View>
                 </View>
                 {conversation.length > 2 && (
                   <TouchableOpacity onPress={() => setShowConversation(true)} accessibilityLabel="View conversation history">
-                    <Text style={{ fontSize: 11, color: '#64748B' }}>History</Text>
+                    <Text style={{ fontSize: ds.fontSize(11), color: '#64748B' }}>History</Text>
                   </TouchableOpacity>
                 )}
               </View>
 
               {/* Cart items */}
-              <ScrollView style={{ maxHeight: 200, paddingHorizontal: 16 }} showsVerticalScrollIndicator={false}>
+              <ScrollView style={{ maxHeight: 200, paddingHorizontal: ds.spacing(16) }} showsVerticalScrollIndicator={false}>
                 {cartItems.map((item, index) => (
                   <View
                     key={`${item.item_name}-${index}`}
@@ -870,21 +872,21 @@ export default function VoiceScreen() {
                       flexDirection: 'row',
                       alignItems: 'center',
                       justifyContent: 'space-between',
-                      paddingVertical: 10,
+                      paddingVertical: ds.spacing(10),
                       borderBottomWidth: index < cartItems.length - 1 ? 1 : 0,
                       borderBottomColor: 'rgba(255,255,255,0.04)',
                     }}
                     accessibilityLabel={`${item.item_name}, ${item.quantity} ${item.unit}`}
                   >
                     {/* Left */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 12 }}>
-                      <Text style={{ fontSize: 18, marginRight: 8 }}>{item.emoji}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: ds.spacing(12) }}>
+                      <Text style={{ fontSize: ds.fontSize(18), marginRight: ds.spacing(8) }}>{item.emoji}</Text>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 14, color: '#E2E8F0', fontWeight: '600' }} numberOfLines={1}>
+                        <Text style={{ fontSize: ds.fontSize(14), color: '#E2E8F0', fontWeight: '600' }} numberOfLines={1}>
                           {item.item_name}
                         </Text>
                         {item.spoken_text && item.spoken_text !== item.item_name && (
-                          <Text style={{ fontSize: 10, color: '#4B5563', fontStyle: 'italic' }} numberOfLines={1}>
+                          <Text style={{ fontSize: ds.fontSize(10), color: '#4B5563', fontStyle: 'italic' }} numberOfLines={1}>
                             spoken as: {item.spoken_text}
                           </Text>
                         )}
@@ -896,24 +898,24 @@ export default function VoiceScreen() {
                       <TouchableOpacity
                         onPress={() => item.quantity <= 1 ? removeCartItem(index) : updateCartItemQuantity(index, item.quantity - 1)}
                         accessibilityLabel={`Decrease ${item.item_name}`}
-                        style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}
+                        style={{ width: Math.max(44, ds.icon(30)), height: Math.max(44, ds.icon(30)), borderRadius: ds.radius(15), backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}
                       >
-                        <Text style={{ color: '#94A3B8', fontSize: 16, fontWeight: '600' }}>−</Text>
+                        <Text style={{ color: '#94A3B8', fontSize: ds.fontSize(16), fontWeight: '600' }}>−</Text>
                       </TouchableOpacity>
 
-                      <Text style={{ width: 36, textAlign: 'center', fontSize: 16, color: '#FFFFFF', fontWeight: '700' }}>
+                      <Text style={{ width: ds.spacing(36), textAlign: 'center', fontSize: ds.fontSize(16), color: '#FFFFFF', fontWeight: '700' }}>
                         {item.quantity}
                       </Text>
 
                       <TouchableOpacity
                         onPress={() => updateCartItemQuantity(index, item.quantity + 1)}
                         accessibilityLabel={`Increase ${item.item_name}`}
-                        style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}
+                        style={{ width: Math.max(44, ds.icon(30)), height: Math.max(44, ds.icon(30)), borderRadius: ds.radius(15), backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' }}
                       >
-                        <Text style={{ color: '#94A3B8', fontSize: 16, fontWeight: '600' }}>+</Text>
+                        <Text style={{ color: '#94A3B8', fontSize: ds.fontSize(16), fontWeight: '600' }}>+</Text>
                       </TouchableOpacity>
 
-                      <Text style={{ fontSize: 12, color: '#64748B', width: 24, textAlign: 'center', marginLeft: 2 }}>
+                      <Text style={{ fontSize: ds.fontSize(12), color: '#64748B', width: ds.spacing(24), textAlign: 'center', marginLeft: ds.spacing(2) }}>
                         {item.unit}
                       </Text>
                     </View>
@@ -922,22 +924,22 @@ export default function VoiceScreen() {
               </ScrollView>
 
               {/* Cart buttons */}
-              <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 16, paddingTop: 12 }}>
+              <View style={{ flexDirection: 'row', gap: ds.spacing(10), paddingHorizontal: ds.spacing(16), paddingTop: ds.spacing(12) }}>
                 <TouchableOpacity
                   onPress={handleClearCart}
                   accessibilityLabel="Clear voice cart"
                   style={{
                     flex: 1,
-                    height: 48,
+                    height: ds.buttonH,
                     backgroundColor: 'rgba(239,68,68,0.12)',
                     borderWidth: 1,
                     borderColor: 'rgba(239,68,68,0.25)',
-                    borderRadius: 14,
+                    borderRadius: ds.radius(14),
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
                 >
-                  <Text style={{ color: '#FCA5A5', fontSize: 13, fontWeight: '600' }}>Clear</Text>
+                  <Text style={{ color: '#FCA5A5', fontSize: ds.buttonFont, fontWeight: '600' }}>Clear</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -946,9 +948,9 @@ export default function VoiceScreen() {
                   accessibilityLabel={`Save ${cartItems.length} items to order cart`}
                   style={{
                     flex: 2.5,
-                    height: 48,
+                    height: ds.buttonH,
                     backgroundColor: cartItems.length > 0 ? '#F97316' : '#374151',
-                    borderRadius: 14,
+                    borderRadius: ds.radius(14),
                     alignItems: 'center',
                     justifyContent: 'center',
                     shadowColor: '#F97316',
@@ -958,7 +960,7 @@ export default function VoiceScreen() {
                     elevation: cartItems.length > 0 ? 8 : 0,
                   }}
                 >
-                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+                  <Text style={{ color: '#FFFFFF', fontSize: ds.buttonFont, fontWeight: '700' }}>
                     Save {cartItems.length} Item{cartItems.length !== 1 ? 's' : ''} to Cart
                   </Text>
                 </TouchableOpacity>
@@ -980,45 +982,45 @@ export default function VoiceScreen() {
             backgroundColor: 'rgba(0,0,0,0.88)',
             justifyContent: 'center',
             alignItems: 'center',
-            paddingHorizontal: 32,
+            paddingHorizontal: ds.spacing(32),
             zIndex: 100,
           }}
         >
           <View style={{ alignItems: 'center' }}>
             <View
               style={{
-                width: 80,
-                height: 80,
-                borderRadius: 40,
+                width: ds.icon(80),
+                height: ds.icon(80),
+                borderRadius: ds.icon(40),
                 backgroundColor: 'rgba(249,115,22,0.2)',
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: 24,
+                marginBottom: ds.spacing(24),
               }}
             >
-              <Text style={{ fontSize: 40 }}>🐟</Text>
+              <Text style={{ fontSize: ds.fontSize(40) }}>🐟</Text>
             </View>
 
-            <Text style={{ fontSize: 22, fontWeight: '800', color: '#F9FAFB', textAlign: 'center' }}>
+            <Text style={{ fontSize: ds.fontSize(22), fontWeight: '800', color: '#F9FAFB', textAlign: 'center' }}>
               Tuna Specialist
             </Text>
-            <Text style={{ fontSize: 15, color: '#94A3B8', textAlign: 'center', marginTop: 12, lineHeight: 22 }}>
+            <Text style={{ fontSize: ds.fontSize(15), color: '#94A3B8', textAlign: 'center', marginTop: ds.spacing(12), lineHeight: ds.fontSize(15) * 1.5 }}>
               Order by voice — just tap the mic and say what you need.
             </Text>
-            <Text style={{ fontSize: 13, color: '#64748B', textAlign: 'center', marginTop: 8, lineHeight: 20 }}>
+            <Text style={{ fontSize: ds.fontSize(13), color: '#64748B', textAlign: 'center', marginTop: ds.spacing(8), lineHeight: ds.fontSize(13) * 1.5 }}>
               Speak naturally in English or Chinese.{'\n'}
               I'll figure out the items and quantities.
             </Text>
 
-            <View style={{ marginTop: 32, gap: 16, width: '100%' }}>
+            <View style={{ marginTop: ds.spacing(32), gap: ds.spacing(16), width: '100%' }}>
               {[
                 { icon: 'mic-outline' as const, text: 'Tap mic and say your order' },
                 { icon: 'chatbubble-outline' as const, text: 'Ask questions or make changes' },
                 { icon: 'cart-outline' as const, text: 'Review and save to your order cart' },
               ].map((step) => (
                 <View key={step.icon} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Ionicons name={step.icon} size={20} color="#F97316" />
-                  <Text style={{ color: '#D1D5DB', fontSize: 13, marginLeft: 10, flex: 1 }}>{step.text}</Text>
+                  <Ionicons name={step.icon} size={ds.icon(20)} color="#F97316" />
+                  <Text style={{ color: '#D1D5DB', fontSize: ds.fontSize(13), marginLeft: ds.spacing(10), flex: 1 }}>{step.text}</Text>
                 </View>
               ))}
             </View>
@@ -1027,11 +1029,11 @@ export default function VoiceScreen() {
               onPress={handleDismissOnboarding}
               accessibilityLabel="Get started with Tuna Specialist"
               style={{
-                marginTop: 36,
+                marginTop: ds.spacing(36),
                 backgroundColor: '#F97316',
-                borderRadius: 16,
-                paddingVertical: 14,
-                paddingHorizontal: 48,
+                borderRadius: ds.radius(16),
+                paddingVertical: ds.spacing(14),
+                paddingHorizontal: ds.spacing(48),
                 shadowColor: '#F97316',
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.4,
@@ -1039,7 +1041,7 @@ export default function VoiceScreen() {
                 elevation: 8,
               }}
             >
-              <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '700' }}>Get Started</Text>
+              <Text style={{ color: '#FFFFFF', fontSize: ds.buttonFont, fontWeight: '700' }}>Get Started</Text>
             </TouchableOpacity>
           </View>
         </View>

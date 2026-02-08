@@ -3,7 +3,7 @@ import { View, Text, Switch, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
-import { useSettingsStore } from '@/store';
+import { useDisplayStore } from '@/store';
 
 interface SettingToggleProps {
   icon?: keyof typeof Ionicons.glyphMap;
@@ -28,7 +28,7 @@ export function SettingToggle({
   disabled = false,
   showBorder = true,
 }: SettingToggleProps) {
-  const { hapticFeedback } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
 
   const handleValueChange = (newValue: boolean) => {
     if (hapticFeedback && Platform.OS !== 'web') {

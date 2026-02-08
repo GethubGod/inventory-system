@@ -13,12 +13,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useSettingsStore } from '@/store';
+import { useSettingsStore, useDisplayStore } from '@/store';
 import { DEFAULT_EXPORT_FORMAT_SETTINGS } from '@/types/settings';
 import { colors } from '@/constants';
 
 export default function ExportFormatSettingsScreen() {
-  const { exportFormat, setExportFormat, hapticFeedback } = useSettingsStore();
+  const { exportFormat, setExportFormat } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
   const [template, setTemplate] = useState(exportFormat.template);
 
   const handleSave = () => {

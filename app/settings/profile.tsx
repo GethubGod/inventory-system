@@ -14,13 +14,14 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { useAuthStore, useSettingsStore } from '@/store';
+import { useAuthStore, useSettingsStore, useDisplayStore } from '@/store';
 import { colors } from '@/constants';
 import { ChangePasswordModal } from '@/components/settings';
 
 function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) {
   const { user, location } = useAuthStore();
-  const { avatarUri, setAvatarUri, hapticFeedback } = useSettingsStore();
+  const { avatarUri, setAvatarUri } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(user?.name || '');
 

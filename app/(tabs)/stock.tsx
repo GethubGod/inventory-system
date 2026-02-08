@@ -17,8 +17,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
-import { useAuthStore, useStockStore } from '@/store';
+import { useAuthStore, useStockStore, useDisplayStore } from '@/store';
 import { useNfcScanner, useStockNetworkStatus } from '@/hooks';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { BrandLogo, QrScannerModal } from '@/components';
 import type { CheckFrequency, Location, StorageAreaWithStatus } from '@/types';
 import { cancelStockCountPausedNotifications } from '@/services/notificationService';
@@ -93,6 +94,8 @@ export default function UpdateStockScreen() {
     discardPausedSession,
     setSessionNotice,
   } = useStockStore();
+  const { reduceMotion } = useDisplayStore();
+  const ds = useScaledStyles();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
@@ -130,7 +133,10 @@ export default function UpdateStockScreen() {
     return pausedSession.locationId === location.id ? pausedSession : null;
   }, [location?.id, pausedSession]);
 
+  const nfcButtonSize = Math.max(44, ds.icon(64));
+
   const startPulse = useCallback(() => {
+    if (reduceMotion) return;
     pulse.setValue(0);
     Animated.loop(
       Animated.sequence([
@@ -146,7 +152,7 @@ export default function UpdateStockScreen() {
         }),
       ])
     ).start();
-  }, [pulse]);
+  }, [pulse, reduceMotion]);
 
   useEffect(() => {
     startPulse();
@@ -373,77 +379,135 @@ export default function UpdateStockScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 32, flexGrow: 1 }}
+        contentContainerStyle={{ paddingBottom: ds.spacing(32), flexGrow: 1 }}
         refreshControl={
           <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} />
         }
       >
         {!isOnline && (
-          <View className="mx-4 mt-4 rounded-2xl bg-amber-100 px-4 py-3">
-            <Text className="text-sm font-semibold text-amber-800">
+          <View
+            className="mx-4 mt-4 rounded-2xl bg-amber-100"
+            style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
+          >
+            <Text
+              className="font-semibold text-amber-800"
+              style={{ fontSize: ds.fontSize(14) }}
+            >
               You&apos;re offline. Updates will sync when connected.
             </Text>
-            <Text className="text-xs text-amber-700 mt-1">
+            <Text
+              className="text-amber-700"
+              style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4) }}
+            >
               Pending updates: {pendingUpdates.length}
             </Text>
           </View>
         )}
 
         {!isSupported && nfcError && (
-          <View className="mx-4 mt-4 rounded-full bg-blue-50 px-4 py-2 flex-row items-center">
-            <Ionicons name="information-circle-outline" size={16} color={colors.info} />
-            <Text className="ml-2 text-xs font-semibold text-blue-700">
+          <View
+            className="mx-4 mt-4 rounded-full bg-blue-50 flex-row items-center"
+            style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}
+          >
+            <Ionicons name="information-circle-outline" size={ds.icon(16)} color={colors.info} />
+            <Text
+              className="font-semibold text-blue-700"
+              style={{ fontSize: ds.fontSize(12), marginLeft: ds.spacing(8) }}
+            >
               NFC unavailable in Expo Go — use QR.
             </Text>
           </View>
         )}
 
         {isSupported && !isEnabled && (
-          <View className="mx-4 mt-4 rounded-2xl bg-amber-100 px-4 py-3 flex-row items-center justify-between">
-            <View className="flex-1 pr-3">
-              <Text className="text-sm font-semibold text-amber-800">
+          <View
+            className="mx-4 mt-4 rounded-2xl bg-amber-100 flex-row items-center justify-between"
+            style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
+          >
+            <View className="flex-1" style={{ paddingRight: ds.spacing(12) }}>
+              <Text
+                className="font-semibold text-amber-800"
+                style={{ fontSize: ds.fontSize(14) }}
+              >
                 NFC is turned off. Enable it in Settings to scan tags.
               </Text>
             </View>
             <TouchableOpacity
-              className="rounded-full bg-amber-600 px-3 py-2"
+              className="rounded-full bg-amber-600"
+              style={{
+                paddingHorizontal: ds.buttonPadH,
+                paddingVertical: ds.spacing(8),
+                minHeight: ds.buttonH,
+                justifyContent: 'center',
+              }}
               onPress={handleOpenSettings}
             >
-              <Text className="text-xs font-semibold text-white">Open Settings</Text>
+              <Text
+                className="font-semibold text-white"
+                style={{ fontSize: ds.fontSize(12) }}
+              >
+                Open Settings
+              </Text>
             </TouchableOpacity>
           </View>
         )}
 
-        <View className="px-4 pt-5 pb-2 flex-row items-start justify-between">
-          <View className="flex-1 pr-3">
+        <View
+          className="flex-row items-start justify-between"
+          style={{
+            paddingHorizontal: ds.spacing(16),
+            paddingTop: ds.spacing(20),
+            paddingBottom: ds.spacing(8),
+          }}
+        >
+          <View className="flex-1" style={{ paddingRight: ds.spacing(12) }}>
             <View className="flex-row items-center">
-              <BrandLogo variant="header" size={28} style={{ marginRight: 8 }} />
-              <Text className="text-2xl font-bold text-gray-900">Update Stock</Text>
+              <BrandLogo variant="header" size={28} style={{ marginRight: ds.spacing(8) }} />
+              <Text
+                className="font-bold text-gray-900"
+                style={{ fontSize: ds.fontSize(22) }}
+              >
+                Update Stock
+              </Text>
             </View>
             <TouchableOpacity
-              className="mt-2 self-start flex-row items-center rounded-full bg-orange-100 px-3 py-1.5"
+              className="self-start flex-row items-center rounded-full bg-orange-100"
+              style={{
+                marginTop: ds.spacing(8),
+                paddingHorizontal: ds.spacing(12),
+                paddingVertical: ds.spacing(6),
+              }}
               onPress={toggleLocationDropdown}
             >
               <View className="flex-row items-center">
-                <Ionicons name="location-outline" size={12} color={colors.primary[700]} />
-                <Text className="ml-1 text-xs font-semibold text-orange-700">
+                <Ionicons name="location-outline" size={ds.icon(12)} color={colors.primary[700]} />
+                <Text
+                  className="font-semibold text-orange-700"
+                  style={{ fontSize: ds.fontSize(12), marginLeft: ds.spacing(4) }}
+                >
                   {locationLabel}
                 </Text>
               </View>
               <Ionicons
                 name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
-                size={14}
+                size={ds.icon(14)}
                 color={colors.primary[700]}
-                style={{ marginLeft: 4 }}
+                style={{ marginLeft: ds.spacing(4) }}
               />
             </TouchableOpacity>
           </View>
 
           <View className="items-end">
             {pendingUpdates.length > 0 && (
-              <View className="flex-row items-center rounded-full bg-amber-100 px-3 py-1">
-                <Ionicons name="cloud-upload-outline" size={14} color={colors.warning} />
-                <Text className="ml-1 text-xs font-semibold text-amber-700">
+              <View
+                className="flex-row items-center rounded-full bg-amber-100"
+                style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(4) }}
+              >
+                <Ionicons name="cloud-upload-outline" size={ds.icon(14)} color={colors.warning} />
+                <Text
+                  className="font-semibold text-amber-700"
+                  style={{ fontSize: ds.fontSize(12), marginLeft: ds.spacing(4) }}
+                >
                   {pendingUpdates.length} pending
                 </Text>
               </View>
@@ -452,33 +516,55 @@ export default function UpdateStockScreen() {
         </View>
 
         {showLocationDropdown && (
-          <View className="mx-4 mt-1 mb-1 rounded-2xl bg-white border border-gray-100 overflow-hidden">
+          <View
+            className="rounded-2xl bg-white border border-gray-100 overflow-hidden"
+            style={{
+              marginHorizontal: ds.spacing(16),
+              marginTop: ds.spacing(4),
+              marginBottom: ds.spacing(4),
+            }}
+          >
             {locations.map((loc) => {
               const isSelected = location?.id === loc.id;
 
               return (
                 <TouchableOpacity
                   key={loc.id}
-                  className={`px-4 py-3 flex-row items-center justify-between ${
+                  className={`flex-row items-center justify-between ${
                     isSelected ? 'bg-orange-50' : 'bg-white'
                   }`}
+                  style={{
+                    paddingHorizontal: ds.spacing(16),
+                    paddingVertical: ds.spacing(12),
+                  }}
                   onPress={() => handleSelectLocation(loc)}
                 >
                   <View className="flex-row items-center">
                     <View
-                      className={`w-8 h-8 rounded-full items-center justify-center mr-3 ${
+                      className={`rounded-full items-center justify-center ${
                         isSelected ? 'bg-orange-500' : 'bg-gray-200'
                       }`}
+                      style={{
+                        width: ds.spacing(32),
+                        height: ds.spacing(32),
+                        marginRight: ds.spacing(12),
+                      }}
                     >
-                      <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
+                      <Text
+                        className={`font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}
+                        style={{ fontSize: ds.fontSize(12) }}
+                      >
                         {loc.short_code}
                       </Text>
                     </View>
-                    <Text className={`text-sm ${isSelected ? 'font-semibold text-orange-700' : 'text-gray-800'}`}>
+                    <Text
+                      className={`${isSelected ? 'font-semibold text-orange-700' : 'text-gray-800'}`}
+                      style={{ fontSize: ds.fontSize(14) }}
+                    >
                       {loc.name}
                     </Text>
                   </View>
-                  {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary[500]} />}
+                  {isSelected && <Ionicons name="checkmark" size={ds.icon(18)} color={colors.primary[500]} />}
                 </TouchableOpacity>
               );
             })}
@@ -486,60 +572,111 @@ export default function UpdateStockScreen() {
         )}
 
         {pausedSessionForLocation && (
-          <View className="mx-4 mt-3 rounded-3xl border border-orange-200 bg-orange-50 px-4 py-4">
-            <Text className="text-xs font-semibold text-orange-700 tracking-wide">
+          <View
+            className="rounded-3xl border border-orange-200 bg-orange-50"
+            style={{
+              marginHorizontal: ds.spacing(16),
+              marginTop: ds.spacing(12),
+              paddingHorizontal: ds.spacing(16),
+              paddingVertical: ds.spacing(16),
+            }}
+          >
+            <Text
+              className="font-semibold text-orange-700 tracking-wide"
+              style={{ fontSize: ds.fontSize(12) }}
+            >
               RESUME STOCK COUNT
             </Text>
-            <Text className="mt-1 text-sm text-orange-900">
+            <Text
+              className="text-orange-900"
+              style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(4) }}
+            >
               You have an in-progress stock count for {pausedSessionForLocation.areaName}.
             </Text>
 
-            <View className="mt-3 flex-row">
+            <View className="flex-row" style={{ marginTop: ds.spacing(12) }}>
               <TouchableOpacity
-                className="flex-1 rounded-full bg-orange-500 py-3 items-center mr-2"
+                className="flex-1 rounded-full bg-orange-500 items-center"
+                style={{
+                  paddingVertical: ds.spacing(12),
+                  marginRight: ds.spacing(8),
+                  minHeight: ds.buttonH,
+                  justifyContent: 'center',
+                }}
                 onPress={handleResumeSession}
               >
-                <Text className="text-sm font-semibold text-white">Resume</Text>
+                <Text
+                  className="font-semibold text-white"
+                  style={{ fontSize: ds.buttonFont }}
+                >
+                  Resume
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                className="flex-1 rounded-full border border-orange-200 bg-white py-3 items-center"
+                className="flex-1 rounded-full border border-orange-200 bg-white items-center"
+                style={{
+                  paddingVertical: ds.spacing(12),
+                  minHeight: ds.buttonH,
+                  justifyContent: 'center',
+                }}
                 onPress={handleDiscardSession}
               >
-                <Text className="text-sm font-semibold text-orange-700">Discard</Text>
+                <Text
+                  className="font-semibold text-orange-700"
+                  style={{ fontSize: ds.buttonFont }}
+                >
+                  Discard
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        <View className="px-4 mt-4">
+        <View style={{ paddingHorizontal: ds.spacing(16), marginTop: ds.spacing(16) }}>
           <View
-            className="rounded-3xl bg-white px-5 py-6 shadow-sm border border-gray-100"
-            style={{ minHeight: nfcCardHeight }}
+            className="rounded-3xl bg-white shadow-sm border border-gray-100"
+            style={{
+              paddingHorizontal: ds.spacing(20),
+              paddingVertical: ds.spacing(24),
+              minHeight: nfcCardHeight,
+            }}
           >
-            <View className="flex-1 items-center justify-center pt-6">
+            <View className="flex-1 items-center justify-center" style={{ paddingTop: ds.spacing(24) }}>
               <View className="relative items-center justify-center">
-                <Animated.View
-                  style={[
-                    styles.pulseRing,
-                    {
-                      opacity: pulseOpacity,
-                      transform: [{ scale: pulseScale }],
-                    },
-                  ]}
-                />
+                {!reduceMotion && (
+                  <Animated.View
+                    style={[
+                      styles.pulseRing,
+                      {
+                        opacity: pulseOpacity,
+                        transform: [{ scale: pulseScale }],
+                      },
+                    ]}
+                  />
+                )}
                 <TouchableOpacity
-                  className="h-16 w-16 rounded-2xl bg-orange-100 items-center justify-center"
+                  className="rounded-2xl bg-orange-100 items-center justify-center"
+                  style={{
+                    width: nfcButtonSize,
+                    height: nfcButtonSize,
+                  }}
                   onLongPress={handleBypassOpen}
                   delayLongPress={600}
                 >
-                  <Ionicons name="phone-portrait-outline" size={32} color={colors.primary[600]} />
+                  <Ionicons name="phone-portrait-outline" size={ds.icon(32)} color={colors.primary[600]} />
                 </TouchableOpacity>
               </View>
-              <Text className="mt-4 text-lg font-semibold text-gray-900">
+              <Text
+                className="font-semibold text-gray-900"
+                style={{ fontSize: ds.fontSize(18), marginTop: ds.spacing(16) }}
+              >
                 Tap NFC Tag to Start
               </Text>
-              <Text className="mt-1 text-sm text-gray-500 text-center">
+              <Text
+                className="text-gray-500 text-center"
+                style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(4) }}
+              >
                 {isSupported || !nfcError
                   ? 'Hold your phone near the NFC tag at any storage station.'
                   : 'NFC unavailable. Use QR instead.'}
@@ -547,49 +684,100 @@ export default function UpdateStockScreen() {
             </View>
 
             <TouchableOpacity
-              className="mt-6 rounded-full border border-orange-200 px-4 py-2 flex-row items-center justify-center"
+              className="rounded-full border border-orange-200 flex-row items-center justify-center"
+              style={{
+                marginTop: ds.spacing(24),
+                paddingHorizontal: ds.buttonPadH,
+                paddingVertical: ds.spacing(8),
+                minHeight: ds.buttonH,
+              }}
               onPress={handleScanQr}
             >
-              <Ionicons name="qr-code-outline" size={16} color={colors.primary[600]} />
-              <Text className="ml-2 text-sm font-semibold text-orange-700">
+              <Ionicons name="qr-code-outline" size={ds.icon(16)} color={colors.primary[600]} />
+              <Text
+                className="font-semibold text-orange-700"
+                style={{ fontSize: ds.fontSize(14), marginLeft: ds.spacing(8) }}
+              >
                 Scan QR Instead
               </Text>
             </TouchableOpacity>
 
-            <Text className="mt-3 text-xs text-gray-400 text-center">
+            <Text
+              className="text-gray-400 text-center"
+              style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(12) }}
+            >
               NFC scanning requires a physical device and NFC setup (react-native-nfc-manager).
             </Text>
           </View>
         </View>
 
         {nfcError && isSupported && isEnabled && (
-          <View className="mx-4 mt-3 rounded-2xl bg-red-50 px-4 py-3">
-            <Text className="text-xs text-red-700">{nfcError}</Text>
+          <View
+            className="rounded-2xl bg-red-50"
+            style={{
+              marginHorizontal: ds.spacing(16),
+              marginTop: ds.spacing(12),
+              paddingHorizontal: ds.spacing(16),
+              paddingVertical: ds.spacing(12),
+            }}
+          >
+            <Text className="text-red-700" style={{ fontSize: ds.fontSize(12) }}>
+              {nfcError}
+            </Text>
           </View>
         )}
 
-        <View className="px-4 mt-6">
-          <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-xs font-semibold text-gray-500 tracking-widest">
+        <View style={{ paddingHorizontal: ds.spacing(16), marginTop: ds.spacing(24) }}>
+          <View
+            className="flex-row items-center justify-between"
+            style={{ marginBottom: ds.spacing(8) }}
+          >
+            <Text
+              className="font-semibold text-gray-500 tracking-widest"
+              style={{ fontSize: ds.fontSize(12) }}
+            >
               STATION STATUS
             </Text>
             {isScanning && (
               <View className="flex-row items-center">
-                <View className="h-2 w-2 rounded-full bg-green-500 mr-2" />
-                <Text className="text-xs text-gray-400">Listening for NFC</Text>
+                <View
+                  className="rounded-full bg-green-500"
+                  style={{
+                    width: ds.spacing(8),
+                    height: ds.spacing(8),
+                    marginRight: ds.spacing(8),
+                  }}
+                />
+                <Text className="text-gray-400" style={{ fontSize: ds.fontSize(12) }}>
+                  Listening for NFC
+                </Text>
               </View>
             )}
           </View>
 
           {error && (
-            <View className="mb-3 rounded-xl bg-red-50 px-3 py-2">
-              <Text className="text-xs text-red-700">{error}</Text>
+            <View
+              className="rounded-xl bg-red-50"
+              style={{
+                marginBottom: ds.spacing(12),
+                paddingHorizontal: ds.spacing(12),
+                paddingVertical: ds.spacing(8),
+              }}
+            >
+              <Text className="text-red-700" style={{ fontSize: ds.fontSize(12) }}>
+                {error}
+              </Text>
             </View>
           )}
 
           {storageAreas.length === 0 && !isLoading ? (
-            <View className="rounded-2xl bg-white px-4 py-6 items-center border border-gray-100">
-              <Text className="text-sm text-gray-500">No stations found for this location.</Text>
+            <View
+              className="rounded-2xl bg-white items-center border border-gray-100"
+              style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(24) }}
+            >
+              <Text className="text-gray-500" style={{ fontSize: ds.fontSize(14) }}>
+                No stations found for this location.
+              </Text>
             </View>
           ) : (
             storageAreas.map((area) => {
@@ -601,34 +789,54 @@ export default function UpdateStockScreen() {
               return (
                 <TouchableOpacity
                   key={area.id}
-                  className="rounded-2xl bg-white px-4 py-4 mb-3 border border-gray-100"
+                  className="rounded-2xl bg-white border border-gray-100"
+                  style={{
+                    paddingHorizontal: ds.spacing(16),
+                    paddingVertical: ds.spacing(16),
+                    marginBottom: ds.spacing(12),
+                  }}
                   onPress={() => handleStationPress(area)}
                   activeOpacity={0.8}
                 >
                   <View className="flex-row items-start justify-between">
                     <View className="flex-row items-start">
                       <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
-                      <View className="ml-3">
+                      <View style={{ marginLeft: ds.spacing(12) }}>
                         <View className="flex-row items-center">
-                          <Text className="text-lg mr-2">{area.icon || '📦'}</Text>
-                          <Text className="text-base font-semibold text-gray-900">
+                          <Text style={{ fontSize: ds.fontSize(18), marginRight: ds.spacing(8) }}>
+                            {area.icon || '📦'}
+                          </Text>
+                          <Text
+                            className="font-semibold text-gray-900"
+                            numberOfLines={1}
+                            style={{ fontSize: ds.fontSize(16) }}
+                          >
                             {area.name}
                           </Text>
                         </View>
-                        <Text className="mt-1 text-xs text-gray-500">
+                        <Text
+                          className="text-gray-500"
+                          style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4) }}
+                        >
                           {formatLastChecked(area.last_checked_at)}
                         </Text>
-                        <Text className="mt-1 text-xs text-gray-500">
+                        <Text
+                          className="text-gray-500"
+                          style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4) }}
+                        >
                           {itemCount} item{itemCount === 1 ? '' : 's'} •{' '}
                           {CHECK_FREQUENCY_LABELS[area.check_frequency]}
                         </Text>
                       </View>
                     </View>
                     <View className="flex-row items-center">
-                      <Text className="text-xs font-semibold text-gray-400 mr-2">
+                      <Text
+                        className="font-semibold text-gray-400"
+                        style={{ fontSize: ds.fontSize(12), marginRight: ds.spacing(8) }}
+                      >
                         {statusEmoji} {statusLabel}
                       </Text>
-                      <Ionicons name="chevron-forward" size={18} color={colors.gray[400]} />
+                      <Ionicons name="chevron-forward" size={ds.icon(18)} color={colors.gray[400]} />
                     </View>
                   </View>
                 </TouchableOpacity>
@@ -639,14 +847,14 @@ export default function UpdateStockScreen() {
       </ScrollView>
       {showSyncToast && (
         <View style={styles.syncToast}>
-          <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
-          <Text style={styles.syncToastText}>Updates synced</Text>
+          <Ionicons name="checkmark-circle" size={ds.icon(16)} color="#FFFFFF" />
+          <Text style={[styles.syncToastText, { fontSize: ds.fontSize(13) }]}>Updates synced</Text>
         </View>
       )}
       {showSessionToast && (
         <View style={styles.sessionToast}>
-          <Ionicons name="information-circle" size={16} color="#FFFFFF" />
-          <Text style={styles.syncToastText}>{sessionToastMessage}</Text>
+          <Ionicons name="information-circle" size={ds.icon(16)} color="#FFFFFF" />
+          <Text style={[styles.syncToastText, { fontSize: ds.fontSize(13) }]}>{sessionToastMessage}</Text>
         </View>
       )}
       <QrScannerModal
@@ -662,30 +870,55 @@ export default function UpdateStockScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-base font-semibold text-gray-900">Select Station</Text>
+            <View
+              className="flex-row items-center justify-between"
+              style={{ marginBottom: ds.spacing(12) }}
+            >
+              <Text
+                className="font-semibold text-gray-900"
+                style={{ fontSize: ds.fontSize(16) }}
+              >
+                Select Station
+              </Text>
               <TouchableOpacity onPress={() => setShowBypassModal(false)}>
-                <Ionicons name="close" size={20} color={colors.gray[600]} />
+                <Ionicons name="close" size={ds.icon(20)} color={colors.gray[600]} />
               </TouchableOpacity>
             </View>
-            <Text className="text-xs text-gray-500 mb-3">
+            <Text
+              className="text-gray-500"
+              style={{ fontSize: ds.fontSize(12), marginBottom: ds.spacing(12) }}
+            >
               Bypass scanning and choose a station manually.
             </Text>
             <ScrollView style={{ maxHeight: 320 }}>
               {storageAreas.length === 0 ? (
-                <Text className="text-sm text-gray-500">No stations available.</Text>
+                <Text className="text-gray-500" style={{ fontSize: ds.fontSize(14) }}>
+                  No stations available.
+                </Text>
               ) : (
                 storageAreas.map((area) => (
                   <TouchableOpacity
                     key={area.id}
-                    className="py-3 border-b border-gray-100"
+                    className="border-b border-gray-100"
+                    style={{ paddingVertical: ds.spacing(12) }}
                     onPress={() => handleBypassSelect(area.id)}
                   >
                     <View className="flex-row items-center">
-                      <Text className="text-lg mr-2">{area.icon || '📦'}</Text>
-                      <Text className="text-sm font-semibold text-gray-900">{area.name}</Text>
+                      <Text style={{ fontSize: ds.fontSize(18), marginRight: ds.spacing(8) }}>
+                        {area.icon || '📦'}
+                      </Text>
+                      <Text
+                        className="font-semibold text-gray-900"
+                        numberOfLines={1}
+                        style={{ fontSize: ds.fontSize(14) }}
+                      >
+                        {area.name}
+                      </Text>
                     </View>
-                    <Text className="text-xs text-gray-400 mt-1">
+                    <Text
+                      className="text-gray-400"
+                      style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4) }}
+                    >
                       Last checked: {formatLastChecked(area.last_checked_at)}
                     </Text>
                   </TouchableOpacity>

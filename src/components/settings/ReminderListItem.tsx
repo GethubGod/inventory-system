@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { Reminder } from '@/types/settings';
-import { useSettingsStore } from '@/store';
+import { useDisplayStore } from '@/store';
 
 interface ReminderListItemProps {
   reminder: Reminder;
@@ -21,7 +21,7 @@ export function ReminderListItem({
   onEdit,
   onDelete,
 }: ReminderListItemProps) {
-  const { hapticFeedback } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
 
   const formatTime = (time: string): string => {
     const [hours, minutes] = time.split(':').map(Number);

@@ -14,6 +14,7 @@ import * as Haptics from 'expo-haptics';
 import { useAuthStore, useDraftStore, useOrderStore, DraftItem } from '@/store';
 import { colors } from '@/constants';
 import { Location } from '@/types';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 // Category emoji mapping
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -29,6 +30,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
 };
 
 export default function DraftScreen() {
+  const ds = useScaledStyles();
   const { locations } = useAuthStore();
   const {
     getItems,
@@ -156,12 +158,13 @@ export default function DraftScreen() {
     return (
       <View
         key={inventoryItem.id}
-        className="flex-row items-center py-3 border-b border-gray-100"
+        className="flex-row items-center border-b border-gray-100"
+        style={{ paddingVertical: ds.spacing(12), minHeight: ds.rowH }}
       >
         {/* Emoji & Name */}
-        <Text className="text-lg mr-2">{emoji}</Text>
+        <Text style={{ fontSize: ds.fontSize(18), marginRight: ds.spacing(8) }}>{emoji}</Text>
         <View className="flex-1">
-          <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
+          <Text className="font-medium text-gray-900" numberOfLines={1} ellipsizeMode="tail" style={{ fontSize: ds.fontSize(14) }}>
             {inventoryItem.name}
           </Text>
         </View>
@@ -170,28 +173,30 @@ export default function DraftScreen() {
         <View className="flex-row items-center">
           <TouchableOpacity
             onPress={() => handleQuantityChange(locationId, inventoryItem.id, quantity - 1, unit)}
-            className="w-7 h-7 bg-gray-100 rounded-md items-center justify-center"
+            className="bg-gray-100 rounded-md items-center justify-center"
+            style={{ width: Math.max(44, ds.icon(28)), height: Math.max(44, ds.icon(28)) }}
           >
-            <Ionicons name="remove" size={16} color={colors.gray[600]} />
+            <Ionicons name="remove" size={ds.icon(16)} color={colors.gray[600]} />
           </TouchableOpacity>
 
-          <Text className="mx-2 text-sm font-semibold text-gray-900 min-w-[50px] text-center">
+          <Text className="font-semibold text-gray-900 text-center" style={{ fontSize: ds.fontSize(13), minWidth: ds.spacing(50), marginHorizontal: ds.spacing(8) }}>
             {quantity} {unitLabel}
           </Text>
 
           <TouchableOpacity
             onPress={() => handleQuantityChange(locationId, inventoryItem.id, quantity + 1, unit)}
-            className="w-7 h-7 bg-gray-100 rounded-md items-center justify-center"
+            className="bg-gray-100 rounded-md items-center justify-center"
+            style={{ width: Math.max(44, ds.icon(28)), height: Math.max(44, ds.icon(28)) }}
           >
-            <Ionicons name="add" size={16} color={colors.gray[600]} />
+            <Ionicons name="add" size={ds.icon(16)} color={colors.gray[600]} />
           </TouchableOpacity>
 
           <TouchableOpacity
             onPress={() => handleRemoveItem(locationId, inventoryItem.id, inventoryItem.name)}
-            className="ml-3 p-1"
+            style={{ marginLeft: ds.spacing(12), padding: ds.spacing(4), minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="close" size={18} color={colors.gray[400]} />
+            <Ionicons name="close" size={ds.icon(18)} color={colors.gray[400]} />
           </TouchableOpacity>
         </View>
       </View>
@@ -206,24 +211,24 @@ export default function DraftScreen() {
     return (
       <View key={location.id} className="mb-4">
         {/* Location Header */}
-        <View className="bg-white rounded-t-xl px-4 py-3 border border-gray-200 border-b-0">
+        <View className="bg-white rounded-t-xl border border-gray-200 border-b-0" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}>
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center">
-              <View className="bg-primary-500 w-10 h-10 rounded-full items-center justify-center mr-3">
-                <Text className="text-white font-bold">{location.short_code}</Text>
+              <View className="bg-primary-500 rounded-full items-center justify-center" style={{ width: ds.icon(40), height: ds.icon(40), marginRight: ds.spacing(12) }}>
+                <Text className="text-white font-bold" style={{ fontSize: ds.fontSize(12) }}>{location.short_code}</Text>
               </View>
               <View>
-                <Text className="text-base font-semibold text-gray-900">{location.name}</Text>
-                <Text className="text-sm text-gray-500">
+                <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(15) }}>{location.name}</Text>
+                <Text className="text-gray-500" style={{ fontSize: ds.fontSize(13) }}>
                   {itemCount} item{itemCount !== 1 ? 's' : ''}
                 </Text>
               </View>
             </View>
             <TouchableOpacity
               onPress={() => handleClearLocation(location.id, location.name)}
-              className="p-2"
+              style={{ padding: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
             >
-              <Ionicons name="trash-outline" size={20} color={colors.gray[400]} />
+              <Ionicons name="trash-outline" size={ds.icon(20)} color={colors.gray[400]} />
             </TouchableOpacity>
           </View>
         </View>
@@ -236,10 +241,11 @@ export default function DraftScreen() {
         {/* Add to Cart Button for this location */}
         <TouchableOpacity
           onPress={() => handleSubmitLocationToCart(location.id, location.name)}
-          className="bg-primary-500 mx-0 py-3 rounded-b-xl items-center flex-row justify-center"
+          className="bg-primary-500 mx-0 rounded-b-xl items-center flex-row justify-center"
+          style={{ height: ds.buttonH, borderRadius: ds.radius(12) }}
         >
-          <Ionicons name="cart" size={18} color="white" />
-          <Text className="text-white font-semibold ml-2">
+          <Ionicons name="cart" size={ds.icon(18)} color="white" />
+          <Text className="text-white font-semibold" style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}>
             Add {location.short_code} to Cart
           </Text>
         </TouchableOpacity>
@@ -250,20 +256,20 @@ export default function DraftScreen() {
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Header */}
-      <View className="bg-white px-4 py-3 flex-row items-center justify-between border-b border-gray-200">
+      <View className="bg-white flex-row items-center justify-between border-b border-gray-200" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="p-2 -ml-2"
+          style={{ padding: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={24} color={colors.gray[900]} />
+          <Ionicons name="arrow-back" size={ds.icon(24)} color={colors.gray[900]} />
         </TouchableOpacity>
 
-        <Text className="text-lg font-semibold text-gray-900">Draft Orders</Text>
+        <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>Draft Orders</Text>
 
         {totalItemCount > 0 ? (
-          <TouchableOpacity onPress={handleClearAll} className="p-2 -mr-2">
-            <Text className="text-sm font-medium text-red-500">Clear All</Text>
+          <TouchableOpacity onPress={handleClearAll} style={{ padding: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}>
+            <Text className="font-medium text-red-500" style={{ fontSize: ds.fontSize(14) }}>Clear All</Text>
           </TouchableOpacity>
         ) : (
           <View style={{ width: 60 }} />

@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { InventoryItem, UnitType } from '@/types';
-import { useOrderStore, useSettingsStore } from '@/store';
+import { useOrderStore } from '@/store';
 import type { OrderInputMode } from '@/store';
 import { categoryColors, CATEGORY_LABELS } from '@/constants';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 interface InventoryItemCardProps {
   item: InventoryItem;
@@ -14,7 +15,7 @@ interface InventoryItemCardProps {
 export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) {
   const { addToCart, getCartItem, updateCartItem, removeFromCart } =
     useOrderStore();
-  const { fontSize } = useSettingsStore();
+  const ds = useScaledStyles();
   const cartItem = getCartItem(locationId, item.id);
   const [isExpanded, setIsExpanded] = useState(false);
   const [inputMode, setInputMode] = useState<OrderInputMode>(cartItem?.inputMode ?? 'quantity');
@@ -41,11 +42,9 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
   const categoryColor = categoryColors[item.category] || '#6B7280';
   const showControls = isExpanded || Boolean(cartItem);
 
-  // Font size multipliers
-  const fontSizeMultiplier = fontSize === 'large' ? 1.2 : fontSize === 'xlarge' ? 1.4 : 1;
-  const baseFontSize = 16 * fontSizeMultiplier;
-  const smallFontSize = 13 * fontSizeMultiplier;
-  const tinyFontSize = 11 * fontSizeMultiplier;
+  const baseFontSize = ds.fontSize(16);
+  const smallFontSize = ds.fontSize(13);
+  const tinyFontSize = ds.fontSize(11);
 
   const parsedQuantity = Number.parseFloat(quantity);
   const parsedRemaining = Number.parseFloat(remaining);
@@ -235,7 +234,7 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
   const isInputValid = inputMode === 'quantity' ? isQuantityValid : isRemainingValid;
 
   return (
-    <View className="bg-white rounded-xl px-4 py-3.5 shadow-sm">
+    <View className="bg-white rounded-xl shadow-sm" style={{ padding: ds.cardPad, borderRadius: ds.radius(12) }}>
       {/* Top row: Name and Add button / Controls */}
       <View className="flex-row items-center justify-between">
         {/* Left: Item info */}
@@ -277,10 +276,11 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
         {/* Right: Add button */}
         {!showControls && (
           <TouchableOpacity
-            className="bg-primary-500 px-5 py-2.5 rounded-xl"
+            className="bg-primary-500 items-center justify-center"
+            style={{ height: ds.buttonH, paddingHorizontal: ds.buttonPadH, borderRadius: ds.radius(12), minWidth: 44 }}
             onPress={handleExpandToAdd}
           >
-            <Text className="text-white font-semibold" style={{ fontSize: smallFontSize }}>Add</Text>
+            <Text className="text-white font-semibold" style={{ fontSize: ds.buttonFont }}>Add</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -326,15 +326,16 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
             {/* Value Controls */}
             <View className="flex-row items-center">
               <TouchableOpacity
-                className="w-10 h-10 bg-gray-100 rounded-lg items-center justify-center"
+                className="bg-gray-100 rounded-lg items-center justify-center"
+                style={{ width: Math.max(44, ds.icon(40)), height: Math.max(44, ds.icon(40)) }}
                 onPress={handleDecrement}
               >
-                <Ionicons name="remove" size={20} color="#374151" />
+                <Ionicons name="remove" size={ds.icon(20)} color="#374151" />
               </TouchableOpacity>
 
               <TextInput
-                className="w-16 h-10 bg-gray-50 border border-gray-200 rounded-lg mx-2 text-center text-gray-900 font-semibold"
-                style={{ fontSize: baseFontSize }}
+                className="bg-gray-50 border border-gray-200 rounded-lg mx-2 text-center text-gray-900 font-semibold"
+                style={{ width: ds.spacing(64), height: Math.max(44, ds.icon(40)), fontSize: baseFontSize }}
                 value={value}
                 onChangeText={onValueChange}
                 keyboardType="decimal-pad"
@@ -342,10 +343,11 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
               />
 
               <TouchableOpacity
-                className="w-10 h-10 bg-gray-100 rounded-lg items-center justify-center"
+                className="bg-gray-100 rounded-lg items-center justify-center"
+                style={{ width: Math.max(44, ds.icon(40)), height: Math.max(44, ds.icon(40)) }}
                 onPress={handleIncrement}
               >
-                <Ionicons name="add" size={20} color="#374151" />
+                <Ionicons name="add" size={ds.icon(20)} color="#374151" />
               </TouchableOpacity>
             </View>
 

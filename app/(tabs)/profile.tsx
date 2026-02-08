@@ -11,8 +11,10 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
 import { Location } from '@/types';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 export default function ProfileScreen() {
+  const ds = useScaledStyles();
   const { user, location, locations, setLocation, fetchLocations, signOut, isLoading } =
     useAuthStore();
 
@@ -42,17 +44,17 @@ export default function ProfileScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={['left', 'right']}>
       <ScrollView className="flex-1">
         {/* User Info Card */}
-        <View className="bg-white m-4 p-6 rounded-2xl shadow-sm border border-gray-100">
-          <View className="items-center mb-4">
-            <View className="w-20 h-20 bg-primary-100 rounded-full items-center justify-center mb-3">
-              <Ionicons name="person" size={40} color="#F97316" />
+        <View className="bg-white shadow-sm border border-gray-100" style={{ margin: ds.spacing(16), padding: ds.spacing(24), borderRadius: ds.radius(16) }}>
+          <View className="items-center" style={{ marginBottom: ds.spacing(16) }}>
+            <View className="bg-primary-100 rounded-full items-center justify-center" style={{ width: ds.icon(80), height: ds.icon(80), marginBottom: ds.spacing(12) }}>
+              <Ionicons name="person" size={ds.icon(40)} color="#F97316" />
             </View>
-            <Text className="text-xl font-bold text-gray-900">
+            <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(20) }}>
               {user?.name || 'User'}
             </Text>
-            <Text className="text-gray-500">{user?.email}</Text>
-            <View className="bg-primary-100 px-4 py-1.5 rounded-full mt-3">
-              <Text className="text-primary-700 font-semibold capitalize">
+            <Text className="text-gray-500" style={{ fontSize: ds.fontSize(14) }}>{user?.email}</Text>
+            <View className="bg-primary-100 rounded-full" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(6), marginTop: ds.spacing(12) }}>
+              <Text className="text-primary-700 font-semibold capitalize" style={{ fontSize: ds.fontSize(14) }}>
                 {user?.role || 'Employee'}
               </Text>
             </View>
@@ -60,23 +62,23 @@ export default function ProfileScreen() {
         </View>
 
         {/* Current Location */}
-        <View className="bg-white mx-4 p-4 rounded-2xl shadow-sm border border-gray-100 mb-4">
-          <Text className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+        <View className="bg-white shadow-sm border border-gray-100" style={{ marginHorizontal: ds.spacing(16), padding: ds.spacing(16), borderRadius: ds.radius(16), marginBottom: ds.spacing(16) }}>
+          <Text className="font-medium text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(12), marginBottom: ds.spacing(8) }}>
             Current Location
           </Text>
           <View className="flex-row items-center">
-            <View className="w-10 h-10 bg-primary-100 rounded-full items-center justify-center">
-              <Ionicons name="location" size={20} color="#F97316" />
+            <View className="bg-primary-100 rounded-full items-center justify-center" style={{ width: ds.icon(40), height: ds.icon(40) }}>
+              <Ionicons name="location" size={ds.icon(20)} color="#F97316" />
             </View>
-            <Text className="text-lg font-bold text-gray-900 ml-3">
+            <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18), marginLeft: ds.spacing(12) }}>
               {location?.name || 'No location selected'}
             </Text>
           </View>
         </View>
 
         {/* Location Selector */}
-        <View className="bg-white mx-4 rounded-2xl shadow-sm border border-gray-100 mb-4">
-          <Text className="text-xs font-medium text-gray-500 uppercase tracking-wide px-4 pt-4 pb-2">
+        <View className="bg-white shadow-sm border border-gray-100" style={{ marginHorizontal: ds.spacing(16), borderRadius: ds.radius(16), marginBottom: ds.spacing(16) }}>
+          <Text className="font-medium text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(12), paddingHorizontal: ds.spacing(16), paddingTop: ds.spacing(16), paddingBottom: ds.spacing(8) }}>
             Switch Location
           </Text>
           {locations.map((loc, index) => {
@@ -129,12 +131,13 @@ export default function ProfileScreen() {
 
         {/* Sign Out Button */}
         <TouchableOpacity
-          className="bg-white mx-4 p-4 rounded-2xl shadow-sm border border-gray-100 mb-8 flex-row items-center justify-center"
+          className="bg-white shadow-sm border border-gray-100 flex-row items-center justify-center"
+          style={{ marginHorizontal: ds.spacing(16), padding: ds.spacing(16), borderRadius: ds.radius(16), marginBottom: ds.spacing(32), height: ds.buttonH + 4 }}
           onPress={handleSignOut}
           disabled={isLoading}
         >
-          <Ionicons name="log-out-outline" size={20} color="#EF4444" />
-          <Text className="text-red-500 font-semibold ml-2">Sign Out</Text>
+          <Ionicons name="log-out-outline" size={ds.icon(20)} color="#EF4444" />
+          <Text className="text-red-500 font-semibold" style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

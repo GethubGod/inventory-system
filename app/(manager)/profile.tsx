@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
-import { useAuthStore, useSettingsStore } from '@/store';
+import { useAuthStore, useSettingsStore, useDisplayStore } from '@/store';
 import { colors, shadow } from '@/constants';
 import {
   ExpandableSection,
@@ -45,7 +45,8 @@ const ACCESS_CODE_REGEX = /^\d{4}$/;
 // ============================================
 function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) {
   const { user, location, locations } = useAuthStore();
-  const { avatarUri, setAvatarUri, hapticFeedback } = useSettingsStore();
+  const { avatarUri, setAvatarUri } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(user?.name || '');
   const [isSeedingStations, setIsSeedingStations] = useState(false);
@@ -244,7 +245,7 @@ function DisplaySection() {
     reduceMotion,
     setReduceMotion,
     resetDisplayToDefaults,
-  } = useSettingsStore();
+  } = useDisplayStore();
 
   const handleReset = () => {
     Alert.alert(
@@ -646,7 +647,7 @@ function AccessCodesSection() {
 // ============================================
 function AboutSection() {
   const appVersion = Constants.expoConfig?.version || '1.0.0';
-  const { hapticFeedback } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
 
   const handleLink = (url: string) => {
     if (hapticFeedback && Platform.OS !== 'web') {
@@ -702,7 +703,7 @@ function AboutSection() {
 // ============================================
 export default function ManagerSettingsScreen() {
   const { user, profile, signOut, setViewMode } = useAuthStore();
-  const { hapticFeedback } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
   const isManager = (user?.role ?? profile?.role) === 'manager';
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 

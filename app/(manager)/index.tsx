@@ -15,7 +15,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useAuthStore, useSettingsStore, useOrderStore } from '@/store';
+import { useAuthStore, useOrderStore } from '@/store';
+import { useDisplayStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { Location } from '@/types';
 import { sendReminderToEmployees } from '@/services/notificationService';
@@ -66,7 +67,7 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 export default function ManagerDashboard() {
   const { locations, fetchLocations } = useAuthStore();
-  const { hapticFeedback } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
   const { getTotalCartCount } = useOrderStore();
   const cartCount = getTotalCartCount();
   const [stats, setStats] = useState<DashboardStats>({

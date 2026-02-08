@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
-import { LogBox, View } from 'react-native';
+import { LogBox, View, Appearance } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useAuthStore } from '@/store';
+import { useAuthStore, useDisplayStore } from '@/store';
 import { useOrderSubscription } from '@/hooks';
 import '../global.css';
 
@@ -17,8 +17,27 @@ function OrderSubscriptionProvider({ children }: { children: React.ReactNode }) 
   return <>{children}</>;
 }
 
+function ThemeManager() {
+  const theme = useDisplayStore((state) => state.theme);
+
+  useEffect(() => {
+    if (theme === 'light') {
+      Appearance.setColorScheme('light');
+    } else if (theme === 'dark') {
+      Appearance.setColorScheme('dark');
+    } else {
+      // 'system' — follow device setting
+      Appearance.setColorScheme(null);
+    }
+  }, [theme]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const { initialize, isInitialized, user } = useAuthStore();
+  const theme = useDisplayStore((state) => state.theme);
+  const reduceMotion = useDisplayStore((state) => state.reduceMotion);
 
   useEffect(() => {
     if (!isInitialized) {
@@ -26,15 +45,18 @@ export default function RootLayout() {
     }
   }, [isInitialized, initialize]);
 
+  const statusBarStyle = theme === 'dark' ? 'light' : 'dark';
+
   // Wrap in subscription provider when user is authenticated
   const content = (
     <View style={{ flex: 1 }}>
-      <StatusBar style="dark" />
+      <ThemeManager />
+      <StatusBar style={statusBarStyle} />
       <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: '#FFFFFF' },
-          animation: 'fade',
+          animation: reduceMotion ? 'none' : 'fade',
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />

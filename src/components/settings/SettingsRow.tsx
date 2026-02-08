@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
-import { useSettingsStore } from '@/store';
+import { useDisplayStore } from '@/store';
 
 export interface SettingsRowProps {
   icon?: keyof typeof Ionicons.glyphMap;
@@ -32,7 +32,7 @@ export function SettingsRow({
   disabled = false,
   showBorder = true,
 }: SettingsRowProps) {
-  const { hapticFeedback } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
 
   const handlePress = () => {
     if (disabled || !onPress) return;
