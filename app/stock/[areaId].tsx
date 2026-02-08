@@ -82,7 +82,6 @@ export default function StockCountingScreen() {
     updateItemStock,
     skipItem,
     nextItem,
-    completeSession,
   } = useStockStore();
 
   const [quantityValue, setQuantityValue] = useState('0');
@@ -254,17 +253,10 @@ export default function StockCountingScreen() {
         });
 
         if (shouldComplete) {
-          const completedAt = new Date().toISOString();
-          const checked = (currentSession?.items_checked ?? 0) + 1;
-          const skipped = currentSession?.items_skipped ?? 0;
-          await completeSession();
-          router.replace({
+          router.push({
             pathname: '/stock/completion',
             params: {
               areaId,
-              checked: String(checked),
-              skipped: String(skipped),
-              completedAt,
             },
           });
           return;
@@ -286,12 +278,9 @@ export default function StockCountingScreen() {
       isOnline,
       updateItemStock,
       nextItem,
-      completeSession,
       isSaving,
       uploadPhoto,
       user?.id,
-      currentSession?.items_checked,
-      currentSession?.items_skipped,
       areaId,
       animateToNext,
     ]
@@ -366,11 +355,11 @@ export default function StockCountingScreen() {
 
     Alert.alert(
       'Exit Counting?',
-      `You've counted ${counted} item${counted === 1 ? '' : 's'}. Save progress and exit?`,
+      `You've counted ${counted} item${counted === 1 ? '' : 's'}. Review and submit now?`,
       [
         { text: 'Keep Counting', style: 'cancel' },
         {
-          text: 'Save & Exit',
+          text: 'Review',
           onPress: () => handleSaveItem(false, true),
         },
       ]

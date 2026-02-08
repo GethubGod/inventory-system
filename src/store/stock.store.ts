@@ -24,6 +24,8 @@ import {
   updateStorageAreaLastChecked,
 } from '@/lib/api/stock';
 
+export type SessionItemStatus = 'counted' | 'skipped';
+
 export interface PendingUpdate {
   id: string;
   areaItemId: string;
@@ -37,6 +39,24 @@ export interface PendingUpdate {
   notes?: string | null;
   updatedBy: string;
   createdAt: string;
+}
+
+export interface SessionItemUpdate {
+  areaItemId: string;
+  areaId: string;
+  areaName: string;
+  inventoryItemId: string;
+  itemName: string;
+  unitType: string;
+  previousQuantity: number;
+  newQuantity: number;
+  status: SessionItemStatus;
+  updateMethod: StockUpdateMethod;
+  quickSelectValue?: QuickSelectValue | null;
+  photoUrl?: string | null;
+  notes?: string | null;
+  updatedBy: string;
+  updatedAt: string;
 }
 
 interface UpdateItemStockOptions {
@@ -59,6 +79,7 @@ interface StockState {
   isOnline: boolean;
   lastSyncAt: string | null;
   skippedItemCounts: Record<string, number>;
+  sessionItemUpdates: Record<string, SessionItemUpdate>;
 
   fetchStorageAreas: (locationId: string) => Promise<void>;
   fetchAreaItems: (areaId: string) => Promise<void>;
@@ -76,6 +97,8 @@ interface StockState {
   nextItem: () => void;
   previousItem: () => void;
   goToItem: (index: number) => void;
+  setSessionItemQuantity: (areaItemId: string, quantity: number) => void;
+  getSessionItemUpdates: (areaId?: string | null) => SessionItemUpdate[];
   queueUpdate: (update: PendingUpdate) => void;
   syncPendingUpdates: () => Promise<void>;
   setOnlineStatus: (isOnline: boolean) => void;
@@ -155,6 +178,11 @@ export function getQuickSelectRanges(min: number, max: number): QuickSelectRange
   };
 }
 
+function normalizeQuantity(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.round(value));
+}
+
 export const useStockStore = create<StockState>()(
   persist(
     (set, get) => ({
@@ -170,6 +198,7 @@ export const useStockStore = create<StockState>()(
       isOnline: true,
       lastSyncAt: null,
       skippedItemCounts: {},
+      sessionItemUpdates: {},
 
       fetchStorageAreas: async (locationId) => {
         set({ isLoading: true, error: null });
@@ -197,6 +226,7 @@ export const useStockStore = create<StockState>()(
               currentAreaId: areaId,
               currentItemIndex: 0,
               skippedItemCounts: {},
+              sessionItemUpdates: {},
               error: 'Offline mode: showing cached data.',
             });
             return;
@@ -215,6 +245,7 @@ export const useStockStore = create<StockState>()(
             currentAreaId: areaId,
             currentItemIndex: 0,
             skippedItemCounts: {},
+            sessionItemUpdates: {},
             areaItemsById: { ...get().areaItemsById, [areaId]: withStock },
           });
         } catch (error: any) {
@@ -225,6 +256,7 @@ export const useStockStore = create<StockState>()(
               currentAreaId: areaId,
               currentItemIndex: 0,
               skippedItemCounts: {},
+              sessionItemUpdates: {},
               error: 'Offline mode: showing cached data.',
             });
           } else {
@@ -274,6 +306,7 @@ export const useStockStore = create<StockState>()(
             currentAreaId: areaId,
             currentItemIndex: 0,
             skippedItemCounts: {},
+            sessionItemUpdates: {},
           });
         } catch (error: any) {
           set({ error: error?.message ?? 'Failed to start stock check session.' });
@@ -283,28 +316,85 @@ export const useStockStore = create<StockState>()(
       },
 
       completeSession: async () => {
-        const { currentSession, currentAreaId } = get();
+        const { currentSession, currentAreaId, sessionItemUpdates, isOnline } = get();
         if (!currentSession) return;
 
         const userId = useAuthStore.getState().user?.id ?? null;
         const completedAt = new Date().toISOString();
+        const sessionUpdates = Object.values(sessionItemUpdates);
+        const countedItems = sessionUpdates.filter((entry) => entry.status === 'counted');
+        const skippedItems = sessionUpdates.filter((entry) => entry.status === 'skipped');
+        let syncError = false;
 
         set({ isLoading: true, error: null });
         try {
-          if (get().isOnline) {
-            await updateStockCheckSession(currentSession.id, {
-              status: 'completed',
-              completed_at: completedAt,
-              items_checked: currentSession.items_checked,
-              items_skipped: currentSession.items_skipped,
-              items_total: currentSession.items_total,
-            });
+          for (const entry of countedItems) {
+            const payload: PendingUpdate = {
+              id: `pending-${entry.areaItemId}`,
+              areaItemId: entry.areaItemId,
+              areaId: entry.areaId,
+              inventoryItemId: entry.inventoryItemId,
+              previousQuantity: entry.previousQuantity,
+              newQuantity: entry.newQuantity,
+              updateMethod: entry.updateMethod,
+              quickSelectValue: entry.quickSelectValue ?? null,
+              photoUrl: entry.photoUrl ?? null,
+              notes: entry.notes ?? null,
+              updatedBy: entry.updatedBy,
+              createdAt: entry.updatedAt,
+            };
+
+            if (!isOnline) {
+              get().queueUpdate(payload);
+              continue;
+            }
+
+            try {
+              await saveStockUpdate({
+                area_id: entry.areaId,
+                inventory_item_id: entry.inventoryItemId,
+                previous_quantity: entry.previousQuantity,
+                new_quantity: entry.newQuantity,
+                updated_by: entry.updatedBy,
+                update_method: entry.updateMethod,
+                quick_select_value: entry.quickSelectValue ?? null,
+                photo_url: entry.photoUrl ?? null,
+                notes: entry.notes ?? null,
+                created_at: entry.updatedAt,
+              });
+
+              await updateAreaItemQuantity(entry.areaItemId, entry.newQuantity, {
+                updated_by: entry.updatedBy,
+                updated_at: entry.updatedAt,
+              });
+            } catch (_) {
+              syncError = true;
+              get().queueUpdate(payload);
+            }
+          }
+
+          if (isOnline) {
+            try {
+              await updateStockCheckSession(currentSession.id, {
+                status: 'completed',
+                completed_at: completedAt,
+                items_checked: countedItems.length,
+                items_skipped: skippedItems.length,
+                items_total: currentSession.items_total,
+              });
+            } catch (_) {
+              syncError = true;
+            }
 
             if (currentAreaId) {
-              await updateStorageAreaLastChecked(currentAreaId, {
-                last_checked_at: completedAt,
-                last_checked_by: userId,
-              });
+              try {
+                await updateStorageAreaLastChecked(currentAreaId, {
+                  last_checked_at: completedAt,
+                  last_checked_by: userId,
+                });
+              } catch (_) {
+                syncError = true;
+              }
             }
           }
 
@@ -323,9 +413,16 @@ export const useStockStore = create<StockState>()(
             }));
           }
 
-          set({ currentSession: null });
+          set({
+            currentSession: null,
+            currentItemIndex: 0,
+            skippedItemCounts: {},
+            sessionItemUpdates: {},
+            error: syncError ? 'Some stock updates will sync later.' : null,
+          });
         } catch (error: any) {
-          set({ error: error?.message ?? 'Failed to complete session.' });
+          set({ error: error?.message ?? 'Failed to complete session.', isLoading: false });
+          return;
         } finally {
           set({ isLoading: false });
         }
@@ -347,7 +444,12 @@ export const useStockStore = create<StockState>()(
             });
           }
 
-          set({ currentSession: null });
+          set({
+            currentSession: null,
+            currentItemIndex: 0,
+            skippedItemCounts: {},
+            sessionItemUpdates: {},
+          });
         } catch (error: any) {
           set({ error: error?.message ?? 'Failed to abandon session.' });
         } finally {
@@ -356,7 +458,7 @@ export const useStockStore = create<StockState>()(
       },
 
       updateItemStock: async (areaItemId, quantity, method, options) => {
-        const { currentAreaItems, isOnline } = get();
+        const { currentAreaItems } = get();
         const item = currentAreaItems.find((entry) => entry.id === areaItemId);
 
         if (!item) {
@@ -372,76 +474,80 @@ export const useStockStore = create<StockState>()(
 
         set({ error: null });
         const now = new Date().toISOString();
-        const pendingUpdate: PendingUpdate = {
-          id: `pending-${Date.now()}`,
-          areaItemId,
-          areaId: item.area_id,
-          inventoryItemId: item.inventory_item_id,
-          previousQuantity: item.current_quantity,
-          newQuantity: quantity,
-          updateMethod: method,
-          quickSelectValue: options?.quickSelectValue ?? null,
-          photoUrl: options?.photoUrl ?? null,
-          notes: options?.notes ?? null,
-          updatedBy: userId,
-          createdAt: now,
-        };
+        const nextQuantity = normalizeQuantity(quantity);
+        const sessionEntry = get().sessionItemUpdates[areaItemId];
+        const previousQuantity = sessionEntry?.previousQuantity ?? item.current_quantity;
+        const previousStatus = sessionEntry?.status ?? null;
 
         set((state) => {
-          const updatedItems = state.currentAreaItems.map((entry) =>
+          const updatedCurrentItems = state.currentAreaItems.map((entry) =>
             entry.id === areaItemId
               ? {
                   ...entry,
-                  current_quantity: quantity,
+                  current_quantity: nextQuantity,
                   last_updated_at: now,
                   last_updated_by: userId,
                   stock_level: getStockLevel({
                     ...entry,
-                    current_quantity: quantity,
+                    current_quantity: nextQuantity,
                   }),
                 }
               : entry
           );
+
           const areaId = item.area_id;
+          const updatedAreaItems = (state.areaItemsById[areaId] || []).map((entry) =>
+            entry.id === areaItemId
+              ? {
+                  ...entry,
+                  current_quantity: nextQuantity,
+                  last_updated_at: now,
+                  last_updated_by: userId,
+                  stock_level: getStockLevel({
+                    ...entry,
+                    current_quantity: nextQuantity,
+                  }),
+                }
+              : entry
+          );
+          const areaName =
+            state.storageAreas.find((area) => area.id === item.area_id)?.name ?? item.area_id;
+          const nextSessionEntry: SessionItemUpdate = {
+            areaItemId,
+            areaId: item.area_id,
+            areaName,
+            inventoryItemId: item.inventory_item_id,
+            itemName: item.inventory_item.name,
+            unitType: item.unit_type,
+            previousQuantity,
+            newQuantity: nextQuantity,
+            status: 'counted',
+            updateMethod: method,
+            quickSelectValue: options?.quickSelectValue ?? null,
+            photoUrl: options?.photoUrl ?? null,
+            notes: options?.notes ?? null,
+            updatedBy: userId,
+            updatedAt: now,
+          };
+
+          const checkedDelta = previousStatus === 'counted' ? 0 : 1;
+          const skippedDelta = previousStatus === 'skipped' ? -1 : 0;
           return {
-            currentAreaItems: updatedItems,
-            areaItemsById: { ...state.areaItemsById, [areaId]: updatedItems },
+            currentAreaItems: updatedCurrentItems,
+            areaItemsById: { ...state.areaItemsById, [areaId]: updatedAreaItems },
+            sessionItemUpdates: {
+              ...state.sessionItemUpdates,
+              [areaItemId]: nextSessionEntry,
+            },
             currentSession: state.currentSession
               ? {
                   ...state.currentSession,
-                  items_checked: state.currentSession.items_checked + 1,
+                  items_checked: Math.max(0, state.currentSession.items_checked + checkedDelta),
+                  items_skipped: Math.max(0, state.currentSession.items_skipped + skippedDelta),
                 }
               : state.currentSession,
           };
         });
-
-        if (!isOnline) {
-          get().queueUpdate(pendingUpdate);
-          return;
-        }
-
-        try {
-          await saveStockUpdate({
-            area_id: item.area_id,
-            inventory_item_id: item.inventory_item_id,
-            previous_quantity: item.current_quantity,
-            new_quantity: quantity,
-            updated_by: userId,
-            update_method: method,
-            quick_select_value: options?.quickSelectValue ?? null,
-            photo_url: options?.photoUrl ?? null,
-            notes: options?.notes ?? null,
-            created_at: now,
-          });
-
-          await updateAreaItemQuantity(areaItemId, quantity, {
-            updated_by: userId,
-            updated_at: now,
-          });
-        } catch (error: any) {
-          get().queueUpdate(pendingUpdate);
-          set({ error: error?.message ?? 'Failed to save stock update. Will retry.' });
-        }
       },
 
       skipItem: () => {
@@ -455,13 +561,35 @@ export const useStockStore = create<StockState>()(
         const prevCount = skippedItemCounts[item.id] ?? 0;
         const nextCount = Math.min(prevCount + 1, 2);
         const nextCounts = { ...skippedItemCounts, [item.id]: nextCount };
+        const shouldCountAsSkipped = nextCount === 2;
+        const previousSessionEntry = get().sessionItemUpdates[item.id];
+        const skipUserId =
+          useAuthStore.getState().user?.id ??
+          currentSession?.user_id ??
+          previousSessionEntry?.updatedBy ??
+          item.last_updated_by ??
+          'system';
+        const now = new Date().toISOString();
+        const resetQuantity = previousSessionEntry?.previousQuantity ?? item.current_quantity;
 
         const reordered = [...currentAreaItems];
         reordered.splice(currentItemIndex, 1);
-        reordered.push(item);
+        reordered.push(
+          shouldCountAsSkipped
+            ? {
+                ...item,
+                current_quantity: resetQuantity,
+                last_updated_at: now,
+                last_updated_by: skipUserId,
+                stock_level: getStockLevel({
+                  ...item,
+                  current_quantity: resetQuantity,
+                }),
+              }
+            : item
+        );
 
         const nextIndex = currentItemIndex < reordered.length - 1 ? currentItemIndex : 0;
-        const shouldCountAsSkipped = nextCount === 2;
 
         set((state) => ({
           currentAreaItems: reordered,
@@ -470,11 +598,46 @@ export const useStockStore = create<StockState>()(
             : state.areaItemsById,
           currentItemIndex: nextIndex,
           skippedItemCounts: nextCounts,
+          sessionItemUpdates: shouldCountAsSkipped
+            ? {
+                ...state.sessionItemUpdates,
+                [item.id]: {
+                  areaItemId: item.id,
+                  areaId: item.area_id,
+                  areaName:
+                    state.storageAreas.find((area) => area.id === item.area_id)?.name ??
+                    item.area_id,
+                  inventoryItemId: item.inventory_item_id,
+                  itemName: item.inventory_item.name,
+                  unitType: item.unit_type,
+                  previousQuantity: resetQuantity,
+                  newQuantity: resetQuantity,
+                  status: 'skipped',
+                  updateMethod: previousSessionEntry?.updateMethod ?? 'manual',
+                  quickSelectValue: previousSessionEntry?.quickSelectValue ?? null,
+                  photoUrl: previousSessionEntry?.photoUrl ?? null,
+                  notes: previousSessionEntry?.notes ?? null,
+                  updatedBy: skipUserId,
+                  updatedAt: now,
+                },
+              }
+            : state.sessionItemUpdates,
           currentSession:
-            shouldCountAsSkipped && state.currentSession
+            state.currentSession
               ? {
                   ...state.currentSession,
-                  items_skipped: state.currentSession.items_skipped + 1,
+                  items_checked:
+                    shouldCountAsSkipped && previousSessionEntry?.status === 'counted'
+                      ? Math.max(0, state.currentSession.items_checked - 1)
+                      : state.currentSession.items_checked,
+                  items_skipped:
+                    !shouldCountAsSkipped
+                      ? state.currentSession.items_skipped
+                      : previousSessionEntry?.status === 'counted'
+                        ? state.currentSession.items_skipped + 1
+                        : previousSessionEntry?.status === 'skipped'
+                          ? state.currentSession.items_skipped
+                          : state.currentSession.items_skipped + 1,
                 }
               : state.currentSession,
         }));
@@ -496,6 +659,60 @@ export const useStockStore = create<StockState>()(
         const { currentAreaItems } = get();
         if (index < 0 || index >= currentAreaItems.length) return;
         set({ currentItemIndex: index });
+      },
+
+      setSessionItemQuantity: (areaItemId, quantity) => {
+        const nextQuantity = normalizeQuantity(quantity);
+        const existing = get().sessionItemUpdates[areaItemId];
+        if (!existing || existing.status !== 'counted') return;
+
+        const now = new Date().toISOString();
+
+        set((state) => {
+          const nextSessionItem: SessionItemUpdate = {
+            ...existing,
+            newQuantity: nextQuantity,
+            updatedAt: now,
+          };
+
+          const updateItem = (entry: AreaItemWithDetails) =>
+            entry.id === areaItemId
+              ? {
+                  ...entry,
+                  current_quantity: nextQuantity,
+                  last_updated_at: now,
+                  last_updated_by: nextSessionItem.updatedBy,
+                  stock_level: getStockLevel({
+                    ...entry,
+                    current_quantity: nextQuantity,
+                  }),
+                }
+              : entry;
+
+          const nextCurrentAreaItems =
+            state.currentAreaId === existing.areaId
+              ? state.currentAreaItems.map(updateItem)
+              : state.currentAreaItems;
+          const nextAreaItems = (state.areaItemsById[existing.areaId] || []).map(updateItem);
+
+          return {
+            sessionItemUpdates: {
+              ...state.sessionItemUpdates,
+              [areaItemId]: nextSessionItem,
+            },
+            currentAreaItems: nextCurrentAreaItems,
+            areaItemsById: {
+              ...state.areaItemsById,
+              [existing.areaId]: nextAreaItems,
+            },
+          };
+        });
+      },
+
+      getSessionItemUpdates: (areaId) => {
+        const updates = Object.values(get().sessionItemUpdates);
+        if (!areaId) return updates;
+        return updates.filter((entry) => entry.areaId === areaId);
       },
 
       queueUpdate: (update) => {

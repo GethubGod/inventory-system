@@ -20,7 +20,7 @@ import { colors } from '@/constants';
 import { useAuthStore, useStockStore } from '@/store';
 import { useNfcScanner, useStockNetworkStatus } from '@/hooks';
 import { QrScannerModal } from '@/components';
-import { CheckFrequency, StorageAreaWithStatus } from '@/types';
+import type { CheckFrequency, Location, StorageAreaWithStatus } from '@/types';
 
 const CHECK_FREQUENCY_LABELS: Record<CheckFrequency, string> = {
   daily: 'Daily check required',
@@ -76,7 +76,7 @@ function getLocationLabel(name: string | null, shortCode: string | null): string
 }
 
 export default function UpdateStockScreen() {
-  const { location } = useAuthStore();
+  const { location, locations, setLocation, fetchLocations } = useAuthStore();
   const {
     storageAreas,
     pendingUpdates,
@@ -93,6 +93,7 @@ export default function UpdateStockScreen() {
   const [showQrModal, setShowQrModal] = useState(false);
   const [showBypassModal, setShowBypassModal] = useState(false);
   const [showSyncToast, setShowSyncToast] = useState(false);
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
 
   const {
     isSupported,
@@ -138,6 +139,18 @@ export default function UpdateStockScreen() {
   }, [startPulse]);
 
   useEffect(() => {
+    if (locations.length === 0) {
+      fetchLocations();
+    }
+  }, [locations.length, fetchLocations]);
+
+  useEffect(() => {
+    if (!location && locations.length > 0) {
+      setLocation(locations[0]);
+    }
+  }, [location, locations, setLocation]);
+
+  useEffect(() => {
     if (location?.id) {
       fetchStorageAreas(location.id).then(() => {
         const areaIds = useStockStore.getState().storageAreas.map((area) => area.id);
@@ -166,6 +179,19 @@ export default function UpdateStockScreen() {
     await fetchStorageAreas(location.id);
     setIsRefreshing(false);
   }, [location?.id, fetchStorageAreas]);
+
+  const toggleLocationDropdown = useCallback(() => {
+    setShowLocationDropdown((prev) => !prev);
+  }, []);
+
+  const handleSelectLocation = useCallback(
+    async (selectedLocation: Location) => {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setLocation(selectedLocation);
+      setShowLocationDropdown(false);
+    },
+    [setLocation]
+  );
 
   const handleStationPress = useCallback((area: StorageAreaWithStatus) => {
     Alert.alert(
@@ -329,16 +355,25 @@ export default function UpdateStockScreen() {
         )}
 
         <View className="px-4 pt-5 pb-2 flex-row items-start justify-between">
-          <View>
+          <View className="flex-1 pr-3">
             <Text className="text-2xl font-bold text-gray-900">Update Stock</Text>
-            <View className="mt-2 flex-row items-center">
-              <View className="flex-row items-center rounded-full bg-orange-100 px-3 py-1">
+            <TouchableOpacity
+              className="mt-2 self-start flex-row items-center rounded-full bg-orange-100 px-3 py-1.5"
+              onPress={toggleLocationDropdown}
+            >
+              <View className="flex-row items-center">
                 <Ionicons name="location-outline" size={12} color={colors.primary[700]} />
                 <Text className="ml-1 text-xs font-semibold text-orange-700">
                   {locationLabel}
                 </Text>
               </View>
-            </View>
+              <Ionicons
+                name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
+                size={14}
+                color={colors.primary[700]}
+                style={{ marginLeft: 4 }}
+              />
+            </TouchableOpacity>
           </View>
 
           {pendingUpdates.length > 0 && (
@@ -350,6 +385,40 @@ export default function UpdateStockScreen() {
             </View>
           )}
         </View>
+
+        {showLocationDropdown && (
+          <View className="mx-4 mt-1 mb-1 rounded-2xl bg-white border border-gray-100 overflow-hidden">
+            {locations.map((loc) => {
+              const isSelected = location?.id === loc.id;
+
+              return (
+                <TouchableOpacity
+                  key={loc.id}
+                  className={`px-4 py-3 flex-row items-center justify-between ${
+                    isSelected ? 'bg-orange-50' : 'bg-white'
+                  }`}
+                  onPress={() => handleSelectLocation(loc)}
+                >
+                  <View className="flex-row items-center">
+                    <View
+                      className={`w-8 h-8 rounded-full items-center justify-center mr-3 ${
+                        isSelected ? 'bg-orange-500' : 'bg-gray-200'
+                      }`}
+                    >
+                      <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
+                        {loc.short_code}
+                      </Text>
+                    </View>
+                    <Text className={`text-sm ${isSelected ? 'font-semibold text-orange-700' : 'text-gray-800'}`}>
+                      {loc.name}
+                    </Text>
+                  </View>
+                  {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary[500]} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
 
         <View className="px-4 mt-4">
           <View
