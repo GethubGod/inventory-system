@@ -496,17 +496,24 @@ export default function StockCountingScreen() {
         <View className="flex-1">
           <View className="px-4 pt-4">
             <View className="flex-row items-center justify-between">
-              <TouchableOpacity onPress={handleBack}>
-                <Ionicons name="chevron-back" size={24} color={colors.gray[800]} />
-              </TouchableOpacity>
-              <View className="flex-1 items-center">
+              <View className="flex-1 items-start">
+                <TouchableOpacity
+                  onPress={confirmPauseAndExit}
+                  className="h-10 w-10 items-center justify-center"
+                >
+                  <Ionicons name="chevron-back" size={24} color={colors.gray[800]} />
+                </TouchableOpacity>
+              </View>
+              <View className="flex-1 items-center px-2">
                 <Text className="text-base font-semibold text-gray-900">
                   {area?.name ?? 'Storage Area'}
                 </Text>
               </View>
-              <Text className="text-xs text-gray-500">
-                {totalItems > 0 ? `${progressIndex} of ${totalItems} items` : 'Loading...'}
-              </Text>
+              <View className="flex-1 items-end">
+                <Text className="text-xs text-gray-500">
+                  {totalItems > 0 ? `${progressIndex} of ${totalItems} items` : 'Loading...'}
+                </Text>
+              </View>
             </View>
 
             <View className="mt-3 h-2 w-full rounded-full bg-gray-200">
@@ -656,12 +663,21 @@ export default function StockCountingScreen() {
                       </Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity
-                      className="mt-3 rounded-2xl border border-gray-200 py-3 items-center"
-                      onPress={handleFinishLater}
-                    >
-                      <Text className="text-sm font-semibold text-gray-600">Finish Later</Text>
-                    </TouchableOpacity>
+                    <View className="mt-3 flex-row">
+                      <TouchableOpacity
+                        className="flex-1 rounded-2xl border border-gray-200 py-3 items-center mr-2"
+                        onPress={handleGoBack}
+                      >
+                        <Text className="text-sm font-semibold text-gray-600">Go Back</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        className="flex-1 rounded-2xl border border-gray-200 py-3 items-center"
+                        onPress={confirmPauseAndExit}
+                      >
+                        <Text className="text-sm font-semibold text-gray-600">Finish Later</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               </Animated.View>
