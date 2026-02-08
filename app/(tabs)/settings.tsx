@@ -112,7 +112,7 @@ export default function SettingsScreen() {
             iconColor="#8B5CF6"
             iconBgColor="#EDE9FE"
             title="Display & Accessibility"
-            subtitle="Text size, theme, and interaction settings"
+            subtitle="Text size, button size, and interaction settings"
             onPress={() => router.push('/settings/display-accessibility')}
             showBorder={false}
           />

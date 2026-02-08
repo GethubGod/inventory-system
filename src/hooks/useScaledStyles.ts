@@ -11,13 +11,13 @@ export function useScaledStyles() {
     icon: store.iconSize,
 
     // Button values
-    buttonH: Math.min(store.buttonHeight, 64),
-    buttonFont: store.buttonFontSize,
-    buttonPadH: store.buttonPaddingH,
+    buttonH: store.buttonHeight(),
+    buttonFont: store.buttonFontSize(),
+    buttonPadH: store.buttonPaddingH(),
 
     // Layout values
-    cardPad: store.cardPadding,
-    rowH: store.itemRowHeight,
+    cardPad: store.cardPadding(),
+    rowH: store.itemRowHeight(),
 
     // Raw values for direct access
     textScale: store.textScale,

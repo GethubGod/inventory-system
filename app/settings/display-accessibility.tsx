@@ -74,8 +74,6 @@ function DisplaySection() {
     setUIScale,
     buttonSize,
     setButtonSize,
-    theme,
-    setTheme,
     hapticFeedback,
     setHapticFeedback,
     reduceMotion,
@@ -195,33 +193,6 @@ function DisplaySection() {
             <Text className="text-white font-semibold" style={{ fontSize: ds.buttonFont }}>Sample Button</Text>
           </TouchableOpacity>
         </View>
-      </View>
-
-      <View className="h-px bg-gray-100 mx-4" />
-
-      <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(16) }}>
-        <Text className="font-medium text-gray-900" style={{ fontSize: ds.fontSize(15), marginBottom: ds.spacing(12) }}>Theme</Text>
-        <MultiOptionToggle
-          options={[
-            {
-              value: 'light',
-              label: 'Light',
-              preview: <Ionicons name="sunny" size={ds.icon(16)} color={theme === 'light' ? colors.primary[600] : colors.gray[500]} />,
-            },
-            {
-              value: 'system',
-              label: 'System',
-              preview: <Ionicons name="phone-portrait" size={ds.icon(16)} color={theme === 'system' ? colors.primary[600] : colors.gray[500]} />,
-            },
-            {
-              value: 'dark',
-              label: 'Dark',
-              preview: <Ionicons name="moon" size={ds.icon(16)} color={theme === 'dark' ? colors.primary[600] : colors.gray[500]} />,
-            },
-          ]}
-          value={theme}
-          onValueChange={setTheme}
-        />
       </View>
 
       <View className="h-px bg-gray-100 mx-4" />

@@ -84,11 +84,11 @@ interface DisplayState {
   iconSize: (baseSize: number) => number;
 
   // Computed fixed values
-  buttonHeight: number;
-  buttonFontSize: number;
-  buttonPaddingH: number;
-  cardPadding: number;
-  itemRowHeight: number;
+  buttonHeight: () => number;
+  buttonFontSize: () => number;
+  buttonPaddingH: () => number;
+  cardPadding: () => number;
+  itemRowHeight: () => number;
 }
 
 const DEFAULT_STATE = {
@@ -147,22 +147,12 @@ export const useDisplayStore = create<DisplayState>()(
         scaledRadius: computeScaledRadius,
         iconSize: computeIconSize,
 
-        // Computed fixed values (these are getters that read current state)
-        get buttonHeight() {
-          return Math.min(BUTTON_HEIGHT[get().buttonSize], 64);
-        },
-        get buttonFontSize() {
-          return BUTTON_FONT[get().buttonSize];
-        },
-        get buttonPaddingH() {
-          return BUTTON_PADDING_H[get().buttonSize];
-        },
-        get cardPadding() {
-          return CARD_PADDING[get().uiScale];
-        },
-        get itemRowHeight() {
-          return ITEM_ROW_HEIGHT[get().uiScale];
-        },
+        // Computed fixed values
+        buttonHeight: () => Math.min(BUTTON_HEIGHT[get().buttonSize], 64),
+        buttonFontSize: () => BUTTON_FONT[get().buttonSize],
+        buttonPaddingH: () => BUTTON_PADDING_H[get().buttonSize],
+        cardPadding: () => CARD_PADDING[get().uiScale],
+        itemRowHeight: () => ITEM_ROW_HEIGHT[get().uiScale],
       };
     },
     {

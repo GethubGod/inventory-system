@@ -23,7 +23,6 @@ import {
   ExpandableSection,
   SettingsRow,
   SettingToggle,
-  MultiOptionToggle,
   TimePickerRow,
   ChangePasswordModal,
   ReminderModal,
@@ -234,17 +233,11 @@ function DisplaySection() {
   const {
     textScale,
     setTextScale,
-    uiScale,
-    setUIScale,
-    buttonSize,
-    setButtonSize,
-    theme,
-    setTheme,
     hapticFeedback,
     setHapticFeedback,
     reduceMotion,
     setReduceMotion,
-    resetDisplayToDefaults,
+    resetToDefaults,
   } = useDisplayStore();
 
   const handleReset = () => {
@@ -260,7 +253,7 @@ function DisplaySection() {
             if (hapticFeedback && Platform.OS !== 'web') {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             }
-            resetDisplayToDefaults();
+            resetToDefaults();
           },
         },
       ]
@@ -302,34 +295,6 @@ function DisplaySection() {
         >
           Preview: The quick brown fox jumps over the lazy dog
         </Text>
-      </View>
-
-      <View className="h-px bg-gray-100 mx-4" />
-
-      {/* Theme */}
-      <View className="px-4 py-4">
-        <Text className="text-base font-medium text-gray-900 mb-3">Theme</Text>
-        <MultiOptionToggle
-          options={[
-            {
-              value: 'light',
-              label: 'Light',
-              preview: <Ionicons name="sunny" size={16} color={theme === 'light' ? colors.primary[600] : colors.gray[500]} />,
-            },
-            {
-              value: 'system',
-              label: 'System',
-              preview: <Ionicons name="phone-portrait" size={16} color={theme === 'system' ? colors.primary[600] : colors.gray[500]} />,
-            },
-            {
-              value: 'dark',
-              label: 'Dark',
-              preview: <Ionicons name="moon" size={16} color={theme === 'dark' ? colors.primary[600] : colors.gray[500]} />,
-            },
-          ]}
-          value={theme}
-          onValueChange={setTheme}
-        />
       </View>
 
       <View className="h-px bg-gray-100 mx-4" />

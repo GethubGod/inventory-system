@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useSettingsStore } from '@/store';
+import { useDisplayStore, useSettingsStore } from '@/store';
 import { colors } from '@/constants';
 import { Reminder } from '@/types/settings';
 import { ReminderModal, ReminderListItem, SettingToggle, TimePickerRow } from '@/components/settings';
@@ -28,8 +28,8 @@ function RemindersSection({
     setReminderSettings,
     toggleReminder,
     deleteReminder,
-    hapticFeedback,
   } = useSettingsStore();
+  const { hapticFeedback } = useDisplayStore();
 
   const ensureNotificationPermissions = async () => {
     const granted = await requestNotificationPermissions();
