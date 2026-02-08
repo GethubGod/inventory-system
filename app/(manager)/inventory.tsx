@@ -25,6 +25,7 @@ import {
 } from '@/types';
 import { CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS, categoryColors, colors } from '@/constants';
 import { SpinningFish } from '@/components';
+import { BrandLogo } from '@/components/BrandLogo';
 import { getInventoryWithStock, InventoryWithStock } from '@/lib/api/stock';
 import { supabase } from '@/lib/supabase';
 import { getCheckStatus } from '@/store/stock.store';
@@ -1477,7 +1478,10 @@ export default function ManagerInventoryScreen() {
             </View>
           ) : (
             <View className="flex-row items-center justify-between">
-              <Text className="text-2xl font-bold text-gray-900">Inventory</Text>
+              <View className="flex-row items-center">
+                <BrandLogo variant="header" size={26} style={{ marginRight: 8 }} />
+                <Text className="text-2xl font-bold text-gray-900">Inventory</Text>
+              </View>
               <View className="flex-row items-center">
                 <TouchableOpacity
                   className="h-9 w-9 rounded-full bg-gray-100 items-center justify-center mr-2"

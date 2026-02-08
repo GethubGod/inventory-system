@@ -19,6 +19,7 @@ import { useAuthStore, useSettingsStore, useOrderStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { Location } from '@/types';
 import { sendReminderToEmployees } from '@/services/notificationService';
+import { BrandLogo } from '@/components';
 
 interface DashboardStats {
   pendingOrders: number;
@@ -410,12 +411,9 @@ export default function ManagerDashboard() {
       <View className="bg-white px-4 pt-3 pb-2 border-b border-gray-100">
         <View className="flex-row items-center justify-between">
           <View className="flex-row items-center">
-            <View className="w-10 h-10 bg-primary-500 rounded-xl items-center justify-center">
-              <Text className="text-white font-bold text-lg">B</Text>
-            </View>
-            <View className="ml-3">
-              <Text className="text-gray-900 font-bold text-lg">Babytuna</Text>
-              <Text className="text-primary-500 text-xs font-medium">Manager</Text>
+            <BrandLogo variant="header" size={28} />
+            <View className="ml-2 rounded-full bg-purple-100 px-3 py-1">
+              <Text className="text-purple-700 text-xs font-semibold">Manager</Text>
             </View>
           </View>
 

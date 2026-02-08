@@ -15,7 +15,7 @@ import { useOrderStore, useAuthStore } from '@/store';
 import { OrderItemWithInventory } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS, CATEGORY_LABELS, categoryColors } from '@/constants';
 import { supabase } from '@/lib/supabase';
-import { SpinningFish } from '@/components';
+import { BrandLogo, SpinningFish } from '@/components';
 
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -285,11 +285,17 @@ export default function OrderDetailScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          title: `Order #${currentOrder.order_number}`,
           headerBackTitle: 'Back',
           headerTintColor: '#F97316',
           headerStyle: { backgroundColor: '#FFFFFF' },
-          headerTitleStyle: { color: '#111827', fontWeight: '600' },
+          headerTitle: () => (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <BrandLogo variant="header" size={24} style={{ marginRight: 8 }} />
+              <Text style={{ color: '#111827', fontSize: 17, fontWeight: '600' }}>
+                Order #{currentOrder.order_number}
+              </Text>
+            </View>
+          ),
         }}
       />
       <SafeAreaView className="flex-1 bg-gray-50" edges={['left', 'right', 'bottom']}>

@@ -19,7 +19,7 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { useAuthStore, useStockStore } from '@/store';
 import { useNfcScanner, useStockNetworkStatus } from '@/hooks';
-import { QrScannerModal } from '@/components';
+import { BrandLogo, QrScannerModal } from '@/components';
 import type { CheckFrequency, Location, StorageAreaWithStatus } from '@/types';
 import { cancelStockCountPausedNotifications } from '@/services/notificationService';
 
@@ -416,7 +416,10 @@ export default function UpdateStockScreen() {
 
         <View className="px-4 pt-5 pb-2 flex-row items-start justify-between">
           <View className="flex-1 pr-3">
-            <Text className="text-2xl font-bold text-gray-900">Update Stock</Text>
+            <View className="flex-row items-center">
+              <BrandLogo variant="header" size={28} style={{ marginRight: 8 }} />
+              <Text className="text-2xl font-bold text-gray-900">Update Stock</Text>
+            </View>
             <TouchableOpacity
               className="mt-2 self-start flex-row items-center rounded-full bg-orange-100 px-3 py-1.5"
               onPress={toggleLocationDropdown}
@@ -436,14 +439,16 @@ export default function UpdateStockScreen() {
             </TouchableOpacity>
           </View>
 
-          {pendingUpdates.length > 0 && (
-            <View className="flex-row items-center rounded-full bg-amber-100 px-3 py-1">
-              <Ionicons name="cloud-upload-outline" size={14} color={colors.warning} />
-              <Text className="ml-1 text-xs font-semibold text-amber-700">
-                {pendingUpdates.length} pending
-              </Text>
-            </View>
-          )}
+          <View className="items-end">
+            {pendingUpdates.length > 0 && (
+              <View className="flex-row items-center rounded-full bg-amber-100 px-3 py-1">
+                <Ionicons name="cloud-upload-outline" size={14} color={colors.warning} />
+                <Text className="ml-1 text-xs font-semibold text-amber-700">
+                  {pendingUpdates.length} pending
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
 
         {showLocationDropdown && (

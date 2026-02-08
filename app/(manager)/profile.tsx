@@ -36,6 +36,7 @@ import {
   cancelReminder,
 } from '@/services/notificationService';
 import { seedStations, updateAccessCodes } from '@/services';
+import { BrandLogo } from '@/components';
 
 const ACCESS_CODE_REGEX = /^\d{4}$/;
 
@@ -703,6 +704,7 @@ export default function ManagerSettingsScreen() {
   const { user, signOut, setViewMode } = useAuthStore();
   const { hapticFeedback } = useSettingsStore();
   const isManager = user?.role === 'manager';
+  const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
@@ -740,7 +742,10 @@ export default function ManagerSettingsScreen() {
       >
         {/* Header */}
         <View className="px-5 py-4 flex-row items-center justify-between">
-          <Text className="text-2xl font-bold text-gray-900">Settings</Text>
+          <View className="flex-row items-center">
+            <BrandLogo variant="header" size={28} style={{ marginRight: 10 }} />
+            <Text className="text-2xl font-bold text-gray-900">Settings</Text>
+          </View>
           <View className="bg-purple-100 px-3 py-1 rounded-full">
             <Text className="text-purple-700 text-sm font-semibold">Manager</Text>
           </View>
@@ -837,6 +842,12 @@ export default function ManagerSettingsScreen() {
           <Text className="text-gray-400 text-sm">
             Signed in as {user?.email}
           </Text>
+        </View>
+
+        <View className="items-center px-6 pt-6 pb-10">
+          <BrandLogo variant="footer" size={40} />
+          <Text className="text-xs text-gray-500 mt-2">Babytuna Systems</Text>
+          <Text className="text-xs text-gray-400 mt-1">Version {appVersion}</Text>
         </View>
       </ScrollView>
 

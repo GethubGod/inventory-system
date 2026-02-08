@@ -37,6 +37,7 @@ import {
   scheduleNoOrderTodayReminder,
   scheduleBeforeClosingReminder,
 } from '@/services/notificationService';
+import { BrandLogo } from '@/components';
 
 // ============================================
 // PROFILE SECTION
@@ -797,6 +798,7 @@ export default function SettingsScreen() {
 
   const isManager = user?.role === 'manager';
   const draftCount = getTotalItemCount();
+  const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   const handleSignOut = () => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -876,9 +878,9 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View className="px-5 py-4 flex-row items-center justify-between">
+        <View className="px-5 py-4 flex-row items-center">
+          <BrandLogo variant="header" size={28} style={{ marginRight: 10 }} />
           <Text className="text-2xl font-bold text-gray-900">Settings</Text>
-          <Text className="text-lg">Babytuna</Text>
         </View>
 
         {/* Section 1: Profile */}
@@ -1035,6 +1037,12 @@ export default function SettingsScreen() {
           <Text className="text-gray-400 text-sm">
             Signed in as {user?.email}
           </Text>
+        </View>
+
+        <View className="items-center px-6 pt-6 pb-10">
+          <BrandLogo variant="footer" size={40} />
+          <Text className="text-xs text-gray-500 mt-2">Babytuna Systems</Text>
+          <Text className="text-xs text-gray-400 mt-1">Version {appVersion}</Text>
         </View>
       </ScrollView>
 

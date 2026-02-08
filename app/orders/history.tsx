@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useOrderStore, useAuthStore } from '@/store';
 import { OrderWithDetails, OrderStatus } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS, colors } from '@/constants';
+import { BrandLogo } from '@/components';
 
 const statuses: (OrderStatus | null)[] = [null, 'submitted', 'fulfilled', 'cancelled'];
 
@@ -125,14 +126,17 @@ export default function OrdersScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Header */}
       <View className="bg-white px-5 py-3 border-b border-gray-100 flex-row items-center">
-        <TouchableOpacity
-          onPress={() => router.back()}
-          className="p-2 mr-2"
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="arrow-back" size={20} color={colors.gray[700]} />
-        </TouchableOpacity>
-        <Text className="text-2xl font-bold text-gray-900">My Orders</Text>
+        <View className="flex-row items-center flex-1">
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="p-2 mr-2"
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="arrow-back" size={20} color={colors.gray[700]} />
+          </TouchableOpacity>
+          <BrandLogo variant="header" size={24} style={{ marginRight: 8 }} />
+          <Text className="text-2xl font-bold text-gray-900">My Orders</Text>
+        </View>
       </View>
 
       {/* Status Filter */}

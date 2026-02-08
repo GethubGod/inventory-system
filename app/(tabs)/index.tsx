@@ -21,6 +21,7 @@ import * as Haptics from 'expo-haptics';
 import { useInventoryStore, useAuthStore, useOrderStore } from '@/store';
 import { InventoryItem, ItemCategory, Location, SupplierCategory } from '@/types';
 import { CATEGORY_LABELS, categoryColors, colors } from '@/constants';
+import { BrandLogo } from '@/components';
 import { InventoryItemCard } from '@/components/InventoryItemCard';
 
 // Enable LayoutAnimation on Android
@@ -248,8 +249,8 @@ export default function OrderScreen() {
             onPress={toggleLocationDropdown}
             className="flex-row items-center bg-gray-100 px-3 py-2 rounded-xl flex-1 mr-3"
           >
-            <Ionicons name="location" size={18} color={colors.primary[500]} />
-            <Text className="text-base font-semibold text-gray-900 mx-2 flex-1" numberOfLines={1}>
+            <BrandLogo variant="header" size={26} style={{ marginRight: 8 }} />
+            <Text className="text-base font-semibold text-gray-900 flex-1" numberOfLines={1}>
               {location?.name || 'Select Location'}
             </Text>
             <Ionicons

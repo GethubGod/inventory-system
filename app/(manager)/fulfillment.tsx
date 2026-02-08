@@ -18,6 +18,7 @@ import { colors, CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS } from '@/constants';
 import { OrderWithDetails, InventoryItem, SupplierCategory, ItemCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { SpinningFish } from '@/components';
+import { BrandLogo } from '@/components/BrandLogo';
 
 // Aggregated item type
 interface AggregatedItem {
@@ -661,7 +662,8 @@ export default function FulfillmentScreen() {
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Header */}
-      <View className="bg-white px-4 py-3 border-b border-gray-100">
+      <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center">
+        <BrandLogo variant="header" size={24} style={{ marginRight: 8 }} />
         <Text className="text-xl font-bold text-gray-900">Fulfillment</Text>
       </View>
 
