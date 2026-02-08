@@ -20,6 +20,7 @@ import {
   listManagedUsers,
   setManagedUserSuspended,
 } from '@/services/userManagement';
+import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 
 type UserFilter = 'all' | 'employees' | 'managers' | 'active' | 'inactive' | 'suspended';
 
@@ -320,6 +321,7 @@ export default function UserManagementScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+      <ManagerScaleContainer>
       <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center">
         <TouchableOpacity
           onPress={() => router.back()}
@@ -490,6 +492,7 @@ export default function UserManagementScreen() {
           </View>
         </View>
       </Modal>
+      </ManagerScaleContainer>
     </SafeAreaView>
   );
 }

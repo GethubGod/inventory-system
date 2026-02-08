@@ -20,6 +20,7 @@ import { colors } from '@/constants';
 import { Location, InventoryItem, UnitType } from '@/types';
 import { SpinningFish } from '@/components';
 import { getInventoryWithStock } from '@/lib/api/stock';
+import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 
 // Category emoji mapping
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -672,6 +673,7 @@ export default function ManagerCartScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+      <ManagerScaleContainer>
       {/* Header */}
       <View className="bg-white px-5 py-4 border-b border-gray-100">
         <Text className="text-2xl font-bold text-gray-900">Cart</Text>
@@ -793,6 +795,7 @@ export default function ManagerCartScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      </ManagerScaleContainer>
     </SafeAreaView>
   );
 }

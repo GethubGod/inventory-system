@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabase';
 import { Location } from '@/types';
 import { sendReminderToEmployees } from '@/services/notificationService';
 import { BrandLogo } from '@/components';
+import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 
 interface DashboardStats {
   pendingOrders: number;
@@ -408,6 +409,7 @@ export default function ManagerDashboard() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+      <ManagerScaleContainer>
       {/* Header */}
       <View className="bg-white px-4 pt-3 pb-2 border-b border-gray-100">
         <View className="flex-row items-center justify-between">
@@ -746,6 +748,7 @@ export default function ManagerDashboard() {
           </View>
         </Modal>
       </View>
+      </ManagerScaleContainer>
     </SafeAreaView>
   );
 }

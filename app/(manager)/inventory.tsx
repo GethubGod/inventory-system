@@ -26,6 +26,7 @@ import {
 import { CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS, categoryColors, colors } from '@/constants';
 import { SpinningFish } from '@/components';
 import { BrandLogo } from '@/components/BrandLogo';
+import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { getInventoryWithStock, InventoryWithStock } from '@/lib/api/stock';
 import { supabase } from '@/lib/supabase';
 import { getCheckStatus } from '@/store/stock.store';
@@ -1462,6 +1463,7 @@ export default function ManagerInventoryScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'bottom', 'left', 'right']}>
+      <ManagerScaleContainer>
       <View className="flex-1">
         <View className="px-4 pt-4">
           {isBulkMode ? (
@@ -2828,6 +2830,7 @@ export default function ManagerInventoryScreen() {
           </KeyboardAvoidingView>
         </SafeAreaView>
       </Modal>
+      </ManagerScaleContainer>
     </SafeAreaView>
   );
 }

@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { SUPPLIER_CATEGORY_LABELS, colors } from '@/constants';
 import { useSettingsStore } from '@/store';
+import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 
 interface ConfirmationDetail {
   locationName: string;
@@ -189,6 +190,7 @@ export default function FulfillmentConfirmationScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right', 'bottom']}>
+      <ManagerScaleContainer>
       {/* Header */}
       <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center justify-between">
         <View className="flex-row items-center flex-1">
@@ -411,6 +413,7 @@ export default function FulfillmentConfirmationScreen() {
           </TouchableOpacity>
         </View>
       </View>
+      </ManagerScaleContainer>
     </SafeAreaView>
   );
 }

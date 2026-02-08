@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { colors } from '@/constants';
+import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 
 // For multi-item orders from a single location
 interface FishItemOrder {
@@ -183,6 +184,7 @@ export default function ExportFishOrderScreen() {
         }}
       />
       <SafeAreaView className="flex-1 bg-gray-50" edges={['bottom']}>
+        <ManagerScaleContainer>
         <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
           {/* Header */}
           <View
@@ -392,6 +394,7 @@ export default function ExportFishOrderScreen() {
             </TouchableOpacity>
           </View>
         </View>
+        </ManagerScaleContainer>
       </SafeAreaView>
     </>
   );

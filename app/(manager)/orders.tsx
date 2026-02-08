@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store';
 import { Order, OrderStatus, Location } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS } from '@/constants';
+import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 
 type FilterStatus = OrderStatus | 'all';
 
@@ -195,6 +196,7 @@ export default function ManagerOrdersScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+      <ManagerScaleContainer>
       {/* Header */}
       <View className="bg-white px-4 py-3 flex-row items-center justify-between border-b border-gray-100">
         <View className="flex-row items-center">
@@ -417,6 +419,7 @@ export default function ManagerOrdersScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+      </ManagerScaleContainer>
     </SafeAreaView>
   );
 }

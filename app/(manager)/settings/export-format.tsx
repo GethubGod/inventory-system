@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { useSettingsStore, useDisplayStore } from '@/store';
 import { DEFAULT_EXPORT_FORMAT_SETTINGS } from '@/types/settings';
 import { colors } from '@/constants';
+import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 
 export default function ExportFormatSettingsScreen() {
   const { exportFormat, setExportFormat } = useSettingsStore();
@@ -47,6 +48,7 @@ export default function ExportFormatSettingsScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+      <ManagerScaleContainer>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1"
@@ -102,6 +104,7 @@ export default function ExportFormatSettingsScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      </ManagerScaleContainer>
     </SafeAreaView>
   );
 }

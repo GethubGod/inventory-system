@@ -10,7 +10,9 @@ export default function ManagerLayout() {
   const cartCount = getTotalCartCount();
   const isLarge = ds.uiScale === 'large';
   const isCompact = ds.uiScale === 'compact';
-  const tabBarScale = isLarge ? 1.1 : isCompact ? 0.95 : 1;
+  const buttonScale = ds.buttonSize === 'large' ? 1.08 : ds.buttonSize === 'small' ? 0.94 : 1;
+  const textScale = ds.textScale > 1 ? 1 + (ds.textScale - 1) * 0.15 : 1 - (1 - ds.textScale) * 0.08;
+  const tabBarScale = Math.max(0.9, Math.min(1.25, (isLarge ? 1.1 : isCompact ? 0.95 : 1) * buttonScale * textScale));
   const badgeSize = Math.max(18, Math.round(18 * tabBarScale));
 
   if (!session) {
