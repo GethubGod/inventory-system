@@ -21,6 +21,7 @@ import {
   setManagedUserSuspended,
 } from '@/services/userManagement';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { useSettingsBackRoute } from '@/hooks/useSettingsBackRoute';
 
 type UserFilter = 'all' | 'employees' | 'managers' | 'active' | 'inactive' | 'suspended';
 
@@ -81,6 +82,7 @@ function formatLastActivity(user: ManagedUser): string {
 
 export default function UserManagementScreen() {
   const { user: currentUser, profile } = useAuthStore();
+  const settingsBackRoute = useSettingsBackRoute();
   const isManager = (currentUser?.role ?? profile?.role) === 'manager';
 
   const [users, setUsers] = useState<ManagedUser[]>([]);
@@ -324,7 +326,7 @@ export default function UserManagementScreen() {
       <ManagerScaleContainer>
       <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center">
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.replace(settingsBackRoute)}
           className="p-2 mr-2"
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >

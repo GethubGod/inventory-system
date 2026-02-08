@@ -8,6 +8,7 @@ import { colors } from '@/constants';
 import { SettingToggle, TimePickerRow } from '@/components/settings';
 import { requestNotificationPermissions } from '@/services/notificationService';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { useSettingsBackRoute } from '@/hooks/useSettingsBackRoute';
 
 function NotificationsSection() {
   const ds = useScaledStyles();
@@ -135,12 +136,13 @@ function NotificationsSection() {
 
 export default function NotificationsSettingsScreen() {
   const ds = useScaledStyles();
+  const settingsBackRoute = useSettingsBackRoute();
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       <View className="bg-white border-b border-gray-100 flex-row items-center" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}>
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.replace(settingsBackRoute)}
           style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >

@@ -8,11 +8,13 @@ import { useAuthStore, useDisplayStore } from '@/store';
 import { colors } from '@/constants';
 import { updateAccessCodes } from '@/services';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { useSettingsBackRoute } from '@/hooks/useSettingsBackRoute';
 
 const ACCESS_CODE_REGEX = /^\d{4}$/;
 
 export default function ManagerAccessCodesScreen() {
   const ds = useScaledStyles();
+  const settingsBackRoute = useSettingsBackRoute();
   const { user } = useAuthStore();
   const { hapticFeedback } = useDisplayStore();
 
@@ -90,7 +92,7 @@ export default function ManagerAccessCodesScreen() {
         style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
       >
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.replace(settingsBackRoute)}
           style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >

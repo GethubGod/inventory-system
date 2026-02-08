@@ -18,6 +18,7 @@ import { useAuthStore, useSettingsStore, useDisplayStore } from '@/store';
 import { colors } from '@/constants';
 import { ChangePasswordModal } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { useSettingsBackRoute } from '@/hooks/useSettingsBackRoute';
 
 function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) {
   const { user, location } = useAuthStore();
@@ -171,6 +172,7 @@ function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) 
 
 export default function ProfileSettingsScreen() {
   const ds = useScaledStyles();
+  const settingsBackRoute = useSettingsBackRoute();
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   return (
@@ -180,7 +182,7 @@ export default function ProfileSettingsScreen() {
         style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
       >
         <TouchableOpacity
-          onPress={() => router.back()}
+          onPress={() => router.replace(settingsBackRoute)}
           style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
