@@ -18,6 +18,7 @@ export type UserRole = 'employee' | 'manager';
 export type AuthProvider = 'email' | 'google' | 'apple';
 
 export type OrderStatus = 'draft' | 'submitted' | 'processing' | 'fulfilled' | 'cancelled' | 'cancel_requested';
+export type OrderInputMode = 'quantity' | 'remaining';
 
 export type UnitType = 'base' | 'pack';
 
@@ -50,6 +51,9 @@ export interface Profile {
   id: string;
   full_name: string | null;
   role: UserRole | null;
+  is_suspended: boolean;
+  last_active_at: string | null;
+  last_order_at: string | null;
   profile_completed: boolean;
   provider: AuthProvider | null;
   created_at: string;
@@ -87,6 +91,12 @@ export interface OrderItem {
   inventory_item_id: string;
   quantity: number;
   unit_type: UnitType;
+  input_mode: OrderInputMode;
+  quantity_requested: number | null;
+  remaining_reported: number | null;
+  decided_quantity: number | null;
+  decided_by: string | null;
+  decided_at: string | null;
   created_at: string;
 }
 
@@ -212,8 +222,25 @@ export interface Database {
       };
       profiles: {
         Row: Profile;
-        Insert: Omit<Profile, 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<Profile, 'id' | 'created_at' | 'updated_at'>>;
+        Insert: {
+          id: string;
+          full_name?: string | null;
+          role?: UserRole | null;
+          is_suspended?: boolean;
+          last_active_at?: string | null;
+          last_order_at?: string | null;
+          profile_completed?: boolean;
+          provider?: AuthProvider | null;
+        };
+        Update: Partial<{
+          full_name: string | null;
+          role: UserRole | null;
+          is_suspended: boolean;
+          last_active_at: string | null;
+          last_order_at: string | null;
+          profile_completed: boolean;
+          provider: AuthProvider | null;
+        }>;
       };
       inventory_items: {
         Row: InventoryItem;

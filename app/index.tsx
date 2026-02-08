@@ -25,6 +25,10 @@ export default function Index() {
     return <Redirect href="/(auth)/complete-profile" />;
   }
 
+  if (profile.is_suspended) {
+    return <Redirect href="/suspended" />;
+  }
+
   const role = user?.role ?? profile.role;
 
   // Route based on viewMode for managers, employees always go to tabs.

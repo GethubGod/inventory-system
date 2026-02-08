@@ -16,6 +16,10 @@ export default function TabsLayout() {
     return <Redirect href="/(auth)/complete-profile" />;
   }
 
+  if (profile.is_suspended) {
+    return <Redirect href="/suspended" />;
+  }
+
   return (
     <Tabs
       screenOptions={{

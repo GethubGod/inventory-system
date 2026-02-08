@@ -4,10 +4,36 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Order, OrderItem, OrderWithDetails, OrderStatus, UnitType } from '@/types';
 import { supabase } from '@/lib/supabase';
 
+export type OrderInputMode = 'quantity' | 'remaining';
+
 export interface CartItem {
+  id: string;
   inventoryItemId: string;
   quantity: number;
   unitType: UnitType;
+  inputMode: OrderInputMode;
+  quantityRequested: number | null;
+  remainingReported: number | null;
+  decidedQuantity: number | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+}
+
+export interface AddToCartOptions {
+  inputMode?: OrderInputMode;
+  quantityRequested?: number | null;
+  remainingReported?: number | null;
+  decidedQuantity?: number | null;
+  decidedBy?: string | null;
+  decidedAt?: string | null;
+}
+
+interface UpdateCartItemOptions {
+  cartItemId?: string;
+  inputMode?: OrderInputMode;
+  quantityRequested?: number | null;
+  remainingReported?: number | null;
+  clearDecision?: boolean;
 }
 
 // Cart items organized by location
@@ -20,19 +46,38 @@ interface OrderState {
   isLoading: boolean;
 
   // Cart actions (location-aware)
-  addToCart: (locationId: string, inventoryItemId: string, quantity: number, unitType: UnitType) => void;
-  updateCartItem: (locationId: string, inventoryItemId: string, quantity: number, unitType: UnitType) => void;
-  removeFromCart: (locationId: string, inventoryItemId: string) => void;
+  addToCart: (
+    locationId: string,
+    inventoryItemId: string,
+    quantity: number,
+    unitType: UnitType,
+    options?: AddToCartOptions
+  ) => void;
+  updateCartItem: (
+    locationId: string,
+    inventoryItemId: string,
+    quantity: number,
+    unitType: UnitType,
+    options?: UpdateCartItemOptions
+  ) => void;
+  removeFromCart: (locationId: string, inventoryItemId: string, cartItemId?: string) => void;
   moveCartItem: (
     fromLocationId: string,
     toLocationId: string,
     inventoryItemId: string,
-    unitType: UnitType
+    unitType: UnitType,
+    cartItemId?: string
   ) => void;
   moveLocationCartItems: (fromLocationId: string, toLocationId: string) => void;
   moveAllCartItemsToLocation: (toLocationId: string) => void;
   clearLocationCart: (locationId: string) => void;
   clearAllCarts: () => void;
+  setCartItemDecision: (
+    locationId: string,
+    cartItemId: string,
+    decidedQuantity: number,
+    decidedBy: string
+  ) => void;
 
   // Cart getters
   getCartItems: (locationId: string) => CartItem[];
@@ -40,6 +85,8 @@ interface OrderState {
   getLocationCartTotal: (locationId: string) => number;
   getTotalCartCount: () => number;
   getCartLocationIds: () => string[];
+  hasUndecidedRemaining: (locationId: string) => boolean;
+  getUndecidedRemainingItems: (locationId: string) => CartItem[];
 
   // Legacy support - for backward compatibility
   cart: CartItem[];
@@ -59,6 +106,167 @@ interface OrderState {
   cancelOrder: (orderId: string) => Promise<void>;
 }
 
+const createCartItemId = () =>
+  `cart_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+
+function toValidNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function getEffectiveQuantity(item: CartItem): number {
+  if (item.inputMode === 'quantity') {
+    return item.quantityRequested ?? 0;
+  }
+  return item.decidedQuantity ?? 0;
+}
+
+function normalizeCartItem(raw: any): CartItem | null {
+  const inputMode: OrderInputMode = raw?.inputMode === 'remaining' ? 'remaining' : 'quantity';
+  const unitType: UnitType = raw?.unitType === 'base' ? 'base' : 'pack';
+  const id = typeof raw?.id === 'string' && raw.id ? raw.id : createCartItemId();
+  const inventoryItemId =
+    typeof raw?.inventoryItemId === 'string' && raw.inventoryItemId ? raw.inventoryItemId : null;
+
+  if (!inventoryItemId) return null;
+
+  if (inputMode === 'quantity') {
+    const legacyQuantity = toValidNumber(raw?.quantity);
+    const quantityRequested = toValidNumber(raw?.quantityRequested ?? legacyQuantity);
+    if (quantityRequested === null || quantityRequested <= 0) return null;
+
+    const decidedQuantityRaw = toValidNumber(raw?.decidedQuantity);
+    const decidedQuantity = decidedQuantityRaw !== null && decidedQuantityRaw >= 0 ? decidedQuantityRaw : null;
+
+    const item: CartItem = {
+      id,
+      inventoryItemId,
+      quantity: quantityRequested,
+      unitType,
+      inputMode,
+      quantityRequested,
+      remainingReported: null,
+      decidedQuantity,
+      decidedBy: typeof raw?.decidedBy === 'string' ? raw.decidedBy : null,
+      decidedAt: typeof raw?.decidedAt === 'string' ? raw.decidedAt : null,
+    };
+    return item;
+  }
+
+  const remainingLegacy = toValidNumber(raw?.remainingReported ?? raw?.quantity);
+  if (remainingLegacy === null || remainingLegacy < 0) return null;
+
+  const decidedQuantityRaw = toValidNumber(raw?.decidedQuantity);
+  const decidedQuantity = decidedQuantityRaw !== null && decidedQuantityRaw >= 0 ? decidedQuantityRaw : null;
+
+  const item: CartItem = {
+    id,
+    inventoryItemId,
+    quantity: decidedQuantity ?? 0,
+    unitType,
+    inputMode,
+    quantityRequested: null,
+    remainingReported: remainingLegacy,
+    decidedQuantity,
+    decidedBy: typeof raw?.decidedBy === 'string' ? raw.decidedBy : null,
+    decidedAt: typeof raw?.decidedAt === 'string' ? raw.decidedAt : null,
+  };
+  return item;
+}
+
+function normalizeLocationCart(rawCart: unknown): CartItem[] {
+  if (!Array.isArray(rawCart)) return [];
+  return rawCart
+    .map((item) => normalizeCartItem(item))
+    .filter((item): item is CartItem => Boolean(item));
+}
+
+function getLocationCart(cartByLocation: CartByLocation, locationId: string): CartItem[] {
+  return normalizeLocationCart(cartByLocation[locationId] || []);
+}
+
+function mergeCartItem(
+  destination: CartItem[],
+  incoming: CartItem
+): CartItem[] {
+  if (incoming.inputMode === 'quantity') {
+    const existingIndex = destination.findIndex(
+      (item) =>
+        item.inventoryItemId === incoming.inventoryItemId &&
+        item.unitType === incoming.unitType &&
+        item.inputMode === 'quantity'
+    );
+
+    if (existingIndex >= 0) {
+      const existing = destination[existingIndex];
+      const nextQuantity = (existing.quantityRequested ?? 0) + (incoming.quantityRequested ?? 0);
+      const merged: CartItem = {
+        ...existing,
+        unitType: incoming.unitType,
+        quantityRequested: nextQuantity,
+        quantity: nextQuantity,
+      };
+      return destination.map((item, idx) => (idx === existingIndex ? merged : item));
+    }
+
+    return [...destination, incoming];
+  }
+
+  // Remaining-mode merge rule: replace existing remaining row for same item+unit.
+  const existingRemainingIndex = destination.findIndex(
+    (item) =>
+      item.inventoryItemId === incoming.inventoryItemId &&
+      item.unitType === incoming.unitType &&
+      item.inputMode === 'remaining'
+  );
+
+  if (existingRemainingIndex >= 0) {
+    return destination.map((item, idx) => (idx === existingRemainingIndex ? incoming : item));
+  }
+
+  return [...destination, incoming];
+}
+
+function findCartItemIndex(
+  locationCart: CartItem[],
+  inventoryItemId: string,
+  unitType: UnitType,
+  cartItemId?: string
+): number {
+  if (cartItemId) {
+    const byId = locationCart.findIndex((item) => item.id === cartItemId);
+    if (byId >= 0) return byId;
+  }
+
+  const byInventoryAndUnit = locationCart.findIndex(
+    (item) => item.inventoryItemId === inventoryItemId && item.unitType === unitType
+  );
+  if (byInventoryAndUnit >= 0) return byInventoryAndUnit;
+
+  return locationCart.findIndex((item) => item.inventoryItemId === inventoryItemId);
+}
+
+function toOrderItemInsert(orderId: string, item: CartItem): Omit<OrderItem, 'id' | 'created_at'> {
+  const quantity = getEffectiveQuantity(item);
+
+  return {
+    order_id: orderId,
+    inventory_item_id: item.inventoryItemId,
+    quantity,
+    unit_type: item.unitType,
+    input_mode: item.inputMode,
+    quantity_requested: item.quantityRequested,
+    remaining_reported: item.remainingReported,
+    decided_quantity: item.decidedQuantity,
+    decided_by: item.decidedBy,
+    decided_at: item.decidedAt,
+  };
+}
+
 export const useOrderStore = create<OrderState>()(
   persist(
     (set, get) => ({
@@ -70,106 +278,190 @@ export const useOrderStore = create<OrderState>()(
       // Legacy cart property - returns flattened cart for backward compatibility
       get cart() {
         const { cartByLocation } = get();
-        return Object.values(cartByLocation).flat();
+        return Object.values(cartByLocation).flatMap((items) => normalizeLocationCart(items));
       },
 
-      addToCart: (locationId, inventoryItemId, quantity, unitType) => {
+      addToCart: (locationId, inventoryItemId, quantity, unitType, options) => {
         const { cartByLocation } = get();
-        const locationCart = cartByLocation[locationId] || [];
-        const existing = locationCart.find((item) => item.inventoryItemId === inventoryItemId);
+        const locationCart = getLocationCart(cartByLocation, locationId);
 
-        if (existing) {
+        const inputMode: OrderInputMode = options?.inputMode ?? 'quantity';
+
+        if (inputMode === 'quantity') {
+          const quantityRequested = toValidNumber(options?.quantityRequested ?? quantity);
+          if (quantityRequested === null || quantityRequested <= 0) return;
+
+          const nextItem: CartItem = {
+            id: createCartItemId(),
+            inventoryItemId,
+            unitType,
+            inputMode,
+            quantityRequested,
+            remainingReported: null,
+            decidedQuantity:
+              toValidNumber(options?.decidedQuantity) !== null &&
+              (toValidNumber(options?.decidedQuantity) as number) >= 0
+                ? (toValidNumber(options?.decidedQuantity) as number)
+                : null,
+            decidedBy: typeof options?.decidedBy === 'string' ? options.decidedBy : null,
+            decidedAt: typeof options?.decidedAt === 'string' ? options.decidedAt : null,
+            quantity: quantityRequested,
+          };
+
+          const mergedCart = mergeCartItem(locationCart, nextItem);
           set({
             cartByLocation: {
               ...cartByLocation,
-              [locationId]: locationCart.map((item) =>
-                item.inventoryItemId === inventoryItemId
-                  ? { ...item, quantity: item.quantity + quantity, unitType }
-                  : item
-              ),
+              [locationId]: mergedCart,
             },
           });
-        } else {
-          set({
-            cartByLocation: {
-              ...cartByLocation,
-              [locationId]: [...locationCart, { inventoryItemId, quantity, unitType }],
-            },
-          });
+          return;
         }
-      },
 
-      updateCartItem: (locationId, inventoryItemId, quantity, unitType) => {
-        const { cartByLocation } = get();
-        const locationCart = cartByLocation[locationId] || [];
+        const remainingReported = toValidNumber(options?.remainingReported ?? quantity);
+        if (remainingReported === null || remainingReported < 0) return;
 
-        if (quantity <= 0) {
-          set({
-            cartByLocation: {
-              ...cartByLocation,
-              [locationId]: locationCart.filter((item) => item.inventoryItemId !== inventoryItemId),
-            },
-          });
-        } else {
-          set({
-            cartByLocation: {
-              ...cartByLocation,
-              [locationId]: locationCart.map((item) =>
-                item.inventoryItemId === inventoryItemId
-                  ? { ...item, quantity, unitType }
-                  : item
-              ),
-            },
-          });
-        }
-      },
+        const decidedQuantityRaw = toValidNumber(options?.decidedQuantity);
+        const decidedQuantity =
+          decidedQuantityRaw !== null && decidedQuantityRaw >= 0 ? decidedQuantityRaw : null;
 
-      removeFromCart: (locationId, inventoryItemId) => {
-        const { cartByLocation } = get();
-        const locationCart = cartByLocation[locationId] || [];
+        const nextItem: CartItem = {
+          id: createCartItemId(),
+          inventoryItemId,
+          unitType,
+          inputMode: 'remaining',
+          quantityRequested: null,
+          remainingReported,
+          decidedQuantity,
+          decidedBy: typeof options?.decidedBy === 'string' ? options.decidedBy : null,
+          decidedAt: typeof options?.decidedAt === 'string' ? options.decidedAt : null,
+          quantity: decidedQuantity ?? 0,
+        };
+
+        const mergedCart = mergeCartItem(locationCart, nextItem);
+
         set({
           cartByLocation: {
             ...cartByLocation,
-            [locationId]: locationCart.filter((item) => item.inventoryItemId !== inventoryItemId),
+            [locationId]: mergedCart,
           },
         });
       },
 
-      moveCartItem: (fromLocationId, toLocationId, inventoryItemId, unitType) => {
+      updateCartItem: (locationId, inventoryItemId, quantity, unitType, options) => {
+        const { cartByLocation } = get();
+        const locationCart = getLocationCart(cartByLocation, locationId);
+
+        const index = findCartItemIndex(
+          locationCart,
+          inventoryItemId,
+          unitType,
+          options?.cartItemId
+        );
+
+        if (index < 0) return;
+
+        const existing = locationCart[index];
+        const nextMode: OrderInputMode = options?.inputMode ?? existing.inputMode;
+
+        if (nextMode === 'quantity') {
+          const nextQuantity = toValidNumber(options?.quantityRequested ?? quantity);
+
+          if (nextQuantity === null || nextQuantity <= 0) {
+            const nextCart = locationCart.filter((_, idx) => idx !== index);
+            set({
+              cartByLocation: {
+                ...cartByLocation,
+                [locationId]: nextCart,
+              },
+            });
+            return;
+          }
+
+          const updated: CartItem = {
+            ...existing,
+            unitType,
+            inputMode: 'quantity',
+            quantityRequested: nextQuantity,
+            remainingReported: null,
+            quantity: nextQuantity,
+            decidedQuantity: options?.clearDecision ? null : existing.decidedQuantity,
+            decidedBy: options?.clearDecision ? null : existing.decidedBy,
+            decidedAt: options?.clearDecision ? null : existing.decidedAt,
+          };
+
+          const nextCart = locationCart.map((item, idx) => (idx === index ? updated : item));
+          set({
+            cartByLocation: {
+              ...cartByLocation,
+              [locationId]: nextCart,
+            },
+          });
+          return;
+        }
+
+        const nextRemaining = toValidNumber(options?.remainingReported ?? quantity);
+        if (nextRemaining === null || nextRemaining < 0) {
+          const nextCart = locationCart.filter((_, idx) => idx !== index);
+          set({
+            cartByLocation: {
+              ...cartByLocation,
+              [locationId]: nextCart,
+            },
+          });
+          return;
+        }
+
+        const updated: CartItem = {
+          ...existing,
+          unitType,
+          inputMode: 'remaining',
+          quantityRequested: null,
+          remainingReported: nextRemaining,
+          quantity: 0,
+          decidedQuantity: null,
+          decidedBy: null,
+          decidedAt: null,
+        };
+
+        const nextCart = locationCart.map((item, idx) => (idx === index ? updated : item));
+        set({
+          cartByLocation: {
+            ...cartByLocation,
+            [locationId]: nextCart,
+          },
+        });
+      },
+
+      removeFromCart: (locationId, inventoryItemId, cartItemId) => {
+        const { cartByLocation } = get();
+        const locationCart = getLocationCart(cartByLocation, locationId);
+
+        const nextCart = cartItemId
+          ? locationCart.filter((item) => item.id !== cartItemId)
+          : locationCart.filter((item) => item.inventoryItemId !== inventoryItemId);
+
+        set({
+          cartByLocation: {
+            ...cartByLocation,
+            [locationId]: nextCart,
+          },
+        });
+      },
+
+      moveCartItem: (fromLocationId, toLocationId, inventoryItemId, unitType, cartItemId) => {
         if (fromLocationId === toLocationId) return;
 
         const { cartByLocation } = get();
-        const fromCart = cartByLocation[fromLocationId] || [];
-        const toCart = cartByLocation[toLocationId] || [];
+        const fromCart = getLocationCart(cartByLocation, fromLocationId);
+        const toCart = getLocationCart(cartByLocation, toLocationId);
 
-        // Find the item to move
-        const itemToMove = fromCart.find(
-          (item) => item.inventoryItemId === inventoryItemId && item.unitType === unitType
-        );
-        if (!itemToMove) return;
+        const index = findCartItemIndex(fromCart, inventoryItemId, unitType, cartItemId);
+        if (index < 0) return;
 
-        // Check if item already exists in destination cart
-        const existingItem = toCart.find(
-          (item) => item.inventoryItemId === inventoryItemId && item.unitType === unitType
-        );
-
-        let newToCart: typeof toCart;
-        if (existingItem) {
-          // Merge quantities if item already exists
-          newToCart = toCart.map((item) =>
-            item.inventoryItemId === inventoryItemId && item.unitType === unitType
-              ? { ...item, quantity: item.quantity + itemToMove.quantity }
-              : item
-          );
-        } else {
-          // Add item to destination cart
-          newToCart = [...toCart, itemToMove];
-        }
-
-        // Remove from source cart
-        const newFromCart = fromCart.filter(
-          (item) => !(item.inventoryItemId === inventoryItemId && item.unitType === unitType)
-        );
+        const itemToMove = fromCart[index];
+        const newFromCart = fromCart.filter((_, idx) => idx !== index);
+        const newToCart = mergeCartItem(toCart, { ...itemToMove });
 
         set({
           cartByLocation: {
@@ -182,58 +474,41 @@ export const useOrderStore = create<OrderState>()(
 
       moveLocationCartItems: (fromLocationId, toLocationId) => {
         if (fromLocationId === toLocationId) return;
+
         const { cartByLocation } = get();
-        const fromCart = cartByLocation[fromLocationId] || [];
-        const toCart = cartByLocation[toLocationId] || [];
+        const fromCart = getLocationCart(cartByLocation, fromLocationId);
+        const toCart = getLocationCart(cartByLocation, toLocationId);
 
         if (fromCart.length === 0) return;
 
-        const mergedMap = new Map<string, CartItem>();
-        const keyFor = (item: CartItem) => `${item.inventoryItemId}-${item.unitType}`;
-
-        toCart.forEach((item) => {
-          mergedMap.set(keyFor(item), { ...item });
-        });
-
+        let merged = [...toCart];
         fromCart.forEach((item) => {
-          const key = keyFor(item);
-          const existing = mergedMap.get(key);
-          if (existing) {
-            existing.quantity += item.quantity;
-          } else {
-            mergedMap.set(key, { ...item });
-          }
+          merged = mergeCartItem(merged, { ...item });
         });
 
         const nextCartByLocation = { ...cartByLocation };
         delete nextCartByLocation[fromLocationId];
-        nextCartByLocation[toLocationId] = Array.from(mergedMap.values());
+        nextCartByLocation[toLocationId] = merged;
 
         set({ cartByLocation: nextCartByLocation });
       },
 
       moveAllCartItemsToLocation: (toLocationId) => {
         const { cartByLocation } = get();
-        const allItems = Object.values(cartByLocation).flat();
+        const allItems = Object.values(cartByLocation).flatMap((items) => normalizeLocationCart(items));
 
         if (allItems.length === 0) {
           return;
         }
 
-        const mergedMap = new Map<string, CartItem>();
+        let merged: CartItem[] = [];
         allItems.forEach((item) => {
-          const key = `${item.inventoryItemId}-${item.unitType}`;
-          const existing = mergedMap.get(key);
-          if (existing) {
-            existing.quantity += item.quantity;
-          } else {
-            mergedMap.set(key, { ...item });
-          }
+          merged = mergeCartItem(merged, { ...item });
         });
 
         set({
           cartByLocation: {
-            [toLocationId]: Array.from(mergedMap.values()),
+            [toLocationId]: merged,
           },
         });
       },
@@ -249,45 +524,101 @@ export const useOrderStore = create<OrderState>()(
       // Legacy clearCart - clears all carts
       clearCart: () => set({ cartByLocation: {} }),
 
+      setCartItemDecision: (locationId, cartItemId, decidedQuantity, decidedBy) => {
+        const { cartByLocation } = get();
+        const locationCart = getLocationCart(cartByLocation, locationId);
+
+        const normalizedQuantity = Math.max(0, decidedQuantity);
+
+        const nextCart = locationCart.map((item) => {
+          if (item.id !== cartItemId) return item;
+          if (item.inputMode !== 'remaining') return item;
+
+          return {
+            ...item,
+            decidedQuantity: normalizedQuantity,
+            decidedBy,
+            decidedAt: new Date().toISOString(),
+            quantity: normalizedQuantity,
+          };
+        });
+
+        set({
+          cartByLocation: {
+            ...cartByLocation,
+            [locationId]: nextCart,
+          },
+        });
+      },
+
       getCartItems: (locationId) => {
         const { cartByLocation } = get();
-        return cartByLocation[locationId] || [];
+        return getLocationCart(cartByLocation, locationId);
       },
 
       getCartItem: (locationId, inventoryItemId) => {
         const { cartByLocation } = get();
-        const locationCart = cartByLocation[locationId] || [];
+        const locationCart = getLocationCart(cartByLocation, locationId);
+
+        const quantityMode = locationCart.find(
+          (item) => item.inventoryItemId === inventoryItemId && item.inputMode === 'quantity'
+        );
+        if (quantityMode) return quantityMode;
+
         return locationCart.find((item) => item.inventoryItemId === inventoryItemId);
       },
 
       getLocationCartTotal: (locationId) => {
         const { cartByLocation } = get();
-        const locationCart = cartByLocation[locationId] || [];
-        return locationCart.reduce((total, item) => total + item.quantity, 0);
+        const locationCart = getLocationCart(cartByLocation, locationId);
+
+        return locationCart.reduce((total, item) => {
+          if (item.inputMode === 'quantity') {
+            return total + (item.quantityRequested ?? 0);
+          }
+          return total + 1;
+        }, 0);
       },
 
       getTotalCartCount: () => {
         const { cartByLocation } = get();
-        return Object.values(cartByLocation).reduce(
-          (total, items) => total + items.length,
-          0
-        );
+        return Object.values(cartByLocation).reduce((total, rawItems) => {
+          const items = normalizeLocationCart(rawItems);
+          return total + items.length;
+        }, 0);
       },
 
       getCartLocationIds: () => {
         const { cartByLocation } = get();
-        return Object.keys(cartByLocation).filter(
-          (locId) => cartByLocation[locId].length > 0
+        return Object.keys(cartByLocation).filter((locId) => {
+          const items = normalizeLocationCart(cartByLocation[locId]);
+          return items.length > 0;
+        });
+      },
+
+      hasUndecidedRemaining: (locationId) => {
+        const { cartByLocation } = get();
+        const locationCart = getLocationCart(cartByLocation, locationId);
+        return locationCart.some(
+          (item) => item.inputMode === 'remaining' && (item.decidedQuantity === null || item.decidedQuantity < 0)
+        );
+      },
+
+      getUndecidedRemainingItems: (locationId) => {
+        const { cartByLocation } = get();
+        const locationCart = getLocationCart(cartByLocation, locationId);
+        return locationCart.filter(
+          (item) => item.inputMode === 'remaining' && (item.decidedQuantity === null || item.decidedQuantity < 0)
         );
       },
 
       // Legacy getCartTotal - returns total across all locations
       getCartTotal: () => {
         const { cartByLocation } = get();
-        return Object.values(cartByLocation).reduce(
-          (total, items) => total + items.length,
-          0
-        );
+        return Object.values(cartByLocation).reduce((total, rawItems) => {
+          const items = normalizeLocationCart(rawItems);
+          return total + items.length;
+        }, 0);
       },
 
       fetchOrders: async (locationId) => {
@@ -402,7 +733,7 @@ export const useOrderStore = create<OrderState>()(
 
       createOrder: async (locationId, userId) => {
         const { cartByLocation, clearLocationCart } = get();
-        const locationCart = cartByLocation[locationId] || [];
+        const locationCart = getLocationCart(cartByLocation, locationId);
 
         if (locationCart.length === 0) {
           throw new Error('Cart is empty for this location');
@@ -411,7 +742,7 @@ export const useOrderStore = create<OrderState>()(
         set({ isLoading: true });
         try {
           // Create order
-          const { data: order, error: orderError } = await supabase
+          const orderResponse = await (supabase as any)
             .from('orders')
             .insert({
               location_id: locationId,
@@ -421,17 +752,18 @@ export const useOrderStore = create<OrderState>()(
             .select()
             .single();
 
+          const order = orderResponse.data as any;
+          const orderError = orderResponse.error;
+
           if (orderError) throw orderError;
+          if (!order?.id) throw new Error('Failed to create order');
 
           // Create order items
-          const orderItems: Omit<OrderItem, 'id' | 'created_at'>[] = locationCart.map((item) => ({
-            order_id: order.id,
-            inventory_item_id: item.inventoryItemId,
-            quantity: item.quantity,
-            unit_type: item.unitType,
-          }));
+          const orderItems: Omit<OrderItem, 'id' | 'created_at'>[] = locationCart.map((item) =>
+            toOrderItemInsert(order.id, item)
+          );
 
-          const { error: itemsError } = await supabase
+          const { error: itemsError } = await (supabase as any)
             .from('order_items')
             .insert(orderItems);
 
@@ -446,7 +778,7 @@ export const useOrderStore = create<OrderState>()(
 
       createAndSubmitOrder: async (locationId, userId) => {
         const { cartByLocation, clearLocationCart } = get();
-        const locationCart = cartByLocation[locationId] || [];
+        const locationCart = getLocationCart(cartByLocation, locationId);
 
         if (locationCart.length === 0) {
           throw new Error('Cart is empty for this location');
@@ -455,7 +787,7 @@ export const useOrderStore = create<OrderState>()(
         set({ isLoading: true });
         try {
           // Create order with status 'submitted' directly
-          const { data: order, error: orderError } = await supabase
+          const orderResponse = await (supabase as any)
             .from('orders')
             .insert({
               location_id: locationId,
@@ -468,17 +800,18 @@ export const useOrderStore = create<OrderState>()(
             `)
             .single();
 
+          const order = orderResponse.data as any;
+          const orderError = orderResponse.error;
+
           if (orderError) throw orderError;
+          if (!order?.id) throw new Error('Failed to create order');
 
           // Create order items
-          const orderItemsToInsert: Omit<OrderItem, 'id' | 'created_at'>[] = locationCart.map((item) => ({
-            order_id: order.id,
-            inventory_item_id: item.inventoryItemId,
-            quantity: item.quantity,
-            unit_type: item.unitType,
-          }));
+          const orderItemsToInsert: Omit<OrderItem, 'id' | 'created_at'>[] = locationCart.map((item) =>
+            toOrderItemInsert(order.id, item)
+          );
 
-          const { data: createdItems, error: itemsError } = await supabase
+          const { data: createdItems, error: itemsError } = await (supabase as any)
             .from('order_items')
             .insert(orderItemsToInsert)
             .select(`
@@ -506,7 +839,7 @@ export const useOrderStore = create<OrderState>()(
       submitOrder: async (orderId) => {
         set({ isLoading: true });
         try {
-          const { error } = await supabase
+          const { error } = await (supabase as any)
             .from('orders')
             .update({ status: 'submitted' })
             .eq('id', orderId);
@@ -527,7 +860,7 @@ export const useOrderStore = create<OrderState>()(
             updateData.fulfilled_by = fulfilledBy;
           }
 
-          const { error } = await supabase
+          const { error } = await (supabase as any)
             .from('orders')
             .update(updateData)
             .eq('id', orderId);
@@ -547,7 +880,7 @@ export const useOrderStore = create<OrderState>()(
       fulfillOrder: async (orderId, fulfilledBy) => {
         set({ isLoading: true });
         try {
-          const { error } = await supabase
+          const { error } = await (supabase as any)
             .from('orders')
             .update({
               status: 'fulfilled',
@@ -565,7 +898,7 @@ export const useOrderStore = create<OrderState>()(
       cancelOrder: async (orderId) => {
         set({ isLoading: true });
         try {
-          const { error } = await supabase
+          const { error } = await (supabase as any)
             .from('orders')
             .update({ status: 'cancelled' })
             .eq('id', orderId);

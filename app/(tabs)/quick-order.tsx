@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore, useInventoryStore, useOrderStore } from '@/store';
+import type { OrderInputMode } from '@/store';
 import { InventoryItem, UnitType, Location, ItemCategory, SupplierCategory } from '@/types';
 import { colors, CATEGORY_LABELS } from '@/constants';
 
@@ -87,6 +88,8 @@ export default function QuickOrderScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [quantity, setQuantity] = useState('1');
+  const [remainingAmount, setRemainingAmount] = useState('0');
+  const [inputMode, setInputMode] = useState<OrderInputMode>('quantity');
   const [selectedUnit, setSelectedUnit] = useState<UnitType>('pack');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -166,6 +169,16 @@ export default function QuickOrderScreen() {
   // Total cart count
   const totalCartCount = getTotalCartCount();
   const locationLabel = getLocationLabel(selectedLocation);
+  const parsedQuantity = parseFloat(quantity);
+  const parsedRemaining = parseFloat(remainingAmount);
+  const canAddToCart =
+    inputMode === 'quantity'
+      ? Number.isFinite(parsedQuantity) && parsedQuantity > 0
+      : Number.isFinite(parsedRemaining) && parsedRemaining >= 0;
+  const addButtonText =
+    inputMode === 'quantity'
+      ? `Add Order Qty (${locationLabel})`
+      : `Add Remaining (${locationLabel})`;
 
   // Filter items based on search query
   const filteredItems = useMemo(() => {
@@ -310,6 +323,8 @@ export default function QuickOrderScreen() {
     }
     setSelectedItem(item);
     setQuantity('1');
+    setRemainingAmount('0');
+    setInputMode('quantity');
     setSelectedUnit('pack');
     setScreenState('quantity');
 
@@ -329,27 +344,49 @@ export default function QuickOrderScreen() {
   const handleAddToCart = useCallback(() => {
     if (!selectedItem || !selectedLocation) return;
 
-    const qty = parseFloat(quantity) || 1;
-    if (qty <= 0) return;
+    if (inputMode === 'quantity') {
+      const qty = parseFloat(quantity);
+      if (!Number.isFinite(qty) || qty <= 0) return;
 
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      addToCart(selectedLocation.id, selectedItem.id, qty, selectedUnit, {
+        inputMode: 'quantity',
+        quantityRequested: qty,
+      });
+
+      const unitLabel = selectedUnit === 'pack' ? selectedItem.pack_unit : selectedItem.base_unit;
+      showSuccessToast(`✓ ${selectedItem.name} (Order ${qty} ${unitLabel})`);
+    } else {
+      const remaining = parseFloat(remainingAmount);
+      if (!Number.isFinite(remaining) || remaining < 0) return;
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      addToCart(selectedLocation.id, selectedItem.id, remaining, selectedUnit, {
+        inputMode: 'remaining',
+        remainingReported: remaining,
+      });
+
+      const unitLabel = selectedUnit === 'pack' ? selectedItem.pack_unit : selectedItem.base_unit;
+      showSuccessToast(`✓ ${selectedItem.name} (Remaining ${remaining} ${unitLabel})`);
     }
-
-    addToCart(selectedLocation.id, selectedItem.id, qty, selectedUnit);
-
-    const unitLabel = selectedUnit === 'pack' ? selectedItem.pack_unit : selectedItem.base_unit;
-    showSuccessToast(`✓ ${selectedItem.name} (${qty} ${unitLabel})`);
 
     // Reset to search state
     setSearchQuery('');
     setSelectedItem(null);
+    setInputMode('quantity');
+    setRemainingAmount('0');
     setScreenState('searching');
 
     setTimeout(() => {
       searchInputRef.current?.focus();
     }, 100);
-  }, [selectedItem, selectedLocation, quantity, selectedUnit, addToCart, showSuccessToast]);
+  }, [selectedItem, selectedLocation, inputMode, quantity, remainingAmount, selectedUnit, addToCart, showSuccessToast]);
 
   // Handle back from quantity state
   const handleBackToSearch = useCallback(() => {
@@ -400,12 +437,15 @@ export default function QuickOrderScreen() {
           {screenState === 'quantity' && selectedItem && (
             <TouchableOpacity
               onPress={handleAddToCart}
-              className="bg-primary-500 mx-3 my-2 py-4 rounded-xl items-center flex-row justify-center"
+              className={`mx-3 my-2 py-4 rounded-xl items-center flex-row justify-center ${
+                canAddToCart ? 'bg-primary-500' : 'bg-primary-300'
+              }`}
               activeOpacity={0.8}
+              disabled={!canAddToCart}
             >
               <Ionicons name="cart" size={22} color="white" />
               <Text className="text-white font-bold text-lg ml-2">
-                Add to Cart ({locationLabel})
+                {addButtonText}
               </Text>
             </TouchableOpacity>
           )}
@@ -637,14 +677,46 @@ export default function QuickOrderScreen() {
                   </View>
                 </View>
 
-                {/* Quantity & Unit Row - Compact */}
+                <View className="mb-3 flex-row">
+                  <TouchableOpacity
+                    onPress={() => setInputMode('quantity')}
+                    className={`flex-1 py-2 rounded-l-lg items-center ${
+                      inputMode === 'quantity' ? 'bg-primary-500' : 'bg-gray-100'
+                    }`}
+                  >
+                    <Text className={`text-xs font-semibold ${
+                      inputMode === 'quantity' ? 'text-white' : 'text-gray-600'
+                    }`}>
+                      Order Qty
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setInputMode('remaining')}
+                    className={`flex-1 py-2 rounded-r-lg items-center ${
+                      inputMode === 'remaining' ? 'bg-primary-500' : 'bg-gray-100'
+                    }`}
+                  >
+                    <Text className={`text-xs font-semibold ${
+                      inputMode === 'remaining' ? 'text-white' : 'text-gray-600'
+                    }`}>
+                      Remaining
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Quantity/Remaining + Unit Row */}
                 <View className="flex-row items-center">
-                  {/* Quantity Controls */}
+                  {/* Value Controls */}
                   <View className="flex-row items-center flex-1">
                     <TouchableOpacity
                       onPress={() => {
-                        const q = Math.max(1, (parseFloat(quantity) || 1) - 1);
-                        setQuantity(q.toString());
+                        if (inputMode === 'quantity') {
+                          const q = Math.max(1, (parseFloat(quantity) || 1) - 1);
+                          setQuantity(q.toString());
+                        } else {
+                          const r = Math.max(0, (parseFloat(remainingAmount) || 0) - 1);
+                          setRemainingAmount(r.toString());
+                        }
                         quantityInputRef.current?.focus();
                       }}
                       className="w-11 h-11 bg-gray-100 rounded-lg items-center justify-center"
@@ -654,8 +726,8 @@ export default function QuickOrderScreen() {
 
                     <TextInput
                       ref={quantityInputRef}
-                      value={quantity}
-                      onChangeText={setQuantity}
+                      value={inputMode === 'quantity' ? quantity : remainingAmount}
+                      onChangeText={inputMode === 'quantity' ? setQuantity : setRemainingAmount}
                       keyboardType="number-pad"
                       className="w-16 mx-2 text-center text-2xl font-bold text-gray-900"
                       style={{ height: 44 }}
@@ -665,8 +737,13 @@ export default function QuickOrderScreen() {
 
                     <TouchableOpacity
                       onPress={() => {
-                        const q = (parseFloat(quantity) || 0) + 1;
-                        setQuantity(q.toString());
+                        if (inputMode === 'quantity') {
+                          const q = (parseFloat(quantity) || 0) + 1;
+                          setQuantity(q.toString());
+                        } else {
+                          const r = (parseFloat(remainingAmount) || 0) + 1;
+                          setRemainingAmount(r.toString());
+                        }
                         quantityInputRef.current?.focus();
                       }}
                       className="w-11 h-11 bg-gray-100 rounded-lg items-center justify-center"
@@ -675,7 +752,7 @@ export default function QuickOrderScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Unit Toggle - Compact */}
+                  {/* Unit Toggle */}
                   <View className="flex-row ml-3">
                     <TouchableOpacity
                       onPress={() => {
@@ -709,6 +786,12 @@ export default function QuickOrderScreen() {
                     </TouchableOpacity>
                   </View>
                 </View>
+
+                {inputMode === 'remaining' && (
+                  <Text className="text-xs text-gray-500 mt-3">
+                    Enter how many are left. A manager will decide how many to order.
+                  </Text>
+                )}
               </View>
             )}
           </View>
@@ -870,12 +953,15 @@ export default function QuickOrderScreen() {
           <View className="bg-white border-t border-gray-200 px-3 py-2">
             <TouchableOpacity
               onPress={handleAddToCart}
-              className="bg-primary-500 py-4 rounded-xl items-center flex-row justify-center"
+              className={`py-4 rounded-xl items-center flex-row justify-center ${
+                canAddToCart ? 'bg-primary-500' : 'bg-primary-300'
+              }`}
               activeOpacity={0.8}
+              disabled={!canAddToCart}
             >
               <Ionicons name="cart" size={22} color="white" />
               <Text className="text-white font-bold text-lg ml-2">
-                Add to Cart ({locationLabel})
+                {addButtonText}
               </Text>
             </TouchableOpacity>
           </View>

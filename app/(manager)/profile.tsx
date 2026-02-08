@@ -701,9 +701,9 @@ function AboutSection() {
 // MAIN MANAGER SETTINGS SCREEN
 // ============================================
 export default function ManagerSettingsScreen() {
-  const { user, signOut, setViewMode } = useAuthStore();
+  const { user, profile, signOut, setViewMode } = useAuthStore();
   const { hapticFeedback } = useSettingsStore();
-  const isManager = user?.role === 'manager';
+  const isManager = (user?.role ?? profile?.role) === 'manager';
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -803,6 +803,24 @@ export default function ManagerSettingsScreen() {
         >
           <AboutSection />
         </ExpandableSection>
+
+        {/* User Management */}
+        {isManager && (
+          <View
+            className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+            style={shadow.md}
+          >
+            <SettingsRow
+              icon="people-outline"
+              iconColor="#2563EB"
+              iconBgColor="#DBEAFE"
+              title="User Management"
+              subtitle="View users, suspend inactive accounts, and delete accounts"
+              onPress={() => router.push('/(manager)/settings/user-management')}
+              showBorder={false}
+            />
+          </View>
+        )}
 
         {/* Switch View */}
         <View

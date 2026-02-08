@@ -352,10 +352,10 @@ function DisplaySection() {
 // NOTIFICATIONS SECTION
 // ============================================
 function NotificationsSection() {
-  const { user } = useAuthStore();
+  const { user, profile } = useAuthStore();
   const { notifications, setNotificationSettings, setQuietHours, hapticFeedback } =
     useSettingsStore();
-  const isManager = user?.role === 'manager';
+  const isManager = (user?.role ?? profile?.role) === 'manager';
 
   const handlePushToggle = async (enabled: boolean) => {
     if (enabled) {
@@ -788,7 +788,7 @@ function AboutSection() {
 // MAIN SETTINGS SCREEN
 // ============================================
 export default function SettingsScreen() {
-  const { user, signOut, setViewMode } = useAuthStore();
+  const { user, profile, signOut, setViewMode } = useAuthStore();
   const { hapticFeedback, addReminder, updateReminder } = useSettingsStore();
   const { getTotalItemCount, clearAllDrafts } = useDraftStore();
 
@@ -796,7 +796,7 @@ export default function SettingsScreen() {
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
 
-  const isManager = user?.role === 'manager';
+  const isManager = (user?.role ?? profile?.role) === 'manager';
   const draftCount = getTotalItemCount();
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
@@ -999,20 +999,30 @@ export default function SettingsScreen() {
 
         {/* Manager Switch */}
         {isManager && (
-          <View
-            className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-            style={shadow.md}
-          >
-            <SettingsRow
-              icon="swap-horizontal"
-              iconColor="#7C3AED"
-              iconBgColor="#EDE9FE"
-              title="Switch to Manager View"
-              subtitle="Manage orders and fulfillment"
-              onPress={handleSwitchToManager}
-              showBorder={false}
-            />
-          </View>
+          <>
+            <View
+              className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+              style={shadow.md}
+            >
+              <SettingsRow
+                icon="people-outline"
+                iconColor="#2563EB"
+                iconBgColor="#DBEAFE"
+                title="User Management"
+                subtitle="Suspend inactive users and delete accounts"
+                onPress={() => router.push('/(manager)/settings/user-management')}
+              />
+              <SettingsRow
+                icon="swap-horizontal"
+                iconColor="#7C3AED"
+                iconBgColor="#EDE9FE"
+                title="Switch to Manager View"
+                subtitle="Manage orders and fulfillment"
+                onPress={handleSwitchToManager}
+                showBorder={false}
+              />
+            </View>
+          </>
         )}
 
         {/* Sign Out */}

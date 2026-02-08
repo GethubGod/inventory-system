@@ -16,6 +16,10 @@ export default function ManagerLayout() {
     return <Redirect href="/(auth)/complete-profile" />;
   }
 
+  if (profile.is_suspended) {
+    return <Redirect href="/suspended" />;
+  }
+
   if ((user?.role ?? profile.role) !== 'manager') {
     return <Redirect href="/(tabs)" />;
   }
@@ -144,6 +148,12 @@ export default function ManagerLayout() {
       />
       <Tabs.Screen
         name="settings/export-format"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="settings/user-management"
         options={{
           href: null,
         }}

@@ -21,6 +21,7 @@ interface ConfirmationDetail {
   locationName: string;
   orderedBy: string;
   quantity: number;
+  remainingReported?: number;
   shortCode?: string;
 }
 
@@ -38,6 +39,9 @@ interface ConfirmationItem {
   locationGroup: LocationGroup;
   quantity: number;
   unitLabel: string;
+  inputMode?: 'quantity' | 'remaining';
+  remainingReported?: number | null;
+  managerDecided?: boolean;
   details: ConfirmationDetail[];
 }
 
@@ -87,7 +91,13 @@ export default function FulfillmentConfirmationScreen() {
         if (!groupItems || groupItems.length === 0) return null;
         const label = LOCATION_GROUP_LABELS[group].toUpperCase();
         const lines = groupItems
-          .map((item) => `- ${item.name}: ${item.quantity} ${item.unitLabel}`)
+          .map((item) => {
+            const remainingContext =
+              item.inputMode === 'remaining' && item.remainingReported != null
+                ? ` (Remaining was ${item.remainingReported} ${item.unitLabel})`
+                : '';
+            return `- ${item.name}: ${item.quantity} ${item.unitLabel}${remainingContext}`;
+          })
           .join('\n');
         return `--- ${label} ---\n${lines}`;
       })
@@ -277,6 +287,16 @@ export default function FulfillmentConfirmationScreen() {
                             <Text className="text-sm text-gray-500 mt-1">
                               {item.quantity} {item.unitLabel}
                             </Text>
+                            {item.inputMode === 'remaining' && item.remainingReported != null && (
+                              <View className="flex-row items-center mt-1">
+                                <View className="px-1.5 py-0.5 rounded-full bg-amber-100">
+                                  <Text className="text-[10px] font-semibold text-amber-700">Manager Decided</Text>
+                                </View>
+                                <Text className="ml-2 text-[11px] text-amber-700">
+                                  Remaining was {item.remainingReported} {item.unitLabel}
+                                </Text>
+                              </View>
+                            )}
                           </View>
                           <Ionicons
                             name={isExpanded ? 'chevron-up' : 'chevron-down'}
@@ -354,6 +374,11 @@ export default function FulfillmentConfirmationScreen() {
                                       <Text className="text-sm text-gray-700">{detail.locationName}</Text>
                                       <Text className="text-sm font-medium text-gray-700">{detail.quantity}</Text>
                                     </View>
+                                    {detail.remainingReported != null && detail.remainingReported > 0 && (
+                                      <Text className="text-xs text-amber-700 mt-1">
+                                        Remaining reported: {detail.remainingReported} {item.unitLabel}
+                                      </Text>
+                                    )}
                                     <Text className="text-xs text-gray-500 mt-1">Ordered by {detail.orderedBy}</Text>
                                   </View>
                                 ))

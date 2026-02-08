@@ -14,6 +14,7 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useOrderStore, useInventoryStore, useAuthStore } from '@/store';
+import type { CartItem } from '@/store';
 import { colors } from '@/constants';
 import { Location, InventoryItem, UnitType } from '@/types';
 import { SpinningFish } from '@/components';
@@ -31,10 +32,7 @@ const CATEGORY_EMOJI: Record<string, string> = {
   packaging: '📦',
 };
 
-interface CartItemWithDetails {
-  inventoryItemId: string;
-  quantity: number;
-  unitType: UnitType;
+interface CartItemWithDetails extends CartItem {
   inventoryItem?: InventoryItem;
 }
 
@@ -43,6 +41,7 @@ export default function CartScreen() {
     getCartItems,
     getCartLocationIds,
     getTotalCartCount,
+    getUndecidedRemainingItems,
     addToCart,
     updateCartItem,
     removeFromCart,
@@ -109,14 +108,39 @@ export default function CartScreen() {
 
   // Handle quantity change
   const handleQuantityChange = useCallback((locationId: string, itemId: string, newQuantity: number, unitType: 'base' | 'pack') => {
+    // Backward-compatible helper retained for existing calls.
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     updateCartItem(locationId, itemId, newQuantity, unitType);
   }, [updateCartItem]);
 
+  const handleItemValueChange = useCallback(
+    (locationId: string, item: CartItemWithDetails, nextValue: number, unitType: UnitType) => {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+
+      if (item.inputMode === 'quantity') {
+        updateCartItem(locationId, item.inventoryItemId, nextValue, unitType, {
+          cartItemId: item.id,
+          inputMode: 'quantity',
+          quantityRequested: nextValue,
+        });
+        return;
+      }
+
+      updateCartItem(locationId, item.inventoryItemId, Math.max(0, nextValue), unitType, {
+        cartItemId: item.id,
+        inputMode: 'remaining',
+        remainingReported: Math.max(0, nextValue),
+      });
+    },
+    [updateCartItem]
+  );
+
   // Handle remove item
-  const handleRemoveItem = useCallback((locationId: string, itemId: string, itemName: string) => {
+  const handleRemoveItem = useCallback((locationId: string, itemId: string, itemName: string, cartItemId: string) => {
     Alert.alert(
       'Remove Item',
       `Remove ${itemName} from cart?`,
@@ -129,7 +153,7 @@ export default function CartScreen() {
             if (Platform.OS !== 'web') {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             }
-            removeFromCart(locationId, itemId);
+            removeFromCart(locationId, itemId, cartItemId);
           },
         },
       ]
@@ -183,7 +207,20 @@ export default function CartScreen() {
     if (!menuItem) return;
     const { locationId, item } = menuItem;
     if (!item.inventoryItem) return;
-    updateCartItem(locationId, item.inventoryItemId, item.quantity + item.quantity, item.unitType);
+
+    if (item.inputMode === 'remaining') {
+      Alert.alert('Not available', 'Remaining-mode items cannot be duplicated.');
+      setShowItemMenu(false);
+      setMenuItem(null);
+      return;
+    }
+
+    const baseQuantity = item.quantityRequested ?? item.quantity;
+    updateCartItem(locationId, item.inventoryItemId, baseQuantity + baseQuantity, item.unitType, {
+      cartItemId: item.id,
+      inputMode: 'quantity',
+      quantityRequested: baseQuantity + baseQuantity,
+    });
     setShowItemMenu(false);
     setMenuItem(null);
   }, [menuItem, updateCartItem]);
@@ -206,13 +243,29 @@ export default function CartScreen() {
     }
 
     if (itemLocationAction === 'add') {
-      addToCart(toLocationId, menuItem.item.inventoryItemId, menuItem.item.quantity, menuItem.item.unitType);
+      if (menuItem.item.inputMode === 'quantity') {
+        const qty = menuItem.item.quantityRequested ?? menuItem.item.quantity;
+        addToCart(toLocationId, menuItem.item.inventoryItemId, qty, menuItem.item.unitType, {
+          inputMode: 'quantity',
+          quantityRequested: qty,
+        });
+      } else {
+        const remaining = menuItem.item.remainingReported ?? 0;
+        addToCart(toLocationId, menuItem.item.inventoryItemId, remaining, menuItem.item.unitType, {
+          inputMode: 'remaining',
+          remainingReported: remaining,
+          decidedQuantity: menuItem.item.decidedQuantity,
+          decidedBy: menuItem.item.decidedBy,
+          decidedAt: menuItem.item.decidedAt,
+        });
+      }
     } else {
       moveCartItem(
         menuItem.locationId,
         toLocationId,
         menuItem.item.inventoryItemId,
-        menuItem.item.unitType
+        menuItem.item.unitType,
+        menuItem.item.id
       );
     }
 
@@ -303,17 +356,20 @@ export default function CartScreen() {
   const renderCartItem = useCallback((locationId: string, item: CartItemWithDetails) => {
     if (!item.inventoryItem) return null;
 
-    const { inventoryItem, quantity, unitType } = item;
+    const { inventoryItem, unitType } = item;
+    const isRemainingMode = item.inputMode === 'remaining';
+    const value = isRemainingMode ? item.remainingReported ?? 0 : item.quantityRequested ?? item.quantity;
+    const valueLabel = isRemainingMode ? 'Remaining' : 'Order';
     const emoji = CATEGORY_EMOJI[inventoryItem.category] || '📦';
     const unitLabel = unitType === 'pack' ? inventoryItem.pack_unit : inventoryItem.base_unit;
-    const key = `${locationId}-${inventoryItem.id}`;
+    const key = `${locationId}-${item.id}`;
     const isExpanded = expandedItems.has(key);
 
     return (
-      <View key={inventoryItem.id} className="border-b border-gray-100">
+      <View key={item.id} className="border-b border-gray-100">
         {/* Compact Row */}
         <TouchableOpacity
-          onPress={() => toggleExpand(locationId, inventoryItem.id)}
+          onPress={() => toggleExpand(locationId, item.id)}
           className="flex-row items-center py-3"
           activeOpacity={0.7}
         >
@@ -322,9 +378,14 @@ export default function CartScreen() {
             <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
               {inventoryItem.name}
             </Text>
+            {isRemainingMode && (
+              <View className="self-start mt-1 px-2 py-0.5 rounded-full bg-amber-100">
+                <Text className="text-[10px] font-semibold text-amber-700">Remaining</Text>
+              </View>
+            )}
           </View>
           <Text className="text-sm font-semibold text-gray-700 mr-2">
-            {quantity} {unitLabel}
+            {valueLabel}: {value} {unitLabel}
           </Text>
           <Ionicons
             name={isExpanded ? 'chevron-up' : 'chevron-down'}
@@ -337,21 +398,21 @@ export default function CartScreen() {
         {isExpanded && (
           <View className="pb-3 pl-8">
             <View className="flex-row items-center justify-between">
-              {/* Quantity Controls */}
+              {/* Value Controls */}
               <View className="flex-row items-center">
                 <TouchableOpacity
-                  onPress={() => handleQuantityChange(locationId, inventoryItem.id, quantity - 1, unitType)}
+                  onPress={() => handleItemValueChange(locationId, item, value - 1, unitType)}
                   className="w-8 h-8 bg-gray-100 rounded-lg items-center justify-center"
                 >
                   <Ionicons name="remove" size={18} color={colors.gray[600]} />
                 </TouchableOpacity>
 
                 <Text className="mx-3 text-base font-semibold text-gray-900 min-w-[60px] text-center">
-                  {quantity}
+                  {value}
                 </Text>
 
                 <TouchableOpacity
-                  onPress={() => handleQuantityChange(locationId, inventoryItem.id, quantity + 1, unitType)}
+                  onPress={() => handleItemValueChange(locationId, item, value + 1, unitType)}
                   className="w-8 h-8 bg-gray-100 rounded-lg items-center justify-center"
                 >
                   <Ionicons name="add" size={18} color={colors.gray[600]} />
@@ -361,7 +422,7 @@ export default function CartScreen() {
               {/* Unit Toggle */}
               <View className="flex-row mx-3">
                 <TouchableOpacity
-                  onPress={() => handleQuantityChange(locationId, inventoryItem.id, quantity, 'pack')}
+                  onPress={() => handleItemValueChange(locationId, item, value, 'pack')}
                   className={`px-3 py-1 rounded-l-lg ${
                     unitType === 'pack' ? 'bg-primary-500' : 'bg-gray-100'
                   }`}
@@ -373,7 +434,7 @@ export default function CartScreen() {
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => handleQuantityChange(locationId, inventoryItem.id, quantity, 'base')}
+                  onPress={() => handleItemValueChange(locationId, item, value, 'base')}
                   className={`px-3 py-1 rounded-r-lg ${
                     unitType === 'base' ? 'bg-primary-500' : 'bg-gray-100'
                   }`}
@@ -397,7 +458,7 @@ export default function CartScreen() {
 
                 {/* Remove Button */}
                 <TouchableOpacity
-                  onPress={() => handleRemoveItem(locationId, inventoryItem.id, inventoryItem.name)}
+                  onPress={() => handleRemoveItem(locationId, inventoryItem.id, inventoryItem.name, item.id)}
                   className="p-2"
                 >
                   <Ionicons name="trash-outline" size={18} color={colors.error} />
@@ -405,20 +466,26 @@ export default function CartScreen() {
               </View>
             </View>
 
-            {/* Pack info */}
-            <Text className="text-xs text-gray-400 mt-2">
-              {inventoryItem.pack_size} {inventoryItem.base_unit} per {inventoryItem.pack_unit}
-            </Text>
+            {isRemainingMode ? (
+              <Text className="text-xs text-gray-500 mt-2">
+                Manager will set final order quantity before submission.
+              </Text>
+            ) : (
+              <Text className="text-xs text-gray-400 mt-2">
+                {inventoryItem.pack_size} {inventoryItem.base_unit} per {inventoryItem.pack_unit}
+              </Text>
+            )}
           </View>
         )}
       </View>
     );
-  }, [expandedItems, toggleExpand, handleQuantityChange, handleOpenItemMenu, handleRemoveItem]);
+  }, [expandedItems, toggleExpand, handleItemValueChange, handleOpenItemMenu, handleRemoveItem]);
 
   // Render location section
   const renderLocationSection = useCallback((location: Location) => {
     const cartWithDetails = getCartWithDetails(location.id);
     const itemCount = cartWithDetails.length;
+    const undecidedRemainingCount = getUndecidedRemainingItems(location.id).length;
 
     return (
       <View key={location.id} className="mb-4">
@@ -466,12 +533,22 @@ export default function CartScreen() {
           {cartWithDetails.map((item) => renderCartItem(location.id, item))}
         </View>
 
+        {undecidedRemainingCount > 0 && (
+          <View className="px-4 py-2 border-l border-r border-gray-200 bg-amber-50">
+            <Text className="text-xs text-amber-700 font-medium">
+              {undecidedRemainingCount} remaining item{undecidedRemainingCount === 1 ? '' : 's'} will require manager decision during review.
+            </Text>
+          </View>
+        )}
+
         {/* Submit Order Button */}
         <TouchableOpacity
           onPress={() => handleSubmitOrder(location.id, location.name)}
           disabled={submittingLocation === location.id}
-          className={`bg-primary-500 py-3 rounded-b-xl items-center flex-row justify-center ${
-            submittingLocation === location.id ? 'opacity-70' : ''
+          className={`py-3 rounded-b-xl items-center flex-row justify-center ${
+            submittingLocation === location.id
+              ? 'bg-primary-300'
+              : 'bg-primary-500'
           }`}
         >
           {submittingLocation === location.id ? (
@@ -488,7 +565,7 @@ export default function CartScreen() {
         </TouchableOpacity>
       </View>
     );
-  }, [getCartWithDetails, renderCartItem, handleClearLocationCart, handleSubmitOrder, submittingLocation, handleOpenCartLocationModal]);
+  }, [getCartWithDetails, getUndecidedRemainingItems, renderCartItem, handleClearLocationCart, handleSubmitOrder, submittingLocation, handleOpenCartLocationModal]);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>

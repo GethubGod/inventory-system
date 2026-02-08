@@ -26,11 +26,16 @@ interface AggregatedItem {
   inventoryItem: InventoryItem;
   totalQuantity: number;
   unitType: 'base' | 'pack';
+  hasRemainingMode: boolean;
+  unresolvedRemainingCount: number;
+  remainingReportedTotal: number;
   locationBreakdown: Array<{
     locationId: string;
     locationName: string;
     shortCode: string;
     quantity: number;
+    remainingReported: number;
+    hasUndecidedRemaining: boolean;
     orderedBy: string[];
     orderIds: string[];
   }>;
@@ -59,11 +64,16 @@ interface LocationGroupedItem {
   inventoryItem: InventoryItem;
   totalQuantity: number;
   unitType: 'base' | 'pack';
+  hasRemainingMode: boolean;
+  unresolvedRemainingCount: number;
+  remainingReportedTotal: number;
   locationBreakdown: Array<{
     locationId: string;
     locationName: string;
     shortCode: string;
     quantity: number;
+    remainingReported: number;
+    hasUndecidedRemaining: boolean;
     orderedBy: string[];
     orderIds: string[];
   }>;
@@ -114,6 +124,7 @@ export default function FulfillmentScreen() {
   );
   const [isFulfilling, setIsFulfilling] = useState(false);
   const [editedQuantities, setEditedQuantities] = useState<Record<string, number>>({});
+  const [reviewedRemainingKeys, setReviewedRemainingKeys] = useState<Set<string>>(new Set());
 
   // Fetch pending orders
   const fetchPendingOrders = async () => {
@@ -167,6 +178,22 @@ export default function FulfillmentScreen() {
         const item = orderItem.inventory_item;
         if (!item) return;
 
+        const isRemainingMode = orderItem.input_mode === 'remaining';
+        const remainingReported = isRemainingMode
+          ? Math.max(0, Number(orderItem.remaining_reported ?? 0))
+          : 0;
+        const decidedQuantity =
+          orderItem.decided_quantity == null
+            ? null
+            : Number(orderItem.decided_quantity);
+        const hasUndecidedRemaining =
+          isRemainingMode && (decidedQuantity == null || !Number.isFinite(decidedQuantity));
+        const lineQuantity = isRemainingMode
+          ? hasUndecidedRemaining
+            ? 0
+            : Math.max(0, decidedQuantity as number)
+          : Math.max(0, Number(orderItem.quantity ?? 0));
+
         const aggregateKey = [
           item.name.trim().toLowerCase(),
           item.supplier_category,
@@ -179,7 +206,12 @@ export default function FulfillmentScreen() {
         const existing = itemMap.get(aggregateKey);
 
         if (existing) {
-          existing.totalQuantity += orderItem.quantity;
+          existing.totalQuantity += lineQuantity;
+          existing.hasRemainingMode = existing.hasRemainingMode || isRemainingMode;
+          existing.remainingReportedTotal += remainingReported;
+          if (hasUndecidedRemaining) {
+            existing.unresolvedRemainingCount += 1;
+          }
           if (!existing.orderIds.includes(order.id)) {
             existing.orderIds.push(order.id);
           }
@@ -188,7 +220,10 @@ export default function FulfillmentScreen() {
             (lb) => lb.locationId === order.location_id
           );
           if (locationEntry) {
-            locationEntry.quantity += orderItem.quantity;
+            locationEntry.quantity += lineQuantity;
+            locationEntry.remainingReported += remainingReported;
+            locationEntry.hasUndecidedRemaining =
+              locationEntry.hasUndecidedRemaining || hasUndecidedRemaining;
             const orderedByName = order.user?.name || 'Unknown';
             if (!locationEntry.orderedBy.includes(orderedByName)) {
               locationEntry.orderedBy.push(orderedByName);
@@ -201,7 +236,9 @@ export default function FulfillmentScreen() {
               locationId: order.location_id,
               locationName: order.location?.name || 'Unknown',
               shortCode: order.location?.short_code || '??',
-              quantity: orderItem.quantity,
+              quantity: lineQuantity,
+              remainingReported,
+              hasUndecidedRemaining,
               orderedBy: [order.user?.name || 'Unknown'],
               orderIds: [order.id],
             });
@@ -210,14 +247,19 @@ export default function FulfillmentScreen() {
           itemMap.set(aggregateKey, {
             aggregateKey,
             inventoryItem: item,
-            totalQuantity: orderItem.quantity,
+            totalQuantity: lineQuantity,
             unitType: orderItem.unit_type,
+            hasRemainingMode: isRemainingMode,
+            unresolvedRemainingCount: hasUndecidedRemaining ? 1 : 0,
+            remainingReportedTotal: remainingReported,
             locationBreakdown: [
               {
                 locationId: order.location_id,
                 locationName: order.location?.name || 'Unknown',
                 shortCode: order.location?.short_code || '??',
-                quantity: orderItem.quantity,
+                quantity: lineQuantity,
+                remainingReported,
+                hasUndecidedRemaining,
                 orderedBy: [order.user?.name || 'Unknown'],
                 orderIds: [order.id],
               },
@@ -304,17 +346,31 @@ export default function FulfillmentScreen() {
   }, [toggleOtherItem]);
 
   // Handle quantity change
-  const handleQuantityChange = useCallback((itemKey: string, newQuantity: number) => {
+  const handleQuantityChange = useCallback((item: LocationGroupedItem, newQuantity: number) => {
     setEditedQuantities((prev) => ({
       ...prev,
-      [itemKey]: Math.max(0, newQuantity),
+      [item.key]: Math.max(0, newQuantity),
     }));
+    if (item.unresolvedRemainingCount > 0) {
+      setReviewedRemainingKeys((prev) => {
+        if (prev.has(item.key)) return prev;
+        const next = new Set(prev);
+        next.add(item.key);
+        return next;
+      });
+    }
   }, []);
 
   // Get displayed quantity (edited or original)
   const getDisplayQuantity = useCallback((itemKey: string, fallbackQuantity: number) => {
     return editedQuantities[itemKey] ?? fallbackQuantity;
   }, [editedQuantities]);
+
+  const isDecisionPending = useCallback((item: LocationGroupedItem) => {
+    if (!item.hasRemainingMode) return false;
+    if (item.unresolvedRemainingCount <= 0) return false;
+    return !reviewedRemainingKeys.has(item.key);
+  }, [reviewedRemainingKeys]);
 
   const buildLocationGroupedItems = useCallback((supplierGroup: SupplierGroup) => {
     const groupedItems: LocationGroupedItem[] = [];
@@ -323,23 +379,29 @@ export default function FulfillmentScreen() {
       categoryGroup.items.forEach((item) => {
         const groupMap: Record<LocationGroup, {
           quantity: number;
+          remainingReportedTotal: number;
+          unresolvedRemainingCount: number;
           breakdown: AggregatedItem['locationBreakdown'];
           orderIds: Set<string>;
         }> = {
-          sushi: { quantity: 0, breakdown: [], orderIds: new Set() },
-          poki: { quantity: 0, breakdown: [], orderIds: new Set() },
+          sushi: { quantity: 0, remainingReportedTotal: 0, unresolvedRemainingCount: 0, breakdown: [], orderIds: new Set() },
+          poki: { quantity: 0, remainingReportedTotal: 0, unresolvedRemainingCount: 0, breakdown: [], orderIds: new Set() },
         };
 
         item.locationBreakdown.forEach((loc) => {
           const group = getLocationGroup(loc.locationName, loc.shortCode);
           groupMap[group].quantity += loc.quantity;
+          groupMap[group].remainingReportedTotal += loc.remainingReported;
+          if (loc.hasUndecidedRemaining) {
+            groupMap[group].unresolvedRemainingCount += 1;
+          }
           groupMap[group].breakdown.push(loc);
           loc.orderIds.forEach((id) => groupMap[group].orderIds.add(id));
         });
 
         (Object.keys(groupMap) as LocationGroup[]).forEach((group) => {
           const info = groupMap[group];
-          if (info.quantity <= 0) return;
+          if (info.quantity <= 0 && info.unresolvedRemainingCount === 0) return;
           groupedItems.push({
             key: `${item.aggregateKey}-${group}`,
             aggregateKey: item.aggregateKey,
@@ -347,6 +409,9 @@ export default function FulfillmentScreen() {
             inventoryItem: item.inventoryItem,
             totalQuantity: info.quantity,
             unitType: item.unitType,
+            hasRemainingMode: item.hasRemainingMode,
+            unresolvedRemainingCount: info.unresolvedRemainingCount,
+            remainingReportedTotal: info.remainingReportedTotal,
             locationBreakdown: info.breakdown,
             orderIds: Array.from(info.orderIds),
           });
@@ -384,10 +449,14 @@ export default function FulfillmentScreen() {
         locationGroup: item.locationGroup,
         quantity: qty,
         unitLabel,
+        inputMode: item.hasRemainingMode ? 'remaining' : 'quantity',
+        remainingReported: item.hasRemainingMode ? item.remainingReportedTotal : null,
+        managerDecided: item.hasRemainingMode,
         details: item.locationBreakdown.map((loc) => ({
           locationName: loc.locationName,
           orderedBy: loc.orderedBy.length > 0 ? loc.orderedBy.join(', ') : 'Unknown',
           quantity: loc.quantity,
+          remainingReported: loc.remainingReported,
           shortCode: loc.shortCode,
         })),
       };
@@ -398,7 +467,16 @@ export default function FulfillmentScreen() {
       locationGroup: LocationGroup;
       quantity: number;
       unitLabel: string;
-      details: Array<{ locationName: string; orderedBy: string; quantity: number; shortCode: string }>;
+      inputMode: 'quantity' | 'remaining';
+      remainingReported: number | null;
+      managerDecided: boolean;
+      details: Array<{
+        locationName: string;
+        orderedBy: string;
+        quantity: number;
+        remainingReported: number;
+        shortCode: string;
+      }>;
     }>;
 
     return items;
@@ -407,6 +485,16 @@ export default function FulfillmentScreen() {
   const handleSend = useCallback((supplierGroup: SupplierGroup) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    const groupedItems = buildLocationGroupedItems(supplierGroup);
+    const pendingDecisions = groupedItems.filter((item) => isDecisionPending(item));
+    if (pendingDecisions.length > 0) {
+      Alert.alert(
+        'Decision Required',
+        `Set order quantity for ${pendingDecisions.length} remaining item${pendingDecisions.length === 1 ? '' : 's'} before sending.`
+      );
+      return;
     }
 
     const items = buildConfirmationItems(supplierGroup);
@@ -422,7 +510,7 @@ export default function FulfillmentScreen() {
         items: encodeURIComponent(JSON.stringify(items)),
       },
     } as any);
-  }, [buildConfirmationItems]);
+  }, [buildConfirmationItems, buildLocationGroupedItems, isDecisionPending]);
 
   // Handle mark orders fulfilled
   const handleMarkFulfilled = useCallback(async () => {
@@ -458,6 +546,7 @@ export default function FulfillmentScreen() {
 
               clearOtherItems();
               setEditedQuantities({});
+              setReviewedRemainingKeys(new Set());
               await fetchPendingOrders();
 
               Alert.alert('Success', `${orderCount} order${orderCount !== 1 ? 's' : ''} marked as fulfilled`);
@@ -480,6 +569,8 @@ export default function FulfillmentScreen() {
       ? item.inventoryItem.pack_unit
       : item.inventoryItem.base_unit;
     const displayQty = getDisplayQuantity(key, item.totalQuantity);
+    const numericQty = Number.isFinite(displayQty) ? displayQty : 0;
+    const decisionPending = isDecisionPending(item);
 
     return (
       <View key={key}>
@@ -502,21 +593,36 @@ export default function FulfillmentScreen() {
           </View>
 
           {/* Item Name */}
-          <Text
-            className={`flex-1 font-medium ${
-              isChecked ? 'text-gray-400 line-through' : 'text-gray-900'
-            }`}
-            numberOfLines={1}
-          >
-            {item.inventoryItem.name}
-          </Text>
+          <View className="flex-1 pr-2">
+            <Text
+              className={`font-medium ${
+                isChecked ? 'text-gray-400 line-through' : 'text-gray-900'
+              }`}
+              numberOfLines={1}
+            >
+              {item.inventoryItem.name}
+            </Text>
+            {item.hasRemainingMode && (
+              <View className="flex-row items-center mt-1">
+                <View className="px-1.5 py-0.5 rounded-full bg-amber-100">
+                  <Text className="text-[10px] font-semibold text-amber-700">Remaining</Text>
+                </View>
+                <Text className="ml-2 text-[11px] text-amber-700">
+                  Reported: {item.remainingReportedTotal} {unitLabel}
+                </Text>
+              </View>
+            )}
+            {decisionPending && (
+              <Text className="text-[11px] text-red-600 mt-1">Set final order quantity before send.</Text>
+            )}
+          </View>
 
           {/* Quantity Controls */}
           <View className="flex-row items-center">
             <TouchableOpacity
               onPress={(e) => {
                 e.stopPropagation();
-                handleQuantityChange(item.key, displayQty - 1);
+                handleQuantityChange(item, numericQty - 1);
               }}
               className="w-7 h-7 bg-gray-100 rounded items-center justify-center"
             >
@@ -527,8 +633,9 @@ export default function FulfillmentScreen() {
               className="w-12 h-7 text-center text-sm font-bold text-gray-900"
               value={displayQty.toString()}
               onChangeText={(text) => {
-                const num = parseFloat(text) || 0;
-                handleQuantityChange(item.key, num);
+                const sanitized = text.replace(/[^0-9.]/g, '');
+                const num = parseFloat(sanitized);
+                handleQuantityChange(item, Number.isFinite(num) ? num : 0);
               }}
               keyboardType="decimal-pad"
               selectTextOnFocus
@@ -537,7 +644,7 @@ export default function FulfillmentScreen() {
             <TouchableOpacity
               onPress={(e) => {
                 e.stopPropagation();
-                handleQuantityChange(item.key, displayQty + 1);
+                handleQuantityChange(item, numericQty + 1);
               }}
               className="w-7 h-7 bg-gray-100 rounded items-center justify-center"
             >
@@ -548,6 +655,20 @@ export default function FulfillmentScreen() {
           </View>
         </TouchableOpacity>
 
+        {decisionPending && (
+          <View className="px-12 pb-2 bg-white border-b border-gray-100">
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation();
+                handleQuantityChange(item, numericQty);
+              }}
+              className="self-start px-2 py-1 rounded-md bg-amber-100"
+            >
+              <Text className="text-[11px] font-semibold text-amber-800">Confirm current qty</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Location Breakdown (shown when expanded) */}
         {showLocationBreakdown && item.locationBreakdown.length > 1 && (
           <View className="bg-gray-50 px-12 py-2 border-b border-gray-100">
@@ -556,7 +677,12 @@ export default function FulfillmentScreen() {
                 <View className="w-6 h-6 bg-primary-100 rounded-full items-center justify-center mr-2">
                   <Text className="text-xs font-bold text-primary-700">{loc.shortCode}</Text>
                 </View>
-                <Text className="text-xs text-gray-600 flex-1">{loc.locationName}</Text>
+                <View className="flex-1">
+                  <Text className="text-xs text-gray-600">{loc.locationName}</Text>
+                  {item.hasRemainingMode && (loc.hasUndecidedRemaining || loc.remainingReported > 0) && (
+                    <Text className="text-[11px] text-amber-700">Remaining {loc.remainingReported}</Text>
+                  )}
+                </View>
                 <Text className="text-xs font-medium text-gray-700">{loc.quantity}</Text>
               </View>
             ))}
@@ -564,7 +690,7 @@ export default function FulfillmentScreen() {
         )}
       </View>
     );
-  }, [checkedOtherItems, getDisplayQuantity, handleToggleCheck, handleQuantityChange]);
+  }, [checkedOtherItems, getDisplayQuantity, isDecisionPending, handleToggleCheck, handleQuantityChange]);
 
   // Render supplier section
   const renderSupplierSection = useCallback((supplierGroup: SupplierGroup) => {
@@ -574,10 +700,13 @@ export default function FulfillmentScreen() {
     const label = SUPPLIER_CATEGORY_LABELS[supplierGroup.supplierCategory];
     const locationItems = buildLocationGroupedItems(supplierGroup);
     const supplierItemCount = locationItems.length;
-    const sections: Array<{ group: LocationGroup; items: LocationGroupedItem[] }> = [
+    const sections = [
       { group: 'sushi', items: locationItems.filter((item) => item.locationGroup === 'sushi') },
       { group: 'poki', items: locationItems.filter((item) => item.locationGroup === 'poki') },
-    ].filter((section) => section.items.length > 0);
+    ] as const;
+    const visibleSections: Array<{ group: LocationGroup; items: LocationGroupedItem[] }> = sections
+      .map((section) => ({ group: section.group, items: section.items }))
+      .filter((section) => section.items.length > 0);
 
     return (
       <View key={supplierGroup.supplierCategory} className="mb-4">
@@ -620,7 +749,7 @@ export default function FulfillmentScreen() {
         {/* Expanded Content */}
         {isExpanded && (
           <View className="mt-3">
-            {sections.map((section) => {
+            {visibleSections.map((section) => {
               const locationLabel = LOCATION_GROUP_LABELS[section.group];
               const sectionInitial = locationLabel.charAt(0);
               const sortedItems = [...section.items].sort((a, b) =>

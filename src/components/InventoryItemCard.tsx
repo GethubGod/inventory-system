@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { InventoryItem, UnitType } from '@/types';
 import { useOrderStore, useSettingsStore } from '@/store';
+import type { OrderInputMode } from '@/store';
 import { categoryColors, CATEGORY_LABELS } from '@/constants';
 
 interface InventoryItemCardProps {
@@ -16,11 +17,29 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
   const { fontSize } = useSettingsStore();
   const cartItem = getCartItem(locationId, item.id);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [quantity, setQuantity] = useState(cartItem?.quantity?.toString() || '1');
+  const [inputMode, setInputMode] = useState<OrderInputMode>(cartItem?.inputMode ?? 'quantity');
+  const [quantity, setQuantity] = useState(
+    cartItem?.quantityRequested?.toString() || cartItem?.quantity?.toString() || '1'
+  );
+  const [remaining, setRemaining] = useState(
+    cartItem?.remainingReported?.toString() || '0'
+  );
   const [unitType, setUnitType] = useState<UnitType>(cartItem?.unitType || 'pack');
 
+  useEffect(() => {
+    if (!cartItem) return;
+    setInputMode(cartItem.inputMode);
+    setUnitType(cartItem.unitType);
+
+    if (cartItem.inputMode === 'quantity') {
+      setQuantity((cartItem.quantityRequested ?? cartItem.quantity ?? 1).toString());
+    } else {
+      setRemaining((cartItem.remainingReported ?? 0).toString());
+    }
+  }, [cartItem?.id, cartItem?.inputMode, cartItem?.quantityRequested, cartItem?.remainingReported, cartItem?.unitType, cartItem?.quantity]);
+
   const categoryColor = categoryColors[item.category] || '#6B7280';
-  const showControls = isExpanded || cartItem;
+  const showControls = isExpanded || Boolean(cartItem);
 
   // Font size multipliers
   const fontSizeMultiplier = fontSize === 'large' ? 1.2 : fontSize === 'xlarge' ? 1.4 : 1;
@@ -28,60 +47,192 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
   const smallFontSize = 13 * fontSizeMultiplier;
   const tinyFontSize = 11 * fontSizeMultiplier;
 
+  const parsedQuantity = Number.parseFloat(quantity);
+  const parsedRemaining = Number.parseFloat(remaining);
+  const isQuantityValid = Number.isFinite(parsedQuantity) && parsedQuantity > 0;
+  const isRemainingValid = Number.isFinite(parsedRemaining) && parsedRemaining >= 0;
+
   const handleAddToCart = () => {
-    const qty = parseFloat(quantity);
-    if (qty > 0) {
-      addToCart(locationId, item.id, qty, unitType);
+    if (inputMode === 'quantity') {
+      const qty = Number.parseFloat(quantity);
+      if (qty > 0) {
+        addToCart(locationId, item.id, qty, unitType, {
+          inputMode: 'quantity',
+          quantityRequested: qty,
+        });
+        setIsExpanded(false);
+      }
+      return;
+    }
+
+    const rem = Number.parseFloat(remaining);
+    if (rem >= 0) {
+      addToCart(locationId, item.id, rem, unitType, {
+        inputMode: 'remaining',
+        remainingReported: rem,
+      });
       setIsExpanded(false);
     }
   };
 
   const handleUpdateQuantity = (newQty: string) => {
     setQuantity(newQty);
-    const qty = parseFloat(newQty);
-    if (!isNaN(qty) && qty > 0 && cartItem) {
-      updateCartItem(locationId, item.id, qty, unitType);
+    const qty = Number.parseFloat(newQty);
+    if (!Number.isFinite(qty) || qty <= 0 || !cartItem) {
+      return;
     }
+
+    updateCartItem(locationId, item.id, qty, unitType, {
+      cartItemId: cartItem.id,
+      inputMode: 'quantity',
+      quantityRequested: qty,
+    });
+  };
+
+  const handleUpdateRemaining = (newRemaining: string) => {
+    setRemaining(newRemaining);
+    const rem = Number.parseFloat(newRemaining);
+
+    if (!Number.isFinite(rem) || rem < 0 || !cartItem) {
+      return;
+    }
+
+    updateCartItem(locationId, item.id, rem, unitType, {
+      cartItemId: cartItem.id,
+      inputMode: 'remaining',
+      remainingReported: rem,
+    });
   };
 
   const handleIncrement = () => {
-    const current = parseFloat(quantity) || 0;
-    const newQty = current + 1;
-    setQuantity(newQty.toString());
+    if (inputMode === 'quantity') {
+      const current = Number.parseFloat(quantity) || 0;
+      const next = current + 1;
+      const nextText = next.toString();
+      setQuantity(nextText);
+
+      if (cartItem) {
+        updateCartItem(locationId, item.id, next, unitType, {
+          cartItemId: cartItem.id,
+          inputMode: 'quantity',
+          quantityRequested: next,
+        });
+      }
+      return;
+    }
+
+    const current = Number.parseFloat(remaining) || 0;
+    const next = current + 1;
+    const nextText = next.toString();
+    setRemaining(nextText);
+
     if (cartItem) {
-      updateCartItem(locationId, item.id, newQty, unitType);
+      updateCartItem(locationId, item.id, next, unitType, {
+        cartItemId: cartItem.id,
+        inputMode: 'remaining',
+        remainingReported: next,
+      });
     }
   };
 
   const handleDecrement = () => {
-    const current = parseFloat(quantity) || 0;
-    if (current > 0) {
-      const newQty = current - 1;
-      setQuantity(newQty.toString());
+    if (inputMode === 'quantity') {
+      const current = Number.parseFloat(quantity) || 0;
+      const next = Math.max(0, current - 1);
+      setQuantity(next.toString());
+
       if (cartItem) {
-        if (newQty <= 0) {
-          removeFromCart(locationId, item.id);
+        if (next <= 0) {
+          removeFromCart(locationId, item.id, cartItem.id);
           setQuantity('1');
           setIsExpanded(false);
         } else {
-          updateCartItem(locationId, item.id, newQty, unitType);
+          updateCartItem(locationId, item.id, next, unitType, {
+            cartItemId: cartItem.id,
+            inputMode: 'quantity',
+            quantityRequested: next,
+          });
         }
       }
+      return;
+    }
+
+    const current = Number.parseFloat(remaining) || 0;
+    const next = Math.max(0, current - 1);
+    setRemaining(next.toString());
+
+    if (cartItem) {
+      updateCartItem(locationId, item.id, next, unitType, {
+        cartItemId: cartItem.id,
+        inputMode: 'remaining',
+        remainingReported: next,
+      });
     }
   };
 
   const toggleUnit = () => {
     const newUnit = unitType === 'base' ? 'pack' : 'base';
     setUnitType(newUnit);
-    if (cartItem) {
-      updateCartItem(locationId, item.id, cartItem.quantity, newUnit);
+
+    if (!cartItem) return;
+
+    if (inputMode === 'quantity') {
+      const qty = Number.parseFloat(quantity);
+      if (!Number.isFinite(qty) || qty <= 0) return;
+
+      updateCartItem(locationId, item.id, qty, newUnit, {
+        cartItemId: cartItem.id,
+        inputMode: 'quantity',
+        quantityRequested: qty,
+      });
+      return;
     }
+
+    const rem = Number.parseFloat(remaining);
+    if (!Number.isFinite(rem) || rem < 0) return;
+
+    updateCartItem(locationId, item.id, rem, newUnit, {
+      cartItemId: cartItem.id,
+      inputMode: 'remaining',
+      remainingReported: rem,
+    });
+  };
+
+  const handleModeChange = (mode: OrderInputMode) => {
+    setInputMode(mode);
+
+    if (!cartItem) return;
+
+    if (mode === 'quantity') {
+      const qty = Math.max(1, Number.parseFloat(quantity) || 1);
+      setQuantity(qty.toString());
+      updateCartItem(locationId, item.id, qty, unitType, {
+        cartItemId: cartItem.id,
+        inputMode: 'quantity',
+        quantityRequested: qty,
+      });
+      return;
+    }
+
+    const rem = Math.max(0, Number.parseFloat(remaining) || 0);
+    setRemaining(rem.toString());
+    updateCartItem(locationId, item.id, rem, unitType, {
+      cartItemId: cartItem.id,
+      inputMode: 'remaining',
+      remainingReported: rem,
+    });
   };
 
   const handleExpandToAdd = () => {
+    setInputMode('quantity');
     setQuantity('1');
+    setRemaining('0');
     setIsExpanded(true);
   };
+
+  const value = inputMode === 'quantity' ? quantity : remaining;
+  const onValueChange = inputMode === 'quantity' ? handleUpdateQuantity : handleUpdateRemaining;
+  const isInputValid = inputMode === 'quantity' ? isQuantityValid : isRemainingValid;
 
   return (
     <View className="bg-white rounded-xl px-4 py-3.5 shadow-sm">
@@ -115,6 +266,11 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
             <Text style={{ fontSize: tinyFontSize }} className="text-gray-400">
               {item.pack_size} {item.base_unit}/{item.pack_unit}
             </Text>
+            {cartItem?.inputMode === 'remaining' && (
+              <View className="ml-2 px-2 py-0.5 rounded-full bg-amber-100">
+                <Text className="text-[10px] font-semibold text-amber-700">Remaining</Text>
+              </View>
+            )}
           </View>
         </View>
 
@@ -129,57 +285,88 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
         )}
       </View>
 
-      {/* Quantity Controls - shown when expanded or in cart */}
+      {/* Quantity/Remaining Controls */}
       {showControls && (
-        <View className="flex-row items-center justify-between mt-3 pt-3 border-t border-gray-100">
-          {/* Unit Toggle */}
-          <TouchableOpacity
-            className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2"
-            onPress={toggleUnit}
-          >
-            <Text className="text-gray-700 font-medium" style={{ fontSize: smallFontSize }}>
-              {unitType === 'base' ? item.base_unit : item.pack_unit}
-            </Text>
-            <Ionicons name="swap-horizontal" size={16} color="#6B7280" style={{ marginLeft: 4 }} />
-          </TouchableOpacity>
-
-          {/* Quantity Controls */}
-          <View className="flex-row items-center">
+        <View className="mt-3 pt-3 border-t border-gray-100">
+          <View className="flex-row mb-3">
             <TouchableOpacity
-              className="w-10 h-10 bg-gray-100 rounded-lg items-center justify-center"
-              onPress={handleDecrement}
+              className={`flex-1 rounded-l-lg py-2 items-center ${
+                inputMode === 'quantity' ? 'bg-primary-500' : 'bg-gray-100'
+              }`}
+              onPress={() => handleModeChange('quantity')}
             >
-              <Ionicons name="remove" size={20} color="#374151" />
+              <Text className={`text-xs font-semibold ${inputMode === 'quantity' ? 'text-white' : 'text-gray-600'}`}>
+                Order Qty
+              </Text>
             </TouchableOpacity>
-
-            <TextInput
-              className="w-14 h-10 bg-gray-50 border border-gray-200 rounded-lg mx-2 text-center text-gray-900 font-semibold"
-              style={{ fontSize: baseFontSize }}
-              value={quantity}
-              onChangeText={handleUpdateQuantity}
-              keyboardType="decimal-pad"
-              placeholder="0"
-            />
-
             <TouchableOpacity
-              className="w-10 h-10 bg-gray-100 rounded-lg items-center justify-center"
-              onPress={handleIncrement}
+              className={`flex-1 rounded-r-lg py-2 items-center ${
+                inputMode === 'remaining' ? 'bg-primary-500' : 'bg-gray-100'
+              }`}
+              onPress={() => handleModeChange('remaining')}
             >
-              <Ionicons name="add" size={20} color="#374151" />
+              <Text className={`text-xs font-semibold ${inputMode === 'remaining' ? 'text-white' : 'text-gray-600'}`}>
+                Remaining
+              </Text>
             </TouchableOpacity>
           </View>
 
-          {/* Confirm/Add button when expanded but not in cart */}
-          {isExpanded && !cartItem && (
+          <View className="flex-row items-center justify-between">
+            {/* Unit Toggle */}
             <TouchableOpacity
-              className={`bg-primary-500 w-10 h-10 rounded-lg items-center justify-center ${
-                !quantity || parseFloat(quantity) <= 0 ? 'opacity-50' : ''
-              }`}
-              onPress={handleAddToCart}
-              disabled={!quantity || parseFloat(quantity) <= 0}
+              className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2"
+              onPress={toggleUnit}
             >
-              <Ionicons name="checkmark" size={20} color="white" />
+              <Text className="text-gray-700 font-medium" style={{ fontSize: smallFontSize }}>
+                {unitType === 'base' ? item.base_unit : item.pack_unit}
+              </Text>
+              <Ionicons name="swap-horizontal" size={16} color="#6B7280" style={{ marginLeft: 4 }} />
             </TouchableOpacity>
+
+            {/* Value Controls */}
+            <View className="flex-row items-center">
+              <TouchableOpacity
+                className="w-10 h-10 bg-gray-100 rounded-lg items-center justify-center"
+                onPress={handleDecrement}
+              >
+                <Ionicons name="remove" size={20} color="#374151" />
+              </TouchableOpacity>
+
+              <TextInput
+                className="w-16 h-10 bg-gray-50 border border-gray-200 rounded-lg mx-2 text-center text-gray-900 font-semibold"
+                style={{ fontSize: baseFontSize }}
+                value={value}
+                onChangeText={onValueChange}
+                keyboardType="decimal-pad"
+                placeholder={inputMode === 'quantity' ? '0' : '0'}
+              />
+
+              <TouchableOpacity
+                className="w-10 h-10 bg-gray-100 rounded-lg items-center justify-center"
+                onPress={handleIncrement}
+              >
+                <Ionicons name="add" size={20} color="#374151" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Confirm/Add button when expanded but not in cart */}
+            {isExpanded && !cartItem && (
+              <TouchableOpacity
+                className={`bg-primary-500 w-10 h-10 rounded-lg items-center justify-center ${
+                  !isInputValid ? 'opacity-50' : ''
+                }`}
+                onPress={handleAddToCart}
+                disabled={!isInputValid}
+              >
+                <Ionicons name="checkmark" size={20} color="white" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {inputMode === 'remaining' && (
+            <Text className="text-[11px] text-gray-500 mt-2">
+              Enter what is left on hand. A manager will decide order quantity.
+            </Text>
           )}
         </View>
       )}
