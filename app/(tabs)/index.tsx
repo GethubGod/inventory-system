@@ -268,7 +268,7 @@ export default function OrderScreen() {
             className="flex-row items-center bg-gray-100 rounded-xl flex-1 mr-3"
             style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(8) }}
           >
-            <BrandLogo variant="header" size={26} style={{ marginRight: 8 }} />
+            <BrandLogo variant="header" size={28} style={{ marginRight: ds.spacing(8) }} />
             <Text className="font-semibold text-gray-900 flex-1" numberOfLines={1} style={{ fontSize: ds.fontSize(15) }}>
               {location?.name || 'Select Location'}
             </Text>

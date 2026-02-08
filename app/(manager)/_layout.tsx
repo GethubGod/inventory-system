@@ -1,18 +1,19 @@
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Sparkles } from 'lucide-react-native';
 import { View, Text } from 'react-native';
-import { useAuthStore, useOrderStore, useDisplayStore } from '@/store';
+import { useAuthStore, useOrderStore, useDisplayStore, useTunaSpecialistStore } from '@/store';
 
 export default function ManagerLayout() {
   const { session, profile, user } = useAuthStore();
   const { getTotalCartCount } = useOrderStore();
+  const voiceCartCount = useTunaSpecialistStore((state) => state.cartItems.length);
   const ds = useDisplayStore();
   const cartCount = getTotalCartCount();
   const isLarge = ds.uiScale === 'large';
   const isCompact = ds.uiScale === 'compact';
-  const buttonScale = ds.buttonSize === 'large' ? 1.08 : ds.buttonSize === 'small' ? 0.94 : 1;
-  const textScale = ds.textScale > 1 ? 1 + (ds.textScale - 1) * 0.15 : 1 - (1 - ds.textScale) * 0.08;
-  const tabBarScale = Math.max(0.9, Math.min(1.25, (isLarge ? 1.1 : isCompact ? 0.95 : 1) * buttonScale * textScale));
+  // Match employee tab bar size for default/compact and only expand for large UI scale.
+  const tabBarScale = isLarge ? 1.1 : 1;
   const badgeSize = Math.max(18, Math.round(18 * tabBarScale));
 
   if (!session) {
@@ -109,14 +110,20 @@ export default function ManagerLayout() {
         }}
       />
 
-      {/* Inventory */}
+      {/* Voice */}
       <Tabs.Screen
-        name="inventory"
+        name="voice"
         options={{
-          title: 'Inventory',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cube-outline" size={size} color={color} />
+          title: 'Voice',
+          tabBarIcon: ({ color }) => (
+            <Sparkles size={24} color={color} />
           ),
+          tabBarBadge: voiceCartCount > 0 ? voiceCartCount : undefined,
+          tabBarBadgeStyle: {
+            backgroundColor: '#F97316',
+            color: '#FFFFFF',
+            fontSize: Math.max(9, ds.scaledFontSize(9)),
+          },
         }}
       />
 
@@ -136,6 +143,13 @@ export default function ManagerLayout() {
         name="orders"
         options={{
           href: null, // Hide from tab bar but keep accessible
+        }}
+      />
+      <Tabs.Screen
+        name="inventory"
+        options={{
+          href: null,
+          tabBarStyle: { display: 'none' },
         }}
       />
       <Tabs.Screen
@@ -160,12 +174,28 @@ export default function ManagerLayout() {
         name="settings/export-format"
         options={{
           href: null,
+          tabBarStyle: { display: 'none' },
         }}
       />
       <Tabs.Screen
         name="settings/user-management"
         options={{
           href: null,
+          tabBarStyle: { display: 'none' },
+        }}
+      />
+      <Tabs.Screen
+        name="settings/profile"
+        options={{
+          href: null,
+          tabBarStyle: { display: 'none' },
+        }}
+      />
+      <Tabs.Screen
+        name="settings/access-codes"
+        options={{
+          href: null,
+          tabBarStyle: { display: 'none' },
         }}
       />
     </Tabs>

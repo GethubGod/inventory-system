@@ -964,7 +964,7 @@ export default function FulfillmentScreen() {
       <ManagerScaleContainer>
       {/* Header */}
       <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center">
-        <BrandLogo variant="header" size={24} style={{ marginRight: 8 }} />
+        <BrandLogo variant="header" size={28} style={{ marginRight: 8 }} />
         <Text className="text-xl font-bold text-gray-900">Fulfillment</Text>
       </View>
 

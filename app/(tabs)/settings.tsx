@@ -84,7 +84,7 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View className="flex-row items-center" style={{ paddingHorizontal: ds.spacing(20), paddingVertical: ds.spacing(16) }}>
-          <BrandLogo variant="header" size={28} style={{ marginRight: ds.spacing(10) }} />
+          <BrandLogo variant="header" size={28} style={{ marginRight: ds.spacing(8) }} />
           <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(22) }}>Settings</Text>
         </View>
 

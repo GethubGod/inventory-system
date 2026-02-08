@@ -1481,7 +1481,14 @@ export default function ManagerInventoryScreen() {
           ) : (
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center">
-                <BrandLogo variant="header" size={26} style={{ marginRight: 8 }} />
+                <TouchableOpacity
+                  className="h-9 w-9 rounded-full bg-gray-100 items-center justify-center mr-2"
+                  onPress={() => router.back()}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Ionicons name="arrow-back" size={18} color={colors.gray[700]} />
+                </TouchableOpacity>
+                <BrandLogo variant="header" size={28} style={{ marginRight: 8 }} />
                 <Text className="text-2xl font-bold text-gray-900">Inventory</Text>
               </View>
               <View className="flex-row items-center">
