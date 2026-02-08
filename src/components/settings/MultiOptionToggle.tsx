@@ -44,13 +44,12 @@ export function MultiOptionToggle<T extends string | number>({
             onPress={() => handleSelect(option.value)}
             disabled={disabled}
             className={`flex-1 rounded-xl items-center justify-center border-2 ${
-              index < options.length - 1 ? 'mr-2' : ''
-            } ${
               isSelected
                 ? 'border-primary-500 bg-primary-50'
                 : 'border-gray-200 bg-gray-50'
             }`}
             style={{
+              marginRight: index < options.length - 1 ? ds.spacing(8) : 0,
               minHeight: Math.max(44, ds.buttonH),
               paddingHorizontal: ds.spacing(8),
               paddingVertical: ds.spacing(6),

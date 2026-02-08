@@ -28,7 +28,7 @@ import {
   ReminderModal,
   ReminderListItem,
 } from '@/components/settings';
-import { Reminder, TEXT_SCALE_LABELS } from '@/types/settings';
+import { Reminder } from '@/types/settings';
 import {
   requestNotificationPermissions,
   scheduleReminder,
@@ -36,6 +36,7 @@ import {
 } from '@/services/notificationService';
 import { seedStations, updateAccessCodes } from '@/services';
 import { BrandLogo } from '@/components';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 const ACCESS_CODE_REGEX = /^\d{4}$/;
 
@@ -221,106 +222,6 @@ function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) 
         <Text className="text-orange-700 font-semibold ml-2">
           {isSeedingStations ? 'Seeding Stations...' : 'Seed Stations'}
         </Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-// ============================================
-// DISPLAY & ACCESSIBILITY SECTION
-// ============================================
-function DisplaySection() {
-  const {
-    textScale,
-    setTextScale,
-    hapticFeedback,
-    setHapticFeedback,
-    reduceMotion,
-    setReduceMotion,
-    resetToDefaults,
-  } = useDisplayStore();
-
-  const handleReset = () => {
-    Alert.alert(
-      'Reset Display Settings',
-      'Reset all display and accessibility settings to defaults?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: () => {
-            if (hapticFeedback && Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            }
-            resetToDefaults();
-          },
-        },
-      ]
-    );
-  };
-
-  return (
-    <View>
-      {/* Text Size */}
-      <View className="px-4 py-4">
-        <Text className="text-base font-medium text-gray-900 mb-3">Text Size</Text>
-        <View className="flex-row justify-between mb-2">
-          {TEXT_SCALE_LABELS.map((label, index) => {
-            const scaleValue = [0.8, 0.9, 1.0, 1.1, 1.4][index] as 0.8 | 0.9 | 1.0 | 1.1 | 1.4;
-            const isSelected = textScale === scaleValue;
-            return (
-              <TouchableOpacity
-                key={label}
-                onPress={() => setTextScale(scaleValue)}
-                className={`px-3 py-2 rounded-lg ${
-                  isSelected ? 'bg-primary-500' : 'bg-gray-100'
-                }`}
-                activeOpacity={0.7}
-              >
-                <Text
-                  className={`text-sm font-medium ${
-                    isSelected ? 'text-white' : 'text-gray-600'
-                  }`}
-                >
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <Text
-          className="text-gray-500 mt-2"
-          style={{ fontSize: 14 * textScale }}
-        >
-          Preview: The quick brown fox jumps over the lazy dog
-        </Text>
-      </View>
-
-      <View className="h-px bg-gray-100 mx-4" />
-
-      {/* Haptic Feedback */}
-      <SettingToggle
-        title="Haptic Feedback"
-        subtitle="Vibration on button presses"
-        value={hapticFeedback}
-        onValueChange={setHapticFeedback}
-      />
-
-      {/* Reduce Motion */}
-      <SettingToggle
-        title="Reduce Motion"
-        subtitle="Minimize animations"
-        value={reduceMotion}
-        onValueChange={setReduceMotion}
-        showBorder={false}
-      />
-
-      <View className="h-px bg-gray-100 mx-4" />
-
-      {/* Reset */}
-      <TouchableOpacity onPress={handleReset} className="px-4 py-4">
-        <Text className="text-red-500 font-medium">Reset to Defaults</Text>
       </TouchableOpacity>
     </View>
   );
@@ -669,6 +570,7 @@ function AboutSection() {
 export default function ManagerSettingsScreen() {
   const { user, profile, signOut, setViewMode } = useAuthStore();
   const { hapticFeedback } = useDisplayStore();
+  const ds = useScaledStyles();
   const isManager = (user?.role ?? profile?.role) === 'manager';
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
@@ -703,17 +605,23 @@ export default function ManagerSettingsScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{ paddingBottom: ds.spacing(32) }}
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
-        <View className="px-5 py-4 flex-row items-center justify-between">
+        <View
+          className="flex-row items-center justify-between"
+          style={{ paddingHorizontal: ds.spacing(20), paddingVertical: ds.spacing(16) }}
+        >
           <View className="flex-row items-center">
-            <BrandLogo variant="header" size={28} style={{ marginRight: 10 }} />
-            <Text className="text-2xl font-bold text-gray-900">Settings</Text>
+            <BrandLogo variant="header" size={28} style={{ marginRight: ds.spacing(10) }} />
+            <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(24) }}>Settings</Text>
           </View>
-          <View className="bg-purple-100 px-3 py-1 rounded-full">
-            <Text className="text-purple-700 text-sm font-semibold">Manager</Text>
+          <View
+            className="bg-purple-100 rounded-full"
+            style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(4) }}
+          >
+            <Text className="text-purple-700 font-semibold" style={{ fontSize: ds.fontSize(12) }}>Manager</Text>
           </View>
         </View>
 
@@ -728,15 +636,21 @@ export default function ManagerSettingsScreen() {
           <ProfileSection onChangePassword={() => setShowPasswordModal(true)} />
         </ExpandableSection>
 
-        {/* Section 2: Display & Accessibility */}
-        <ExpandableSection
-          title="Display & Accessibility"
-          icon="eye-outline"
-          iconColor="#8B5CF6"
-          iconBgColor="#EDE9FE"
+        {/* Display & Accessibility */}
+        <View
+          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
+          style={shadow.md}
         >
-          <DisplaySection />
-        </ExpandableSection>
+          <SettingsRow
+            icon="eye-outline"
+            iconColor="#8B5CF6"
+            iconBgColor="#EDE9FE"
+            title="Display & Accessibility"
+            subtitle="Text size, button size, and interaction settings"
+            onPress={() => router.push('/settings/display-accessibility')}
+            showBorder={false}
+          />
+        </View>
 
         {/* Section 3: Notifications */}
         <ExpandableSection
@@ -823,15 +737,15 @@ export default function ManagerSettingsScreen() {
 
         {/* Signed in as */}
         <View className="items-center mt-2">
-          <Text className="text-gray-400 text-sm">
+          <Text className="text-gray-400" style={{ fontSize: ds.fontSize(14) }}>
             Signed in as {user?.email}
           </Text>
         </View>
 
         <View className="items-center px-6 pt-6 pb-10">
           <BrandLogo variant="footer" size={40} />
-          <Text className="text-xs text-gray-500 mt-2">Babytuna Systems</Text>
-          <Text className="text-xs text-gray-400 mt-1">Version {appVersion}</Text>
+          <Text className="text-gray-500 mt-2" style={{ fontSize: ds.fontSize(12) }}>Babytuna Systems</Text>
+          <Text className="text-gray-400 mt-1" style={{ fontSize: ds.fontSize(12) }}>Version {appVersion}</Text>
         </View>
       </ScrollView>
 

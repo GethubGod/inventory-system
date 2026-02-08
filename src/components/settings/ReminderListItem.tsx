@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { Reminder } from '@/types/settings';
 import { useDisplayStore } from '@/store';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 interface ReminderListItemProps {
   reminder: Reminder;
@@ -22,6 +23,8 @@ export function ReminderListItem({
   onDelete,
 }: ReminderListItemProps) {
   const { hapticFeedback } = useDisplayStore();
+  const ds = useScaledStyles();
+  const switchScale = ds.isLarge ? 1.15 : ds.isCompact ? 0.95 : 1;
 
   const formatTime = (time: string): string => {
     const [hours, minutes] = time.split(':').map(Number);
@@ -64,26 +67,33 @@ export function ReminderListItem({
   };
 
   return (
-    <View className="bg-gray-50 rounded-xl p-4 mb-3 mx-4">
+    <View
+      className="bg-gray-50 rounded-xl"
+      style={{ padding: ds.cardPad, marginBottom: ds.spacing(12), borderRadius: ds.radius(12) }}
+    >
       <View className="flex-row items-start justify-between">
-        <View className="flex-1 mr-3">
-          <View className="flex-row items-center mb-1">
+        <View className="flex-1" style={{ marginRight: ds.spacing(12) }}>
+          <View className="flex-row items-center" style={{ marginBottom: ds.spacing(4) }}>
             <Ionicons
               name="notifications"
-              size={18}
+              size={ds.icon(18)}
               color={reminder.enabled ? colors.primary[500] : colors.gray[400]}
             />
             <Text
-              className={`text-base font-semibold ml-2 ${
+              className={`font-semibold ${
                 reminder.enabled ? 'text-gray-900' : 'text-gray-500'
               }`}
+              style={{ fontSize: ds.fontSize(16), marginLeft: ds.spacing(8) }}
             >
               {reminder.name}
             </Text>
           </View>
-          <Text className="text-sm text-gray-500 mb-1">{formatSchedule()}</Text>
+          <Text className="text-gray-500" style={{ fontSize: ds.fontSize(13), marginBottom: ds.spacing(4) }}>
+            {formatSchedule()}
+          </Text>
           <Text
-            className="text-sm text-gray-400 italic"
+            className="text-gray-400 italic"
+            style={{ fontSize: ds.fontSize(13) }}
             numberOfLines={1}
           >
             "{reminder.message}"
@@ -93,17 +103,29 @@ export function ReminderListItem({
         <View className="flex-row items-center">
           <TouchableOpacity
             onPress={handleEdit}
-            className="p-2 mr-1"
+            style={{
+              width: Math.max(44, ds.icon(36)),
+              height: Math.max(44, ds.icon(36)),
+              marginRight: ds.spacing(4),
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
             activeOpacity={0.7}
           >
-            <Ionicons name="pencil" size={18} color={colors.gray[400]} />
+            <Ionicons name="pencil" size={ds.icon(18)} color={colors.gray[400]} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleDelete}
-            className="p-2 mr-2"
+            style={{
+              width: Math.max(44, ds.icon(36)),
+              height: Math.max(44, ds.icon(36)),
+              marginRight: ds.spacing(8),
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
             activeOpacity={0.7}
           >
-            <Ionicons name="trash-outline" size={18} color={colors.error} />
+            <Ionicons name="trash-outline" size={ds.icon(18)} color={colors.error} />
           </TouchableOpacity>
           <Switch
             value={reminder.enabled}
@@ -117,6 +139,7 @@ export function ReminderListItem({
                 : undefined
             }
             ios_backgroundColor={colors.gray[200]}
+            style={{ transform: [{ scaleX: switchScale }, { scaleY: switchScale }] }}
           />
         </View>
       </View>

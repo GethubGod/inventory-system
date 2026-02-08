@@ -8,6 +8,7 @@ import { useDisplayStore, useSettingsStore } from '@/store';
 import { colors } from '@/constants';
 import { Reminder } from '@/types/settings';
 import { ReminderModal, ReminderListItem, SettingToggle, TimePickerRow } from '@/components/settings';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   requestNotificationPermissions,
   scheduleReminder,
@@ -23,6 +24,7 @@ function RemindersSection({
   onAddReminder: () => void;
   onEditReminder: (reminder: Reminder) => void;
 }) {
+  const ds = useScaledStyles();
   const {
     reminders,
     setReminderSettings,
@@ -137,8 +139,8 @@ function RemindersSection({
 
       {reminders.enabled && (
         <>
-          <View className="px-4 py-2">
-            <Text className="text-xs text-gray-500 uppercase tracking-wide">
+          <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
+            <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11) }}>
               Quick Reminders
             </Text>
           </View>
@@ -158,8 +160,8 @@ function RemindersSection({
           />
 
           {reminders.beforeClosingReminder && (
-            <View className="px-4 pb-2">
-              <View className="bg-gray-50 rounded-xl px-4">
+            <View style={{ paddingHorizontal: ds.spacing(16), paddingBottom: ds.spacing(8) }}>
+              <View className="bg-gray-50 rounded-xl" style={{ paddingHorizontal: ds.spacing(14), borderRadius: ds.radius(12) }}>
                 <TimePickerRow
                   title="Closing Time"
                   value={reminders.closingTime}
@@ -169,17 +171,17 @@ function RemindersSection({
             </View>
           )}
 
-          <View className="h-px bg-gray-100 mx-4 my-2" />
+          <View className="h-px bg-gray-100" style={{ marginHorizontal: ds.spacing(16), marginVertical: ds.spacing(8) }} />
 
-          <View className="px-4 py-2">
-            <Text className="text-xs text-gray-500 uppercase tracking-wide">
+          <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
+            <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11) }}>
               Custom Reminders
             </Text>
           </View>
 
           {reminders.reminders.length === 0 ? (
-            <View className="px-4 py-4">
-              <Text className="text-gray-400 text-center">
+            <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(16) }}>
+              <Text className="text-gray-400 text-center" style={{ fontSize: ds.fontSize(14) }}>
                 No custom reminders yet
               </Text>
             </View>
@@ -197,11 +199,17 @@ function RemindersSection({
 
           <TouchableOpacity
             onPress={onAddReminder}
-            className="mx-4 my-3 py-3 bg-gray-100 rounded-xl flex-row items-center justify-center"
+            className="bg-gray-100 rounded-xl flex-row items-center justify-center"
+            style={{
+              marginHorizontal: ds.spacing(16),
+              marginVertical: ds.spacing(12),
+              minHeight: Math.max(48, ds.buttonH),
+              borderRadius: ds.radius(12),
+            }}
             activeOpacity={0.7}
           >
-            <Ionicons name="add" size={20} color={colors.primary[500]} />
-            <Text className="text-primary-500 font-semibold ml-2">
+            <Ionicons name="add" size={ds.icon(20)} color={colors.primary[500]} />
+            <Text className="text-primary-500 font-semibold" style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(15) }}>
               Add Reminder
             </Text>
           </TouchableOpacity>
@@ -212,6 +220,7 @@ function RemindersSection({
 }
 
 export default function RemindersSettingsScreen() {
+  const ds = useScaledStyles();
   const { addReminder, updateReminder } = useSettingsStore();
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
@@ -236,18 +245,21 @@ export default function RemindersSettingsScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center">
+      <View
+        className="bg-white border-b border-gray-100 flex-row items-center"
+        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
+      >
         <TouchableOpacity
           onPress={() => router.back()}
-          className="p-2 mr-2"
+          style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={20} color={colors.gray[700]} />
+          <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
         </TouchableOpacity>
-        <Text className="text-lg font-bold text-gray-900">Reminders</Text>
+        <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>Reminders</Text>
       </View>
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 32 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
         <RemindersSection
           onAddReminder={() => {
             setEditingReminder(null);

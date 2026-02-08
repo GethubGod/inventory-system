@@ -14,8 +14,8 @@ function PreviewCard() {
   const ds = useScaledStyles();
 
   return (
-    <View className="mx-4 mt-4 mb-2">
-      <Text className="text-gray-500 uppercase tracking-wide mb-2" style={{ fontSize: ds.fontSize(11) }}>
+    <View style={{ marginHorizontal: ds.spacing(16), marginTop: ds.spacing(16), marginBottom: ds.spacing(8) }}>
+      <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11), marginBottom: ds.spacing(8) }}>
         Live Preview
       </Text>
       <View
@@ -24,7 +24,7 @@ function PreviewCard() {
       >
         {/* Mini inventory item preview */}
         <View className="flex-row items-center justify-between" style={{ minHeight: ds.rowH }}>
-          <View className="flex-1 mr-3">
+          <View className="flex-1" style={{ marginRight: ds.spacing(12) }}>
             <Text
               className="font-semibold text-gray-900"
               style={{ fontSize: ds.fontSize(15) }}
@@ -150,7 +150,7 @@ function DisplaySection() {
         </Text>
       </View>
 
-      <View className="h-px bg-gray-100 mx-4" />
+      <View className="h-px bg-gray-100" style={{ marginHorizontal: ds.spacing(16) }} />
 
       <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(16) }}>
         <Text className="font-medium text-gray-900" style={{ fontSize: ds.fontSize(15), marginBottom: ds.spacing(12) }}>UI Scale</Text>
@@ -168,7 +168,7 @@ function DisplaySection() {
         </Text>
       </View>
 
-      <View className="h-px bg-gray-100 mx-4" />
+      <View className="h-px bg-gray-100" style={{ marginHorizontal: ds.spacing(16) }} />
 
       <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(16) }}>
         <Text className="font-medium text-gray-900" style={{ fontSize: ds.fontSize(15), marginBottom: ds.spacing(12) }}>Button Size</Text>
@@ -195,7 +195,7 @@ function DisplaySection() {
         </View>
       </View>
 
-      <View className="h-px bg-gray-100 mx-4" />
+      <View className="h-px bg-gray-100" style={{ marginHorizontal: ds.spacing(16) }} />
 
       <SettingToggle
         title="Haptic Feedback"
@@ -212,7 +212,7 @@ function DisplaySection() {
         showBorder={false}
       />
 
-      <View className="h-px bg-gray-100 mx-4" />
+      <View className="h-px bg-gray-100" style={{ marginHorizontal: ds.spacing(16) }} />
 
       <TouchableOpacity
         onPress={handleReset}
@@ -232,8 +232,7 @@ export default function DisplayAccessibilitySettingsScreen() {
       <View className="bg-white border-b border-gray-100 flex-row items-center" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}>
         <TouchableOpacity
           onPress={() => router.back()}
-          className="mr-2"
-          style={{ padding: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
+          style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
@@ -241,7 +240,7 @@ export default function DisplayAccessibilitySettingsScreen() {
         <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>Display & Accessibility</Text>
       </View>
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 32 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
         <DisplaySection />
       </ScrollView>
     </SafeAreaView>

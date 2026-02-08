@@ -53,7 +53,7 @@ export default function StockSettingsScreen() {
         <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>Stock</Text>
       </View>
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 32 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
         <StockSection />
       </ScrollView>
     </SafeAreaView>

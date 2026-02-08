@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { useDisplayStore } from '@/store';
 import { supabase } from '@/lib/supabase';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 interface ChangePasswordModalProps {
   visible: boolean;
@@ -28,6 +29,7 @@ export function ChangePasswordModal({
   onClose,
 }: ChangePasswordModalProps) {
   const { hapticFeedback } = useDisplayStore();
+  const ds = useScaledStyles();
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -117,48 +119,60 @@ export function ChangePasswordModal({
             onPress={(e) => e.stopPropagation()}
           >
             {/* Handle */}
-            <View className="items-center pt-3 pb-2">
-              <View className="w-10 h-1 bg-gray-300 rounded-full" />
+            <View className="items-center" style={{ paddingTop: ds.spacing(12), paddingBottom: ds.spacing(8) }}>
+              <View style={{ width: ds.spacing(40), height: ds.spacing(4), borderRadius: ds.radius(999) }} className="bg-gray-300" />
             </View>
 
             {/* Header */}
-            <View className="flex-row justify-between items-center px-4 py-3 border-b border-gray-100">
-              <TouchableOpacity onPress={handleClose} disabled={isLoading}>
-                <Text className="text-gray-500 text-base">Cancel</Text>
+            <View
+              className="flex-row justify-between items-center border-b border-gray-100"
+              style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
+            >
+              <TouchableOpacity onPress={handleClose} disabled={isLoading} style={{ minHeight: 44, justifyContent: 'center' }}>
+                <Text className="text-gray-500" style={{ fontSize: ds.fontSize(16) }}>Cancel</Text>
               </TouchableOpacity>
-              <Text className="text-lg font-semibold text-gray-900">
+              <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>
                 Change Password
               </Text>
-              <View style={{ width: 50 }} />
+              <View style={{ width: ds.spacing(56) }} />
             </View>
 
             <ScrollView
-              className="px-4 py-4"
-              contentContainerStyle={{ paddingBottom: 40 }}
+              contentContainerStyle={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(16), paddingBottom: ds.spacing(40) }}
               keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator
             >
               {/* Current Password */}
-              <View className="mb-4">
-                <Text className="text-sm font-medium text-gray-700 mb-2">
+              <View style={{ marginBottom: ds.spacing(16) }}>
+                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
                   Current Password
                 </Text>
-                <View className="flex-row items-center bg-gray-100 rounded-xl px-4 py-3">
+                <View
+                  className="flex-row items-center bg-gray-100"
+                  style={{
+                    borderRadius: ds.radius(12),
+                    minHeight: Math.max(48, ds.buttonH),
+                    paddingHorizontal: ds.spacing(14),
+                  }}
+                >
                   <TextInput
                     value={currentPassword}
                     onChangeText={setCurrentPassword}
                     secureTextEntry={!showCurrentPassword}
                     placeholder="Enter current password"
                     placeholderTextColor={colors.gray[400]}
-                    className="flex-1 text-base text-gray-900"
+                    className="flex-1 text-gray-900"
+                    style={{ fontSize: ds.fontSize(15) }}
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
                   <TouchableOpacity
                     onPress={() => setShowCurrentPassword(!showCurrentPassword)}
+                    style={{ minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
                   >
                     <Ionicons
                       name={showCurrentPassword ? 'eye-off' : 'eye'}
-                      size={22}
+                      size={ds.icon(22)}
                       color={colors.gray[400]}
                     />
                   </TouchableOpacity>
@@ -166,58 +180,76 @@ export function ChangePasswordModal({
               </View>
 
               {/* New Password */}
-              <View className="mb-4">
-                <Text className="text-sm font-medium text-gray-700 mb-2">
+              <View style={{ marginBottom: ds.spacing(16) }}>
+                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
                   New Password
                 </Text>
-                <View className="flex-row items-center bg-gray-100 rounded-xl px-4 py-3">
+                <View
+                  className="flex-row items-center bg-gray-100"
+                  style={{
+                    borderRadius: ds.radius(12),
+                    minHeight: Math.max(48, ds.buttonH),
+                    paddingHorizontal: ds.spacing(14),
+                  }}
+                >
                   <TextInput
                     value={newPassword}
                     onChangeText={setNewPassword}
                     secureTextEntry={!showNewPassword}
                     placeholder="Enter new password"
                     placeholderTextColor={colors.gray[400]}
-                    className="flex-1 text-base text-gray-900"
+                    className="flex-1 text-gray-900"
+                    style={{ fontSize: ds.fontSize(15) }}
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
                   <TouchableOpacity
                     onPress={() => setShowNewPassword(!showNewPassword)}
+                    style={{ minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
                   >
                     <Ionicons
                       name={showNewPassword ? 'eye-off' : 'eye'}
-                      size={22}
+                      size={ds.icon(22)}
                       color={colors.gray[400]}
                     />
                   </TouchableOpacity>
                 </View>
-                <Text className="text-xs text-gray-400 mt-1">
+                <Text className="text-gray-400" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4) }}>
                   Must be at least 8 characters
                 </Text>
               </View>
 
               {/* Confirm Password */}
-              <View className="mb-6">
-                <Text className="text-sm font-medium text-gray-700 mb-2">
+              <View style={{ marginBottom: ds.spacing(24) }}>
+                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
                   Confirm New Password
                 </Text>
-                <View className="flex-row items-center bg-gray-100 rounded-xl px-4 py-3">
+                <View
+                  className="flex-row items-center bg-gray-100"
+                  style={{
+                    borderRadius: ds.radius(12),
+                    minHeight: Math.max(48, ds.buttonH),
+                    paddingHorizontal: ds.spacing(14),
+                  }}
+                >
                   <TextInput
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry={!showConfirmPassword}
                     placeholder="Confirm new password"
                     placeholderTextColor={colors.gray[400]}
-                    className="flex-1 text-base text-gray-900"
+                    className="flex-1 text-gray-900"
+                    style={{ fontSize: ds.fontSize(15) }}
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
                   <TouchableOpacity
                     onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                    style={{ minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
                   >
                     <Ionicons
                       name={showConfirmPassword ? 'eye-off' : 'eye'}
-                      size={22}
+                      size={ds.icon(22)}
                       color={colors.gray[400]}
                     />
                   </TouchableOpacity>
@@ -228,15 +260,16 @@ export function ChangePasswordModal({
               <TouchableOpacity
                 onPress={handleSubmit}
                 disabled={isLoading}
-                className={`py-4 rounded-xl items-center ${
+                className={`rounded-xl items-center justify-center ${
                   isLoading ? 'bg-primary-300' : 'bg-primary-500'
                 }`}
+                style={{ minHeight: Math.max(48, ds.buttonH), borderRadius: ds.radius(12) }}
                 activeOpacity={0.8}
               >
                 {isLoading ? (
                   <ActivityIndicator color="white" />
                 ) : (
-                  <Text className="text-white font-semibold text-base">
+                  <Text className="text-white font-semibold" style={{ fontSize: ds.buttonFont }}>
                     Update Password
                   </Text>
                 )}

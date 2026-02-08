@@ -17,13 +17,16 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore, useSettingsStore, useDisplayStore } from '@/store';
 import { colors } from '@/constants';
 import { ChangePasswordModal } from '@/components/settings';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) {
   const { user, location } = useAuthStore();
   const { avatarUri, setAvatarUri } = useSettingsStore();
   const { hapticFeedback } = useDisplayStore();
+  const ds = useScaledStyles();
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(user?.name || '');
+  const avatarSize = Math.max(76, ds.icon(80));
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -57,35 +60,44 @@ function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) 
   const firstName = user?.name?.split(' ')[0] || 'User';
 
   return (
-    <View className="px-4 py-4">
-      <TouchableOpacity onPress={pickImage} className="items-center mb-4">
-        <View className="w-20 h-20 rounded-full overflow-hidden bg-primary-500 items-center justify-center">
+    <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(16) }}>
+      <TouchableOpacity onPress={pickImage} className="items-center" style={{ marginBottom: ds.spacing(16) }}>
+        <View
+          className="rounded-full overflow-hidden bg-primary-500 items-center justify-center"
+          style={{ width: avatarSize, height: avatarSize }}
+        >
           {avatarUri ? (
             <Image source={{ uri: avatarUri }} className="w-full h-full" />
           ) : (
-            <Text className="text-white font-bold text-3xl">
+            <Text className="text-white font-bold" style={{ fontSize: ds.fontSize(30) }}>
               {firstName.charAt(0).toUpperCase()}
             </Text>
           )}
         </View>
-        <Text className="text-primary-500 text-sm mt-2 font-medium">Change Photo</Text>
+        <Text className="text-primary-500 font-medium" style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(8) }}>Change Photo</Text>
       </TouchableOpacity>
 
-      <View className="mb-4">
-        <Text className="text-xs text-gray-500 uppercase tracking-wide mb-1">Full Name</Text>
+      <View style={{ marginBottom: ds.spacing(16) }}>
+        <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11), marginBottom: ds.spacing(4) }}>Full Name</Text>
         {isEditingName ? (
           <View className="flex-row items-center">
             <TextInput
               value={tempName}
               onChangeText={setTempName}
-              className="flex-1 bg-gray-100 rounded-xl px-4 py-3 text-base text-gray-900"
+              className="flex-1 bg-gray-100 text-gray-900"
+              style={{
+                borderRadius: ds.radius(12),
+                minHeight: Math.max(48, ds.buttonH),
+                paddingHorizontal: ds.spacing(14),
+                fontSize: ds.fontSize(16),
+              }}
               autoFocus
             />
-            <TouchableOpacity onPress={handleSaveName} className="ml-2 p-2">
-              <Ionicons name="checkmark" size={24} color={colors.primary[500]} />
+            <TouchableOpacity onPress={handleSaveName} style={{ marginLeft: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="checkmark" size={ds.icon(22)} color={colors.primary[500]} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setIsEditingName(false)} className="p-2">
-              <Ionicons name="close" size={24} color={colors.gray[400]} />
+            <TouchableOpacity onPress={() => setIsEditingName(false)} style={{ minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}>
+              <Ionicons name="close" size={ds.icon(22)} color={colors.gray[400]} />
             </TouchableOpacity>
           </View>
         ) : (
@@ -94,70 +106,90 @@ function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) 
               setTempName(user?.name || '');
               setIsEditingName(true);
             }}
-            className="flex-row items-center justify-between bg-gray-50 rounded-xl px-4 py-3"
+            className="flex-row items-center justify-between bg-gray-50"
+            style={{
+              borderRadius: ds.radius(12),
+              minHeight: Math.max(48, ds.buttonH),
+              paddingHorizontal: ds.spacing(14),
+              paddingVertical: ds.spacing(10),
+            }}
           >
-            <Text className="text-base text-gray-900">{user?.name || 'Not set'}</Text>
-            <Ionicons name="pencil" size={18} color={colors.gray[400]} />
+            <Text className="text-gray-900" style={{ fontSize: ds.fontSize(16) }}>{user?.name || 'Not set'}</Text>
+            <Ionicons name="pencil" size={ds.icon(18)} color={colors.gray[400]} />
           </TouchableOpacity>
         )}
       </View>
 
-      <View className="mb-4">
-        <Text className="text-xs text-gray-500 uppercase tracking-wide mb-1">Email</Text>
-        <View className="flex-row items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
-          <Text className="text-base text-gray-500">{user?.email || 'Not set'}</Text>
-          <Ionicons name="lock-closed" size={16} color={colors.gray[400]} />
+      <View style={{ marginBottom: ds.spacing(16) }}>
+        <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11), marginBottom: ds.spacing(4) }}>Email</Text>
+        <View
+          className="flex-row items-center justify-between bg-gray-50"
+          style={{ borderRadius: ds.radius(12), minHeight: Math.max(48, ds.buttonH), paddingHorizontal: ds.spacing(14), paddingVertical: ds.spacing(10) }}
+        >
+          <Text className="text-gray-500" style={{ fontSize: ds.fontSize(16) }}>{user?.email || 'Not set'}</Text>
+          <Ionicons name="lock-closed" size={ds.icon(16)} color={colors.gray[400]} />
         </View>
       </View>
 
-      <View className="mb-4">
-        <Text className="text-xs text-gray-500 uppercase tracking-wide mb-1">Role</Text>
-        <View className="flex-row items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
-          <Text className="text-base text-gray-500 capitalize">{user?.role || 'Employee'}</Text>
-          <Ionicons name="lock-closed" size={16} color={colors.gray[400]} />
+      <View style={{ marginBottom: ds.spacing(16) }}>
+        <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11), marginBottom: ds.spacing(4) }}>Role</Text>
+        <View
+          className="flex-row items-center justify-between bg-gray-50"
+          style={{ borderRadius: ds.radius(12), minHeight: Math.max(48, ds.buttonH), paddingHorizontal: ds.spacing(14), paddingVertical: ds.spacing(10) }}
+        >
+          <Text className="text-gray-500 capitalize" style={{ fontSize: ds.fontSize(16) }}>{user?.role || 'Employee'}</Text>
+          <Ionicons name="lock-closed" size={ds.icon(16)} color={colors.gray[400]} />
         </View>
       </View>
 
-      <View className="mb-4">
-        <Text className="text-xs text-gray-500 uppercase tracking-wide mb-1">Location</Text>
-        <View className="flex-row items-center justify-between bg-gray-50 rounded-xl px-4 py-3">
+      <View style={{ marginBottom: ds.spacing(16) }}>
+        <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11), marginBottom: ds.spacing(4) }}>Location</Text>
+        <View
+          className="flex-row items-center justify-between bg-gray-50"
+          style={{ borderRadius: ds.radius(12), minHeight: Math.max(48, ds.buttonH), paddingHorizontal: ds.spacing(14), paddingVertical: ds.spacing(10) }}
+        >
           <View className="flex-row items-center">
-            <Ionicons name="location" size={16} color={colors.primary[500]} />
-            <Text className="text-base text-gray-500 ml-2">{location?.name || 'Not set'}</Text>
+            <Ionicons name="location" size={ds.icon(16)} color={colors.primary[500]} />
+            <Text className="text-gray-500" style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(16) }}>{location?.name || 'Not set'}</Text>
           </View>
-          <Ionicons name="lock-closed" size={16} color={colors.gray[400]} />
+          <Ionicons name="lock-closed" size={ds.icon(16)} color={colors.gray[400]} />
         </View>
       </View>
 
       <TouchableOpacity
         onPress={onChangePassword}
-        className="bg-gray-100 rounded-xl py-3.5 items-center flex-row justify-center"
+        className="bg-gray-100 items-center flex-row justify-center"
+        style={{ borderRadius: ds.radius(12), minHeight: Math.max(48, ds.buttonH) }}
         activeOpacity={0.7}
       >
-        <Ionicons name="key-outline" size={18} color={colors.primary[600]} />
-        <Text className="text-primary-600 font-semibold ml-2">Change Password</Text>
+        <Ionicons name="key-outline" size={ds.icon(18)} color={colors.primary[600]} />
+        <Text className="text-primary-600 font-semibold" style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(15) }}>Change Password</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
 export default function ProfileSettingsScreen() {
+  const ds = useScaledStyles();
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center">
+      <View
+        className="bg-white border-b border-gray-100 flex-row items-center"
+        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
+      >
         <TouchableOpacity
           onPress={() => router.back()}
-          className="p-2 mr-2"
+          style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={20} color={colors.gray[700]} />
+          <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
         </TouchableOpacity>
-        <Text className="text-lg font-bold text-gray-900">Profile</Text>
+        <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>Profile</Text>
       </View>
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 32 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
         <ProfileSection onChangePassword={() => setShowPasswordModal(true)} />
       </ScrollView>
 

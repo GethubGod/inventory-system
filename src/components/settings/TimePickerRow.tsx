@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { useDisplayStore } from '@/store';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 interface TimePickerRowProps {
   title: string;
@@ -21,6 +22,7 @@ export function TimePickerRow({
 }: TimePickerRowProps) {
   const [showPicker, setShowPicker] = useState(false);
   const { hapticFeedback } = useDisplayStore();
+  const ds = useScaledStyles();
 
   // Parse "HH:MM" string to Date
   const parseTime = (timeString: string): Date => {
@@ -71,15 +73,16 @@ export function TimePickerRow({
       <TouchableOpacity
         onPress={handlePress}
         disabled={disabled}
-        className="flex-row items-center justify-between py-3"
+        className="flex-row items-center justify-between"
+        style={{ minHeight: Math.max(44, ds.rowH - ds.spacing(12)), paddingVertical: ds.spacing(10) }}
         activeOpacity={0.7}
       >
-        <Text className="text-base text-gray-700">{title}</Text>
+        <Text className="text-gray-700" style={{ fontSize: ds.fontSize(16) }}>{title}</Text>
         <View className="flex-row items-center">
-          <Text className="text-base text-gray-900 font-medium mr-2">
+          <Text className="text-gray-900 font-medium" style={{ fontSize: ds.fontSize(16), marginRight: ds.spacing(8) }}>
             {formatDisplayTime(value)}
           </Text>
-          <Ionicons name="time-outline" size={18} color={colors.gray[400]} />
+          <Ionicons name="time-outline" size={ds.icon(18)} color={colors.gray[400]} />
         </View>
       </TouchableOpacity>
 
@@ -99,15 +102,18 @@ export function TimePickerRow({
               className="bg-white rounded-t-3xl"
               onPress={(e) => e.stopPropagation()}
             >
-              <View className="flex-row justify-between items-center px-4 py-3 border-b border-gray-100">
-                <TouchableOpacity onPress={() => setShowPicker(false)}>
-                  <Text className="text-gray-500 text-base">Cancel</Text>
+              <View
+                className="flex-row justify-between items-center border-b border-gray-100"
+                style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
+              >
+                <TouchableOpacity onPress={() => setShowPicker(false)} style={{ minHeight: 44, justifyContent: 'center' }}>
+                  <Text className="text-gray-500" style={{ fontSize: ds.fontSize(16) }}>Cancel</Text>
                 </TouchableOpacity>
-                <Text className="text-lg font-semibold text-gray-900">
+                <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>
                   {title}
                 </Text>
-                <TouchableOpacity onPress={handleIOSDone}>
-                  <Text className="text-primary-500 text-base font-semibold">
+                <TouchableOpacity onPress={handleIOSDone} style={{ minHeight: 44, justifyContent: 'center' }}>
+                  <Text className="text-primary-500 font-semibold" style={{ fontSize: ds.fontSize(16) }}>
                     Done
                   </Text>
                 </TouchableOpacity>
@@ -117,7 +123,7 @@ export function TimePickerRow({
                 mode="time"
                 display="spinner"
                 onChange={handleChange}
-                style={{ height: 200 }}
+                style={{ height: Math.max(200, ds.spacing(200)) }}
               />
             </Pressable>
           </Pressable>

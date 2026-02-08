@@ -1,12 +1,17 @@
 import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View, Text } from 'react-native';
-import { useAuthStore, useOrderStore } from '@/store';
+import { useAuthStore, useOrderStore, useDisplayStore } from '@/store';
 
 export default function ManagerLayout() {
   const { session, profile, user } = useAuthStore();
   const { getTotalCartCount } = useOrderStore();
+  const ds = useDisplayStore();
   const cartCount = getTotalCartCount();
+  const isLarge = ds.uiScale === 'large';
+  const isCompact = ds.uiScale === 'compact';
+  const tabBarScale = isLarge ? 1.1 : isCompact ? 0.95 : 1;
+  const badgeSize = Math.max(18, Math.round(18 * tabBarScale));
 
   if (!session) {
     return <Redirect href="/(auth)/login" />;
@@ -32,14 +37,17 @@ export default function ManagerLayout() {
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E5E7EB',
-          paddingTop: 12,
-          paddingBottom: 12,
-          height: 90,
+          paddingTop: Math.round(12 * tabBarScale),
+          paddingBottom: Math.round(12 * tabBarScale),
+          height: Math.round(90 * tabBarScale),
         },
         tabBarLabelStyle: {
-          fontSize: 11,
+          fontSize: Math.max(10, ds.scaledFontSize(10)),
           fontWeight: '600',
-          marginTop: 4,
+          marginTop: Math.round(4 * tabBarScale),
+        },
+        tabBarIconStyle: {
+          transform: [{ scale: isLarge ? 1.15 : isCompact ? 0.95 : 1 }],
         },
         headerShown: false,
       }}
@@ -67,18 +75,18 @@ export default function ManagerLayout() {
                 <View
                   style={{
                     position: 'absolute',
-                    top: -4,
-                    right: -8,
+                    top: -Math.round(4 * tabBarScale),
+                    right: -Math.round(8 * tabBarScale),
                     backgroundColor: '#F97316',
-                    borderRadius: 10,
-                    minWidth: 18,
-                    height: 18,
+                    borderRadius: badgeSize / 2,
+                    minWidth: badgeSize,
+                    height: badgeSize,
                     alignItems: 'center',
                     justifyContent: 'center',
-                    paddingHorizontal: 4,
+                    paddingHorizontal: Math.round(4 * tabBarScale),
                   }}
                 >
-                  <Text style={{ color: 'white', fontSize: 10, fontWeight: 'bold' }}>
+                  <Text style={{ color: 'white', fontSize: Math.max(9, ds.scaledFontSize(9)), fontWeight: 'bold' }}>
                     {cartCount > 99 ? '99+' : cartCount}
                   </Text>
                 </View>

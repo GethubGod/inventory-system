@@ -1,5 +1,6 @@
 import React from 'react';
 import { Image, StyleProp, View, ViewStyle } from 'react-native';
+import { useDisplayStore } from '@/store';
 
 type BrandLogoVariant = 'header' | 'footer' | 'inline';
 type BrandLogoColorMode = 'light' | 'dark';
@@ -28,13 +29,21 @@ const VARIANT_OPACITY: Record<BrandLogoVariant, number> = {
   inline: 1,
 };
 
+const LOGO_SCALE_MULTIPLIER = {
+  compact: 0.9,
+  default: 1,
+  large: 1.15,
+} as const;
+
 export function BrandLogo({
   variant = 'inline',
   size,
   colorMode = 'light',
   style,
 }: BrandLogoProps) {
-  const resolvedSize = size ?? DEFAULT_SIZE[variant];
+  const uiScale = useDisplayStore((state) => state.uiScale);
+  const baseSize = size ?? DEFAULT_SIZE[variant];
+  const resolvedSize = Math.round(baseSize * LOGO_SCALE_MULTIPLIER[uiScale]);
   const source = colorMode === 'dark' ? LIGHT_LOGO : BLACK_LOGO;
   const sourceMeta = colorMode === 'dark' ? LIGHT_LOGO_META : BLACK_LOGO_META;
   const aspectRatio =

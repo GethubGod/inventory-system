@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors, shadow } from '@/constants';
 import { useDisplayStore } from '@/store';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -36,6 +37,7 @@ export function ExpandableSection({
 }: ExpandableSectionProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const { reduceMotion, hapticFeedback } = useDisplayStore();
+  const ds = useScaledStyles();
 
   const toggle = () => {
     if (hapticFeedback && Platform.OS !== 'web') {
@@ -49,27 +51,40 @@ export function ExpandableSection({
 
   return (
     <View
-      className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-      style={shadow.md}
+      className="bg-white rounded-xl overflow-hidden"
+      style={[
+        shadow.md,
+        {
+          marginHorizontal: ds.spacing(16),
+          marginBottom: ds.spacing(16),
+        },
+      ]}
     >
       {/* Header - always visible */}
       <TouchableOpacity
         onPress={toggle}
-        className="flex-row items-center px-4 py-4"
+        className="flex-row items-center"
+        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(14), minHeight: Math.max(ds.rowH, 60) }}
         activeOpacity={0.7}
       >
         <View
-          className="w-10 h-10 rounded-xl items-center justify-center mr-4"
-          style={{ backgroundColor: iconBgColor }}
+          className="items-center justify-center"
+          style={{
+            width: Math.max(40, ds.icon(40)),
+            height: Math.max(40, ds.icon(40)),
+            borderRadius: ds.radius(12),
+            marginRight: ds.spacing(14),
+            backgroundColor: iconBgColor,
+          }}
         >
-          <Ionicons name={icon} size={22} color={iconColor} />
+          <Ionicons name={icon} size={ds.icon(22)} color={iconColor} />
         </View>
-        <Text className="flex-1 text-lg font-semibold text-gray-900">
+        <Text className="flex-1 font-semibold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>
           {title}
         </Text>
         <Ionicons
           name={isExpanded ? 'chevron-up' : 'chevron-down'}
-          size={20}
+          size={ds.icon(20)}
           color={colors.gray[400]}
         />
       </TouchableOpacity>

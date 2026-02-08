@@ -70,7 +70,7 @@ export function SettingToggle({
           {title}
         </Text>
         {subtitle && (
-          <Text className="text-gray-500 mt-0.5" style={{ fontSize: ds.fontSize(14) }}>
+          <Text className="text-gray-500" style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(2) }}>
             {subtitle}
           </Text>
         )}

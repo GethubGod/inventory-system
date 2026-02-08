@@ -72,9 +72,8 @@ export default function OrderScreen() {
     searchQuery,
     setSearchQuery,
     addItem,
-    isLoading: inventoryLoading,
   } = useInventoryStore();
-  const { getLocationCartTotal, getTotalCartCount, addToCart } = useOrderStore();
+  const { getLocationCartTotal, getTotalCartCount } = useOrderStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
@@ -89,6 +88,9 @@ export default function OrderScreen() {
   const [newItemPackSize, setNewItemPackSize] = useState('');
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
   const totalCartCount = getTotalCartCount();
+  const headerActionButtonSize = Math.max(44, ds.buttonH - ds.spacing(2));
+  const modalInputHeight = Math.max(48, ds.buttonH);
+  const modalBodyBottomPadding = ds.spacing(40);
 
   useEffect(() => {
     fetchItems();
@@ -201,20 +203,25 @@ export default function OrderScreen() {
   );
 
   const CategoryPicker = ({ value, onChange }: { value: ItemCategory; onChange: (v: ItemCategory) => void }) => (
-    <View className="flex-row flex-wrap gap-2">
+    <View className="flex-row flex-wrap" style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}>
       {categories.map((cat) => {
         const isSelected = value === cat;
         const color = categoryColors[cat] || '#6B7280';
         return (
           <TouchableOpacity
             key={cat}
-            className="px-3 py-2 rounded-lg"
-            style={{ backgroundColor: isSelected ? color : color + '20' }}
+            className="rounded-lg items-center justify-center"
+            style={{
+              backgroundColor: isSelected ? color : color + '20',
+              minHeight: Math.max(40, ds.buttonH - ds.spacing(8)),
+              paddingHorizontal: ds.spacing(12),
+              paddingVertical: ds.spacing(6),
+            }}
             onPress={() => onChange(cat)}
           >
             <Text
-              style={{ color: isSelected ? '#FFFFFF' : color }}
-              className="text-sm font-medium"
+              style={{ color: isSelected ? '#FFFFFF' : color, fontSize: ds.fontSize(14) }}
+              className="font-medium"
             >
               {CATEGORY_LABELS[cat]}
             </Text>
@@ -225,16 +232,24 @@ export default function OrderScreen() {
   );
 
   const SupplierPicker = ({ value, onChange }: { value: SupplierCategory; onChange: (v: SupplierCategory) => void }) => (
-    <View className="flex-row flex-wrap gap-2">
+    <View className="flex-row flex-wrap" style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}>
       {SUPPLIER_CATEGORIES.map((sup) => {
         const isSelected = value === sup.value;
         return (
           <TouchableOpacity
             key={sup.value}
-            className={`px-3 py-2 rounded-lg ${isSelected ? 'bg-primary-500' : 'bg-gray-100'}`}
+            className={`rounded-lg items-center justify-center ${isSelected ? 'bg-primary-500' : 'bg-gray-100'}`}
+            style={{
+              minHeight: Math.max(40, ds.buttonH - ds.spacing(8)),
+              paddingHorizontal: ds.spacing(12),
+              paddingVertical: ds.spacing(6),
+            }}
             onPress={() => onChange(sup.value)}
           >
-            <Text className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}>
+            <Text
+              className={`font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}
+              style={{ fontSize: ds.fontSize(14) }}
+            >
               {sup.label}
             </Text>
           </TouchableOpacity>
@@ -268,22 +283,27 @@ export default function OrderScreen() {
             <TouchableOpacity
               onPress={handleOpenAddItemModal}
               className="rounded-full bg-gray-100 items-center justify-center mr-2"
-              style={{ width: Math.max(44, ds.icon(36)), height: Math.max(44, ds.icon(36)) }}
+              style={{ width: headerActionButtonSize, height: headerActionButtonSize }}
             >
               <Ionicons name="add" size={ds.icon(20)} color={colors.gray[700]} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => router.push('/cart' as any)}
               className="rounded-full bg-gray-100 items-center justify-center relative"
-              style={{ width: Math.max(44, ds.icon(36)), height: Math.max(44, ds.icon(36)) }}
+              style={{ width: headerActionButtonSize, height: headerActionButtonSize }}
             >
               <Ionicons name="cart-outline" size={ds.icon(20)} color={colors.gray[700]} />
               {totalCartCount > 0 && (
                 <View
-                  className="absolute -top-1 -right-1 bg-primary-500 rounded-full items-center justify-center px-1"
-                  style={{ minWidth: 20, height: 20 }}
+                  className="absolute bg-primary-500 rounded-full items-center justify-center px-1"
+                  style={{
+                    top: -ds.spacing(2),
+                    right: -ds.spacing(2),
+                    minWidth: Math.max(20, ds.icon(20)),
+                    height: Math.max(20, ds.icon(20)),
+                  }}
                 >
-                  <Text className="text-white font-bold" style={{ fontSize: 10 }}>
+                  <Text className="text-white font-bold" style={{ fontSize: ds.fontSize(10) }}>
                     {totalCartCount > 99 ? '99+' : totalCartCount}
                   </Text>
                 </View>
@@ -492,22 +512,36 @@ export default function OrderScreen() {
             className="flex-1"
           >
             {/* Modal Header */}
-            <View className="bg-white px-4 py-4 border-b border-gray-200 flex-row items-center justify-between">
-              <TouchableOpacity onPress={() => setShowAddItemModal(false)}>
-                <Text className="text-primary-500 font-medium">Cancel</Text>
+            <View
+              className="bg-white border-b border-gray-200 flex-row items-center justify-between"
+              style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(14) }}
+            >
+              <TouchableOpacity onPress={() => setShowAddItemModal(false)} style={{ minHeight: 44, justifyContent: 'center' }}>
+                <Text className="text-primary-500 font-medium" style={{ fontSize: ds.fontSize(14) }}>Cancel</Text>
               </TouchableOpacity>
-              <Text className="text-lg font-bold text-gray-900">Add New Item</Text>
-              <View style={{ width: 50 }} />
+              <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(24) }}>Add New Item</Text>
+              <View style={{ width: ds.spacing(56) }} />
             </View>
 
-            <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
+            <ScrollView
+              className="flex-1"
+              contentContainerStyle={{ padding: ds.spacing(16), paddingBottom: modalBodyBottomPadding }}
+              showsVerticalScrollIndicator
+              keyboardShouldPersistTaps="handled"
+            >
               {/* Name */}
-              <View className="mb-4">
-                <Text className="text-sm font-medium text-gray-700 mb-2">
+              <View style={{ marginBottom: ds.spacing(16) }}>
+                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
                   Item Name *
                 </Text>
                 <TextInput
-                  className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                  className="bg-white border border-gray-200 text-gray-900"
+                  style={{
+                    borderRadius: ds.radius(12),
+                    minHeight: modalInputHeight,
+                    paddingHorizontal: ds.spacing(14),
+                    fontSize: ds.fontSize(15),
+                  }}
                   placeholder="e.g., Salmon (Sushi Grade)"
                   placeholderTextColor="#9CA3AF"
                   value={newItemName}
@@ -516,8 +550,8 @@ export default function OrderScreen() {
               </View>
 
               {/* Category */}
-              <View className="mb-4">
-                <Text className="text-sm font-medium text-gray-700 mb-2">
+              <View style={{ marginBottom: ds.spacing(16) }}>
+                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
                   Category *
                 </Text>
                 <CategoryPicker
@@ -527,8 +561,8 @@ export default function OrderScreen() {
               </View>
 
               {/* Supplier Category */}
-              <View className="mb-4">
-                <Text className="text-sm font-medium text-gray-700 mb-2">
+              <View style={{ marginBottom: ds.spacing(16) }}>
+                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
                   Supplier *
                 </Text>
                 <SupplierPicker
@@ -538,13 +572,19 @@ export default function OrderScreen() {
               </View>
 
               {/* Units Row */}
-              <View className="flex-row gap-3 mb-4">
+              <View className="flex-row" style={{ columnGap: ds.spacing(12), marginBottom: ds.spacing(16) }}>
                 <View className="flex-1">
-                  <Text className="text-sm font-medium text-gray-700 mb-2">
+                  <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
                     Base Unit *
                   </Text>
                   <TextInput
-                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                    className="bg-white border border-gray-200 text-gray-900"
+                    style={{
+                      borderRadius: ds.radius(12),
+                      minHeight: modalInputHeight,
+                      paddingHorizontal: ds.spacing(14),
+                      fontSize: ds.fontSize(15),
+                    }}
                     placeholder="e.g., lb"
                     placeholderTextColor="#9CA3AF"
                     value={newItemBaseUnit}
@@ -552,11 +592,17 @@ export default function OrderScreen() {
                   />
                 </View>
                 <View className="flex-1">
-                  <Text className="text-sm font-medium text-gray-700 mb-2">
+                  <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
                     Pack Unit *
                   </Text>
                   <TextInput
-                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
+                    className="bg-white border border-gray-200 text-gray-900"
+                    style={{
+                      borderRadius: ds.radius(12),
+                      minHeight: modalInputHeight,
+                      paddingHorizontal: ds.spacing(14),
+                      fontSize: ds.fontSize(15),
+                    }}
                     placeholder="e.g., case"
                     placeholderTextColor="#9CA3AF"
                     value={newItemPackUnit}
@@ -566,20 +612,27 @@ export default function OrderScreen() {
               </View>
 
               {/* Pack Size */}
-              <View className="mb-6">
-                <Text className="text-sm font-medium text-gray-700 mb-2">
+              <View style={{ marginBottom: ds.spacing(24) }}>
+                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
                   Pack Size *
                 </Text>
                 <View className="flex-row items-center">
                   <TextInput
-                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900 w-24"
+                    className="bg-white border border-gray-200 text-gray-900"
+                    style={{
+                      width: ds.spacing(104),
+                      borderRadius: ds.radius(12),
+                      minHeight: modalInputHeight,
+                      paddingHorizontal: ds.spacing(14),
+                      fontSize: ds.fontSize(15),
+                    }}
                     placeholder="10"
                     placeholderTextColor="#9CA3AF"
                     value={newItemPackSize}
                     onChangeText={setNewItemPackSize}
                     keyboardType="number-pad"
                   />
-                  <Text className="text-gray-500 ml-3">
+                  <Text className="text-gray-500" style={{ marginLeft: ds.spacing(12), fontSize: ds.fontSize(14) }}>
                     {newItemBaseUnit || 'units'} per {newItemPackUnit || 'pack'}
                   </Text>
                 </View>
@@ -587,15 +640,15 @@ export default function OrderScreen() {
 
               {/* Preview */}
               {newItemName && (
-                <View className="bg-primary-50 rounded-xl p-4 mb-6">
-                  <Text className="text-sm font-medium text-primary-700 mb-2">
+                <View className="bg-primary-50 rounded-xl" style={{ padding: ds.spacing(16), marginBottom: ds.spacing(24), borderRadius: ds.radius(12) }}>
+                  <Text className="font-medium text-primary-700" style={{ fontSize: ds.fontSize(13), marginBottom: ds.spacing(8) }}>
                     Preview
                   </Text>
-                  <Text className="text-gray-900 font-semibold">{newItemName}</Text>
-                  <Text className="text-gray-600 text-sm mt-1">
+                  <Text className="text-gray-900 font-semibold" style={{ fontSize: ds.fontSize(15) }}>{newItemName}</Text>
+                  <Text className="text-gray-600 mt-1" style={{ fontSize: ds.fontSize(13) }}>
                     {CATEGORY_LABELS[newItemCategory]} • {SUPPLIER_CATEGORIES.find((s) => s.value === newItemSupplierCategory)?.label}
                   </Text>
-                  <Text className="text-gray-500 text-sm mt-1">
+                  <Text className="text-gray-500 mt-1" style={{ fontSize: ds.fontSize(13) }}>
                     {newItemPackSize || '1'} {newItemBaseUnit || 'units'} per {newItemPackUnit || 'pack'}
                   </Text>
                 </View>
@@ -603,16 +656,17 @@ export default function OrderScreen() {
             </ScrollView>
 
             {/* Submit Button */}
-            <View className="bg-white border-t border-gray-200 px-4 py-4">
+            <View className="bg-white border-t border-gray-200" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(14) }}>
               <TouchableOpacity
-                className={`rounded-xl py-4 items-center flex-row justify-center ${
+                className={`rounded-xl items-center flex-row justify-center ${
                   isSubmittingItem ? 'bg-primary-300' : 'bg-primary-500'
                 }`}
+                style={{ minHeight: modalInputHeight, borderRadius: ds.radius(12) }}
                 onPress={handleAddNewItem}
                 disabled={isSubmittingItem}
               >
-                <Ionicons name="add-circle" size={20} color="white" />
-                <Text className="text-white font-bold text-lg ml-2">
+                <Ionicons name="add-circle" size={ds.icon(20)} color="white" />
+                <Text className="text-white font-bold ml-2" style={{ fontSize: ds.buttonFont }}>
                   {isSubmittingItem ? 'Adding...' : 'Add Item'}
                 </Text>
               </TouchableOpacity>

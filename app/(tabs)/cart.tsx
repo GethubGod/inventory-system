@@ -413,6 +413,7 @@ export default function CartScreen() {
     const unitLabel = unitType === 'pack' ? inventoryItem.pack_unit : inventoryItem.base_unit;
     const key = `${locationId}-${item.id}`;
     const isExpanded = expandedItems.has(key);
+    const itemActionButtonSize = Math.max(52, ds.icon(44));
 
     return (
       <View key={item.id} className="border-b border-gray-100">
@@ -493,47 +494,73 @@ export default function CartScreen() {
               <View className="flex-row items-center ml-2">
                 <TouchableOpacity
                   onPress={() => handleOpenItemMenu(locationId, item)}
-                  style={{ padding: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
+                  style={{
+                    width: itemActionButtonSize,
+                    height: itemActionButtonSize,
+                    borderRadius: ds.radius(10),
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Ionicons name="ellipsis-horizontal" size={ds.icon(18)} color={colors.gray[500]} />
+                  <Ionicons name="ellipsis-horizontal" size={ds.icon(22)} color={colors.gray[500]} />
                 </TouchableOpacity>
 
                 {/* Remove Button */}
                 <TouchableOpacity
                   onPress={() => handleRemoveItem(locationId, inventoryItem.id, inventoryItem.name, item.id)}
-                  style={{ padding: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}
+                  style={{
+                    width: itemActionButtonSize,
+                    height: itemActionButtonSize,
+                    borderRadius: ds.radius(10),
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
-                  <Ionicons name="trash-outline" size={ds.icon(20)} color={colors.error} />
+                  <Ionicons name="trash-outline" size={ds.icon(24)} color={colors.error} />
                 </TouchableOpacity>
               </View>
             </View>
 
             {/* Unit Toggle */}
-            <View className="flex-row mt-3 self-start">
-              <TouchableOpacity
-                onPress={() => handleItemValueChange(locationId, item, value, 'pack')}
-                style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(6), borderTopLeftRadius: ds.radius(8), borderBottomLeftRadius: ds.radius(8), minHeight: 44, justifyContent: 'center' }}
-                className={unitType === 'pack' ? 'bg-primary-500' : 'bg-gray-100'}
-              >
-                <Text style={{ fontSize: ds.fontSize(12) }} className={`font-medium ${
-                  unitType === 'pack' ? 'text-white' : 'text-gray-600'
-                }`}>
-                  {inventoryItem.pack_unit}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleItemValueChange(locationId, item, value, 'base')}
-                style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(6), borderTopRightRadius: ds.radius(8), borderBottomRightRadius: ds.radius(8), minHeight: 44, justifyContent: 'center' }}
-                className={unitType === 'base' ? 'bg-primary-500' : 'bg-gray-100'}
-              >
-                <Text style={{ fontSize: ds.fontSize(12) }} className={`font-medium ${
-                  unitType === 'base' ? 'text-white' : 'text-gray-600'
-                }`}>
-                  {inventoryItem.base_unit}
-                </Text>
-              </TouchableOpacity>
+            <View className="mt-3 flex-row items-center">
+              <View className="flex-row self-start">
+                <TouchableOpacity
+                  onPress={() => handleItemValueChange(locationId, item, value, 'pack')}
+                  style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(6), borderTopLeftRadius: ds.radius(8), borderBottomLeftRadius: ds.radius(8), minHeight: 44, justifyContent: 'center' }}
+                  className={unitType === 'pack' ? 'bg-primary-500' : 'bg-gray-100'}
+                >
+                  <Text style={{ fontSize: ds.fontSize(12) }} className={`font-medium ${
+                    unitType === 'pack' ? 'text-white' : 'text-gray-600'
+                  }`}>
+                    {inventoryItem.pack_unit}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleItemValueChange(locationId, item, value, 'base')}
+                  style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(6), borderTopRightRadius: ds.radius(8), borderBottomRightRadius: ds.radius(8), minHeight: 44, justifyContent: 'center' }}
+                  className={unitType === 'base' ? 'bg-primary-500' : 'bg-gray-100'}
+                >
+                  <Text style={{ fontSize: ds.fontSize(12) }} className={`font-medium ${
+                    unitType === 'base' ? 'text-white' : 'text-gray-600'
+                  }`}>
+                    {inventoryItem.base_unit}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {!isRemainingMode && (
+                <View style={{ marginLeft: ds.spacing(12), flex: 1, minHeight: 44, justifyContent: 'center' }}>
+                  <Text
+                    style={{ fontSize: ds.fontSize(12) }}
+                    className="text-gray-400 text-left"
+                    numberOfLines={2}
+                  >
+                    {inventoryItem.pack_size} {inventoryItem.base_unit} per {inventoryItem.pack_unit}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {isRemainingMode ? (
@@ -554,9 +581,6 @@ export default function CartScreen() {
                     Note: {item.note}
                   </Text>
                 )}
-                <Text style={{ fontSize: ds.fontSize(12) }} className="text-gray-400 mt-2">
-                  {inventoryItem.pack_size} {inventoryItem.base_unit} per {inventoryItem.pack_unit}
-                </Text>
               </>
             )}
           </View>

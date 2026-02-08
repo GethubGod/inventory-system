@@ -10,6 +10,7 @@ import { requestNotificationPermissions } from '@/services/notificationService';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 function NotificationsSection() {
+  const ds = useScaledStyles();
   const { user, profile } = useAuthStore();
   const { notifications, setNotificationSettings, setQuietHours } = useSettingsStore();
   const isManager = (user?.role ?? profile?.role) === 'manager';
@@ -46,8 +47,8 @@ function NotificationsSection() {
 
       {notifications.pushEnabled && (
         <>
-          <View className="px-4 py-2">
-            <Text className="text-xs text-gray-500 uppercase tracking-wide">
+          <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
+            <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11) }}>
               Notification Types
             </Text>
           </View>
@@ -75,10 +76,10 @@ function NotificationsSection() {
             onValueChange={(v) => setNotificationSettings({ dailySummary: v })}
           />
 
-          <View className="h-px bg-gray-100 mx-4 my-2" />
+          <View className="h-px bg-gray-100" style={{ marginHorizontal: ds.spacing(16), marginVertical: ds.spacing(8) }} />
 
-          <View className="px-4 py-2">
-            <Text className="text-xs text-gray-500 uppercase tracking-wide">
+          <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
+            <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11) }}>
               Sound & Vibration
             </Text>
           </View>
@@ -97,7 +98,7 @@ function NotificationsSection() {
             onValueChange={(v) => setNotificationSettings({ vibrationEnabled: v })}
           />
 
-          <View className="h-px bg-gray-100 mx-4 my-2" />
+          <View className="h-px bg-gray-100" style={{ marginHorizontal: ds.spacing(16), marginVertical: ds.spacing(8) }} />
 
           <SettingToggle
             title="Quiet Hours"
@@ -107,8 +108,8 @@ function NotificationsSection() {
           />
 
           {notifications.quietHours.enabled && (
-            <View className="px-4 pb-4">
-              <View className="bg-gray-50 rounded-xl px-4">
+            <View style={{ paddingHorizontal: ds.spacing(16), paddingBottom: ds.spacing(16) }}>
+              <View className="bg-gray-50 rounded-xl" style={{ paddingHorizontal: ds.spacing(14), borderRadius: ds.radius(12) }}>
                 <TimePickerRow
                   title="Start"
                   value={notifications.quietHours.startTime}
@@ -121,7 +122,7 @@ function NotificationsSection() {
                   onTimeChange={(t) => setQuietHours({ endTime: t })}
                 />
               </View>
-              <Text className="text-xs text-gray-400 mt-2">
+              <Text className="text-gray-400" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(8) }}>
                 Notifications will be silenced during these hours
               </Text>
             </View>
@@ -148,7 +149,7 @@ export default function NotificationsSettingsScreen() {
         <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>Notifications</Text>
       </View>
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 32 }}>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
         <NotificationsSection />
       </ScrollView>
     </SafeAreaView>

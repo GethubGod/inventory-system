@@ -45,6 +45,8 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
   const baseFontSize = ds.fontSize(16);
   const smallFontSize = ds.fontSize(13);
   const tinyFontSize = ds.fontSize(11);
+  const modeToggleHeight = Math.max(42, ds.buttonH - ds.spacing(8));
+  const modeToggleFontSize = ds.fontSize(14);
 
   const parsedQuantity = Number.parseFloat(quantity);
   const parsedRemaining = Number.parseFloat(remaining);
@@ -266,8 +268,11 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
               {item.pack_size} {item.base_unit}/{item.pack_unit}
             </Text>
             {cartItem?.inputMode === 'remaining' && (
-              <View className="ml-2 px-2 py-0.5 rounded-full bg-amber-100">
-                <Text className="text-[10px] font-semibold text-amber-700">Remaining</Text>
+              <View
+                className="ml-2 rounded-full bg-amber-100"
+                style={{ paddingHorizontal: ds.spacing(8), paddingVertical: ds.spacing(3) }}
+              >
+                <Text style={{ fontSize: ds.fontSize(12) }} className="font-semibold text-amber-700">Remaining</Text>
               </View>
             )}
           </View>
@@ -290,22 +295,30 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
         <View className="mt-3 pt-3 border-t border-gray-100">
           <View className="flex-row mb-3">
             <TouchableOpacity
-              className={`flex-1 rounded-l-lg py-2 items-center ${
+              className={`flex-1 rounded-l-lg items-center justify-center ${
                 inputMode === 'quantity' ? 'bg-primary-500' : 'bg-gray-100'
               }`}
+              style={{ minHeight: modeToggleHeight }}
               onPress={() => handleModeChange('quantity')}
             >
-              <Text className={`text-xs font-semibold ${inputMode === 'quantity' ? 'text-white' : 'text-gray-600'}`}>
+              <Text
+                className={`font-semibold ${inputMode === 'quantity' ? 'text-white' : 'text-gray-600'}`}
+                style={{ fontSize: modeToggleFontSize }}
+              >
                 Order Qty
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              className={`flex-1 rounded-r-lg py-2 items-center ${
+              className={`flex-1 rounded-r-lg items-center justify-center ${
                 inputMode === 'remaining' ? 'bg-primary-500' : 'bg-gray-100'
               }`}
+              style={{ minHeight: modeToggleHeight }}
               onPress={() => handleModeChange('remaining')}
             >
-              <Text className={`text-xs font-semibold ${inputMode === 'remaining' ? 'text-white' : 'text-gray-600'}`}>
+              <Text
+                className={`font-semibold ${inputMode === 'remaining' ? 'text-white' : 'text-gray-600'}`}
+                style={{ fontSize: modeToggleFontSize }}
+              >
                 Remaining
               </Text>
             </TouchableOpacity>
@@ -366,7 +379,7 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
           </View>
 
           {inputMode === 'remaining' && (
-            <Text className="text-[11px] text-gray-500 mt-2">
+            <Text className="text-gray-500 mt-2" style={{ fontSize: ds.fontSize(13) }}>
               Enter what is left on hand. A manager will decide order quantity.
             </Text>
           )}

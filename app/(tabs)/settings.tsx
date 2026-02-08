@@ -80,17 +80,17 @@ export default function SettingsScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{ paddingBottom: ds.spacing(32) }}
         showsVerticalScrollIndicator={false}
       >
         <View className="flex-row items-center" style={{ paddingHorizontal: ds.spacing(20), paddingVertical: ds.spacing(16) }}>
-          <BrandLogo variant="header" size={28} style={{ marginRight: 10 }} />
+          <BrandLogo variant="header" size={28} style={{ marginRight: ds.spacing(10) }} />
           <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(22) }}>Settings</Text>
         </View>
 
         <View
-          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-          style={shadow.md}
+          className="bg-white rounded-xl overflow-hidden"
+          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
         >
           <SettingsRow
             icon="person-outline"
@@ -104,8 +104,8 @@ export default function SettingsScreen() {
         </View>
 
         <View
-          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-          style={shadow.md}
+          className="bg-white rounded-xl overflow-hidden"
+          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
         >
           <SettingsRow
             icon="eye-outline"
@@ -119,8 +119,8 @@ export default function SettingsScreen() {
         </View>
 
         <View
-          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-          style={shadow.md}
+          className="bg-white rounded-xl overflow-hidden"
+          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
         >
           <SettingsRow
             icon="notifications-outline"
@@ -134,8 +134,8 @@ export default function SettingsScreen() {
         </View>
 
         <View
-          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-          style={shadow.md}
+          className="bg-white rounded-xl overflow-hidden"
+          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
         >
           <SettingsRow
             icon="alarm-outline"
@@ -149,8 +149,8 @@ export default function SettingsScreen() {
         </View>
 
         <View
-          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-          style={shadow.md}
+          className="bg-white rounded-xl overflow-hidden"
+          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
         >
           <SettingsRow
             icon="cube-outline"
@@ -164,8 +164,8 @@ export default function SettingsScreen() {
         </View>
 
         <View
-          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-          style={shadow.md}
+          className="bg-white rounded-xl overflow-hidden"
+          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
         >
           <SettingsRow
             icon="information-circle-outline"
@@ -179,8 +179,8 @@ export default function SettingsScreen() {
         </View>
 
         <View
-          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-          style={shadow.md}
+          className="bg-white rounded-xl overflow-hidden"
+          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
         >
           <SettingsRow
             icon="hardware-chip-outline"
@@ -194,8 +194,8 @@ export default function SettingsScreen() {
         </View>
 
         <View
-          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-          style={shadow.md}
+          className="bg-white rounded-xl overflow-hidden"
+          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
         >
           <SettingsRow
             icon="receipt-outline"
@@ -209,8 +209,8 @@ export default function SettingsScreen() {
         </View>
 
         <View
-          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-          style={shadow.md}
+          className="bg-white rounded-xl overflow-hidden"
+          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
         >
           <SettingsRow
             icon="document-text-outline"
@@ -237,8 +237,8 @@ export default function SettingsScreen() {
 
         {isManager && (
           <View
-            className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-            style={shadow.md}
+            className="bg-white rounded-xl overflow-hidden"
+            style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
           >
             <SettingsRow
               icon="people-outline"
@@ -261,8 +261,8 @@ export default function SettingsScreen() {
         )}
 
         <View
-          className="bg-white rounded-xl mx-4 overflow-hidden mb-4"
-          style={shadow.md}
+          className="bg-white rounded-xl overflow-hidden"
+          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
         >
           <SettingsRow
             icon="log-out-outline"
@@ -276,16 +276,16 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <View className="items-center mt-2">
-          <Text className="text-gray-400 text-sm">
+        <View className="items-center" style={{ marginTop: ds.spacing(8) }}>
+          <Text className="text-gray-400" style={{ fontSize: ds.fontSize(14) }}>
             Signed in as {user?.email}
           </Text>
         </View>
 
-        <View className="items-center px-6 pt-6 pb-10">
+        <View className="items-center" style={{ paddingHorizontal: ds.spacing(24), paddingTop: ds.spacing(24), paddingBottom: ds.spacing(40) }}>
           <BrandLogo variant="footer" size={40} />
-          <Text className="text-xs text-gray-500 mt-2">Babytuna Systems</Text>
-          <Text className="text-xs text-gray-400 mt-1">Version {appVersion}</Text>
+          <Text className="text-gray-500" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(8) }}>Babytuna Systems</Text>
+          <Text className="text-gray-400" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4) }}>Version {appVersion}</Text>
         </View>
       </ScrollView>
     </SafeAreaView>
