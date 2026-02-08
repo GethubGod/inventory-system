@@ -25,6 +25,10 @@ import { useAuthStore, useSettingsStore, useStockStore } from '@/store';
 import { useStockNetworkStatus } from '@/hooks';
 import { ItemCategory, StockUpdateMethod } from '@/types';
 import { supabase } from '@/lib/supabase';
+import {
+  cancelStockCountPausedNotifications,
+  scheduleStockCountPausedNotification,
+} from '@/services/notificationService';
 
 const CATEGORY_EMOJI: Record<ItemCategory, string> = {
   fish: '🐟',
@@ -49,7 +53,7 @@ function getRelativeTimeLabel(timestamp: string | null): string {
   return `${days} days ago`;
 }
 
-function parseScanMethod(value: string | string[] | undefined): StockUpdateMethod {
+function parseScanMethod(value: string | string[] | undefined): 'nfc' | 'qr' | 'manual' {
   if (value === 'qr') return 'qr';
   if (value === 'nfc') return 'nfc';
   return 'manual';
@@ -65,9 +69,11 @@ export default function StockCountingScreen() {
   const params = useLocalSearchParams();
   const areaId = Array.isArray(params.areaId) ? params.areaId[0] : params.areaId;
   const scanMethod = parseScanMethod(params.scanMethod);
+  const resumeParam = Array.isArray(params.resume) ? params.resume[0] : params.resume;
+  const shouldResume = resumeParam === '1' || resumeParam === 'true';
 
-  const { user } = useAuthStore();
-  const { reduceMotion } = useSettingsStore();
+  const { user, location } = useAuthStore();
+  const { reduceMotion, stockSettings } = useSettingsStore();
   const {
     storageAreas,
     currentAreaItems,
@@ -76,12 +82,17 @@ export default function StockCountingScreen() {
     isOnline,
     pendingUpdates,
     currentSession,
+    sessionNotice,
     skippedItemCounts,
     fetchAreaItems,
     startSession,
     updateItemStock,
     skipItem,
     nextItem,
+    previousItem,
+    pauseCurrentSession,
+    resumePausedSession,
+    setSessionNotice,
   } = useStockStore();
 
   const [quantityValue, setQuantityValue] = useState('0');
@@ -113,14 +124,56 @@ export default function StockCountingScreen() {
 
   useEffect(() => {
     if (!areaId) return;
+    let isCancelled = false;
 
     const initialize = async () => {
+      const state = useStockStore.getState();
+      const hasActiveSessionForArea = state.currentSession?.area_id === areaId;
+      const hasHydratedAreaItems =
+        state.currentAreaId === areaId && state.currentAreaItems.length > 0;
+      const hasPausedSessionForArea =
+        shouldResume && state.pausedSession?.areaId === areaId;
+
+      if (hasPausedSessionForArea) {
+        await fetchAreaItems(areaId);
+        if (isCancelled) return;
+
+        const resumed = resumePausedSession(areaId);
+        if (resumed) {
+          await cancelStockCountPausedNotifications();
+          setSessionNotice('Stock counting resumed.');
+          return;
+        }
+      }
+
+      if (hasActiveSessionForArea && hasHydratedAreaItems) {
+        return;
+      }
+
       await fetchAreaItems(areaId);
-      await startSession(areaId, scanMethod === 'qr' ? 'qr' : scanMethod === 'nfc' ? 'nfc' : 'manual');
+      if (isCancelled) return;
+
+      const latest = useStockStore.getState();
+      const stillHasActiveSession = latest.currentSession?.area_id === areaId;
+      if (!stillHasActiveSession) {
+        await startSession(areaId, scanMethod);
+      }
     };
 
     initialize();
-  }, [areaId, fetchAreaItems, startSession, scanMethod]);
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    areaId,
+    fetchAreaItems,
+    resumePausedSession,
+    scanMethod,
+    setSessionNotice,
+    shouldResume,
+    startSession,
+  ]);
 
   useEffect(() => {
     if (!currentItem) return;
@@ -179,6 +232,12 @@ export default function StockCountingScreen() {
     ]).start(() => setShowToast(false));
   }, [toastOpacity]);
 
+  useEffect(() => {
+    if (sessionNotice !== 'Stock counting resumed.') return;
+    showInlineToast(sessionNotice);
+    setSessionNotice(null);
+  }, [sessionNotice, setSessionNotice, showInlineToast]);
+
   const animateToNext = useCallback(
     (advance: () => void) => {
       if (reduceMotion) {
@@ -193,6 +252,30 @@ export default function StockCountingScreen() {
       }).start(() => {
         advance();
         slideAnim.setValue(screenWidth);
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      });
+    },
+    [reduceMotion, screenWidth, slideAnim]
+  );
+
+  const animateToPrevious = useCallback(
+    (retreat: () => void) => {
+      if (reduceMotion) {
+        retreat();
+        return;
+      }
+
+      Animated.timing(slideAnim, {
+        toValue: screenWidth,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        retreat();
+        slideAnim.setValue(-screenWidth);
         Animated.timing(slideAnim, {
           toValue: 0,
           duration: 200,
@@ -346,25 +429,52 @@ export default function StockCountingScreen() {
     await handlePhoto();
   }, [handlePhoto]);
 
-  const handleBack = useCallback(() => {
-    const counted = (currentSession?.items_checked ?? 0) + (currentSession?.items_skipped ?? 0);
-    if (counted === 0) {
-      router.back();
-      return;
+  const pauseAndExit = useCallback(async () => {
+    if (!areaId) return;
+
+    pauseCurrentSession(location?.id ?? null);
+    setSessionNotice('Stock count paused.');
+
+    if (stockSettings.resumeReminders) {
+      await scheduleStockCountPausedNotification(area?.name ?? 'this station', areaId);
+    } else {
+      await cancelStockCountPausedNotifications();
     }
 
+    router.replace('/(tabs)/stock');
+  }, [
+    area?.name,
+    areaId,
+    location?.id,
+    pauseCurrentSession,
+    setSessionNotice,
+    stockSettings.resumeReminders,
+  ]);
+
+  const confirmPauseAndExit = useCallback(() => {
     Alert.alert(
-      'Exit Counting?',
-      `You've counted ${counted} item${counted === 1 ? '' : 's'}. Review and submit now?`,
+      'Finish later?',
+      'Your current progress will be saved and you can resume from Update Stock.',
       [
-        { text: 'Keep Counting', style: 'cancel' },
+        { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Review',
-          onPress: () => handleSaveItem(false, true),
+          text: 'Finish Later',
+          onPress: () => {
+            void pauseAndExit();
+          },
         },
       ]
     );
-  }, [handleSaveItem, currentSession?.items_checked, currentSession?.items_skipped]);
+  }, [pauseAndExit]);
+
+  const handleGoBack = useCallback(() => {
+    if (currentItemIndex <= 0) {
+      showInlineToast('Already at first item');
+      return;
+    }
+
+    animateToPrevious(() => previousItem());
+  }, [animateToPrevious, currentItemIndex, previousItem, showInlineToast]);
 
   if (!areaId) {
     return null;
@@ -546,7 +656,12 @@ export default function StockCountingScreen() {
                       </Text>
                     </TouchableOpacity>
 
-                    <Text className="mt-2 text-xs text-gray-400 text-center">Finish later</Text>
+                    <TouchableOpacity
+                      className="mt-3 rounded-2xl border border-gray-200 py-3 items-center"
+                      onPress={handleFinishLater}
+                    >
+                      <Text className="text-sm font-semibold text-gray-600">Finish Later</Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
               </Animated.View>

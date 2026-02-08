@@ -677,6 +677,38 @@ function RemindersSection({
 }
 
 // ============================================
+// STOCK SECTION
+// ============================================
+function StockSection() {
+  const { stockSettings, setStockSettings } = useSettingsStore();
+
+  return (
+    <View>
+      <SettingToggle
+        icon="warning-outline"
+        iconColor="#EF4444"
+        iconBgColor="#FEE2E2"
+        title="Flag unusual quantities"
+        subtitle="Highlight suspiciously high stock counts in confirmation"
+        value={stockSettings.flagUnusualQuantities}
+        onValueChange={(value) => setStockSettings({ flagUnusualQuantities: value })}
+      />
+
+      <SettingToggle
+        icon="notifications-outline"
+        iconColor="#2563EB"
+        iconBgColor="#DBEAFE"
+        title="Resume reminders"
+        subtitle="Send a local reminder after pausing stock count"
+        value={stockSettings.resumeReminders}
+        onValueChange={(value) => setStockSettings({ resumeReminders: value })}
+        showBorder={false}
+      />
+    </View>
+  );
+}
+
+// ============================================
 // ABOUT & SUPPORT SECTION
 // ============================================
 function AboutSection() {
@@ -899,7 +931,17 @@ export default function SettingsScreen() {
           />
         </ExpandableSection>
 
-        {/* Section 5: About & Support */}
+        {/* Section 5: Stock */}
+        <ExpandableSection
+          title="Stock"
+          icon="cube-outline"
+          iconColor="#EA580C"
+          iconBgColor="#FFEDD5"
+        >
+          <StockSection />
+        </ExpandableSection>
+
+        {/* Section 6: About & Support */}
         <ExpandableSection
           title="About & Support"
           icon="information-circle-outline"

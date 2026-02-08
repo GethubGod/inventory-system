@@ -59,6 +59,17 @@ export interface SessionItemUpdate {
   updatedAt: string;
 }
 
+export interface PausedStockSession {
+  session: StockCheckSession;
+  areaId: string;
+  areaName: string;
+  locationId: string | null;
+  currentItemIndex: number;
+  skippedItemCounts: Record<string, number>;
+  sessionItemUpdates: Record<string, SessionItemUpdate>;
+  pausedAt: string;
+}
+
 interface UpdateItemStockOptions {
   quickSelectValue?: QuickSelectValue | null;
   photoUrl?: string | null;
@@ -80,6 +91,8 @@ interface StockState {
   lastSyncAt: string | null;
   skippedItemCounts: Record<string, number>;
   sessionItemUpdates: Record<string, SessionItemUpdate>;
+  pausedSession: PausedStockSession | null;
+  sessionNotice: string | null;
 
   fetchStorageAreas: (locationId: string) => Promise<void>;
   fetchAreaItems: (areaId: string) => Promise<void>;
@@ -99,6 +112,10 @@ interface StockState {
   goToItem: (index: number) => void;
   setSessionItemQuantity: (areaItemId: string, quantity: number) => void;
   getSessionItemUpdates: (areaId?: string | null) => SessionItemUpdate[];
+  pauseCurrentSession: (locationId: string | null) => void;
+  resumePausedSession: (areaId?: string | null) => boolean;
+  discardPausedSession: () => void;
+  setSessionNotice: (message: string | null) => void;
   queueUpdate: (update: PendingUpdate) => void;
   syncPendingUpdates: () => Promise<void>;
   setOnlineStatus: (isOnline: boolean) => void;
@@ -183,6 +200,30 @@ function normalizeQuantity(value: number): number {
   return Math.max(0, Math.round(value));
 }
 
+function applySessionUpdatesToItems(
+  items: AreaItemWithDetails[],
+  updates: Record<string, SessionItemUpdate>
+): AreaItemWithDetails[] {
+  return items.map((item) => {
+    const sessionEntry = updates[item.id];
+    if (!sessionEntry) return item;
+
+    const nextQuantity =
+      sessionEntry.status === 'counted' ? sessionEntry.newQuantity : sessionEntry.previousQuantity;
+
+    return {
+      ...item,
+      current_quantity: nextQuantity,
+      last_updated_at: sessionEntry.updatedAt,
+      last_updated_by: sessionEntry.updatedBy,
+      stock_level: getStockLevel({
+        ...item,
+        current_quantity: nextQuantity,
+      }),
+    };
+  });
+}
+
 export const useStockStore = create<StockState>()(
   persist(
     (set, get) => ({
@@ -199,6 +240,8 @@ export const useStockStore = create<StockState>()(
       lastSyncAt: null,
       skippedItemCounts: {},
       sessionItemUpdates: {},
+      pausedSession: null,
+      sessionNotice: null,
 
       fetchStorageAreas: async (locationId) => {
         set({ isLoading: true, error: null });
@@ -307,6 +350,7 @@ export const useStockStore = create<StockState>()(
             currentItemIndex: 0,
             skippedItemCounts: {},
             sessionItemUpdates: {},
+            pausedSession: null,
           });
         } catch (error: any) {
           set({ error: error?.message ?? 'Failed to start stock check session.' });
@@ -418,6 +462,7 @@ export const useStockStore = create<StockState>()(
             currentItemIndex: 0,
             skippedItemCounts: {},
             sessionItemUpdates: {},
+            pausedSession: null,
             error: syncError ? 'Some stock updates will sync later.' : null,
           });
         } catch (error: any) {
@@ -449,6 +494,7 @@ export const useStockStore = create<StockState>()(
             currentItemIndex: 0,
             skippedItemCounts: {},
             sessionItemUpdates: {},
+            pausedSession: null,
           });
         } catch (error: any) {
           set({ error: error?.message ?? 'Failed to abandon session.' });
@@ -715,6 +761,83 @@ export const useStockStore = create<StockState>()(
         return updates.filter((entry) => entry.areaId === areaId);
       },
 
+      pauseCurrentSession: (locationId) => {
+        const {
+          currentSession,
+          currentAreaId,
+          currentItemIndex,
+          skippedItemCounts,
+          sessionItemUpdates,
+          storageAreas,
+        } = get();
+
+        if (!currentSession || !currentAreaId) return;
+
+        const areaName =
+          storageAreas.find((area) => area.id === currentAreaId)?.name ?? currentAreaId;
+
+        const pausedSession: PausedStockSession = {
+          session: currentSession,
+          areaId: currentAreaId,
+          areaName,
+          locationId,
+          currentItemIndex,
+          skippedItemCounts: { ...skippedItemCounts },
+          sessionItemUpdates: { ...sessionItemUpdates },
+          pausedAt: new Date().toISOString(),
+        };
+
+        set({
+          pausedSession,
+          currentSession: null,
+          currentAreaId: null,
+          currentAreaItems: [],
+          currentItemIndex: 0,
+          skippedItemCounts: {},
+          sessionItemUpdates: {},
+        });
+      },
+
+      resumePausedSession: (areaId) => {
+        const { pausedSession, areaItemsById } = get();
+        if (!pausedSession) return false;
+        if (areaId && pausedSession.areaId !== areaId) return false;
+
+        const cachedAreaItems = areaItemsById[pausedSession.areaId] ?? [];
+        const hydratedAreaItems = applySessionUpdatesToItems(
+          cachedAreaItems,
+          pausedSession.sessionItemUpdates
+        );
+        const maxIndex = Math.max(0, hydratedAreaItems.length - 1);
+        const restoredIndex = hydratedAreaItems.length
+          ? Math.min(pausedSession.currentItemIndex, maxIndex)
+          : 0;
+
+        set((state) => ({
+          currentSession: pausedSession.session,
+          currentAreaId: pausedSession.areaId,
+          currentAreaItems: hydratedAreaItems,
+          currentItemIndex: restoredIndex,
+          skippedItemCounts: { ...pausedSession.skippedItemCounts },
+          sessionItemUpdates: { ...pausedSession.sessionItemUpdates },
+          areaItemsById: {
+            ...state.areaItemsById,
+            [pausedSession.areaId]: hydratedAreaItems,
+          },
+          pausedSession: null,
+        }));
+
+        return true;
+      },
+
+      discardPausedSession: () => {
+        set({ pausedSession: null });
+      },
+
+      setSessionNotice: (message) => {
+        set({ sessionNotice: message });
+      },
+
       queueUpdate: (update) => {
         set((state) => {
           const existingIndex = state.pendingUpdates.findIndex(
@@ -805,6 +928,7 @@ export const useStockStore = create<StockState>()(
         areaItemsById: state.areaItemsById,
         pendingUpdates: state.pendingUpdates,
         lastSyncAt: state.lastSyncAt,
+        pausedSession: state.pausedSession,
       }),
     }
   )

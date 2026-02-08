@@ -21,6 +21,7 @@ import { useAuthStore, useStockStore } from '@/store';
 import { useNfcScanner, useStockNetworkStatus } from '@/hooks';
 import { QrScannerModal } from '@/components';
 import type { CheckFrequency, Location, StorageAreaWithStatus } from '@/types';
+import { cancelStockCountPausedNotifications } from '@/services/notificationService';
 
 const CHECK_FREQUENCY_LABELS: Record<CheckFrequency, string> = {
   daily: 'Daily check required',
@@ -87,12 +88,18 @@ export default function UpdateStockScreen() {
     prefetchAreaItems,
     syncPendingUpdates,
     lastSyncAt,
+    pausedSession,
+    sessionNotice,
+    discardPausedSession,
+    setSessionNotice,
   } = useStockStore();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [showBypassModal, setShowBypassModal] = useState(false);
   const [showSyncToast, setShowSyncToast] = useState(false);
+  const [showSessionToast, setShowSessionToast] = useState(false);
+  const [sessionToastMessage, setSessionToastMessage] = useState('');
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
 
   const {
@@ -115,6 +122,13 @@ export default function UpdateStockScreen() {
     () => getLocationLabel(location?.name ?? null, location?.short_code ?? null),
     [location?.name, location?.short_code]
   );
+
+  const pausedSessionForLocation = useMemo(() => {
+    if (!pausedSession) return null;
+    if (!pausedSession.locationId) return pausedSession;
+    if (!location?.id) return null;
+    return pausedSession.locationId === location.id ? pausedSession : null;
+  }, [location?.id, pausedSession]);
 
   const startPulse = useCallback(() => {
     pulse.setValue(0);
@@ -192,6 +206,42 @@ export default function UpdateStockScreen() {
     },
     [setLocation]
   );
+
+  const handleResumeSession = useCallback(async () => {
+    if (!pausedSessionForLocation) return;
+
+    await cancelStockCountPausedNotifications();
+
+    router.push({
+      pathname: '/stock/[areaId]',
+      params: {
+        areaId: pausedSessionForLocation.areaId,
+        scanMethod: pausedSessionForLocation.session.scan_method,
+        resume: '1',
+      },
+    });
+  }, [pausedSessionForLocation]);
+
+  const handleDiscardSession = useCallback(() => {
+    if (!pausedSessionForLocation) return;
+
+    Alert.alert(
+      'Discard paused stock count?',
+      `Your paused count for ${pausedSessionForLocation.areaName} will be removed from this device.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: async () => {
+            await cancelStockCountPausedNotifications();
+            discardPausedSession();
+            setSessionNotice('Paused stock count discarded.');
+          },
+        },
+      ]
+    );
+  }, [discardPausedSession, pausedSessionForLocation, setSessionNotice]);
 
   const handleStationPress = useCallback((area: StorageAreaWithStatus) => {
     Alert.alert(
@@ -299,6 +349,16 @@ export default function UpdateStockScreen() {
       return () => clearTimeout(timer);
     }
   }, [lastSyncAt, pendingUpdates.length]);
+
+  useEffect(() => {
+    if (!sessionNotice) return;
+    setSessionToastMessage(sessionNotice);
+    setShowSessionToast(true);
+    setSessionNotice(null);
+
+    const timer = setTimeout(() => setShowSessionToast(false), 2200);
+    return () => clearTimeout(timer);
+  }, [sessionNotice, setSessionNotice]);
 
   const pulseScale = pulse.interpolate({
     inputRange: [0, 1],
@@ -417,6 +477,33 @@ export default function UpdateStockScreen() {
                 </TouchableOpacity>
               );
             })}
+          </View>
+        )}
+
+        {pausedSessionForLocation && (
+          <View className="mx-4 mt-3 rounded-3xl border border-orange-200 bg-orange-50 px-4 py-4">
+            <Text className="text-xs font-semibold text-orange-700 tracking-wide">
+              RESUME STOCK COUNT
+            </Text>
+            <Text className="mt-1 text-sm text-orange-900">
+              You have an in-progress stock count for {pausedSessionForLocation.areaName}.
+            </Text>
+
+            <View className="mt-3 flex-row">
+              <TouchableOpacity
+                className="flex-1 rounded-full bg-orange-500 py-3 items-center mr-2"
+                onPress={handleResumeSession}
+              >
+                <Text className="text-sm font-semibold text-white">Resume</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                className="flex-1 rounded-full border border-orange-200 bg-white py-3 items-center"
+                onPress={handleDiscardSession}
+              >
+                <Text className="text-sm font-semibold text-orange-700">Discard</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -551,6 +638,12 @@ export default function UpdateStockScreen() {
           <Text style={styles.syncToastText}>Updates synced</Text>
         </View>
       )}
+      {showSessionToast && (
+        <View style={styles.sessionToast}>
+          <Ionicons name="information-circle" size={16} color="#FFFFFF" />
+          <Text style={styles.syncToastText}>{sessionToastMessage}</Text>
+        </View>
+      )}
       <QrScannerModal
         visible={showQrModal}
         onClose={() => setShowQrModal(false)}
@@ -632,6 +725,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: '600',
     marginLeft: 8,
+  },
+  sessionToast: {
+    position: 'absolute',
+    bottom: 72,
+    left: 24,
+    right: 24,
+    backgroundColor: '#1F2937',
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   modalOverlay: {
     flex: 1,

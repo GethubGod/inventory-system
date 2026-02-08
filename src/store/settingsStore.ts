@@ -12,11 +12,13 @@ import {
   Reminder,
   ExportFormatSettings,
   InventoryView,
+  StockSettings,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_REMINDER_SETTINGS,
   DEFAULT_DISPLAY_SETTINGS,
   DEFAULT_EXPORT_FORMAT_SETTINGS,
   DEFAULT_INVENTORY_VIEW,
+  DEFAULT_STOCK_SETTINGS,
 } from '@/types/settings';
 
 interface SettingsState {
@@ -39,6 +41,7 @@ interface SettingsState {
   reminders: ReminderSettings;
   exportFormat: ExportFormatSettings;
   inventoryView: InventoryView;
+  stockSettings: StockSettings;
 
   // Display Actions
   setFontSize: (size: FontSize) => void;
@@ -66,6 +69,7 @@ interface SettingsState {
   // Export Format Actions
   setExportFormat: (settings: Partial<ExportFormatSettings>) => void;
   setInventoryView: (view: InventoryView) => void;
+  setStockSettings: (settings: Partial<StockSettings>) => void;
 
   // Reset
   resetDisplayToDefaults: () => void;
@@ -96,6 +100,7 @@ export const useSettingsStore = create<SettingsState>()(
       // Export Format - Initial State
       exportFormat: DEFAULT_EXPORT_FORMAT_SETTINGS,
       inventoryView: DEFAULT_INVENTORY_VIEW,
+      stockSettings: DEFAULT_STOCK_SETTINGS,
 
       // Display Actions
       setFontSize: (fontSize) => set({ fontSize }),
@@ -185,6 +190,11 @@ export const useSettingsStore = create<SettingsState>()(
 
       setInventoryView: (inventoryView) => set({ inventoryView }),
 
+      setStockSettings: (settings) =>
+        set((state) => ({
+          stockSettings: { ...state.stockSettings, ...settings },
+        })),
+
       // Reset Actions
       resetDisplayToDefaults: () =>
         set({
@@ -211,6 +221,7 @@ export const useSettingsStore = create<SettingsState>()(
           reminders: DEFAULT_REMINDER_SETTINGS,
           exportFormat: DEFAULT_EXPORT_FORMAT_SETTINGS,
           inventoryView: DEFAULT_INVENTORY_VIEW,
+          stockSettings: DEFAULT_STOCK_SETTINGS,
         }),
     }),
     {

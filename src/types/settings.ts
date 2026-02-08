@@ -8,6 +8,11 @@ export type Theme = 'light' | 'system' | 'dark';
 export type RepeatType = 'daily' | 'weekly' | 'custom';
 export type InventoryView = 'list' | 'compact';
 
+export interface StockSettings {
+  flagUnusualQuantities: boolean;
+  resumeReminders: boolean;
+}
+
 export interface QuietHours {
   enabled: boolean;
   startTime: string; // "HH:MM" format
@@ -88,6 +93,11 @@ export const DEFAULT_EXPORT_FORMAT_SETTINGS: ExportFormatSettings = {
 };
 
 export const DEFAULT_INVENTORY_VIEW: InventoryView = 'list';
+
+export const DEFAULT_STOCK_SETTINGS: StockSettings = {
+  flagUnusualQuantities: true,
+  resumeReminders: true,
+};
 
 export const DEFAULT_DISPLAY_SETTINGS: DisplaySettings = {
   fontSize: 'normal',

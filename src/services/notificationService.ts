@@ -2,6 +2,8 @@ import * as Notifications from 'expo-notifications';
 import { Reminder } from '@/types/settings';
 import { useSettingsStore } from '@/store';
 
+const STOCK_PAUSED_NOTIFICATION_TYPE = 'stock-count-paused';
+
 // Configure notification behavior
 Notifications.setNotificationHandler({
   handleNotification: async () => {
@@ -187,6 +189,46 @@ export async function scheduleBeforeClosingReminder(
       type: Notifications.SchedulableTriggerInputTypes.DAILY,
       hour: reminderHours,
       minute: reminderMinutes,
+    },
+  });
+
+  return id;
+}
+
+export async function cancelStockCountPausedNotifications(): Promise<void> {
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  const stockNotifications = scheduled.filter(
+    (notification) => notification.content.data?.type === STOCK_PAUSED_NOTIFICATION_TYPE
+  );
+
+  for (const notification of stockNotifications) {
+    await Notifications.cancelScheduledNotificationAsync(notification.identifier);
+  }
+}
+
+export async function scheduleStockCountPausedNotification(
+  stationName: string,
+  areaId?: string | null
+): Promise<string | null> {
+  const granted = await requestNotificationPermissions();
+  if (!granted) return null;
+
+  await cancelStockCountPausedNotifications();
+
+  const id = await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Stock count paused',
+      body: `Tap to resume your stock count for ${stationName}.`,
+      data: {
+        type: STOCK_PAUSED_NOTIFICATION_TYPE,
+        areaId: areaId ?? null,
+      },
+      sound: true,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 60,
+      repeats: false,
     },
   });
 
