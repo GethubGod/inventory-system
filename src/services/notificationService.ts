@@ -1,6 +1,9 @@
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 import { Reminder } from '@/types/settings';
 import { useSettingsStore } from '@/store';
+import { supabase } from '@/lib/supabase';
 
 const STOCK_PAUSED_NOTIFICATION_TYPE = 'stock-count-paused';
 
@@ -34,6 +37,95 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   }
 
   return finalStatus === 'granted';
+}
+
+export async function syncNotificationPreference(
+  userId: string,
+  enabled: boolean
+): Promise<void> {
+  if (!userId) return;
+  const db = supabase as any;
+
+  const { error } = await db
+    .from('profiles')
+    .update({ notifications_enabled: enabled })
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(error.message || 'Unable to save notification preference.');
+  }
+}
+
+function getExpoProjectId(): string | undefined {
+  const fromEas = (Constants as any)?.easConfig?.projectId;
+  const fromExpoConfig = (Constants as any)?.expoConfig?.extra?.eas?.projectId;
+  return fromEas || fromExpoConfig;
+}
+
+export async function registerCurrentDevicePushToken(
+  userId: string
+): Promise<string | null> {
+  if (!userId) return null;
+
+  const { status } = await Notifications.getPermissionsAsync();
+  if (status !== 'granted') {
+    return null;
+  }
+
+  const projectId = getExpoProjectId();
+  const tokenResponse = projectId
+    ? await Notifications.getExpoPushTokenAsync({ projectId })
+    : await Notifications.getExpoPushTokenAsync();
+  const expoPushToken = tokenResponse?.data?.trim();
+
+  if (!expoPushToken) return null;
+
+  const db = supabase as any;
+
+  const { error: upsertError } = await db
+    .from('device_push_tokens')
+    .upsert(
+      {
+        user_id: userId,
+        expo_push_token: expoPushToken,
+        platform:
+          Platform.OS === 'ios' || Platform.OS === 'android' || Platform.OS === 'web'
+            ? Platform.OS
+            : 'unknown',
+        active: true,
+      },
+      { onConflict: 'user_id,expo_push_token' }
+    );
+
+  if (upsertError) {
+    throw new Error(upsertError.message || 'Unable to register push token.');
+  }
+
+  const { error: deactivateError } = await db
+    .from('device_push_tokens')
+    .update({ active: false })
+    .eq('user_id', userId)
+    .neq('expo_push_token', expoPushToken);
+
+  if (deactivateError) {
+    throw new Error(deactivateError.message || 'Unable to refresh push token state.');
+  }
+
+  return expoPushToken;
+}
+
+export async function deactivatePushTokensForUser(userId: string): Promise<void> {
+  if (!userId) return;
+  const db = supabase as any;
+
+  const { error } = await db
+    .from('device_push_tokens')
+    .update({ active: false })
+    .eq('user_id', userId);
+
+  if (error) {
+    throw new Error(error.message || 'Unable to deactivate push tokens.');
+  }
 }
 
 export async function scheduleReminder(reminder: Reminder): Promise<string[]> {

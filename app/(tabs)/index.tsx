@@ -17,7 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Sparkles } from 'lucide-react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useInventoryStore, useAuthStore, useOrderStore } from '@/store';
 import { InventoryItem, ItemCategory, Location, SupplierCategory } from '@/types';
@@ -25,6 +25,7 @@ import { CATEGORY_LABELS, categoryColors, colors } from '@/constants';
 import { BrandLogo } from '@/components';
 import { InventoryItemCard } from '@/components/InventoryItemCard';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { supabase } from '@/lib/supabase';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -87,6 +88,8 @@ export default function OrderScreen() {
   const [newItemPackUnit, setNewItemPackUnit] = useState('');
   const [newItemPackSize, setNewItemPackSize] = useState('');
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
+  const [unreadReminderCount, setUnreadReminderCount] = useState(0);
+  const [latestReminderMessage, setLatestReminderMessage] = useState<string | null>(null);
   const totalCartCount = getTotalCartCount();
   const headerActionButtonSize = Math.max(44, ds.buttonH - ds.spacing(2));
   const modalInputHeight = Math.max(48, ds.buttonH);
@@ -104,11 +107,65 @@ export default function OrderScreen() {
     }
   }, [locations, location]);
 
+  const loadUnreadReminderNotifications = useCallback(async () => {
+    if (!user?.id) {
+      setUnreadReminderCount(0);
+      setLatestReminderMessage(null);
+      return;
+    }
+
+    const db = supabase as any;
+    const { data, error } = await db
+      .from('notifications')
+      .select('id, title, body, created_at')
+      .eq('user_id', user.id)
+      .eq('notification_type', 'employee_reminder')
+      .is('read_at', null)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error('Unable to load unread reminders', error);
+      return;
+    }
+
+    const rows = data ?? [];
+    setUnreadReminderCount(rows.length);
+    setLatestReminderMessage(rows[0]?.body ?? null);
+  }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUnreadReminderNotifications();
+    }, [loadUnreadReminderNotifications])
+  );
+
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchItems();
+    await loadUnreadReminderNotifications();
     setRefreshing(false);
   };
+
+  const handleMarkReminderNotificationsRead = useCallback(async () => {
+    if (!user?.id || unreadReminderCount === 0) return;
+
+    const db = supabase as any;
+    const { error } = await db
+      .from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('user_id', user.id)
+      .eq('notification_type', 'employee_reminder')
+      .is('read_at', null);
+
+    if (error) {
+      Alert.alert('Unable to mark reminders as read', error.message || 'Please try again.');
+      return;
+    }
+
+    setUnreadReminderCount(0);
+    setLatestReminderMessage(null);
+  }, [unreadReminderCount, user?.id]);
 
   const toggleLocationDropdown = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -353,6 +410,41 @@ export default function OrderScreen() {
           </View>
         )}
       </View>
+
+      {unreadReminderCount > 0 && (
+        <View className="bg-white border-b border-gray-100" style={{ paddingHorizontal: ds.spacing(16), paddingBottom: ds.spacing(10) }}>
+          <View
+            style={{
+              borderRadius: ds.radius(12),
+              backgroundColor: '#FFF7ED',
+              borderWidth: 1,
+              borderColor: '#FED7AA',
+              paddingHorizontal: ds.spacing(12),
+              paddingVertical: ds.spacing(10),
+            }}
+          >
+            <View className="flex-row items-center justify-between">
+              <View className="flex-1 pr-2">
+                <Text className="text-orange-700 font-semibold" style={{ fontSize: ds.fontSize(13) }}>
+                  Reminder waiting ({unreadReminderCount})
+                </Text>
+                <Text className="text-orange-800" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(2) }}>
+                  {latestReminderMessage || 'A manager reminded you to place an order.'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleMarkReminderNotificationsRead}
+                className="bg-orange-100 rounded-full"
+                style={{ paddingHorizontal: ds.spacing(10), paddingVertical: ds.spacing(6) }}
+              >
+                <Text className="text-orange-700 font-semibold" style={{ fontSize: ds.fontSize(11) }}>
+                  Mark Read
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
 
       {/* Search Bar */}
       <View className="bg-white border-b border-gray-100" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}>

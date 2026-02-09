@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -6,17 +6,30 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/store';
 import { colors } from '@/constants';
 import { SettingToggle, TimePickerRow } from '@/components/settings';
-import { requestNotificationPermissions } from '@/services/notificationService';
+import {
+  deactivatePushTokensForUser,
+  registerCurrentDevicePushToken,
+  requestNotificationPermissions,
+  syncNotificationPreference,
+} from '@/services/notificationService';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { useSettingsBackRoute } from '@/hooks/useSettingsBackRoute';
 
 function NotificationsSection() {
   const ds = useScaledStyles();
-  const { user, profile } = useAuthStore();
+  const { user, profile, setProfile } = useAuthStore();
   const { notifications, setNotificationSettings, setQuietHours } = useSettingsStore();
   const isManager = (user?.role ?? profile?.role) === 'manager';
 
+  useEffect(() => {
+    if (typeof profile?.notifications_enabled !== 'boolean') return;
+    if (notifications.pushEnabled !== profile.notifications_enabled) {
+      setNotificationSettings({ pushEnabled: profile.notifications_enabled });
+    }
+  }, [notifications.pushEnabled, profile?.notifications_enabled, setNotificationSettings]);
+
   const handlePushToggle = async (enabled: boolean) => {
+    const userId = user?.id;
     if (enabled) {
       const granted = await requestNotificationPermissions();
       if (!granted) {
@@ -31,7 +44,32 @@ function NotificationsSection() {
         return;
       }
     }
+
+    const previousValue = notifications.pushEnabled;
     setNotificationSettings({ pushEnabled: enabled });
+    if (profile) {
+      setProfile({ ...profile, notifications_enabled: enabled });
+    }
+
+    if (!userId) return;
+
+    try {
+      await syncNotificationPreference(userId, enabled);
+      if (enabled) {
+        await registerCurrentDevicePushToken(userId);
+      } else {
+        await deactivatePushTokensForUser(userId);
+      }
+    } catch (error: any) {
+      setNotificationSettings({ pushEnabled: previousValue });
+      if (profile) {
+        setProfile({ ...profile, notifications_enabled: previousValue });
+      }
+      Alert.alert(
+        'Sync Failed',
+        error?.message || 'Unable to save notification preference. Please try again.'
+      );
+    }
   };
 
   return (

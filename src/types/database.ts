@@ -52,10 +52,90 @@ export interface Profile {
   full_name: string | null;
   role: UserRole | null;
   is_suspended: boolean;
+  notifications_enabled: boolean;
   last_active_at: string | null;
   last_order_at: string | null;
   profile_completed: boolean;
   provider: AuthProvider | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ReminderThreadStatus = 'active' | 'resolved' | 'cancelled';
+export type ReminderEventType = 'sent' | 'reminded_again' | 'auto_resolved' | 'cancelled';
+export type RecurringReminderScope = 'employee' | 'location';
+export type RecurringReminderCondition = 'no_order_today' | 'days_since_last_order_gte';
+
+export interface ReminderSystemSetting {
+  id: string;
+  org_id: string;
+  overdue_threshold_days: number;
+  reminder_rate_limit_minutes: number;
+  recurring_window_minutes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReminderThread {
+  id: string;
+  employee_id: string;
+  manager_id: string | null;
+  location_id: string | null;
+  status: ReminderThreadStatus;
+  created_at: string;
+  resolved_at: string | null;
+  cancelled_at: string | null;
+  last_reminded_at: string;
+  reminder_count: number;
+}
+
+export interface ReminderEvent {
+  id: string;
+  reminder_id: string;
+  event_type: ReminderEventType;
+  sent_at: string;
+  channels_attempted: string[];
+  delivery_result: Record<string, unknown>;
+}
+
+export interface RecurringReminderRule {
+  id: string;
+  scope: RecurringReminderScope;
+  employee_id: string | null;
+  location_id: string | null;
+  days_of_week: number[];
+  time_of_day: string;
+  timezone: string;
+  condition_type: RecurringReminderCondition;
+  condition_value: number | null;
+  quiet_hours_enabled: boolean;
+  quiet_hours_start: string | null;
+  quiet_hours_end: string | null;
+  channels: Record<string, unknown>;
+  enabled: boolean;
+  created_by: string;
+  last_triggered_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InAppNotification {
+  id: string;
+  user_id: string;
+  title: string;
+  body: string;
+  notification_type: string;
+  payload: Record<string, unknown>;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface DevicePushToken {
+  id: string;
+  user_id: string;
+  expo_push_token: string;
+  platform: 'ios' | 'android' | 'web' | 'unknown';
+  active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -228,6 +308,7 @@ export interface Database {
           full_name?: string | null;
           role?: UserRole | null;
           is_suspended?: boolean;
+          notifications_enabled?: boolean;
           last_active_at?: string | null;
           last_order_at?: string | null;
           profile_completed?: boolean;
@@ -237,6 +318,7 @@ export interface Database {
           full_name: string | null;
           role: UserRole | null;
           is_suspended: boolean;
+          notifications_enabled: boolean;
           last_active_at: string | null;
           last_order_at: string | null;
           profile_completed: boolean;
@@ -282,6 +364,38 @@ export interface Database {
         Row: StockCheckSession;
         Insert: Omit<StockCheckSession, 'id'>;
         Update: Partial<Omit<StockCheckSession, 'id'>>;
+      };
+      reminder_system_settings: {
+        Row: ReminderSystemSetting;
+        Insert: Omit<ReminderSystemSetting, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<ReminderSystemSetting, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      reminders: {
+        Row: ReminderThread;
+        Insert: Omit<ReminderThread, 'id' | 'created_at'>;
+        Update: Partial<Omit<ReminderThread, 'id' | 'created_at'>>;
+      };
+      reminder_events: {
+        Row: ReminderEvent;
+        Insert: Omit<ReminderEvent, 'id' | 'sent_at'>;
+        Update: Partial<Omit<ReminderEvent, 'id' | 'sent_at'>>;
+      };
+      recurring_reminder_rules: {
+        Row: RecurringReminderRule;
+        Insert: Omit<RecurringReminderRule, 'id' | 'created_at' | 'updated_at' | 'last_triggered_at'>;
+        Update: Partial<Omit<RecurringReminderRule, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      notifications: {
+        Row: InAppNotification;
+        Insert: Omit<InAppNotification, 'id' | 'created_at' | 'read_at'> & {
+          read_at?: string | null;
+        };
+        Update: Partial<Omit<InAppNotification, 'id' | 'created_at'>>;
+      };
+      device_push_tokens: {
+        Row: DevicePushToken;
+        Insert: Omit<DevicePushToken, 'id' | 'created_at' | 'updated_at'>;
+        Update: Partial<Omit<DevicePushToken, 'id' | 'created_at' | 'updated_at'>>;
       };
     };
   };
