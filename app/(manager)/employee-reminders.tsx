@@ -33,6 +33,21 @@ const SORT_OPTIONS: { value: SortMode; label: string }[] = [
   { value: 'active_first', label: 'Active reminder first' },
 ];
 
+const DEFAULT_REMINDER_OVERVIEW: EmployeeReminderOverview = {
+  employees: [],
+  stats: {
+    pendingReminders: 0,
+    overdueEmployees: 0,
+    notificationsOff: 0,
+  },
+  settings: {
+    overdueThresholdDays: 7,
+    reminderRateLimitMinutes: 15,
+    recurringWindowMinutes: 15,
+  },
+  generatedAt: '',
+};
+
 function formatLastOrderLabel(row: EmployeeReminderStatusRow): string {
   if (!row.lastOrderAt) return 'Last order: Never';
 
@@ -82,6 +97,7 @@ export default function EmployeeRemindersScreen() {
   const [overview, setOverview] = useState<EmployeeReminderOverview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('overdue');
@@ -97,8 +113,14 @@ export default function EmployeeRemindersScreen() {
         locationId: selectedLocationId,
       });
       setOverview(data);
+      setLoadErrorMessage(null);
     } catch (error: any) {
-      Alert.alert('Unable to load reminders', error?.message || 'Please try again.');
+      // Keep page usable in dev/prod when reminders functions are not deployed yet.
+      setLoadErrorMessage(error?.message || 'Reminder service is temporarily unavailable.');
+      setOverview((previous) => previous ?? {
+        ...DEFAULT_REMINDER_OVERVIEW,
+        generatedAt: new Date().toISOString(),
+      });
     } finally {
       setIsLoading(false);
       setRefreshing(false);
@@ -440,6 +462,31 @@ export default function EmployeeRemindersScreen() {
             />
           </View>
 
+          {loadErrorMessage && (
+            <View
+              className="bg-amber-50 border border-amber-200 flex-row items-start"
+              style={{
+                borderRadius: ds.radius(12),
+                paddingHorizontal: ds.spacing(10),
+                paddingVertical: ds.spacing(9),
+                marginBottom: ds.spacing(12),
+              }}
+            >
+              <Ionicons
+                name="warning-outline"
+                size={ds.icon(16)}
+                color="#B45309"
+                style={{ marginTop: 1 }}
+              />
+              <Text
+                className="text-amber-800"
+                style={{ fontSize: ds.fontSize(12), marginLeft: ds.spacing(8), flex: 1 }}
+              >
+                Reminders backend unavailable right now. Showing fallback view.
+              </Text>
+            </View>
+          )}
+
           {isLoading ? (
             <View className="items-center" style={{ paddingVertical: ds.spacing(40) }}>
               <Text className="text-gray-500" style={{ fontSize: ds.fontSize(14) }}>
@@ -450,10 +497,12 @@ export default function EmployeeRemindersScreen() {
             <View className="bg-white rounded-2xl border border-gray-100 items-center" style={{ paddingVertical: ds.spacing(36), paddingHorizontal: ds.spacing(14) }}>
               <Ionicons name="people-outline" size={ds.icon(34)} color={colors.gray[300]} />
               <Text className="text-gray-700 font-semibold" style={{ fontSize: ds.fontSize(16), marginTop: ds.spacing(8) }}>
-                No employees found
+                {loadErrorMessage ? 'Reminder service unavailable' : 'No employees found'}
               </Text>
               <Text className="text-gray-500 text-center" style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(4) }}>
-                Try changing filters or search terms.
+                {loadErrorMessage
+                  ? 'Deploy the reminders Edge Functions and migration, then pull to refresh.'
+                  : 'Try changing filters or search terms.'}
               </Text>
             </View>
           ) : (

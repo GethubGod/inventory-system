@@ -129,23 +129,25 @@ export async function getRequesterFromToken(
     .eq('id', user.id)
     .maybeSingle();
 
-  if (profile?.role) {
-    return {
-      userId: user.id,
-      role: profile.role,
-      suspended: Boolean(profile.is_suspended),
-    };
-  }
-
   const { data: legacyUser } = await supabaseAdmin
     .from('users')
     .select('role')
     .eq('id', user.id)
     .maybeSingle();
 
+  // Keep manager auth aligned with DB policies that use public.users.role.
+  const profileRole = typeof profile?.role === 'string' ? profile.role : null;
+  const usersRole = typeof legacyUser?.role === 'string' ? legacyUser.role : null;
+  const resolvedRole =
+    usersRole === 'manager'
+      ? 'manager'
+      : profileRole === 'manager'
+        ? 'manager'
+        : usersRole ?? profileRole;
+
   return {
     userId: user.id,
-    role: legacyUser?.role ?? null,
+    role: resolvedRole,
     suspended: Boolean(profile?.is_suspended),
   };
 }

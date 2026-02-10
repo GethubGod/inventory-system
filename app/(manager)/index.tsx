@@ -47,6 +47,12 @@ interface ReminderStats {
   notificationsOff: number;
 }
 
+const DEFAULT_REMINDER_STATS: ReminderStats = {
+  pendingReminders: 0,
+  overdueEmployees: 0,
+  notificationsOff: 0,
+};
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -63,9 +69,7 @@ export default function ManagerDashboard() {
     weekOrders: 0,
   });
   const [reminderStats, setReminderStats] = useState<ReminderStats>({
-    pendingReminders: 0,
-    overdueEmployees: 0,
-    notificationsOff: 0,
+    ...DEFAULT_REMINDER_STATS,
   });
   const [employeeActivity, setEmployeeActivity] = useState<EmployeeActivity[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -143,8 +147,10 @@ export default function ManagerDashboard() {
           overdueEmployees: reminderOverview.stats.overdueEmployees,
           notificationsOff: reminderOverview.stats.notificationsOff,
         });
-      } catch (reminderError) {
-        console.error('Error fetching reminder stats:', reminderError);
+      } catch {
+        // Reminders backend can be unavailable in local/dev until Edge Functions are deployed.
+        // Keep dashboard usable with safe defaults instead of surfacing a runtime error overlay.
+        setReminderStats(DEFAULT_REMINDER_STATS);
       }
 
       if (recentResult.data) {
@@ -169,8 +175,13 @@ export default function ManagerDashboard() {
         });
         setEmployeeActivity(activities);
       }
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+    } catch {
+      setStats({
+        pendingOrders: 0,
+        todayOrders: 0,
+        weekOrders: 0,
+      });
+      setReminderStats(DEFAULT_REMINDER_STATS);
     }
   };
 

@@ -402,11 +402,11 @@ begin
   where jobname = 'evaluate-recurring-reminders-every-10m';
 
   v_job_sql := format(
-    $$select net.http_post(
+    $cron_sql$select net.http_post(
       url := %L,
       headers := %L::jsonb,
       body := '{"source":"pg_cron"}'::jsonb
-    );$$,
+    );$cron_sql$,
     v_supabase_url || '/functions/v1/evaluate-recurring-reminders',
     jsonb_build_object(
       'Content-Type', 'application/json',
