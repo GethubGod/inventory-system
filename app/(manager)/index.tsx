@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore, useOrderStore, useDisplayStore } from '@/store';
 import { supabase } from '@/lib/supabase';
@@ -75,8 +76,10 @@ export default function ManagerDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -118,7 +121,7 @@ export default function ManagerDashboard() {
         .order('created_at', { ascending: false })
         .limit(10);
 
-      if (selectedLocation) {
+      if (selectedLocation?.id) {
         pendingQuery = pendingQuery.eq('location_id', selectedLocation.id);
         todayQuery = todayQuery.eq('location_id', selectedLocation.id);
         weekQuery = weekQuery.eq('location_id', selectedLocation.id);
@@ -183,7 +186,7 @@ export default function ManagerDashboard() {
       });
       setReminderStats(DEFAULT_REMINDER_STATS);
     }
-  };
+  }, [selectedLocation?.id]);
 
   useEffect(() => {
     fetchLocations();
@@ -192,8 +195,56 @@ export default function ManagerDashboard() {
   useFocusEffect(
     useCallback(() => {
       fetchDashboardData();
-    }, [selectedLocation])
+    }, [fetchDashboardData])
   );
+
+  useEffect(() => {
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      refreshTimeoutRef.current = setTimeout(() => {
+        fetchDashboardData();
+      }, 250);
+    };
+
+    const channel = supabase
+      .channel(`manager-dashboard-sync-${selectedLocation?.id ?? 'all'}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reminders' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles' },
+        scheduleRefresh
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [fetchDashboardData, selectedLocation?.id]);
 
   const onRefresh = async () => {
     setRefreshing(true);

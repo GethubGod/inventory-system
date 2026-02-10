@@ -21,75 +21,101 @@ export function useOrderSubscription() {
   const { notifications } = useSettingsStore();
   const channelRef = useRef<RealtimeChannel | null>(null);
   const previousStatusRef = useRef<Record<string, OrderStatus>>({});
+  const managerRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const employeeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
 
+    const isManager = user.role === 'manager';
+
+    const scheduleOrdersRefresh = (target: 'manager' | 'employee') => {
+      const timeoutRef =
+        target === 'manager' ? managerRefreshTimeoutRef : employeeRefreshTimeoutRef;
+
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+
+      timeoutRef.current = setTimeout(() => {
+        if (target === 'manager') {
+          useOrderStore
+            .getState()
+            .fetchManagerOrders()
+            .catch(() => {
+              // Keep subscription alive even if one refresh fails.
+            });
+        } else {
+          useOrderStore
+            .getState()
+            .fetchUserOrders(user.id)
+            .catch(() => {
+              // Keep subscription alive even if one refresh fails.
+            });
+        }
+      }, 250);
+    };
+
     // Subscribe to order changes
     const channel = supabase
-      .channel('order-changes')
+      .channel(`order-changes-${user.id}`)
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'orders',
         },
         async (payload) => {
-          const newOrder = payload.new as OrderChange;
-          const oldOrder = payload.old as OrderChange | undefined;
+          const eventType = (payload as any).eventType as 'INSERT' | 'UPDATE' | 'DELETE';
+          const newOrder =
+            payload.new && Object.keys(payload.new as Record<string, unknown>).length > 0
+              ? (payload.new as OrderChange)
+              : null;
+          const oldOrder =
+            payload.old && Object.keys(payload.old as Record<string, unknown>).length > 0
+              ? (payload.old as OrderChange)
+              : null;
+          const orderForScope = newOrder ?? oldOrder;
+
+          if (!orderForScope) return;
 
           // Check if this order belongs to the current user or if they're a manager
-          const isMyOrder = newOrder.user_id === user.id;
-          const isManager = user.role === 'manager';
+          const isMyOrder = orderForScope.user_id === user.id;
 
           if (!isMyOrder && !isManager) return;
 
-          // Get the previous status we knew about
-          const previousStatus = oldOrder?.status || previousStatusRef.current[newOrder.id];
+          scheduleOrdersRefresh(isManager ? 'manager' : 'employee');
 
-          // Check if status actually changed
-          if (previousStatus && previousStatus !== newOrder.status) {
-            // Update our tracking of the status
-            previousStatusRef.current[newOrder.id] = newOrder.status;
+          if (eventType === 'UPDATE' && newOrder) {
+            // Get the previous status we knew about
+            const previousStatus = oldOrder?.status || previousStatusRef.current[newOrder.id];
 
-            // Refresh orders in the store
-            if (isManager) {
-              // Managers see all orders - let fulfillment screen refresh
-              // The specific screens will call their own fetch functions
-            } else {
-              // Employees see their own orders
-              useOrderStore.getState().fetchUserOrders(user.id);
-            }
+            // Check if status actually changed
+            if (previousStatus && previousStatus !== newOrder.status) {
+              // Update our tracking of the status
+              previousStatusRef.current[newOrder.id] = newOrder.status;
 
-            // Send notification if enabled
-            if (notifications.pushEnabled && notifications.orderStatus) {
-              // Only notify the order owner about status changes
-              if (isMyOrder && newOrder.status !== 'draft') {
-                await sendOrderStatusNotification(
-                  newOrder.status,
-                  newOrder.order_number
-                );
+              // Send notification if enabled
+              if (notifications.pushEnabled && notifications.orderStatus) {
+                // Only notify the order owner about status changes
+                if (isMyOrder && newOrder.status !== 'draft') {
+                  await sendOrderStatusNotification(
+                    newOrder.status,
+                    newOrder.order_number
+                  );
+                }
               }
             }
+
+            return;
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'orders',
-        },
-        async (payload) => {
-          const newOrder = payload.new as OrderChange;
 
-          // Only managers care about new orders from others
-          const isManager = user.role === 'manager';
-          const isMyOrder = newOrder.user_id === user.id;
+          if (newOrder) {
+            previousStatusRef.current[newOrder.id] = newOrder.status;
+          }
 
-          if (isManager && !isMyOrder && newOrder.status === 'submitted') {
+          if (eventType === 'INSERT' && newOrder && isManager && !isMyOrder && newOrder.status === 'submitted') {
             // Notify manager about new submitted order
             if (notifications.pushEnabled && notifications.newOrders) {
               await sendOrderStatusNotification(
@@ -100,11 +126,35 @@ export function useOrderSubscription() {
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'order_items',
+        },
+        () => {
+          // Managers need current line-item details while keeping screens open.
+          if (isManager) {
+            scheduleOrdersRefresh('manager');
+          }
+        }
+      )
       .subscribe();
 
     channelRef.current = channel;
 
     return () => {
+      if (managerRefreshTimeoutRef.current) {
+        clearTimeout(managerRefreshTimeoutRef.current);
+        managerRefreshTimeoutRef.current = null;
+      }
+
+      if (employeeRefreshTimeoutRef.current) {
+        clearTimeout(employeeRefreshTimeoutRef.current);
+        employeeRefreshTimeoutRef.current = null;
+      }
+
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;

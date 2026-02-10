@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store';
@@ -36,8 +37,10 @@ export default function ManagerOrdersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const fetchOrders = async () => {
+  const fetchOrders = useCallback(async () => {
     try {
       let query = supabase
         .from('orders')
@@ -66,9 +69,9 @@ export default function ManagerOrdersScreen() {
     } catch (error) {
       console.error('Error fetching orders:', error);
     }
-  };
+  }, [selectedStatus, selectedLocation?.id]);
 
-  const fetchStatusCounts = async () => {
+  const fetchStatusCounts = useCallback(async () => {
     let query = supabase.from('orders').select('status').neq('status', 'draft');
 
     if (selectedLocation) {
@@ -84,15 +87,58 @@ export default function ManagerOrdersScreen() {
       });
       setStatusCounts(counts);
     }
-  };
+  }, [selectedLocation?.id]);
 
   useFocusEffect(
     useCallback(() => {
       fetchLocations();
       fetchOrders();
       fetchStatusCounts();
-    }, [selectedStatus, selectedLocation])
+    }, [fetchLocations, fetchOrders, fetchStatusCounts])
   );
+
+  useEffect(() => {
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      refreshTimeoutRef.current = setTimeout(() => {
+        void Promise.all([fetchOrders(), fetchStatusCounts()]);
+      }, 250);
+    };
+
+    const channel = supabase
+      .channel(`manager-orders-sync-${selectedLocation?.id ?? 'all'}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'order_items' },
+        scheduleRefresh
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [fetchOrders, fetchStatusCounts, selectedLocation?.id]);
 
   const onRefresh = async () => {
     setRefreshing(true);

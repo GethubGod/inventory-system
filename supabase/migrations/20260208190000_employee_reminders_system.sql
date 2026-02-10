@@ -5,6 +5,31 @@ create extension if not exists "pgcrypto";
 alter table public.profiles
   add column if not exists notifications_enabled boolean not null default true;
 
+create or replace function public.current_user_is_manager()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.users u
+    where u.id = auth.uid()
+      and u.role = 'manager'
+  );
+$$;
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 create table if not exists public.reminder_system_settings (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null unique default '00000000-0000-0000-0000-000000000001'::uuid,
@@ -372,6 +397,61 @@ grant select, insert on public.reminder_events to authenticated;
 grant select, insert, update, delete on public.recurring_reminder_rules to authenticated;
 grant select, insert, update on public.notifications to authenticated;
 grant select, insert, update, delete on public.device_push_tokens to authenticated;
+
+revoke all on function public.current_user_is_manager() from public, anon;
+grant execute on function public.current_user_is_manager() to authenticated, service_role;
+
+do $$
+begin
+  begin
+    alter publication supabase_realtime add table public.orders;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+    when undefined_table then null;
+  end;
+
+  begin
+    alter publication supabase_realtime add table public.order_items;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+    when undefined_table then null;
+  end;
+
+  begin
+    alter publication supabase_realtime add table public.profiles;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+    when undefined_table then null;
+  end;
+
+  begin
+    alter publication supabase_realtime add table public.reminders;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+    when undefined_table then null;
+  end;
+
+  begin
+    alter publication supabase_realtime add table public.reminder_events;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+    when undefined_table then null;
+  end;
+
+  begin
+    alter publication supabase_realtime add table public.notifications;
+  exception
+    when duplicate_object then null;
+    when undefined_object then null;
+    when undefined_table then null;
+  end;
+end;
+$$;
 
 -- Optional pg_cron schedule to invoke recurring reminder evaluation every 10 minutes.
 -- This only runs when pg_cron + pg_net extensions and app settings are available.

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Platform,
@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
 import { useOrderStore } from '@/store';
 import { CATEGORY_LABELS, colors, SUPPLIER_CATEGORY_LABELS } from '@/constants';
@@ -163,6 +164,8 @@ export default function FulfillmentScreen() {
   const [expandedLocationSections, setExpandedLocationSections] = useState<Set<string>>(new Set());
   const [editedQuantities, setEditedQuantities] = useState<Record<string, number>>({});
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchPendingOrders = useCallback(async () => {
     try {
@@ -197,6 +200,49 @@ export default function FulfillmentScreen() {
       void fetchPendingOrders();
     }, [fetchPendingOrders])
   );
+
+  useEffect(() => {
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      refreshTimeoutRef.current = setTimeout(() => {
+        void fetchPendingOrders();
+      }, 250);
+    };
+
+    const channel = supabase
+      .channel('manager-fulfillment-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'order_items' },
+        scheduleRefresh
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [fetchPendingOrders]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

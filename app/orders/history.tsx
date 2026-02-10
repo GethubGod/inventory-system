@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { useOrderStore, useAuthStore } from '@/store';
+import { supabase } from '@/lib/supabase';
 import { OrderWithDetails, OrderStatus } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS, colors } from '@/constants';
 import { BrandLogo } from '@/components';
@@ -106,6 +108,8 @@ export default function OrdersScreen() {
   const { orders, fetchUserOrders } = useOrderStore();
   const [selectedStatus, setSelectedStatus] = useState<OrderStatus | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -114,6 +118,51 @@ export default function OrdersScreen() {
       }
     }, [user])
   );
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      refreshTimeoutRef.current = setTimeout(() => {
+        void fetchUserOrders(user.id);
+      }, 250);
+    };
+
+    const channel = supabase
+      .channel(`employee-orders-sync-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `user_id=eq.${user.id}`,
+        },
+        scheduleRefresh
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [fetchUserOrders, user?.id]);
 
   const onRefresh = async () => {
     if (user) {

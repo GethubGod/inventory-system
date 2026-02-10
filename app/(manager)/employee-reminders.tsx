@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -12,7 +12,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
+import { RealtimeChannel } from '@supabase/supabase-js';
 import { colors } from '@/constants';
+import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
@@ -106,6 +108,8 @@ export default function EmployeeRemindersScreen() {
   const [showLocationMenu, setShowLocationMenu] = useState(false);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
+  const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadOverview = useCallback(async () => {
     try {
@@ -136,6 +140,59 @@ export default function EmployeeRemindersScreen() {
       loadOverview();
     }, [loadOverview])
   );
+
+  useEffect(() => {
+    if (realtimeChannelRef.current) {
+      supabase.removeChannel(realtimeChannelRef.current);
+      realtimeChannelRef.current = null;
+    }
+
+    const scheduleRefresh = () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      refreshTimeoutRef.current = setTimeout(() => {
+        loadOverview();
+      }, 250);
+    };
+
+    const channel = supabase
+      .channel(`employee-reminders-sync-${selectedLocationId ?? 'all'}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reminders' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'reminder_events' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles' },
+        scheduleRefresh
+      )
+      .subscribe();
+
+    realtimeChannelRef.current = channel;
+
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+        refreshTimeoutRef.current = null;
+      }
+      if (realtimeChannelRef.current) {
+        supabase.removeChannel(realtimeChannelRef.current);
+        realtimeChannelRef.current = null;
+      }
+    };
+  }, [loadOverview, selectedLocationId]);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
