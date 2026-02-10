@@ -10,7 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
-import { useAuthStore, useDisplayStore, useDraftStore } from '@/store';
+import { useAuthStore, useDisplayStore } from '@/store';
 import { shadow } from '@/constants';
 import { SettingsRow } from '@/components/settings';
 import { BrandLogo } from '@/components';
@@ -20,10 +20,8 @@ export default function SettingsScreen() {
   const ds = useScaledStyles();
   const { user, profile, signOut, setViewMode } = useAuthStore();
   const { hapticFeedback } = useDisplayStore();
-  const { getTotalItemCount, clearAllDrafts } = useDraftStore();
 
   const isManager = (user?.role ?? profile?.role) === 'manager';
-  const draftCount = getTotalItemCount();
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   const handleSignOut = () => {
@@ -49,31 +47,6 @@ export default function SettingsScreen() {
     }
     setViewMode('manager');
     router.replace('/(manager)');
-  };
-
-  const handleClearDrafts = () => {
-    if (draftCount === 0) {
-      Alert.alert('No Drafts', 'You have no draft items to clear.');
-      return;
-    }
-
-    Alert.alert(
-      'Clear Drafts',
-      `Are you sure you want to clear all ${draftCount} draft item${draftCount !== 1 ? 's' : ''}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear All',
-          style: 'destructive',
-          onPress: () => {
-            if (hapticFeedback && Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }
-            clearAllDrafts();
-          },
-        },
-      ]
-    );
   };
 
   return (
@@ -204,33 +177,6 @@ export default function SettingsScreen() {
             title="My Orders"
             subtitle="View your order history"
             onPress={() => router.push('/orders/history')}
-            showBorder={false}
-          />
-        </View>
-
-        <View
-          className="bg-white rounded-xl overflow-hidden"
-          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
-        >
-          <SettingsRow
-            icon="document-text-outline"
-            iconColor="#F59E0B"
-            iconBgColor="#FEF3C7"
-            title="Draft Items"
-            subtitle={
-              draftCount > 0
-                ? `${draftCount} item${draftCount !== 1 ? 's' : ''} saved`
-                : 'No drafts'
-            }
-            onPress={() => router.push('/draft')}
-          />
-          <SettingsRow
-            icon="trash-outline"
-            iconColor="#EF4444"
-            iconBgColor="#FEE2E2"
-            title="Clear All Drafts"
-            onPress={handleClearDrafts}
-            showChevron={false}
             showBorder={false}
           />
         </View>

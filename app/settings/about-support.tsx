@@ -1,11 +1,10 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Platform, Linking } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
-import { useDisplayStore } from '@/store';
 import { colors } from '@/constants';
 import { SettingsRow } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -13,14 +12,36 @@ import { useSettingsBackRoute } from '@/hooks/useSettingsBackRoute';
 
 function AboutSection() {
   const appVersion = Constants.expoConfig?.version || '1.0.0';
-  const { hapticFeedback } = useDisplayStore();
   const ds = useScaledStyles();
+  const platformLabel =
+    Platform.OS === 'ios' ? 'iOS' : Platform.OS === 'android' ? 'Android' : Platform.OS;
 
-  const handleLink = (url: string) => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const openMailDraft = async (email: string, subject: string) => {
+    try {
+      const body = `Hi Babytuna Team,\n\nApp Version: ${appVersion}\nPlatform: ${platformLabel}\n\n`;
+      const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert('No email app available.');
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('No email app available.');
     }
-    Linking.openURL(url);
+  };
+
+  const openExternalUrl = async (url: string) => {
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (!canOpen) {
+        Alert.alert('Unable to open link.');
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert('Unable to open link.');
+    }
   };
 
   return (
@@ -39,7 +60,9 @@ function AboutSection() {
         iconBgColor="#DBEAFE"
         title="Contact Support"
         subtitle="Get help with the app"
-        onPress={() => handleLink('mailto:support@babytuna.com?subject=Babytuna App Support')}
+        onPress={() => {
+          void openMailDraft('babytunalovessushi@gmail.com', 'Babytuna Support');
+        }}
       />
 
       <SettingsRow
@@ -48,17 +71,9 @@ function AboutSection() {
         iconBgColor="#D1FAE5"
         title="Send Feedback"
         subtitle="Tell us what you think"
-        onPress={() => handleLink('mailto:feedback@babytuna.com?subject=Babytuna App Feedback')}
-      />
-
-      <View className="h-px bg-gray-100" style={{ marginHorizontal: ds.spacing(16) }} />
-
-      <SettingsRow
-        icon="document-text-outline"
-        iconColor="#6B7280"
-        iconBgColor="#F3F4F6"
-        title="Terms of Service"
-        onPress={() => handleLink('https://babytuna.com/terms')}
+        onPress={() => {
+          void openMailDraft('dontusemyemailathotmail.com@gmail.com', 'Babytuna Feedback');
+        }}
       />
 
       <SettingsRow
@@ -66,21 +81,13 @@ function AboutSection() {
         iconColor="#6B7280"
         iconBgColor="#F3F4F6"
         title="Privacy Policy"
-        onPress={() => handleLink('https://babytuna.com/privacy')}
-      />
-
-      <SettingsRow
-        icon="code-slash-outline"
-        iconColor="#6B7280"
-        iconBgColor="#F3F4F6"
-        title="Open Source Licenses"
-        onPress={() => handleLink('https://babytuna.com/licenses')}
+        onPress={() => {
+          void openExternalUrl(
+            'https://www.notion.so/Babytuna-Internal-Privacy-Policy-3032ac6e131b807da732efe1834f2531?t=new&showMoveTo=true&saveParent=true'
+          );
+        }}
         showBorder={false}
       />
-
-      <View className="items-center" style={{ paddingVertical: ds.spacing(24) }}>
-        <Text className="text-gray-400" style={{ fontSize: ds.fontSize(14) }}>Made with love by Babytuna</Text>
-      </View>
     </View>
   );
 }
