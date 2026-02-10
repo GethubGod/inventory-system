@@ -18,10 +18,16 @@ import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 export default function SettingsScreen() {
   const ds = useScaledStyles();
-  const { user, profile, signOut, setViewMode } = useAuthStore();
+  const { user, profile, session, signOut, setViewMode } = useAuthStore();
   const { hapticFeedback } = useDisplayStore();
 
-  const isManager = (user?.role ?? profile?.role) === 'manager';
+  const metadataRole =
+    typeof session?.user?.user_metadata?.role === 'string'
+      ? session.user.user_metadata.role
+      : typeof session?.user?.app_metadata?.role === 'string'
+        ? session.user.app_metadata.role
+        : null;
+  const isManager = (user?.role ?? profile?.role ?? metadataRole) === 'manager';
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   const handleSignOut = () => {

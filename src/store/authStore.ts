@@ -20,6 +20,7 @@ const OAUTH_REDIRECT_URI = AuthSession.makeRedirectUri({
 
 let profileRealtimeChannel: RealtimeChannel | null = null;
 let warnedMissingLastActiveColumn = false;
+const warnedMissingProfileColumns = new Set<string>();
 
 function clearProfileSubscription() {
   if (!profileRealtimeChannel) return;
@@ -78,6 +79,33 @@ async function touchLastActive(userId: string) {
   }
 }
 
+async function upsertProfileResilient(payload: Record<string, unknown>) {
+  const nextPayload = { ...payload } as Record<string, unknown>;
+  const fallbackColumns = ['is_suspended', 'last_active_at', 'last_order_at'] as const;
+
+  while (true) {
+    const { error } = await supabase.from('profiles').upsert(nextPayload as any);
+    if (!error) return;
+
+    const missingColumn = fallbackColumns.find(
+      (column) => column in nextPayload && isMissingColumnError(error, column)
+    );
+
+    if (!missingColumn) {
+      throw error;
+    }
+
+    delete nextPayload[missingColumn];
+
+    if (!warnedMissingProfileColumns.has(missingColumn)) {
+      warnedMissingProfileColumns.add(missingColumn);
+      console.warn(
+        `profiles.${missingColumn} is unavailable. Continuing signup/profile completion without it until migrations are applied.`
+      );
+    }
+  }
+}
+
 function parseOAuthResultUrl(url: string) {
   const parsed = new URL(url);
   const hashParams = new URLSearchParams(parsed.hash.startsWith('#') ? parsed.hash.slice(1) : parsed.hash);
@@ -126,9 +154,19 @@ interface AuthState {
   ) => Promise<User>;
   completeProfile: (fullName: string, accessCode: string) => Promise<User>;
   signOut: () => Promise<void>;
+  deleteSelfAccount: (confirmText: string) => Promise<void>;
   updateDefaultLocation: (locationId: string) => Promise<void>;
   updateUserRole: (role: UserRole) => Promise<void>;
 }
+
+const USER_SCOPED_STORAGE_KEYS = [
+  'order-storage',
+  'draft-storage',
+  'inventory-storage',
+  'stock-storage',
+  'babytuna-fulfillment',
+  'tuna-specialist-storage',
+] as const;
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -397,19 +435,15 @@ export const useAuthStore = create<AuthState>()(
             console.error('Failed to update user profile:', updateError);
           }
 
-          const { error: profileUpsertError } = await supabase
-            .from('profiles')
-            .upsert({
-              id: data.user.id,
-              full_name: normalizedName,
-              role,
-              is_suspended: false,
-              last_active_at: new Date().toISOString(),
-              profile_completed: true,
-              provider: 'email',
-            });
-
-          if (profileUpsertError) throw profileUpsertError;
+          await upsertProfileResilient({
+            id: data.user.id,
+            full_name: normalizedName,
+            role,
+            is_suspended: false,
+            last_active_at: new Date().toISOString(),
+            profile_completed: true,
+            provider: 'email',
+          });
 
           set({ session: data.session });
           await get().fetchProfile();
@@ -453,19 +487,15 @@ export const useAuthStore = create<AuthState>()(
           const role = await validateAccessCode(accessCode);
           const provider = (session.user.app_metadata?.provider as AuthProvider | undefined) ?? 'email';
 
-          const { error: profileUpsertError } = await supabase
-            .from('profiles')
-            .upsert({
-              id: session.user.id,
-              full_name: normalizedName,
-              role,
-              is_suspended: false,
-              last_active_at: new Date().toISOString(),
-              profile_completed: true,
-              provider,
-            });
-
-          if (profileUpsertError) throw profileUpsertError;
+          await upsertProfileResilient({
+            id: session.user.id,
+            full_name: normalizedName,
+            role,
+            is_suspended: false,
+            last_active_at: new Date().toISOString(),
+            profile_completed: true,
+            provider,
+          });
 
           const {
             data: existingUser,
@@ -523,6 +553,104 @@ export const useAuthStore = create<AuthState>()(
           if (error) throw error;
           set({ session: null, user: null, profile: null, location: null, viewMode: 'employee' });
           clearProfileSubscription();
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      deleteSelfAccount: async (confirmText) => {
+        const { session } = get();
+        if (!session?.user) {
+          throw new Error('You must be signed in to delete your account.');
+        }
+
+        if (confirmText.trim().toUpperCase() !== 'DELETE') {
+          throw new Error('Confirmation text must be DELETE.');
+        }
+
+        set({ isLoading: true });
+        try {
+          // Refresh session to ensure valid tokens before the destructive call.
+          const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError || !refreshed?.session) {
+            throw new Error('Unable to verify your session. Please sign out, sign in again, and retry.');
+          }
+
+          // Let the Supabase client attach the freshly-refreshed token automatically.
+          let { error } = await supabase.functions.invoke('delete-self', {
+            body: { confirm: 'DELETE' },
+          });
+
+          // Single retry on 401 — refresh once more in case of a race.
+          const initialStatus = (error as any)?.context?.status as number | undefined;
+          if (error && initialStatus === 401) {
+            const { data: retryRefreshed, error: retryRefreshError } = await supabase.auth.refreshSession();
+            if (retryRefreshError || !retryRefreshed?.session) {
+              throw new Error('Your session has expired. Please sign out, sign in again, and retry.');
+            }
+            ({ error } = await supabase.functions.invoke('delete-self', {
+              body: { confirm: 'DELETE' },
+            }));
+          }
+
+          if (error) {
+            const status = (error as any)?.context?.status as number | undefined;
+            if (status === 404) {
+              throw new Error(
+                'Delete account service is unavailable. Please contact support.'
+              );
+            }
+            if (status === 401) {
+              throw new Error('Your session has expired. Please sign out, sign in again, and retry.');
+            }
+
+            let serverMessage: string | null = null;
+            const response = (error as any)?.context;
+            if (response && typeof response.clone === 'function') {
+              if (typeof response.json === 'function') {
+                try {
+                  const payload = await response.clone().json();
+                  if (payload && typeof payload.error === 'string') {
+                    serverMessage =
+                      typeof payload.details === 'string'
+                        ? `${payload.error}: ${payload.details}`
+                        : payload.error;
+                  }
+                } catch {
+                  // Ignore JSON parsing failures and try plain text fallback next.
+                }
+              }
+
+              if (!serverMessage && typeof response.text === 'function') {
+                try {
+                  const text = (await response.clone().text())?.trim();
+                  if (text) {
+                    serverMessage = text.length > 240 ? `${text.slice(0, 240)}...` : text;
+                  }
+                } catch {
+                  // Ignore parsing failures and fall back to generic error text.
+                }
+              }
+            }
+
+            throw new Error(serverMessage || error.message || 'Unable to delete account.');
+          }
+
+          const signOutResult = await supabase.auth.signOut();
+          if (signOutResult.error) {
+            console.warn('Sign-out after delete-self failed; clearing local session anyway.', signOutResult.error);
+          }
+
+          clearProfileSubscription();
+          await AsyncStorage.multiRemove([...USER_SCOPED_STORAGE_KEYS, 'babytuna-auth']);
+          set({
+            session: null,
+            user: null,
+            profile: null,
+            location: null,
+            locations: [],
+            viewMode: 'employee',
+          });
         } finally {
           set({ isLoading: false });
         }

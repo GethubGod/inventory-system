@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Babytuna",
-    "slug": "babytuna",
+    "name": "Babytuna Internal",
+    "slug": "babytuna-internal",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/babytuna-logo-icon.png",
@@ -16,7 +16,7 @@
       "**/*"
     ],
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.babytuna.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Camera access is required to scan QR codes.",

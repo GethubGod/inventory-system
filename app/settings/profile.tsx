@@ -6,8 +6,11 @@ import {
   TouchableOpacity,
   Platform,
   Alert,
+  ToastAndroid,
   Image,
   TextInput,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -20,7 +23,15 @@ import { ChangePasswordModal } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { useSettingsBackRoute } from '@/hooks/useSettingsBackRoute';
 
-function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) {
+function ProfileSection({
+  onChangePassword,
+  onDeleteAccount,
+  isDeletingAccount,
+}: {
+  onChangePassword: () => void;
+  onDeleteAccount: () => void;
+  isDeletingAccount: boolean;
+}) {
   const { user, location } = useAuthStore();
   const { avatarUri, setAvatarUri } = useSettingsStore();
   const { hapticFeedback } = useDisplayStore();
@@ -166,6 +177,23 @@ function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) 
         <Ionicons name="key-outline" size={ds.icon(18)} color={colors.primary[600]} />
         <Text className="text-primary-600 font-semibold" style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(15) }}>Change Password</Text>
       </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={onDeleteAccount}
+        disabled={isDeletingAccount}
+        className={isDeletingAccount ? 'bg-gray-200 items-center flex-row justify-center' : 'bg-red-100 items-center flex-row justify-center'}
+        style={{ borderRadius: ds.radius(12), minHeight: Math.max(48, ds.buttonH), marginTop: ds.spacing(12) }}
+        activeOpacity={0.7}
+      >
+        {isDeletingAccount ? (
+          <ActivityIndicator size="small" color="#9CA3AF" />
+        ) : (
+          <Ionicons name="trash-outline" size={ds.icon(18)} color="#DC2626" />
+        )}
+        <Text className={isDeletingAccount ? 'text-gray-500 font-semibold' : 'text-red-700 font-semibold'} style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(15) }}>
+          {isDeletingAccount ? 'Deleting Account...' : 'Delete Account'}
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -173,7 +201,53 @@ function ProfileSection({ onChangePassword }: { onChangePassword: () => void }) 
 export default function ProfileSettingsScreen() {
   const ds = useScaledStyles();
   const settingsBackRoute = useSettingsBackRoute();
+  const { deleteSelfAccount } = useAuthStore();
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  const openDeleteConfirmation = () => {
+    Alert.alert(
+      'Delete account?',
+      'This permanently deletes your account and cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          style: 'destructive',
+          onPress: () => {
+            setDeleteConfirmText('');
+            setShowDeleteModal(true);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deleteConfirmText !== 'DELETE' || isDeletingAccount) return;
+    setIsDeletingAccount(true);
+
+    try {
+      await deleteSelfAccount('DELETE');
+      setShowDeleteModal(false);
+      setDeleteConfirmText('');
+      if (Platform.OS === 'android') {
+        ToastAndroid.show('Account deleted', ToastAndroid.SHORT);
+      } else {
+        Alert.alert('Account deleted');
+      }
+      router.replace('/(auth)/login');
+    } catch (error: any) {
+      Alert.alert(
+        'Unable to delete account',
+        error?.message || 'Please try again in a moment.'
+      );
+    } finally {
+      setIsDeletingAccount(false);
+    }
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
@@ -192,13 +266,99 @@ export default function ProfileSettingsScreen() {
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
-        <ProfileSection onChangePassword={() => setShowPasswordModal(true)} />
+        <ProfileSection
+          onChangePassword={() => setShowPasswordModal(true)}
+          onDeleteAccount={openDeleteConfirmation}
+          isDeletingAccount={isDeletingAccount}
+        />
       </ScrollView>
 
       <ChangePasswordModal
         visible={showPasswordModal}
         onClose={() => setShowPasswordModal(false)}
       />
+
+      <Modal
+        visible={showDeleteModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => {
+          if (!isDeletingAccount) {
+            setShowDeleteModal(false);
+          }
+        }}
+      >
+        <View className="flex-1 bg-black/40 items-center justify-center" style={{ padding: ds.spacing(20) }}>
+          <View
+            className="bg-white w-full"
+            style={{ borderRadius: ds.radius(16), padding: ds.spacing(16), maxWidth: 420 }}
+          >
+            <Text className="text-gray-900 font-bold" style={{ fontSize: ds.fontSize(18) }}>
+              Confirm permanent deletion
+            </Text>
+            <Text className="text-gray-600" style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(8) }}>
+              Type DELETE to permanently remove your account.
+            </Text>
+
+            <TextInput
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              editable={!isDeletingAccount}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              placeholder="Type DELETE"
+              placeholderTextColor={colors.gray[400]}
+              className="bg-gray-100 text-gray-900"
+              style={{
+                marginTop: ds.spacing(12),
+                borderRadius: ds.radius(12),
+                minHeight: Math.max(48, ds.buttonH),
+                paddingHorizontal: ds.spacing(14),
+                fontSize: ds.fontSize(16),
+              }}
+            />
+
+            <View className="flex-row" style={{ marginTop: ds.spacing(14) }}>
+              <TouchableOpacity
+                onPress={() => {
+                  if (isDeletingAccount) return;
+                  setShowDeleteModal(false);
+                }}
+                disabled={isDeletingAccount}
+                className="flex-1 bg-gray-100 items-center justify-center"
+                style={{
+                  borderRadius: ds.radius(12),
+                  minHeight: Math.max(44, ds.buttonH - 2),
+                  marginRight: ds.spacing(10),
+                }}
+              >
+                <Text className="text-gray-700 font-semibold" style={{ fontSize: ds.fontSize(15) }}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleDeleteAccount}
+                disabled={deleteConfirmText !== 'DELETE' || isDeletingAccount}
+                className={
+                  deleteConfirmText !== 'DELETE' || isDeletingAccount
+                    ? 'flex-1 bg-gray-200 items-center justify-center'
+                    : 'flex-1 bg-red-600 items-center justify-center'
+                }
+                style={{ borderRadius: ds.radius(12), minHeight: Math.max(44, ds.buttonH - 2) }}
+              >
+                {isDeletingAccount ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text className={deleteConfirmText !== 'DELETE' ? 'text-gray-500 font-semibold' : 'text-white font-semibold'} style={{ fontSize: ds.fontSize(15) }}>
+                    Permanently Delete
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

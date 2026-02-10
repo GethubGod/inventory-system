@@ -28,7 +28,15 @@ export default function ManagerLayout() {
     return <Redirect href="/suspended" />;
   }
 
-  if ((user?.role ?? profile.role) !== 'manager') {
+  const metadataRole =
+    typeof session.user?.user_metadata?.role === 'string'
+      ? session.user.user_metadata.role
+      : typeof session.user?.app_metadata?.role === 'string'
+        ? session.user.app_metadata.role
+        : null;
+  const resolvedRole = user?.role ?? profile.role ?? metadataRole;
+
+  if (resolvedRole && resolvedRole !== 'manager') {
     return <Redirect href="/(tabs)" />;
   }
 

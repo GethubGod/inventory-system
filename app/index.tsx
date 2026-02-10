@@ -29,7 +29,13 @@ export default function Index() {
     return <Redirect href="/suspended" />;
   }
 
-  const role = user?.role ?? profile.role;
+  const metadataRole =
+    typeof session.user?.user_metadata?.role === 'string'
+      ? session.user.user_metadata.role
+      : typeof session.user?.app_metadata?.role === 'string'
+        ? session.user.app_metadata.role
+        : null;
+  const role = user?.role ?? profile.role ?? metadataRole;
 
   // Route based on viewMode for managers, employees always go to tabs.
   if (role === 'manager' && viewMode === 'manager') {

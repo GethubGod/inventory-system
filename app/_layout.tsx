@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
-import { LogBox, View, Appearance } from 'react-native';
+import { LogBox, View, Appearance, AppState, AppStateStatus } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore, useDisplayStore } from '@/store';
 import { useOrderSubscription } from '@/hooks';
+import { supabase } from '@/lib/supabase';
 import '../global.css';
 
 LogBox.ignoreLogs([
@@ -40,6 +41,27 @@ export default function RootLayout() {
   const reduceMotion = useDisplayStore((state) => state.reduceMotion);
 
   useEffect(() => {
+    const onAppStateChange = (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        supabase.auth.startAutoRefresh();
+      } else {
+        supabase.auth.stopAutoRefresh();
+      }
+    };
+
+    if (AppState.currentState === 'active') {
+      supabase.auth.startAutoRefresh();
+    }
+
+    const subscription = AppState.addEventListener('change', onAppStateChange);
+
+    return () => {
+      subscription.remove();
+      supabase.auth.stopAutoRefresh();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isInitialized) {
       initialize();
     }
@@ -63,6 +85,7 @@ export default function RootLayout() {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(manager)" options={{ headerShown: false }} />
+        <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="orders" options={{ headerShown: false }} />
         <Stack.Screen name="suspended" options={{ headerShown: false }} />
       </Stack>
