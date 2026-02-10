@@ -17,7 +17,7 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.babytuna.inventory",
+      "bundleIdentifier": "com.babytuna.app",
       "infoPlist": {
         "NSCameraUsageDescription": "Camera access is required to scan QR codes.",
         "NSMicrophoneUsageDescription": "Microphone access is needed for voice ordering.",

@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Modal,
   Platform,
+  Pressable,
   RefreshControl,
   ScrollView,
   Text,
@@ -14,12 +16,13 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
-import { useOrderStore } from '@/store';
+import { useAuthStore, useOrderStore } from '@/store';
 import { CATEGORY_LABELS, colors, SUPPLIER_CATEGORY_LABELS } from '@/constants';
 import { InventoryItem, ItemCategory, OrderWithDetails, SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { BrandLogo } from '@/components/BrandLogo';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
 
 interface AggregatedLocationBreakdown {
   locationId: string;
@@ -80,6 +83,8 @@ interface ConfirmationRegularItem {
   unitLabel: string;
   sumOfContributorQuantities: number;
   sourceOrderItemIds: string[];
+  sourceOrderIds: string[];
+  sourceDraftItemIds: string[];
   contributors: Array<{
     userId: string | null;
     name: string;
@@ -99,6 +104,12 @@ interface ConfirmationRegularItem {
     quantity: number;
     shortCode: string;
   }>;
+}
+
+interface AddLocationOption {
+  id: string | null;
+  name: string;
+  shortCode: string;
 }
 
 interface RemainingConfirmationItem {
@@ -157,48 +168,76 @@ function toSafeNumber(value: unknown, fallback = 0) {
   return parsed;
 }
 
+function toItemCategory(value: unknown): ItemCategory {
+  switch (value) {
+    case 'fish':
+    case 'protein':
+    case 'produce':
+    case 'dry':
+    case 'dairy_cold':
+    case 'frozen':
+    case 'sauces':
+    case 'packaging':
+    case 'alcohol':
+      return value;
+    default:
+      return 'dry';
+  }
+}
+
 export default function FulfillmentScreen() {
-  const { orders } = useOrderStore();
+  const { user, locations } = useAuthStore();
+  const {
+    orders,
+    orderLaterQueue,
+    getSupplierDraftItems,
+    loadFulfillmentData,
+    fetchPendingFulfillmentOrders,
+    moveOrderLaterItemToSupplierDraft,
+    removeOrderLaterItem,
+    updateOrderLaterItemSchedule,
+  } = useOrderStore();
   const [refreshing, setRefreshing] = useState(false);
   const [expandedSuppliers, setExpandedSuppliers] = useState<Set<SupplierCategory>>(new Set());
   const [expandedLocationSections, setExpandedLocationSections] = useState<Set<string>>(new Set());
   const [editedQuantities, setEditedQuantities] = useState<Record<string, number>>({});
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
+  const [orderLaterExpanded, setOrderLaterExpanded] = useState(false);
+  const [addToTargetItemId, setAddToTargetItemId] = useState<string | null>(null);
+  const [addToSupplier, setAddToSupplier] = useState<SupplierCategory>('fish_supplier');
+  const [addToLocationGroup, setAddToLocationGroup] = useState<LocationGroup>('sushi');
+  const [addToLocationId, setAddToLocationId] = useState<string | null>(null);
+  const [scheduleEditItemId, setScheduleEditItemId] = useState<string | null>(null);
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchPendingOrders = useCallback(async () => {
     try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select(`
-          *,
-          user:users!orders_user_id_fkey(*),
-          location:locations(*),
-          order_items(
-            *,
-            inventory_item:inventory_items(*)
-          )
-        `)
-        .eq('status', 'submitted')
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        useOrderStore.setState({ orders: data });
-      }
+      await fetchPendingFulfillmentOrders();
     } catch (error) {
       console.error('Error fetching orders:', error);
     }
-  }, []);
+  }, [fetchPendingFulfillmentOrders]);
+
+  const refreshAll = useCallback(async () => {
+    try {
+      if (user?.id) {
+        await loadFulfillmentData(user.id);
+      }
+      await fetchPendingOrders();
+    } catch (error) {
+      console.error('Error refreshing fulfillment data:', error);
+    }
+  }, [fetchPendingOrders, loadFulfillmentData, user?.id]);
 
   useEffect(() => {
-    void fetchPendingOrders();
-  }, [fetchPendingOrders]);
+    void refreshAll();
+  }, [refreshAll]);
 
   useFocusEffect(
     useCallback(() => {
-      void fetchPendingOrders();
-    }, [fetchPendingOrders])
+      void refreshAll();
+    }, [refreshAll])
   );
 
   useEffect(() => {
@@ -246,9 +285,9 @@ export default function FulfillmentScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchPendingOrders();
+    await refreshAll();
     setRefreshing(false);
-  }, [fetchPendingOrders]);
+  }, [refreshAll]);
 
   const pendingOrders = useMemo(() => {
     return (orders as OrderWithDetails[]).filter((order) => order.status === 'submitted');
@@ -370,16 +409,19 @@ export default function FulfillmentScreen() {
     const groups: SupplierGroup[] = [];
     SUPPLIER_ORDER.forEach((supplierCategory) => {
       const categoryMap = supplierMap.get(supplierCategory);
-      if (!categoryMap || categoryMap.size === 0) return;
+      const draftCount = getSupplierDraftItems(supplierCategory).length;
+      if ((!categoryMap || categoryMap.size === 0) && draftCount === 0) return;
 
       const categoryGroups: CategoryGroup[] = [];
-      let totalItems = 0;
+      let totalItems = draftCount;
 
-      Array.from(categoryMap.entries()).forEach(([category, items]) => {
-        items.sort((a, b) => a.inventoryItem.name.localeCompare(b.inventoryItem.name));
-        categoryGroups.push({ category, items });
-        totalItems += items.length;
-      });
+      if (categoryMap) {
+        Array.from(categoryMap.entries()).forEach(([category, items]) => {
+          items.sort((a, b) => a.inventoryItem.name.localeCompare(b.inventoryItem.name));
+          categoryGroups.push({ category, items });
+          totalItems += items.length;
+        });
+      }
 
       categoryGroups.sort((a, b) =>
         (CATEGORY_LABELS[a.category] || a.category).localeCompare(CATEGORY_LABELS[b.category] || b.category)
@@ -393,7 +435,7 @@ export default function FulfillmentScreen() {
     });
 
     return groups;
-  }, [pendingOrders]);
+  }, [getSupplierDraftItems, pendingOrders]);
 
   const buildLocationGroupedItems = useCallback((supplierGroup: SupplierGroup) => {
     const groupedItems: LocationGroupedItem[] = [];
@@ -442,8 +484,51 @@ export default function FulfillmentScreen() {
       });
     });
 
+    const draftItems = getSupplierDraftItems(supplierGroup.supplierCategory);
+    draftItems.forEach((draftItem) => {
+      const shortCode =
+        typeof draftItem.locationName === 'string' && draftItem.locationName.trim().length > 0
+          ? draftItem.locationName.trim().slice(0, 2).toUpperCase()
+          : draftItem.locationGroup === 'poki'
+            ? 'P'
+            : 'S';
+      groupedItems.push({
+        key: `draft-${draftItem.id}`,
+        aggregateKey: `draft-${draftItem.id}`,
+        locationGroup: draftItem.locationGroup,
+        inventoryItem: {
+          id: draftItem.inventoryItemId || `draft-${draftItem.id}`,
+          name: draftItem.name,
+          category: toItemCategory(draftItem.category),
+          supplier_category: supplierGroup.supplierCategory,
+          base_unit: draftItem.unitType === 'base' ? draftItem.unitLabel : 'unit',
+          pack_unit: draftItem.unitType === 'pack' ? draftItem.unitLabel : 'pack',
+          pack_size: 1,
+          active: true,
+          created_at: draftItem.createdAt,
+        },
+        totalQuantity: draftItem.quantity,
+        unitType: draftItem.unitType,
+        isRemainingMode: false,
+        remainingReportedTotal: 0,
+        notes: draftItem.note ? [draftItem.note] : [],
+        locationBreakdown: [
+          {
+            locationId: draftItem.locationId || `draft-${draftItem.id}`,
+            locationName: draftItem.locationName || LOCATION_GROUP_LABELS[draftItem.locationGroup],
+            shortCode,
+            quantity: draftItem.quantity,
+            remainingReported: 0,
+            hasUndecidedRemaining: false,
+            notes: draftItem.note ? [draftItem.note] : [],
+            orderedBy: ['Order Later'],
+          },
+        ],
+      });
+    });
+
     return groupedItems;
-  }, []);
+  }, [getSupplierDraftItems]);
 
   const toggleSupplier = useCallback((supplier: SupplierCategory) => {
     if (Platform.OS !== 'web') {
@@ -541,6 +626,8 @@ export default function FulfillmentScreen() {
             }
           >;
           sourceOrderItemIds: Set<string>;
+          sourceOrderIds: Set<string>;
+          sourceDraftItemIds: Set<string>;
           rawQuantity: number;
         }
       >();
@@ -626,6 +713,8 @@ export default function FulfillmentScreen() {
               details: detailMap,
               notes: noteMap,
               sourceOrderItemIds: new Set([orderItem.id]),
+              sourceOrderIds: new Set([order.id]),
+              sourceDraftItemIds: new Set<string>(),
               rawQuantity: lineQuantity,
             });
             return;
@@ -633,6 +722,7 @@ export default function FulfillmentScreen() {
 
           existing.rawQuantity += lineQuantity;
           existing.sourceOrderItemIds.add(orderItem.id);
+          existing.sourceOrderIds.add(order.id);
 
           const contributorKey = userId || `name:${orderedByName.toLowerCase()}`;
           const existingContributor = existing.contributors.get(contributorKey);
@@ -675,6 +765,131 @@ export default function FulfillmentScreen() {
         });
       });
 
+      const draftItems = getSupplierDraftItems(supplierGroup.supplierCategory);
+      draftItems.forEach((draftItem) => {
+        const locationGroup = draftItem.locationGroup;
+        const unitType = draftItem.unitType;
+        const baseKey = draftItem.inventoryItemId || draftItem.name.toLowerCase().trim();
+        const mergeKey = [locationGroup, baseKey, unitType].join('|');
+        const lineQuantity = Math.max(0, toSafeNumber(draftItem.quantity, 0));
+        if (lineQuantity <= 0) return;
+
+        const locationId = draftItem.locationId || `draft-${draftItem.id}`;
+        const locationName = draftItem.locationName || LOCATION_GROUP_LABELS[locationGroup];
+        const shortCode = locationName.slice(0, 2).toUpperCase();
+        const orderedByName = 'Order Later';
+        const note = typeof draftItem.note === 'string' ? draftItem.note.trim() : '';
+
+        const existing = merged.get(mergeKey);
+        if (!existing) {
+          const contributorMap = new Map<string, { userId: string | null; name: string; quantity: number }>();
+          contributorMap.set(`draft:${draftItem.id}`, {
+            userId: null,
+            name: orderedByName,
+            quantity: lineQuantity,
+          });
+
+          const detailMap = new Map<
+            string,
+            {
+              locationId: string;
+              locationName: string;
+              shortCode: string;
+              quantity: number;
+              orderedBy: Set<string>;
+            }
+          >();
+          detailMap.set(locationId, {
+            locationId,
+            locationName,
+            shortCode,
+            quantity: lineQuantity,
+            orderedBy: new Set([orderedByName]),
+          });
+
+          const noteMap = new Map<
+            string,
+            {
+              id: string;
+              author: string;
+              text: string;
+              locationName: string;
+              shortCode: string;
+            }
+          >();
+          if (note.length > 0) {
+            const noteId = `draft:${draftItem.id}:${note}`;
+            noteMap.set(noteId, {
+              id: noteId,
+              author: orderedByName,
+              text: note,
+              locationName,
+              shortCode,
+            });
+          }
+
+          merged.set(mergeKey, {
+            id: mergeKey,
+            inventoryItemId: draftItem.inventoryItemId || `draft-${draftItem.id}`,
+            name: draftItem.name,
+            category: toItemCategory(draftItem.category),
+            locationGroup,
+            unitType,
+            unitLabel: draftItem.unitLabel,
+            contributors: contributorMap,
+            details: detailMap,
+            notes: noteMap,
+            sourceOrderItemIds: new Set<string>(),
+            sourceOrderIds: new Set<string>(),
+            sourceDraftItemIds: new Set([draftItem.id]),
+            rawQuantity: lineQuantity,
+          });
+          return;
+        }
+
+        existing.rawQuantity += lineQuantity;
+        existing.sourceDraftItemIds.add(draftItem.id);
+
+        const draftContributorKey = `draft:${draftItem.id}`;
+        const existingContributor = existing.contributors.get(draftContributorKey);
+        if (existingContributor) {
+          existingContributor.quantity += lineQuantity;
+        } else {
+          existing.contributors.set(draftContributorKey, {
+            userId: null,
+            name: orderedByName,
+            quantity: lineQuantity,
+          });
+        }
+
+        const existingDetail = existing.details.get(locationId);
+        if (existingDetail) {
+          existingDetail.quantity += lineQuantity;
+          existingDetail.orderedBy.add(orderedByName);
+        } else {
+          existing.details.set(locationId, {
+            locationId,
+            locationName,
+            shortCode,
+            quantity: lineQuantity,
+            orderedBy: new Set([orderedByName]),
+          });
+        }
+
+        if (note.length > 0) {
+          const noteId = `draft:${draftItem.id}:${note}`;
+          if (!existing.notes.has(noteId)) {
+            existing.notes.set(noteId, {
+              id: noteId,
+              author: orderedByName,
+              text: note,
+              locationName,
+              shortCode,
+            });
+          }
+        }
+      });
+
       return Array.from(merged.values())
         .map((entry) => {
           const contributors = Array.from(entry.contributors.values())
@@ -707,6 +922,8 @@ export default function FulfillmentScreen() {
             unitLabel: entry.unitLabel,
             sumOfContributorQuantities: Math.max(0, entry.rawQuantity),
             sourceOrderItemIds: Array.from(entry.sourceOrderItemIds),
+            sourceOrderIds: Array.from(entry.sourceOrderIds),
+            sourceDraftItemIds: Array.from(entry.sourceDraftItemIds),
             contributors,
             notes,
             details,
@@ -720,7 +937,7 @@ export default function FulfillmentScreen() {
           return a.name.localeCompare(b.name);
         });
     },
-    [buildLocationGroupedItems, getDisplayQuantity, pendingOrders]
+    [buildLocationGroupedItems, getDisplayQuantity, getSupplierDraftItems, pendingOrders]
   );
 
   const buildRemainingConfirmationItems = useCallback(
@@ -783,7 +1000,7 @@ export default function FulfillmentScreen() {
       const remainingItems = buildRemainingConfirmationItems(supplierGroup);
 
       if (regularItems.length === 0 && remainingItems.length === 0) {
-        Alert.alert('Nothing to Send', 'There are no items in this supplier section.');
+        Alert.alert('Nothing to Confirm', 'There are no items in this supplier section.');
         return;
       }
 
@@ -798,6 +1015,128 @@ export default function FulfillmentScreen() {
     },
     [buildRegularConfirmationItems, buildRemainingConfirmationItems]
   );
+
+  const locationOptionsByGroup = useMemo<Record<LocationGroup, AddLocationOption[]>>(() => {
+    const options: Record<LocationGroup, AddLocationOption[]> = {
+      sushi: [],
+      poki: [],
+    };
+
+    locations.forEach((location) => {
+      const group = getLocationGroup(location.name, location.short_code);
+      options[group].push({
+        id: location.id,
+        name: location.name,
+        shortCode: location.short_code,
+      });
+    });
+
+    return options;
+  }, [locations]);
+
+  const addToTargetItem = useMemo(
+    () => orderLaterQueue.find((item) => item.id === addToTargetItemId) ?? null,
+    [addToTargetItemId, orderLaterQueue]
+  );
+  const scheduleEditItem = useMemo(
+    () => orderLaterQueue.find((item) => item.id === scheduleEditItemId) ?? null,
+    [orderLaterQueue, scheduleEditItemId]
+  );
+
+  useEffect(() => {
+    if (!addToTargetItem) return;
+
+    if (addToTargetItem.preferredSupplierId) {
+      setAddToSupplier(addToTargetItem.preferredSupplierId);
+    }
+
+    const preferredGroup = addToTargetItem.preferredLocationGroup || 'sushi';
+    setAddToLocationGroup(preferredGroup);
+  }, [addToTargetItem]);
+
+  useEffect(() => {
+    if (!addToTargetItemId) return;
+
+    const options = locationOptionsByGroup[addToLocationGroup];
+    if (options.length === 0) {
+      setAddToLocationId(null);
+      return;
+    }
+
+    const exists = options.some((option) => option.id === addToLocationId);
+    if (!exists) {
+      setAddToLocationId(options[0].id);
+    }
+  }, [addToLocationGroup, addToLocationId, addToTargetItemId, locationOptionsByGroup]);
+
+  const openAddToModal = useCallback((itemId: string) => {
+    setAddToTargetItemId(itemId);
+    setAddToLocationId(null);
+  }, []);
+
+  const closeAddToModal = useCallback(() => {
+    setAddToTargetItemId(null);
+  }, []);
+
+  const handleConfirmAddTo = useCallback(async () => {
+    if (!addToTargetItem) return;
+
+    const selectedLocation = locationOptionsByGroup[addToLocationGroup].find(
+      (option) => option.id === addToLocationId
+    );
+
+    const draftItem = await moveOrderLaterItemToSupplierDraft(
+      addToTargetItem.id,
+      addToSupplier,
+      addToLocationGroup,
+      {
+        locationId: selectedLocation?.id ?? null,
+        locationName: selectedLocation?.name ?? null,
+      }
+    );
+
+    if (draftItem) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      Alert.alert('Added', `${addToTargetItem.itemName} was added to ${SUPPLIER_CATEGORY_LABELS[addToSupplier]}.`);
+    }
+
+    closeAddToModal();
+  }, [
+    addToLocationGroup,
+    addToLocationId,
+    addToSupplier,
+    addToTargetItem,
+    closeAddToModal,
+    locationOptionsByGroup,
+    moveOrderLaterItemToSupplierDraft,
+  ]);
+
+  const handleRemoveOrderLater = useCallback((itemId: string, itemName: string) => {
+    Alert.alert('Remove Item', `Remove ${itemName} from Order Later?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => {
+          void removeOrderLaterItem(itemId);
+        },
+      },
+    ]);
+  }, [removeOrderLaterItem]);
+
+  const formatScheduleLabel = useCallback((scheduledAt: string) => {
+    const date = new Date(scheduledAt);
+    if (Number.isNaN(date.getTime())) return 'Not scheduled';
+    return date.toLocaleString(undefined, {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }, []);
 
   const renderItem = useCallback(
     (item: LocationGroupedItem, showLocationBreakdown: boolean) => {
@@ -985,8 +1324,8 @@ export default function FulfillmentScreen() {
                 }}
                 className="ml-3 px-4 py-2.5 bg-primary-500 rounded-xl border border-primary-600 flex-row items-center"
               >
-                <Ionicons name="paper-plane" size={14} color="white" />
-                <Text className="text-sm font-bold text-white ml-1.5">Send</Text>
+                <Ionicons name="checkmark-done-outline" size={14} color="white" />
+                <Text className="text-sm font-bold text-white ml-1.5">Confirm Order</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -1077,9 +1416,18 @@ export default function FulfillmentScreen() {
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       <ManagerScaleContainer>
-        <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center">
-          <BrandLogo variant="header" size={28} style={{ marginRight: 8 }} />
-          <Text className="text-xl font-bold text-gray-900">Fulfillment</Text>
+        <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center justify-between">
+          <View className="flex-row items-center">
+            <BrandLogo variant="header" size={28} style={{ marginRight: 8 }} />
+            <Text className="text-xl font-bold text-gray-900">Fulfillment</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => router.push('/(manager)/fulfillment-history')}
+            className="px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 flex-row items-center"
+          >
+            <Ionicons name="time-outline" size={14} color={colors.gray[600]} />
+            <Text className="ml-1.5 text-xs font-semibold text-gray-700">Past Orders</Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -1089,6 +1437,82 @@ export default function FulfillmentScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />
           }
         >
+          <View className="bg-white rounded-2xl border border-gray-100 mb-4 overflow-hidden">
+            <TouchableOpacity
+              onPress={() => setOrderLaterExpanded((prev) => !prev)}
+              className="px-4 py-3 flex-row items-center justify-between"
+            >
+              <View className="flex-row items-center">
+                <Ionicons name="time-outline" size={16} color={colors.gray[700]} />
+                <Text className="text-base font-semibold text-gray-900 ml-2">Order Later</Text>
+              </View>
+              <View className="flex-row items-center">
+                <View className="px-2 py-1 rounded-full bg-gray-100 mr-2">
+                  <Text className="text-[11px] font-semibold text-gray-700">
+                    {orderLaterQueue.length} item{orderLaterQueue.length === 1 ? '' : 's'}
+                  </Text>
+                </View>
+                <Text className="text-xs font-semibold text-primary-600 mr-1">
+                  {orderLaterExpanded ? 'Hide' : 'View'}
+                </Text>
+                <Ionicons
+                  name={orderLaterExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={colors.gray[500]}
+                />
+              </View>
+            </TouchableOpacity>
+
+            {orderLaterExpanded && (
+              <View className="px-4 pb-4 border-t border-gray-100">
+                {orderLaterQueue.length === 0 ? (
+                  <View className="py-4 items-center">
+                    <Text className="text-sm text-gray-500">No queued order-later items.</Text>
+                  </View>
+                ) : (
+                  orderLaterQueue.map((item, index) => (
+                    <View
+                      key={item.id}
+                      className={`py-3 ${index < orderLaterQueue.length - 1 ? 'border-b border-gray-100' : ''}`}
+                    >
+                      <Text className="text-sm font-semibold text-gray-900">{item.itemName}</Text>
+                      <Text className="text-xs text-gray-500 mt-1">
+                        {item.locationName || 'Unassigned location'} • {item.unit}
+                      </Text>
+                      {item.notes && (
+                        <Text className="text-xs text-blue-700 mt-1">Note: {item.notes}</Text>
+                      )}
+                      <Text className="text-xs text-amber-700 mt-1.5">
+                        Order on: {formatScheduleLabel(item.scheduledAt)}
+                      </Text>
+
+                      <View className="flex-row mt-3">
+                        <TouchableOpacity
+                          onPress={() => openAddToModal(item.id)}
+                          className="px-3 py-2 rounded-lg bg-primary-500 mr-2"
+                        >
+                          <Text className="text-[11px] font-semibold text-white">Add to...</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setScheduleEditItemId(item.id)}
+                          className="px-3 py-2 rounded-lg bg-gray-100 mr-2"
+                        >
+                          <Text className="text-[11px] font-semibold text-gray-700">Edit schedule</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleRemoveOrderLater(item.id, item.itemName)}
+                          className="px-3 py-2 rounded-lg bg-red-50 border border-red-100"
+                        >
+                          <Text className="text-[11px] font-semibold text-red-600">Remove</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </View>
+            )}
+          </View>
+
           {supplierGroups.length === 0 ? (
             <View className="items-center py-12">
               <Text className="text-4xl mb-4">📋</Text>
@@ -1101,6 +1525,139 @@ export default function FulfillmentScreen() {
             supplierGroups.map((group) => renderSupplierSection(group))
           )}
         </ScrollView>
+
+        <Modal
+          visible={Boolean(addToTargetItem)}
+          transparent
+          animationType="fade"
+          onRequestClose={closeAddToModal}
+        >
+          <Pressable className="flex-1 bg-black/35 justify-end" onPress={closeAddToModal}>
+            <Pressable className="bg-gray-50 rounded-t-3xl px-4 pt-4 pb-5" onPress={(e) => e.stopPropagation()}>
+              <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-1 pr-2">
+                  <Text className="text-lg font-bold text-gray-900">Add to Supplier</Text>
+                  <Text className="text-xs text-gray-500 mt-0.5">
+                    {addToTargetItem ? addToTargetItem.itemName : ''}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={closeAddToModal} className="p-2">
+                  <Ionicons name="close" size={20} color={colors.gray[500]} />
+                </TouchableOpacity>
+              </View>
+
+              <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Supplier</Text>
+              <View className="flex-row mb-3">
+                {SUPPLIER_ORDER.map((supplierId) => {
+                  const selected = supplierId === addToSupplier;
+                  return (
+                    <TouchableOpacity
+                      key={supplierId}
+                      onPress={() => setAddToSupplier(supplierId)}
+                      className={`px-3 py-2 rounded-lg mr-2 ${
+                        selected ? 'bg-primary-500' : 'bg-white border border-gray-200'
+                      }`}
+                    >
+                      <Text className={`text-xs font-semibold ${selected ? 'text-white' : 'text-gray-700'}`}>
+                        {SUPPLIER_CATEGORY_LABELS[supplierId]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Location Bucket</Text>
+              <View className="flex-row mb-3">
+                {(['sushi', 'poki'] as LocationGroup[]).map((group) => {
+                  const selected = group === addToLocationGroup;
+                  return (
+                    <TouchableOpacity
+                      key={group}
+                      onPress={() => setAddToLocationGroup(group)}
+                      className={`px-3 py-2 rounded-lg mr-2 ${
+                        selected ? 'bg-primary-500' : 'bg-white border border-gray-200'
+                      }`}
+                    >
+                      <Text className={`text-xs font-semibold ${selected ? 'text-white' : 'text-gray-700'}`}>
+                        {LOCATION_GROUP_LABELS[group]}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Location</Text>
+              {locationOptionsByGroup[addToLocationGroup].length === 0 ? (
+                <View className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 mb-4">
+                  <Text className="text-xs text-gray-500">
+                    No {LOCATION_GROUP_LABELS[addToLocationGroup]} location is configured. Item will be added without a location.
+                  </Text>
+                </View>
+              ) : (
+                <View className="mb-4">
+                  {locationOptionsByGroup[addToLocationGroup].map((option) => {
+                    const selected = option.id === addToLocationId;
+                    return (
+                      <TouchableOpacity
+                        key={`${option.id}-${option.shortCode}`}
+                        onPress={() => setAddToLocationId(option.id)}
+                        className={`flex-row items-center justify-between rounded-lg px-3 py-2 mb-2 ${
+                          selected ? 'bg-primary-50 border border-primary-200' : 'bg-white border border-gray-200'
+                        }`}
+                      >
+                        <Text className={`text-sm ${selected ? 'text-primary-700 font-semibold' : 'text-gray-700'}`}>
+                          {option.name}
+                        </Text>
+                        <Text className={`text-xs ${selected ? 'text-primary-700' : 'text-gray-500'}`}>
+                          {option.shortCode}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+
+              <View className="flex-row">
+                <TouchableOpacity
+                  onPress={closeAddToModal}
+                  className="flex-1 py-3 rounded-xl bg-gray-100 items-center justify-center mr-2"
+                >
+                  <Text className="font-semibold text-gray-700">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleConfirmAddTo}
+                  className="flex-1 py-3 rounded-xl bg-primary-500 items-center justify-center"
+                >
+                  <Text className="font-semibold text-white">Add</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <OrderLaterScheduleModal
+          visible={Boolean(scheduleEditItem)}
+          title="Edit Order Later"
+          subtitle={
+            scheduleEditItem
+              ? `Update reminder for ${scheduleEditItem.itemName}.`
+              : 'Update order-later reminder.'
+          }
+          confirmLabel="Save Schedule"
+          initialScheduledAt={scheduleEditItem?.scheduledAt}
+          onClose={() => setScheduleEditItemId(null)}
+          onConfirm={async (scheduledAtIso) => {
+            if (!scheduleEditItem) return;
+            await updateOrderLaterItemSchedule(scheduleEditItem.id, scheduledAtIso);
+            if (Platform.OS !== 'web') {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            }
+            Alert.alert(
+              'Schedule Updated',
+              `${scheduleEditItem.itemName} will remind on ${formatScheduleLabel(scheduledAtIso)}.`
+            );
+          }}
+        />
       </ManagerScaleContainer>
     </SafeAreaView>
   );

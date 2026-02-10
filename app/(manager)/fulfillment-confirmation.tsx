@@ -16,9 +16,11 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { SUPPLIER_CATEGORY_LABELS, colors } from '@/constants';
 import { useAuthStore, useOrderStore, useSettingsStore } from '@/store';
+import { SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { getInventoryWithStock } from '@/lib/api/stock';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
 
 interface ConfirmationDetail {
   locationId?: string;
@@ -60,6 +62,8 @@ interface ConfirmationItem {
   unitLabel: string;
   sumOfContributorQuantities: number;
   sourceOrderItemIds: string[];
+  sourceOrderIds: string[];
+  sourceDraftItemIds: string[];
   contributors: ConfirmationContributor[];
   notes: ConfirmationNote[];
   details: ConfirmationDetail[];
@@ -127,6 +131,12 @@ export default function FulfillmentConfirmationScreen() {
   const params = useLocalSearchParams<{ items?: string; supplier?: string; remaining?: string }>();
   const { user } = useAuthStore();
   const { exportFormat } = useSettingsStore();
+  const {
+    createOrderLaterItem,
+    finalizeSupplierOrder,
+    removeSupplierDraftItems,
+    updateSupplierDraftItemQuantity,
+  } = useOrderStore();
 
   const initialItems = useMemo(() => {
     return parseParamArray<ConfirmationItem>(params.items)
@@ -223,6 +233,16 @@ export default function FulfillmentConfirmationScreen() {
                 (id): id is string => typeof id === 'string' && id.trim().length > 0
               )
             : [],
+          sourceOrderIds: Array.isArray(item.sourceOrderIds)
+            ? item.sourceOrderIds.filter(
+                (id): id is string => typeof id === 'string' && id.trim().length > 0
+              )
+            : [],
+          sourceDraftItemIds: Array.isArray(item.sourceDraftItemIds)
+            ? item.sourceDraftItemIds.filter(
+                (id): id is string => typeof id === 'string' && id.trim().length > 0
+              )
+            : [],
           contributors: normalizedContributors,
           notes: normalizedNotes,
           details: normalizedDetails,
@@ -250,11 +270,28 @@ export default function FulfillmentConfirmationScreen() {
   const [savingRemainingIds, setSavingRemainingIds] = useState<Set<string>>(new Set());
   const [targetByItemKey, setTargetByItemKey] = useState<Record<string, number>>({});
   const [loadingTargets, setLoadingTargets] = useState(false);
+  const [showRetryActions, setShowRetryActions] = useState(false);
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [orderLaterTarget, setOrderLaterTarget] = useState<
+    | { kind: 'regular'; id: string }
+    | { kind: 'remaining'; id: string }
+    | null
+  >(null);
 
   const supplierParam = Array.isArray(params.supplier) ? params.supplier[0] : params.supplier;
   const supplierLabel = supplierParam
     ? SUPPLIER_CATEGORY_LABELS[supplierParam as keyof typeof SUPPLIER_CATEGORY_LABELS]
     : 'Supplier';
+  const supplierId = useMemo(() => {
+    if (
+      supplierParam === 'fish_supplier' ||
+      supplierParam === 'main_distributor' ||
+      supplierParam === 'asian_market'
+    ) {
+      return supplierParam as SupplierCategory;
+    }
+    return null;
+  }, [supplierParam]);
 
   const syncOrderStoreDecision = useCallback(
     (orderItemId: string, decidedQuantity: number, decidedBy: string, decidedAt: string) => {
@@ -398,13 +435,19 @@ export default function FulfillmentConfirmationScreen() {
 
   const unresolvedRemainingItemIds = useMemo(() => {
     return remainingItems
-      .filter((item) => item.decidedQuantity == null || !Number.isFinite(item.decidedQuantity))
+      .filter(
+        (item) =>
+          item.decidedQuantity == null ||
+          !Number.isFinite(item.decidedQuantity) ||
+          item.decidedQuantity <= 0
+      )
       .map((item) => item.orderItemId);
   }, [remainingItems]);
 
   const hasMissingRemaining = unresolvedRemainingItemIds.length > 0;
   const hasAnyItems = items.length > 0 || remainingItems.length > 0;
-  const actionsDisabled = !hasAnyItems || hasMissingRemaining || savingRemainingIds.size > 0;
+  const actionsDisabled =
+    !hasAnyItems || hasMissingRemaining || savingRemainingIds.size > 0 || isFinalizing;
 
   const groupedItems = useMemo(() => {
     return items.reduce(
@@ -442,7 +485,7 @@ export default function FulfillmentConfirmationScreen() {
 
         remainingRows.forEach((item) => {
           const decidedQty =
-            item.decidedQuantity == null || !Number.isFinite(item.decidedQuantity)
+            item.decidedQuantity == null || !Number.isFinite(item.decidedQuantity) || item.decidedQuantity <= 0
               ? '[set qty]'
               : `${item.decidedQuantity}`;
           lines.push(`- ${item.name}: ${decidedQty} ${item.unitLabel} (reported ${item.reportedRemaining})`);
@@ -519,6 +562,25 @@ export default function FulfillmentConfirmationScreen() {
     });
   }, []);
 
+  const syncOrderStoreOrderItemDeletion = useCallback((orderItemIds: string[]) => {
+    if (orderItemIds.length === 0) return;
+    const idSet = new Set(orderItemIds);
+
+    useOrderStore.setState((state: any) => {
+      const patchOrder = (orderLike: any) => {
+        if (!orderLike || !Array.isArray(orderLike.order_items)) return orderLike;
+        const nextOrderItems = orderLike.order_items.filter((orderItem: any) => !idSet.has(orderItem?.id));
+        if (nextOrderItems.length === orderLike.order_items.length) return orderLike;
+        return { ...orderLike, order_items: nextOrderItems };
+      };
+
+      return {
+        orders: Array.isArray(state.orders) ? state.orders.map((order: any) => patchOrder(order)) : state.orders,
+        currentOrder: patchOrder(state.currentOrder),
+      };
+    });
+  }, []);
+
   const persistRegularRemoval = useCallback(
     async (orderItemIds: string[]) => {
       if (orderItemIds.length === 0) return true;
@@ -544,6 +606,28 @@ export default function FulfillmentConfirmationScreen() {
     [syncOrderStoreRegularRemoval]
   );
 
+  const persistRemainingRemoval = useCallback(
+    async (orderItemId: string) => {
+      if (!orderItemId) return true;
+
+      try {
+        const { error } = await (supabase as any)
+          .from('order_items')
+          .delete()
+          .eq('id', orderItemId);
+
+        if (error) throw error;
+
+        syncOrderStoreOrderItemDeletion([orderItemId]);
+        return true;
+      } catch (error: any) {
+        Alert.alert('Unable to Move Item', error?.message || 'Please try again.');
+        return false;
+      }
+    },
+    [syncOrderStoreOrderItemDeletion]
+  );
+
   const handleDelete = useCallback(
     (item: ConfirmationItem) => {
       Alert.alert('Remove Item', `Remove ${item.name} from this supplier order?`, [
@@ -555,6 +639,10 @@ export default function FulfillmentConfirmationScreen() {
             void (async () => {
               const removed = await persistRegularRemoval(item.sourceOrderItemIds);
               if (!removed) return;
+
+              if (item.sourceDraftItemIds.length > 0) {
+                removeSupplierDraftItems(item.sourceDraftItemIds);
+              }
 
               if (Platform.OS !== 'web') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
@@ -571,7 +659,7 @@ export default function FulfillmentConfirmationScreen() {
         },
       ]);
     },
-    [persistRegularRemoval]
+    [persistRegularRemoval, removeSupplierDraftItems]
   );
 
   const handleQuantityChange = useCallback(
@@ -594,8 +682,12 @@ export default function FulfillmentConfirmationScreen() {
             : row
         )
       );
+
+      if (item.sourceDraftItemIds.length === 1) {
+        updateSupplierDraftItemQuantity(item.sourceDraftItemIds[0], safeValue);
+      }
     },
-    [handleDelete]
+    [handleDelete, updateSupplierDraftItemQuantity]
   );
 
   const handleResetToSum = useCallback((item: ConfirmationItem) => {
@@ -611,7 +703,10 @@ export default function FulfillmentConfirmationScreen() {
           : row
       )
     );
-  }, []);
+    if (item.sourceDraftItemIds.length === 1) {
+      updateSupplierDraftItemQuantity(item.sourceDraftItemIds[0], resetQuantity);
+    }
+  }, [updateSupplierDraftItemQuantity]);
 
   const setRemainingDecisionLocal = useCallback((orderItemId: string, decidedQuantity: number | null) => {
     setRemainingItems((prev) =>
@@ -697,22 +792,246 @@ export default function FulfillmentConfirmationScreen() {
     }
   }, [getSuggestion, persistRemainingDecision, remainingItems, setRemainingDecisionLocal]);
 
-  const handleCopyToClipboard = useCallback(async () => {
-    if (actionsDisabled) {
-      Alert.alert('Decision Required', 'Set final quantities for all remaining items before copying.');
-      return;
-    }
+  const orderLaterRegularItem = useMemo(() => {
+    if (!orderLaterTarget || orderLaterTarget.kind !== 'regular') return null;
+    return items.find((row) => row.id === orderLaterTarget.id) ?? null;
+  }, [items, orderLaterTarget]);
 
-    await Clipboard.setStringAsync(messageText);
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-    Alert.alert('Copied!', 'Order message copied to clipboard');
-  }, [actionsDisabled, messageText]);
+  const orderLaterRemainingItem = useMemo(() => {
+    if (!orderLaterTarget || orderLaterTarget.kind !== 'remaining') return null;
+    return remainingItems.find((row) => row.orderItemId === orderLaterTarget.id) ?? null;
+  }, [orderLaterTarget, remainingItems]);
 
-  const handleShare = useCallback(async () => {
+  const buildFinalizePayload = useCallback(() => {
+    const regularPayload = items.map((item) => ({
+      id: item.id,
+      inventoryItemId: item.inventoryItemId,
+      name: item.name,
+      category: item.category,
+      locationGroup: item.locationGroup,
+      quantity: item.quantity,
+      unitType: item.unitType,
+      unitLabel: item.unitLabel,
+      notes: item.notes.map((note) => note.text),
+      sourceOrderItemIds: item.sourceOrderItemIds,
+      sourceOrderIds: item.sourceOrderIds,
+      sourceDraftItemIds: item.sourceDraftItemIds,
+    }));
+
+    const remainingPayload = remainingItems.map((item) => ({
+      orderItemId: item.orderItemId,
+      orderId: item.orderId,
+      inventoryItemId: item.inventoryItemId,
+      name: item.name,
+      category: item.category,
+      locationGroup: item.locationGroup,
+      locationId: item.locationId,
+      locationName: item.locationName,
+      quantity: item.decidedQuantity ?? 0,
+      decidedQuantity: item.decidedQuantity ?? 0,
+      reportedRemaining: item.reportedRemaining,
+      unitType: item.unitType,
+      unitLabel: item.unitLabel,
+      note: item.note,
+    }));
+
+    const locationSet = new Set<string>();
+    regularPayload.forEach((item) => {
+      locationSet.add(item.locationGroup === 'poki' ? 'Poki' : 'Sushi');
+    });
+    remainingPayload.forEach((item) => {
+      locationSet.add(item.locationGroup === 'poki' ? 'Poki' : 'Sushi');
+    });
+
+    const consumedOrderItemIds = Array.from(
+      new Set([
+        ...regularPayload.flatMap((item) => item.sourceOrderItemIds),
+        ...remainingPayload.map((item) => item.orderItemId),
+      ])
+    );
+
+    const consumedDraftItemIds = Array.from(
+      new Set(regularPayload.flatMap((item) => item.sourceDraftItemIds))
+    );
+
+    const sourceOrderIds = Array.from(
+      new Set([
+        ...regularPayload.flatMap((item) => item.sourceOrderIds),
+        ...remainingPayload.map((item) => item.orderId),
+      ])
+    );
+
+    return {
+      regularPayload,
+      remainingPayload,
+      locationLabels: Array.from(locationSet),
+      consumedOrderItemIds,
+      consumedDraftItemIds,
+      sourceOrderIds,
+      totalItemCount: regularPayload.length + remainingPayload.length,
+    };
+  }, [items, remainingItems]);
+
+  const finalizeOrder = useCallback(
+    async (shareMethod: 'share' | 'copy') => {
+      if (!user?.id) {
+        Alert.alert('Sign In Required', 'Please sign in again to finalize this order.');
+        return false;
+      }
+      if (!supplierId) {
+        Alert.alert('Missing Supplier', 'Unable to finalize because supplier info is missing.');
+        return false;
+      }
+
+      const payload = buildFinalizePayload();
+      setIsFinalizing(true);
+      try {
+        await finalizeSupplierOrder({
+          supplierId,
+          supplierName: supplierLabel,
+          createdBy: user.id,
+          messageText,
+          shareMethod,
+          payload: {
+            regularItems: payload.regularPayload,
+            remainingItems: payload.remainingPayload,
+            locations: payload.locationLabels,
+            sourceOrderIds: payload.sourceOrderIds,
+            source_order_ids: payload.sourceOrderIds,
+            totalItemCount: payload.totalItemCount,
+            finalizedAt: new Date().toISOString(),
+          },
+          consumedOrderItemIds: payload.consumedOrderItemIds,
+          consumedDraftItemIds: payload.consumedDraftItemIds,
+        });
+
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        router.replace('/(manager)/fulfillment');
+        return true;
+      } catch (error: any) {
+        Alert.alert('Finalize Failed', error?.message || 'Unable to move this order to past orders.');
+        return false;
+      } finally {
+        setIsFinalizing(false);
+      }
+    },
+    [buildFinalizePayload, finalizeSupplierOrder, messageText, supplierId, supplierLabel, user?.id]
+  );
+
+  const handleMoveTargetToOrderLater = useCallback(
+    async (scheduledAtIso: string) => {
+      if (!user?.id) {
+        Alert.alert('Sign In Required', 'Please sign in again to schedule order-later items.');
+        return;
+      }
+
+      const preferredSupplierId = supplierId ?? undefined;
+
+      if (orderLaterRegularItem) {
+        const removed = await persistRegularRemoval(orderLaterRegularItem.sourceOrderItemIds);
+        if (!removed) return;
+
+        if (orderLaterRegularItem.sourceDraftItemIds.length > 0) {
+          removeSupplierDraftItems(orderLaterRegularItem.sourceDraftItemIds);
+        }
+
+        const noteText = orderLaterRegularItem.notes
+          .map((note) => note.text.trim())
+          .filter((note) => note.length > 0)
+          .join(' • ');
+        const firstDetail = orderLaterRegularItem.details[0];
+
+        await createOrderLaterItem({
+          createdBy: user.id,
+          scheduledAt: scheduledAtIso,
+          itemId: orderLaterRegularItem.inventoryItemId,
+          itemName: orderLaterRegularItem.name,
+          unit: orderLaterRegularItem.unitLabel,
+          locationId: firstDetail?.locationId,
+          locationName: firstDetail?.locationName,
+          notes: noteText.length > 0 ? noteText : null,
+          preferredSupplierId,
+          preferredLocationGroup: orderLaterRegularItem.locationGroup,
+          sourceOrderItemId:
+            orderLaterRegularItem.sourceOrderItemIds.length === 1
+              ? orderLaterRegularItem.sourceOrderItemIds[0]
+              : null,
+          sourceOrderId:
+            orderLaterRegularItem.sourceOrderIds.length === 1
+              ? orderLaterRegularItem.sourceOrderIds[0]
+              : null,
+          payload: {
+            quantity: orderLaterRegularItem.quantity,
+            unitType: orderLaterRegularItem.unitType,
+            unitLabel: orderLaterRegularItem.unitLabel,
+            category: orderLaterRegularItem.category,
+            locationGroup: orderLaterRegularItem.locationGroup,
+            sourceDraftItemIds: orderLaterRegularItem.sourceDraftItemIds,
+          },
+        });
+
+        setItems((prev) => prev.filter((item) => item.id !== orderLaterRegularItem.id));
+        setExpandedItems((prev) => {
+          const next = new Set(prev);
+          next.delete(orderLaterRegularItem.id);
+          return next;
+        });
+      } else if (orderLaterRemainingItem) {
+        const removed = await persistRemainingRemoval(orderLaterRemainingItem.orderItemId);
+        if (!removed) return;
+
+        await createOrderLaterItem({
+          createdBy: user.id,
+          scheduledAt: scheduledAtIso,
+          itemId: orderLaterRemainingItem.inventoryItemId,
+          itemName: orderLaterRemainingItem.name,
+          unit: orderLaterRemainingItem.unitLabel,
+          locationId: orderLaterRemainingItem.locationId,
+          locationName: orderLaterRemainingItem.locationName,
+          notes: orderLaterRemainingItem.note,
+          preferredSupplierId,
+          preferredLocationGroup: orderLaterRemainingItem.locationGroup,
+          sourceOrderItemId: orderLaterRemainingItem.orderItemId,
+          sourceOrderId: orderLaterRemainingItem.orderId,
+          payload: {
+            quantity: orderLaterRemainingItem.decidedQuantity ?? 0,
+            reportedRemaining: orderLaterRemainingItem.reportedRemaining,
+            unitType: orderLaterRemainingItem.unitType,
+            unitLabel: orderLaterRemainingItem.unitLabel,
+            category: orderLaterRemainingItem.category,
+            locationGroup: orderLaterRemainingItem.locationGroup,
+            inputMode: 'remaining',
+          },
+        });
+
+        setRemainingItems((prev) =>
+          prev.filter((item) => item.orderItemId !== orderLaterRemainingItem.orderItemId)
+        );
+      }
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      Alert.alert('Moved to Order Later', 'Item moved to Order Later.');
+      setOrderLaterTarget(null);
+    },
+    [
+      createOrderLaterItem,
+      orderLaterRegularItem,
+      orderLaterRemainingItem,
+      persistRegularRemoval,
+      persistRemainingRemoval,
+      removeSupplierDraftItems,
+      supplierId,
+      user?.id,
+    ]
+  );
+
+  const handleShareOrder = useCallback(async () => {
     if (actionsDisabled) {
-      Alert.alert('Decision Required', 'Set final quantities for all remaining items before sending.');
+      Alert.alert('Decision Required', 'Set final quantities greater than zero for all remaining items before ordering.');
       return;
     }
 
@@ -727,12 +1046,40 @@ export default function FulfillmentConfirmationScreen() {
       });
 
       if (result.action === Share.sharedAction) {
-        Alert.alert('Shared!', 'Order has been shared');
+        const finalized = await finalizeOrder('share');
+        if (!finalized) {
+          setShowRetryActions(true);
+        }
+      } else {
+        setShowRetryActions(true);
       }
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to share');
+      setShowRetryActions(true);
+      Alert.alert('Share Failed', error?.message || 'Failed to share. You can copy or retry share.');
     }
-  }, [actionsDisabled, messageText, supplierLabel]);
+  }, [actionsDisabled, finalizeOrder, messageText, supplierLabel]);
+
+  const handleCopyToClipboard = useCallback(async () => {
+    if (actionsDisabled) {
+      Alert.alert('Decision Required', 'Set final quantities greater than zero for all remaining items before ordering.');
+      return;
+    }
+
+    await Clipboard.setStringAsync(messageText);
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+
+    Alert.alert('Copied', 'Mark this order as sent?', [
+      { text: 'No', style: 'cancel' },
+      {
+        text: 'Yes',
+        onPress: () => {
+          void finalizeOrder('copy');
+        },
+      },
+    ]);
+  }, [actionsDisabled, finalizeOrder, messageText]);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right', 'bottom']}>
@@ -747,7 +1094,7 @@ export default function FulfillmentConfirmationScreen() {
               <Ionicons name="arrow-back" size={20} color={colors.gray[700]} />
             </TouchableOpacity>
             <View>
-              <Text className="text-lg font-bold text-gray-900">Send Order</Text>
+              <Text className="text-lg font-bold text-gray-900">Confirm Order</Text>
               <Text className="text-xs text-gray-500">{supplierLabel}</Text>
             </View>
           </View>
@@ -766,7 +1113,7 @@ export default function FulfillmentConfirmationScreen() {
                     <Text className="ml-2 text-sm font-bold text-amber-900">Remaining Items (Required)</Text>
                   </View>
                   <Text className="text-xs text-amber-700 mt-1">
-                    Set a final order quantity for each remaining-mode item before Copy/Share is enabled.
+                    Set a final order quantity greater than zero for each remaining-mode item before ordering.
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -803,7 +1150,10 @@ export default function FulfillmentConfirmationScreen() {
                       </Text>
 
                       {rows.map((item) => {
-                        const isMissing = item.decidedQuantity == null || !Number.isFinite(item.decidedQuantity);
+                        const isMissing =
+                          item.decidedQuantity == null ||
+                          !Number.isFinite(item.decidedQuantity) ||
+                          item.decidedQuantity <= 0;
                         const suggested = getSuggestion(item);
                         const isSaving = savingRemainingIds.has(item.orderItemId);
 
@@ -824,7 +1174,15 @@ export default function FulfillmentConfirmationScreen() {
                                   </Text>
                                 </View>
                                 {item.note && (
-                                  <Text className="text-xs text-blue-700 mt-1.5">Note: {item.note}</Text>
+                                  <>
+                                    <Text className="text-xs text-blue-700 mt-1.5">Note: {item.note}</Text>
+                                    <TouchableOpacity
+                                      onPress={() => setOrderLaterTarget({ kind: 'remaining', id: item.orderItemId })}
+                                      className="self-start mt-2 px-2.5 py-1.5 rounded-md bg-blue-50 border border-blue-200"
+                                    >
+                                      <Text className="text-[11px] font-semibold text-blue-700">Set to Order Later</Text>
+                                    </TouchableOpacity>
+                                  </>
                                 )}
                               </View>
                             </View>
@@ -882,7 +1240,7 @@ export default function FulfillmentConfirmationScreen() {
 
                             {isMissing && (
                               <Text className="text-[11px] text-red-600 mt-2">
-                                Final order quantity is required before sending.
+                                Final order quantity must be greater than zero before ordering.
                               </Text>
                             )}
                             {isSaving && (
@@ -1100,6 +1458,16 @@ export default function FulfillmentConfirmationScreen() {
                                   )}
                                 </View>
 
+                                {item.notes.length > 0 && (
+                                  <TouchableOpacity
+                                    onPress={() => setOrderLaterTarget({ kind: 'regular', id: item.id })}
+                                    className="mt-3 flex-row items-center justify-center rounded-xl border border-blue-200 bg-blue-50 py-2.5"
+                                  >
+                                    <Ionicons name="time-outline" size={16} color="#1D4ED8" />
+                                    <Text className="ml-2 text-sm font-semibold text-blue-700">Set to Order Later</Text>
+                                  </TouchableOpacity>
+                                )}
+
                                 <TouchableOpacity
                                   onPress={() => handleDelete(item)}
                                   className="mt-3 flex-row items-center justify-center rounded-xl border border-red-200 bg-red-50 py-2.5"
@@ -1120,49 +1488,77 @@ export default function FulfillmentConfirmationScreen() {
           ) : (
             <View className="items-center justify-center py-12">
               <Ionicons name="list-outline" size={48} color={colors.gray[300]} />
-              <Text className="text-gray-500 text-base mt-3">No items to send</Text>
+              <Text className="text-gray-500 text-base mt-3">No items to confirm</Text>
               <Text className="text-gray-400 text-sm mt-1">Return to fulfillment to select items</Text>
             </View>
           )}
         </ScrollView>
 
         <View className="bg-white border-t border-gray-200 px-4 py-4">
-          <View className="flex-row">
-            <TouchableOpacity
-              onPress={handleCopyToClipboard}
-              disabled={actionsDisabled}
-              className={`flex-1 rounded-xl py-3 items-center flex-row justify-center mr-3 ${
-                actionsDisabled ? 'bg-gray-200' : 'bg-gray-100'
-              }`}
-            >
-              <Ionicons
-                name="copy-outline"
-                size={18}
-                color={actionsDisabled ? colors.gray[400] : colors.gray[700]}
-              />
-              <Text className={`font-semibold ml-2 ${actionsDisabled ? 'text-gray-400' : 'text-gray-700'}`}>
-                Copy to Clipboard
-              </Text>
-            </TouchableOpacity>
+          {showRetryActions ? (
+            <View className="flex-row">
+              <TouchableOpacity
+                onPress={handleCopyToClipboard}
+                disabled={actionsDisabled}
+                className={`flex-1 rounded-xl py-3 items-center flex-row justify-center mr-3 ${
+                  actionsDisabled ? 'bg-gray-200' : 'bg-gray-100'
+                }`}
+              >
+                <Ionicons
+                  name="copy-outline"
+                  size={18}
+                  color={actionsDisabled ? colors.gray[400] : colors.gray[700]}
+                />
+                <Text className={`font-semibold ml-2 ${actionsDisabled ? 'text-gray-400' : 'text-gray-700'}`}>
+                  Copy to Clipboard
+                </Text>
+              </TouchableOpacity>
 
+              <TouchableOpacity
+                onPress={handleShareOrder}
+                disabled={actionsDisabled}
+                className={`flex-1 rounded-xl py-3 items-center flex-row justify-center ${
+                  actionsDisabled ? 'bg-gray-200' : 'bg-primary-500'
+                }`}
+              >
+                <Ionicons
+                  name="share-social-outline"
+                  size={18}
+                  color={actionsDisabled ? colors.gray[400] : 'white'}
+                />
+                <Text className={`font-semibold ml-2 ${actionsDisabled ? 'text-gray-400' : 'text-white'}`}>
+                  Share
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
             <TouchableOpacity
-              onPress={handleShare}
+              onPress={handleShareOrder}
               disabled={actionsDisabled}
-              className={`flex-1 rounded-xl py-3 items-center flex-row justify-center ${
+              className={`rounded-xl py-3 items-center flex-row justify-center ${
                 actionsDisabled ? 'bg-gray-200' : 'bg-primary-500'
               }`}
             >
               <Ionicons
-                name="share-social-outline"
+                name="paper-plane-outline"
                 size={18}
                 color={actionsDisabled ? colors.gray[400] : 'white'}
               />
               <Text className={`font-semibold ml-2 ${actionsDisabled ? 'text-gray-400' : 'text-white'}`}>
-                Share
+                {isFinalizing ? 'Finalizing...' : 'Order'}
               </Text>
             </TouchableOpacity>
-          </View>
+          )}
         </View>
+
+        <OrderLaterScheduleModal
+          visible={Boolean(orderLaterRegularItem || orderLaterRemainingItem)}
+          title="Order Later"
+          subtitle="Choose when this item should be ordered."
+          confirmLabel="Move Item"
+          onClose={() => setOrderLaterTarget(null)}
+          onConfirm={handleMoveTargetToOrderLater}
+        />
       </ManagerScaleContainer>
     </SafeAreaView>
   );

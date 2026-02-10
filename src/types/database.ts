@@ -140,6 +140,44 @@ export interface DevicePushToken {
   updated_at: string;
 }
 
+export type OrderLaterItemStatus = 'queued' | 'added' | 'cancelled';
+export type OrderLaterLocationGroup = 'sushi' | 'poki';
+export type PastOrderShareMethod = 'share' | 'copy';
+
+export interface PastOrderRow {
+  id: string;
+  supplier_id: string | null;
+  supplier_name: string;
+  created_by: string;
+  created_at: string;
+  payload: Record<string, unknown>;
+  message_text: string;
+  share_method: PastOrderShareMethod;
+}
+
+export interface OrderLaterItemRow {
+  id: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  scheduled_at: string;
+  item_id: string | null;
+  item_name: string;
+  unit: string;
+  location_id: string | null;
+  location_name: string | null;
+  notes: string | null;
+  preferred_supplier_id: string | null;
+  preferred_location_group: OrderLaterLocationGroup | null;
+  source_order_item_id: string | null;
+  source_order_id: string | null;
+  notification_id: string | null;
+  status: OrderLaterItemStatus;
+  payload: Record<string, unknown>;
+  added_at: string | null;
+  cancelled_at: string | null;
+}
+
 export interface InventoryItem {
   id: string;
   name: string;
@@ -396,6 +434,21 @@ export interface Database {
         Row: DevicePushToken;
         Insert: Omit<DevicePushToken, 'id' | 'created_at' | 'updated_at'>;
         Update: Partial<Omit<DevicePushToken, 'id' | 'created_at' | 'updated_at'>>;
+      };
+      past_orders: {
+        Row: PastOrderRow;
+        Insert: Omit<PastOrderRow, 'id' | 'created_at'> & {
+          created_at?: string;
+        };
+        Update: Partial<Omit<PastOrderRow, 'id' | 'created_at'>>;
+      };
+      order_later_items: {
+        Row: OrderLaterItemRow;
+        Insert: Omit<OrderLaterItemRow, 'id' | 'created_at' | 'updated_at'> & {
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: Partial<Omit<OrderLaterItemRow, 'id' | 'created_at' | 'updated_at'>>;
       };
     };
   };

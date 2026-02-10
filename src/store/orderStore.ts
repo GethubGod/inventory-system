@@ -1,7 +1,16 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Order, OrderItem, OrderWithDetails, OrderStatus, UnitType } from '@/types';
+import * as Notifications from 'expo-notifications';
+import {
+  ItemCategory,
+  Order,
+  OrderItem,
+  OrderStatus,
+  OrderWithDetails,
+  SupplierCategory,
+  UnitType,
+} from '@/types';
 import { supabase } from '@/lib/supabase';
 
 export type OrderInputMode = 'quantity' | 'remaining';
@@ -41,11 +50,111 @@ interface UpdateCartItemOptions {
 // Cart items organized by location
 type CartByLocation = Record<string, CartItem[]>;
 
+export type FulfillmentLocationGroup = 'sushi' | 'poki';
+export type OrderLaterItemStatus = 'queued' | 'added' | 'cancelled';
+export type PastOrderShareMethod = 'share' | 'copy';
+
+export interface SupplierDraftItem {
+  id: string;
+  supplierId: SupplierCategory;
+  inventoryItemId: string | null;
+  name: string;
+  category: ItemCategory | string;
+  quantity: number;
+  unitType: UnitType;
+  unitLabel: string;
+  locationGroup: FulfillmentLocationGroup;
+  locationId: string | null;
+  locationName: string | null;
+  note: string | null;
+  createdAt: string;
+  sourceOrderLaterItemId: string | null;
+}
+
+export interface SupplierDraftItemInput {
+  supplierId: SupplierCategory;
+  inventoryItemId?: string | null;
+  name: string;
+  category?: ItemCategory | string;
+  quantity: number;
+  unitType?: UnitType;
+  unitLabel?: string;
+  locationGroup: FulfillmentLocationGroup;
+  locationId?: string | null;
+  locationName?: string | null;
+  note?: string | null;
+  sourceOrderLaterItemId?: string | null;
+}
+
+export interface OrderLaterItem {
+  id: string;
+  createdBy: string;
+  createdAt: string;
+  scheduledAt: string;
+  itemId: string | null;
+  itemName: string;
+  unit: string;
+  locationId: string | null;
+  locationName: string | null;
+  notes: string | null;
+  preferredSupplierId: SupplierCategory | null;
+  preferredLocationGroup: FulfillmentLocationGroup | null;
+  sourceOrderItemId: string | null;
+  sourceOrderId: string | null;
+  notificationId: string | null;
+  status: OrderLaterItemStatus;
+  payload: Record<string, unknown>;
+}
+
+export interface CreateOrderLaterItemInput {
+  createdBy: string;
+  scheduledAt: string;
+  itemId?: string | null;
+  itemName: string;
+  unit: string;
+  locationId?: string | null;
+  locationName?: string | null;
+  notes?: string | null;
+  preferredSupplierId?: SupplierCategory | null;
+  preferredLocationGroup?: FulfillmentLocationGroup | null;
+  sourceOrderItemId?: string | null;
+  sourceOrderId?: string | null;
+  payload?: Record<string, unknown>;
+}
+
+export interface PastOrder {
+  id: string;
+  supplierId: string | null;
+  supplierName: string;
+  createdBy: string | null;
+  createdAt: string;
+  payload: Record<string, unknown>;
+  messageText: string;
+  shareMethod: PastOrderShareMethod;
+}
+
+export interface FinalizeSupplierOrderInput {
+  supplierId: string;
+  supplierName: string;
+  createdBy: string;
+  messageText: string;
+  shareMethod: PastOrderShareMethod;
+  payload: Record<string, unknown>;
+  consumedOrderItemIds?: string[];
+  consumedDraftItemIds?: string[];
+}
+
+type SupplierDraftsBySupplier = Record<string, SupplierDraftItem[]>;
+
 interface OrderState {
   cartByLocation: CartByLocation;
   orders: Order[];
   currentOrder: OrderWithDetails | null;
   isLoading: boolean;
+  supplierDrafts: SupplierDraftsBySupplier;
+  orderLaterQueue: OrderLaterItem[];
+  pastOrders: PastOrder[];
+  isFulfillmentLoading: boolean;
 
   // Cart actions (location-aware)
   addToCart: (
@@ -107,12 +216,37 @@ interface OrderState {
   updateOrderStatus: (orderId: string, status: OrderStatus, fulfilledBy?: string) => Promise<void>;
   fulfillOrder: (orderId: string, fulfilledBy: string) => Promise<void>;
   cancelOrder: (orderId: string) => Promise<void>;
+
+  // Fulfillment actions/state
+  loadFulfillmentData: (managerId?: string | null) => Promise<void>;
+  fetchPendingFulfillmentOrders: () => Promise<void>;
+  addSupplierDraftItem: (input: SupplierDraftItemInput) => SupplierDraftItem;
+  updateSupplierDraftItemQuantity: (draftItemId: string, quantity: number) => void;
+  removeSupplierDraftItem: (draftItemId: string) => void;
+  removeSupplierDraftItems: (draftItemIds: string[]) => void;
+  getSupplierDraftItems: (supplierId: SupplierCategory) => SupplierDraftItem[];
+  createOrderLaterItem: (input: CreateOrderLaterItemInput) => Promise<OrderLaterItem>;
+  updateOrderLaterItemSchedule: (itemId: string, scheduledAt: string) => Promise<OrderLaterItem | null>;
+  removeOrderLaterItem: (itemId: string) => Promise<void>;
+  moveOrderLaterItemToSupplierDraft: (
+    itemId: string,
+    supplierId: SupplierCategory,
+    locationGroup: FulfillmentLocationGroup,
+    options?: {
+      locationId?: string | null;
+      locationName?: string | null;
+      quantity?: number;
+    }
+  ) => Promise<SupplierDraftItem | null>;
+  finalizeSupplierOrder: (input: FinalizeSupplierOrderInput) => Promise<PastOrder>;
 }
 
 const createCartItemId = () =>
   `cart_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
 let orderItemsNoteColumnAvailable: boolean | null = null;
+let pastOrdersTableAvailable: boolean | null = null;
+let orderLaterItemsTableAvailable: boolean | null = null;
 
 function toValidNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -343,6 +477,383 @@ async function insertOrderItemsWithFallback(
   return fallbackAttempt;
 }
 
+function createFulfillmentId(prefix: string) {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function toIsoString(value: unknown, fallback = new Date().toISOString()): string {
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString();
+  }
+
+  return fallback;
+}
+
+function toJsonObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function normalizeSupplierCategory(value: unknown): SupplierCategory | null {
+  if (
+    value === 'fish_supplier' ||
+    value === 'main_distributor' ||
+    value === 'asian_market'
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeLocationGroup(value: unknown): FulfillmentLocationGroup | null {
+  if (value === 'sushi' || value === 'poki') return value;
+  return null;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter((entry) => entry.length > 0);
+}
+
+function isMissingTableError(error: unknown, tableName: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { code?: string; message?: string; details?: string };
+  const message = `${err.message || ''} ${err.details || ''}`.toLowerCase();
+  if (!message.includes(tableName.toLowerCase())) return false;
+  return (
+    err.code === 'PGRST205' ||
+    err.code === 'PGRST204' ||
+    err.code === '42P01' ||
+    message.includes('does not exist') ||
+    message.includes('could not find')
+  );
+}
+
+function normalizeSupplierDraftItem(raw: unknown): SupplierDraftItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  const supplierId = normalizeSupplierCategory(value.supplierId);
+  const name = typeof value.name === 'string' ? value.name.trim() : '';
+  if (!supplierId || name.length === 0) return null;
+
+  const unitType: UnitType = value.unitType === 'pack' ? 'pack' : 'base';
+  const quantity = toValidNumber(value.quantity);
+  if (quantity === null || quantity <= 0) return null;
+
+  return {
+    id:
+      typeof value.id === 'string' && value.id.trim().length > 0
+        ? value.id
+        : createFulfillmentId('draft'),
+    supplierId,
+    inventoryItemId:
+      typeof value.inventoryItemId === 'string' && value.inventoryItemId.trim().length > 0
+        ? value.inventoryItemId
+        : null,
+    name,
+    category:
+      typeof value.category === 'string' && value.category.trim().length > 0
+        ? value.category
+        : 'dry',
+    quantity: Math.max(0, quantity),
+    unitType,
+    unitLabel:
+      typeof value.unitLabel === 'string' && value.unitLabel.trim().length > 0
+        ? value.unitLabel
+        : unitType === 'pack'
+          ? 'pack'
+          : 'unit',
+    locationGroup: normalizeLocationGroup(value.locationGroup) ?? 'sushi',
+    locationId:
+      typeof value.locationId === 'string' && value.locationId.trim().length > 0
+        ? value.locationId
+        : null,
+    locationName:
+      typeof value.locationName === 'string' && value.locationName.trim().length > 0
+        ? value.locationName
+        : null,
+    note: normalizeNote(value.note),
+    createdAt: toIsoString(value.createdAt),
+    sourceOrderLaterItemId:
+      typeof value.sourceOrderLaterItemId === 'string' && value.sourceOrderLaterItemId.trim().length > 0
+        ? value.sourceOrderLaterItemId
+        : null,
+  };
+}
+
+function normalizeSupplierDrafts(raw: unknown): SupplierDraftsBySupplier {
+  if (!raw || typeof raw !== 'object') return {};
+  const source = raw as Record<string, unknown>;
+  const next: SupplierDraftsBySupplier = {};
+
+  Object.entries(source).forEach(([supplierId, rows]) => {
+    const normalizedSupplierId = normalizeSupplierCategory(supplierId);
+    if (!normalizedSupplierId || !Array.isArray(rows)) return;
+    const normalizedRows = rows
+      .map((row) => normalizeSupplierDraftItem(row))
+      .filter((row): row is SupplierDraftItem => Boolean(row));
+    if (normalizedRows.length > 0) {
+      next[normalizedSupplierId] = normalizedRows;
+    }
+  });
+
+  return next;
+}
+
+function normalizeOrderLaterItem(raw: unknown): OrderLaterItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  const itemName = typeof value.item_name === 'string'
+    ? value.item_name.trim()
+    : typeof value.itemName === 'string'
+      ? value.itemName.trim()
+      : '';
+  const createdBy = typeof value.created_by === 'string'
+    ? value.created_by
+    : typeof value.createdBy === 'string'
+      ? value.createdBy
+      : '';
+  if (!itemName || !createdBy) return null;
+
+  const statusValue =
+    value.status === 'added' || value.status === 'cancelled' ? value.status : 'queued';
+
+  return {
+    id:
+      typeof value.id === 'string' && value.id.trim().length > 0
+        ? value.id
+        : createFulfillmentId('later'),
+    createdBy,
+    createdAt: toIsoString(value.created_at ?? value.createdAt),
+    scheduledAt: toIsoString(value.scheduled_at ?? value.scheduledAt),
+    itemId:
+      typeof value.item_id === 'string' && value.item_id.trim().length > 0
+        ? value.item_id
+        : typeof value.itemId === 'string' && value.itemId.trim().length > 0
+          ? value.itemId
+          : null,
+    itemName,
+    unit:
+      typeof value.unit === 'string' && value.unit.trim().length > 0
+        ? value.unit.trim()
+        : 'unit',
+    locationId:
+      typeof value.location_id === 'string' && value.location_id.trim().length > 0
+        ? value.location_id
+        : typeof value.locationId === 'string' && value.locationId.trim().length > 0
+          ? value.locationId
+          : null,
+    locationName:
+      typeof value.location_name === 'string' && value.location_name.trim().length > 0
+        ? value.location_name.trim()
+        : typeof value.locationName === 'string' && value.locationName.trim().length > 0
+          ? value.locationName.trim()
+          : null,
+    notes: normalizeNote(value.notes),
+    preferredSupplierId: normalizeSupplierCategory(value.preferred_supplier_id ?? value.preferredSupplierId),
+    preferredLocationGroup: normalizeLocationGroup(
+      value.preferred_location_group ?? value.preferredLocationGroup
+    ),
+    sourceOrderItemId:
+      typeof value.source_order_item_id === 'string' && value.source_order_item_id.trim().length > 0
+        ? value.source_order_item_id
+        : typeof value.sourceOrderItemId === 'string' && value.sourceOrderItemId.trim().length > 0
+          ? value.sourceOrderItemId
+          : null,
+    sourceOrderId:
+      typeof value.source_order_id === 'string' && value.source_order_id.trim().length > 0
+        ? value.source_order_id
+        : typeof value.sourceOrderId === 'string' && value.sourceOrderId.trim().length > 0
+          ? value.sourceOrderId
+          : null,
+    notificationId:
+      typeof value.notification_id === 'string' && value.notification_id.trim().length > 0
+        ? value.notification_id
+        : typeof value.notificationId === 'string' && value.notificationId.trim().length > 0
+          ? value.notificationId
+          : null,
+    status: statusValue,
+    payload: toJsonObject(value.payload),
+  };
+}
+
+function normalizeOrderLaterQueue(raw: unknown): OrderLaterItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => normalizeOrderLaterItem(item))
+    .filter((item): item is OrderLaterItem => Boolean(item))
+    .filter((item) => item.status === 'queued')
+    .sort((a, b) => {
+      const aTime = new Date(a.scheduledAt).getTime();
+      const bTime = new Date(b.scheduledAt).getTime();
+      return aTime - bTime;
+    });
+}
+
+function normalizePastOrder(raw: unknown): PastOrder | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  const supplierName = typeof value.supplier_name === 'string'
+    ? value.supplier_name.trim()
+    : typeof value.supplierName === 'string'
+      ? value.supplierName.trim()
+      : '';
+  const messageText = typeof value.message_text === 'string'
+    ? value.message_text
+    : typeof value.messageText === 'string'
+      ? value.messageText
+      : '';
+  if (!supplierName || !messageText) return null;
+
+  const shareMethod: PastOrderShareMethod =
+    value.share_method === 'copy' || value.shareMethod === 'copy' ? 'copy' : 'share';
+
+  return {
+    id:
+      typeof value.id === 'string' && value.id.trim().length > 0
+        ? value.id
+        : createFulfillmentId('past'),
+    supplierId:
+      typeof value.supplier_id === 'string' && value.supplier_id.trim().length > 0
+        ? value.supplier_id
+        : typeof value.supplierId === 'string' && value.supplierId.trim().length > 0
+          ? value.supplierId
+          : null,
+    supplierName,
+    createdBy:
+      typeof value.created_by === 'string' && value.created_by.trim().length > 0
+        ? value.created_by
+        : typeof value.createdBy === 'string' && value.createdBy.trim().length > 0
+          ? value.createdBy
+          : null,
+    createdAt: toIsoString(value.created_at ?? value.createdAt),
+    payload: toJsonObject(value.payload),
+    messageText,
+    shareMethod,
+  };
+}
+
+function normalizePastOrders(raw: unknown): PastOrder[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => normalizePastOrder(item))
+    .filter((item): item is PastOrder => Boolean(item))
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+function extractConsumedOrderItemIds(pastOrders: PastOrder[]): Set<string> {
+  const ids = new Set<string>();
+
+  pastOrders.forEach((row) => {
+    const payload = toJsonObject(row.payload);
+    const camel = toStringArray(payload.sourceOrderItemIds);
+    const snake = toStringArray(payload.source_order_item_ids);
+    [...camel, ...snake].forEach((id) => ids.add(id));
+  });
+
+  return ids;
+}
+
+function removeConsumedOrderItems(
+  orders: Order[],
+  consumedOrderItemIds: Set<string>
+): Order[] {
+  if (consumedOrderItemIds.size === 0) return orders;
+
+  return (orders as any[])
+    .map((order) => {
+      if (!Array.isArray(order?.order_items)) return order;
+      const nextItems = order.order_items.filter(
+        (item: any) => !consumedOrderItemIds.has(item?.id)
+      );
+      return { ...order, order_items: nextItems };
+    })
+    .filter((order) => {
+      if (!Array.isArray((order as any)?.order_items)) return true;
+      return (order as any).order_items.length > 0;
+    });
+}
+
+async function ensureNotificationPermission(): Promise<boolean> {
+  const current = await Notifications.getPermissionsAsync();
+  if (current.status === 'granted') return true;
+  const requested = await Notifications.requestPermissionsAsync();
+  return requested.status === 'granted';
+}
+
+async function cancelOrderLaterNotification(notificationId: string | null) {
+  if (!notificationId) return;
+  try {
+    await Notifications.cancelScheduledNotificationAsync(notificationId);
+  } catch {
+    // Ignore stale notification identifiers.
+  }
+}
+
+async function scheduleOrderLaterNotification(input: {
+  orderLaterItemId: string;
+  itemName: string;
+  scheduledAt: string;
+}): Promise<string | null> {
+  const targetDate = new Date(input.scheduledAt);
+  if (Number.isNaN(targetDate.getTime())) return null;
+
+  const granted = await ensureNotificationPermission().catch(() => false);
+  if (!granted) return null;
+
+  const minimum = Date.now() + 2_000;
+  const safeTarget = targetDate.getTime() < minimum ? new Date(minimum) : targetDate;
+
+  try {
+    return await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `Order later reminder: ${input.itemName}`,
+        body: 'Tap to add this item to a supplier order.',
+        data: {
+          type: 'order-later-reminder',
+          orderLaterItemId: input.orderLaterItemId,
+        },
+        sound: true,
+      },
+      trigger: safeTarget as any,
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function createOrderLaterInAppNotification(params: {
+  userId: string;
+  itemName: string;
+  scheduledAt: string;
+}) {
+  try {
+    await (supabase as any).from('notifications').insert({
+      user_id: params.userId,
+      title: `Order later scheduled: ${params.itemName}`,
+      body: `Reminder set for ${new Date(params.scheduledAt).toLocaleString()}.`,
+      notification_type: 'order_later_scheduled',
+      payload: {
+        itemName: params.itemName,
+        scheduledAt: params.scheduledAt,
+      },
+    });
+  } catch {
+    // Best-effort signal only.
+  }
+}
+
 export const useOrderStore = create<OrderState>()(
   persist(
     (set, get) => ({
@@ -350,6 +861,10 @@ export const useOrderStore = create<OrderState>()(
       orders: [],
       currentOrder: null,
       isLoading: false,
+      supplierDrafts: {},
+      orderLaterQueue: [],
+      pastOrders: [],
+      isFulfillmentLoading: false,
 
       // Legacy cart property - returns flattened cart for backward compatibility
       get cart() {
@@ -998,13 +1513,672 @@ export const useOrderStore = create<OrderState>()(
           set({ isLoading: false });
         }
       },
+
+      loadFulfillmentData: async (managerId) => {
+        const userId =
+          typeof managerId === 'string' && managerId.trim().length > 0
+            ? managerId
+            : null;
+
+        set({ isFulfillmentLoading: true });
+        try {
+          let nextPastOrders = get().pastOrders;
+          let nextOrderLaterQueue = get().orderLaterQueue;
+
+          if (userId && pastOrdersTableAvailable !== false) {
+            const { data, error } = await (supabase as any)
+              .from('past_orders')
+              .select('*')
+              .eq('created_by', userId)
+              .order('created_at', { ascending: false })
+              .limit(400);
+
+            if (error) {
+              if (isMissingTableError(error, 'past_orders')) {
+                pastOrdersTableAvailable = false;
+              } else {
+                console.warn('Unable to load past_orders, using local fallback.', error);
+              }
+            } else {
+              pastOrdersTableAvailable = true;
+              nextPastOrders = normalizePastOrders(data || []);
+            }
+          }
+
+          if (userId && orderLaterItemsTableAvailable !== false) {
+            const { data, error } = await (supabase as any)
+              .from('order_later_items')
+              .select('*')
+              .eq('created_by', userId)
+              .eq('status', 'queued')
+              .order('scheduled_at', { ascending: true })
+              .limit(600);
+
+            if (error) {
+              if (isMissingTableError(error, 'order_later_items')) {
+                orderLaterItemsTableAvailable = false;
+              } else {
+                console.warn('Unable to load order_later_items, using local fallback.', error);
+              }
+            } else {
+              orderLaterItemsTableAvailable = true;
+              nextOrderLaterQueue = normalizeOrderLaterQueue(data || []);
+            }
+          }
+
+          set((state) => {
+            const consumed = extractConsumedOrderItemIds(nextPastOrders);
+            return {
+              pastOrders: nextPastOrders,
+              orderLaterQueue: nextOrderLaterQueue,
+              orders: removeConsumedOrderItems(state.orders, consumed),
+            };
+          });
+
+          const queueSnapshot = [...get().orderLaterQueue];
+          let queueChanged = false;
+          for (const row of queueSnapshot) {
+            const scheduledAtMs = new Date(row.scheduledAt).getTime();
+            if (row.notificationId || !Number.isFinite(scheduledAtMs) || scheduledAtMs <= Date.now()) {
+              continue;
+            }
+
+            const notificationId = await scheduleOrderLaterNotification({
+              orderLaterItemId: row.id,
+              itemName: row.itemName,
+              scheduledAt: row.scheduledAt,
+            });
+
+            if (!notificationId) continue;
+
+            queueChanged = true;
+            row.notificationId = notificationId;
+
+            if (orderLaterItemsTableAvailable !== false) {
+              try {
+                await (supabase as any)
+                  .from('order_later_items')
+                  .update({ notification_id: notificationId })
+                  .eq('id', row.id);
+              } catch {
+                // Best-effort sync only.
+              }
+            }
+          }
+
+          if (queueChanged) {
+            set({ orderLaterQueue: normalizeOrderLaterQueue(queueSnapshot) });
+          }
+        } finally {
+          set({ isFulfillmentLoading: false });
+        }
+      },
+
+      fetchPendingFulfillmentOrders: async () => {
+        set({ isFulfillmentLoading: true });
+        try {
+          const { data, error } = await supabase
+            .from('orders')
+            .select(`
+              *,
+              user:users!orders_user_id_fkey(*),
+              location:locations(*),
+              order_items(
+                *,
+                inventory_item:inventory_items(*)
+              )
+            `)
+            .eq('status', 'submitted')
+            .order('created_at', { ascending: false });
+
+          if (error) throw error;
+
+          const consumedOrderItemIds = extractConsumedOrderItemIds(get().pastOrders);
+          const filtered = removeConsumedOrderItems(
+            ((data || []) as unknown) as Order[],
+            consumedOrderItemIds
+          );
+          set({ orders: filtered });
+        } finally {
+          set({ isFulfillmentLoading: false });
+        }
+      },
+
+      addSupplierDraftItem: (input) => {
+        const now = new Date().toISOString();
+        const safeQuantity = Math.max(0, toValidNumber(input.quantity) ?? 0);
+        if (safeQuantity <= 0) {
+          throw new Error('Draft quantity must be greater than zero.');
+        }
+
+        const supplierId = input.supplierId;
+        const unitType: UnitType = input.unitType === 'pack' ? 'pack' : 'base';
+        const nextItem: SupplierDraftItem = {
+          id: createFulfillmentId('draft'),
+          supplierId,
+          inventoryItemId:
+            typeof input.inventoryItemId === 'string' && input.inventoryItemId.trim().length > 0
+              ? input.inventoryItemId
+              : null,
+          name: input.name.trim(),
+          category:
+            typeof input.category === 'string' && input.category.trim().length > 0
+              ? input.category
+              : 'dry',
+          quantity: safeQuantity,
+          unitType,
+          unitLabel:
+            typeof input.unitLabel === 'string' && input.unitLabel.trim().length > 0
+              ? input.unitLabel.trim()
+              : unitType === 'pack'
+                ? 'pack'
+                : 'unit',
+          locationGroup: input.locationGroup === 'poki' ? 'poki' : 'sushi',
+          locationId:
+            typeof input.locationId === 'string' && input.locationId.trim().length > 0
+              ? input.locationId
+              : null,
+          locationName:
+            typeof input.locationName === 'string' && input.locationName.trim().length > 0
+              ? input.locationName.trim()
+              : null,
+          note: normalizeNote(input.note),
+          createdAt: now,
+          sourceOrderLaterItemId:
+            typeof input.sourceOrderLaterItemId === 'string' &&
+            input.sourceOrderLaterItemId.trim().length > 0
+              ? input.sourceOrderLaterItemId
+              : null,
+        };
+
+        let createdItem = nextItem;
+        set((state) => {
+          const supplierRows = state.supplierDrafts[supplierId] || [];
+          const existingIndex = supplierRows.findIndex((row) => {
+            const sameInventory =
+              row.inventoryItemId && nextItem.inventoryItemId
+                ? row.inventoryItemId === nextItem.inventoryItemId
+                : row.name.toLowerCase() === nextItem.name.toLowerCase();
+            return (
+              sameInventory &&
+              row.locationGroup === nextItem.locationGroup &&
+              row.unitType === nextItem.unitType
+            );
+          });
+
+          if (existingIndex >= 0) {
+            const merged: SupplierDraftItem = {
+              ...supplierRows[existingIndex],
+              quantity: supplierRows[existingIndex].quantity + nextItem.quantity,
+              note: supplierRows[existingIndex].note ?? nextItem.note,
+              createdAt: now,
+            };
+            createdItem = merged;
+            return {
+              supplierDrafts: {
+                ...state.supplierDrafts,
+                [supplierId]: supplierRows.map((row, index) =>
+                  index === existingIndex ? merged : row
+                ),
+              },
+            };
+          }
+
+          createdItem = nextItem;
+          return {
+            supplierDrafts: {
+              ...state.supplierDrafts,
+              [supplierId]: [nextItem, ...supplierRows],
+            },
+          };
+        });
+
+        return createdItem;
+      },
+
+      updateSupplierDraftItemQuantity: (draftItemId, quantity) => {
+        const safeQuantity = Math.max(0, toValidNumber(quantity) ?? 0);
+        if (safeQuantity <= 0) {
+          get().removeSupplierDraftItem(draftItemId);
+          return;
+        }
+
+        set((state) => {
+          const nextDrafts: SupplierDraftsBySupplier = {};
+          Object.entries(state.supplierDrafts).forEach(([supplierId, rows]) => {
+            const normalizedRows = rows.map((row) =>
+              row.id === draftItemId
+                ? { ...row, quantity: safeQuantity, createdAt: new Date().toISOString() }
+                : row
+            );
+            if (normalizedRows.length > 0) {
+              nextDrafts[supplierId] = normalizedRows;
+            }
+          });
+          return { supplierDrafts: nextDrafts };
+        });
+      },
+
+      removeSupplierDraftItem: (draftItemId) => {
+        set((state) => {
+          const nextDrafts: SupplierDraftsBySupplier = {};
+          Object.entries(state.supplierDrafts).forEach(([supplierId, rows]) => {
+            const nextRows = rows.filter((row) => row.id !== draftItemId);
+            if (nextRows.length > 0) {
+              nextDrafts[supplierId] = nextRows;
+            }
+          });
+          return { supplierDrafts: nextDrafts };
+        });
+      },
+
+      removeSupplierDraftItems: (draftItemIds) => {
+        const idSet = new Set(
+          draftItemIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        );
+        if (idSet.size === 0) return;
+
+        set((state) => {
+          const nextDrafts: SupplierDraftsBySupplier = {};
+          Object.entries(state.supplierDrafts).forEach(([supplierId, rows]) => {
+            const nextRows = rows.filter((row) => !idSet.has(row.id));
+            if (nextRows.length > 0) {
+              nextDrafts[supplierId] = nextRows;
+            }
+          });
+          return { supplierDrafts: nextDrafts };
+        });
+      },
+
+      getSupplierDraftItems: (supplierId) => {
+        const supplierRows = get().supplierDrafts[supplierId] || [];
+        return [...supplierRows].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      },
+
+      createOrderLaterItem: async (input) => {
+        const createdAt = new Date().toISOString();
+        const scheduledAt = toIsoString(input.scheduledAt);
+        const normalizedInput = {
+          createdBy: input.createdBy,
+          itemId:
+            typeof input.itemId === 'string' && input.itemId.trim().length > 0
+              ? input.itemId
+              : null,
+          itemName: input.itemName.trim(),
+          unit: input.unit.trim().length > 0 ? input.unit.trim() : 'unit',
+          locationId:
+            typeof input.locationId === 'string' && input.locationId.trim().length > 0
+              ? input.locationId
+              : null,
+          locationName:
+            typeof input.locationName === 'string' && input.locationName.trim().length > 0
+              ? input.locationName.trim()
+              : null,
+          notes: normalizeNote(input.notes),
+          preferredSupplierId: normalizeSupplierCategory(input.preferredSupplierId),
+          preferredLocationGroup: normalizeLocationGroup(input.preferredLocationGroup),
+          sourceOrderItemId:
+            typeof input.sourceOrderItemId === 'string' && input.sourceOrderItemId.trim().length > 0
+              ? input.sourceOrderItemId
+              : null,
+          sourceOrderId:
+            typeof input.sourceOrderId === 'string' && input.sourceOrderId.trim().length > 0
+              ? input.sourceOrderId
+              : null,
+          payload: toJsonObject(input.payload),
+        };
+
+        let orderLaterItem: OrderLaterItem | null = null;
+
+        if (orderLaterItemsTableAvailable !== false) {
+          const { data, error } = await (supabase as any)
+            .from('order_later_items')
+            .insert({
+              created_by: normalizedInput.createdBy,
+              scheduled_at: scheduledAt,
+              item_id: normalizedInput.itemId,
+              item_name: normalizedInput.itemName,
+              unit: normalizedInput.unit,
+              location_id: normalizedInput.locationId,
+              location_name: normalizedInput.locationName,
+              notes: normalizedInput.notes,
+              preferred_supplier_id: normalizedInput.preferredSupplierId,
+              preferred_location_group: normalizedInput.preferredLocationGroup,
+              source_order_item_id: normalizedInput.sourceOrderItemId,
+              source_order_id: normalizedInput.sourceOrderId,
+              status: 'queued',
+              payload: normalizedInput.payload,
+            })
+            .select('*')
+            .single();
+
+          if (error) {
+            if (isMissingTableError(error, 'order_later_items')) {
+              orderLaterItemsTableAvailable = false;
+            } else {
+              console.warn('Unable to persist order_later_items row; using local fallback.', error);
+            }
+          } else {
+            orderLaterItemsTableAvailable = true;
+            orderLaterItem = normalizeOrderLaterItem(data);
+          }
+        }
+
+        if (!orderLaterItem) {
+          orderLaterItem = {
+            id: createFulfillmentId('later'),
+            createdBy: normalizedInput.createdBy,
+            createdAt,
+            scheduledAt,
+            itemId: normalizedInput.itemId,
+            itemName: normalizedInput.itemName,
+            unit: normalizedInput.unit,
+            locationId: normalizedInput.locationId,
+            locationName: normalizedInput.locationName,
+            notes: normalizedInput.notes,
+            preferredSupplierId: normalizedInput.preferredSupplierId,
+            preferredLocationGroup: normalizedInput.preferredLocationGroup,
+            sourceOrderItemId: normalizedInput.sourceOrderItemId,
+            sourceOrderId: normalizedInput.sourceOrderId,
+            notificationId: null,
+            status: 'queued',
+            payload: normalizedInput.payload,
+          };
+        }
+
+        const notificationId = await scheduleOrderLaterNotification({
+          orderLaterItemId: orderLaterItem.id,
+          itemName: orderLaterItem.itemName,
+          scheduledAt: orderLaterItem.scheduledAt,
+        });
+
+        if (notificationId) {
+          orderLaterItem = { ...orderLaterItem, notificationId };
+
+          if (orderLaterItemsTableAvailable !== false) {
+            try {
+              await (supabase as any)
+                .from('order_later_items')
+                .update({ notification_id: notificationId })
+                .eq('id', orderLaterItem.id);
+            } catch {
+              // Best-effort sync only.
+            }
+          }
+        }
+
+        set((state) => ({
+          orderLaterQueue: normalizeOrderLaterQueue([orderLaterItem, ...state.orderLaterQueue]),
+        }));
+
+        void createOrderLaterInAppNotification({
+          userId: normalizedInput.createdBy,
+          itemName: normalizedInput.itemName,
+          scheduledAt: orderLaterItem.scheduledAt,
+        });
+
+        return orderLaterItem;
+      },
+
+      updateOrderLaterItemSchedule: async (itemId, scheduledAt) => {
+        const current = get().orderLaterQueue.find((item) => item.id === itemId);
+        if (!current) return null;
+
+        await cancelOrderLaterNotification(current.notificationId);
+        const normalizedScheduledAt = toIsoString(scheduledAt);
+        const nextNotificationId = await scheduleOrderLaterNotification({
+          orderLaterItemId: current.id,
+          itemName: current.itemName,
+          scheduledAt: normalizedScheduledAt,
+        });
+
+        const updatedItem: OrderLaterItem = {
+          ...current,
+          scheduledAt: normalizedScheduledAt,
+          notificationId: nextNotificationId,
+        };
+
+        set((state) => ({
+          orderLaterQueue: normalizeOrderLaterQueue(
+            state.orderLaterQueue.map((item) => (item.id === itemId ? updatedItem : item))
+          ),
+        }));
+
+        if (orderLaterItemsTableAvailable !== false) {
+          const { error } = await (supabase as any)
+            .from('order_later_items')
+            .update({
+              scheduled_at: normalizedScheduledAt,
+              notification_id: nextNotificationId,
+            })
+            .eq('id', itemId);
+
+          if (error) {
+            if (isMissingTableError(error, 'order_later_items')) {
+              orderLaterItemsTableAvailable = false;
+            } else {
+              console.warn('Unable to update order_later_items schedule.', error);
+            }
+          } else {
+            orderLaterItemsTableAvailable = true;
+          }
+        }
+
+        void createOrderLaterInAppNotification({
+          userId: current.createdBy,
+          itemName: current.itemName,
+          scheduledAt: normalizedScheduledAt,
+        });
+
+        return updatedItem;
+      },
+
+      removeOrderLaterItem: async (itemId) => {
+        const existing = get().orderLaterQueue.find((item) => item.id === itemId);
+        if (!existing) return;
+
+        await cancelOrderLaterNotification(existing.notificationId);
+
+        set((state) => ({
+          orderLaterQueue: state.orderLaterQueue.filter((item) => item.id !== itemId),
+        }));
+
+        if (orderLaterItemsTableAvailable !== false) {
+          const { error } = await (supabase as any)
+            .from('order_later_items')
+            .update({
+              status: 'cancelled',
+              cancelled_at: new Date().toISOString(),
+              notification_id: null,
+            })
+            .eq('id', itemId);
+
+          if (error) {
+            if (isMissingTableError(error, 'order_later_items')) {
+              orderLaterItemsTableAvailable = false;
+            } else {
+              console.warn('Unable to update order_later_items status.', error);
+            }
+          } else {
+            orderLaterItemsTableAvailable = true;
+          }
+        }
+      },
+
+      moveOrderLaterItemToSupplierDraft: async (itemId, supplierId, locationGroup, options) => {
+        const queuedItem = get().orderLaterQueue.find((item) => item.id === itemId);
+        if (!queuedItem) return null;
+
+        const payload = toJsonObject(queuedItem.payload);
+        const quantityFromPayload = toValidNumber(payload.quantity);
+        const quantityFromOption = toValidNumber(options?.quantity);
+        const quantity = Math.max(0, quantityFromOption ?? quantityFromPayload ?? 1);
+
+        const draftItem = get().addSupplierDraftItem({
+          supplierId,
+          inventoryItemId: queuedItem.itemId,
+          name: queuedItem.itemName,
+          category:
+            typeof payload.category === 'string' && payload.category.trim().length > 0
+              ? payload.category
+              : 'dry',
+          quantity,
+          unitType: payload.unitType === 'pack' ? 'pack' : 'base',
+          unitLabel:
+            typeof payload.unitLabel === 'string' && payload.unitLabel.trim().length > 0
+              ? payload.unitLabel
+              : queuedItem.unit,
+          locationGroup,
+          locationId: options?.locationId ?? queuedItem.locationId,
+          locationName: options?.locationName ?? queuedItem.locationName,
+          note: queuedItem.notes,
+          sourceOrderLaterItemId: queuedItem.id,
+        });
+
+        await cancelOrderLaterNotification(queuedItem.notificationId);
+
+        set((state) => ({
+          orderLaterQueue: state.orderLaterQueue.filter((item) => item.id !== itemId),
+        }));
+
+        if (orderLaterItemsTableAvailable !== false) {
+          const { error } = await (supabase as any)
+            .from('order_later_items')
+            .update({
+              status: 'added',
+              added_at: new Date().toISOString(),
+              preferred_supplier_id: supplierId,
+              preferred_location_group: locationGroup,
+              notification_id: null,
+            })
+            .eq('id', itemId);
+
+          if (error) {
+            if (isMissingTableError(error, 'order_later_items')) {
+              orderLaterItemsTableAvailable = false;
+            } else {
+              console.warn('Unable to mark order_later_items row as added.', error);
+            }
+          } else {
+            orderLaterItemsTableAvailable = true;
+          }
+        }
+
+        return draftItem;
+      },
+
+      finalizeSupplierOrder: async (input) => {
+        const now = new Date().toISOString();
+        const consumedOrderItemIds = Array.from(
+          new Set(
+            (input.consumedOrderItemIds || [])
+              .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+          )
+        );
+        const consumedDraftItemIds = Array.from(
+          new Set(
+            (input.consumedDraftItemIds || [])
+              .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+          )
+        );
+
+        const payload = {
+          ...toJsonObject(input.payload),
+          sourceOrderItemIds: consumedOrderItemIds,
+          source_order_item_ids: consumedOrderItemIds,
+          sourceDraftItemIds: consumedDraftItemIds,
+          source_draft_item_ids: consumedDraftItemIds,
+        };
+
+        let nextPastOrder: PastOrder = {
+          id: createFulfillmentId('past'),
+          supplierId: input.supplierId,
+          supplierName: input.supplierName,
+          createdBy: input.createdBy,
+          createdAt: now,
+          payload,
+          messageText: input.messageText,
+          shareMethod: input.shareMethod,
+        };
+
+        if (pastOrdersTableAvailable !== false) {
+          const { data, error } = await (supabase as any)
+            .from('past_orders')
+            .insert({
+              supplier_id: input.supplierId,
+              supplier_name: input.supplierName,
+              created_by: input.createdBy,
+              payload,
+              message_text: input.messageText,
+              share_method: input.shareMethod,
+            })
+            .select('*')
+            .single();
+
+          if (error) {
+            if (isMissingTableError(error, 'past_orders')) {
+              pastOrdersTableAvailable = false;
+            } else {
+              console.warn('Unable to persist past_orders row; using local fallback.', error);
+            }
+          } else {
+            pastOrdersTableAvailable = true;
+            const parsed = normalizePastOrder(data);
+            if (parsed) {
+              nextPastOrder = parsed;
+            }
+          }
+        }
+
+        set((state) => {
+          const nextPastOrders = normalizePastOrders([nextPastOrder, ...state.pastOrders]);
+          const nextConsumedIds = extractConsumedOrderItemIds(nextPastOrders);
+          const nextOrders = removeConsumedOrderItems(state.orders, nextConsumedIds);
+
+          const draftRemovalSet = new Set(consumedDraftItemIds);
+          const nextSupplierDrafts: SupplierDraftsBySupplier = {};
+          Object.entries(state.supplierDrafts).forEach(([supplierKey, rows]) => {
+            const filteredRows = rows.filter((row) => !draftRemovalSet.has(row.id));
+            if (filteredRows.length > 0) {
+              nextSupplierDrafts[supplierKey] = filteredRows;
+            }
+          });
+
+          return {
+            pastOrders: nextPastOrders,
+            orders: nextOrders,
+            supplierDrafts: nextSupplierDrafts,
+          };
+        });
+
+        return nextPastOrder;
+      },
     }),
     {
       name: 'order-storage',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         cartByLocation: state.cartByLocation,
+        supplierDrafts: state.supplierDrafts,
+        orderLaterQueue: state.orderLaterQueue,
+        pastOrders: state.pastOrders,
       }),
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState || {}) as Partial<OrderState>;
+        return {
+          ...currentState,
+          ...persisted,
+          cartByLocation:
+            persisted.cartByLocation && typeof persisted.cartByLocation === 'object'
+              ? (persisted.cartByLocation as CartByLocation)
+              : currentState.cartByLocation,
+          supplierDrafts: normalizeSupplierDrafts((persistedState as any)?.supplierDrafts),
+          orderLaterQueue: normalizeOrderLaterQueue((persistedState as any)?.orderLaterQueue),
+          pastOrders: normalizePastOrders((persistedState as any)?.pastOrders),
+        };
+      },
     }
   )
 );

@@ -171,6 +171,18 @@ export default function ManagerLayout() {
         }}
       />
       <Tabs.Screen
+        name="fulfillment-history"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="fulfillment-history-detail"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
         name="settings/export-format"
         options={{
           href: null,
