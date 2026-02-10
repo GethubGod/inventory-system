@@ -18,7 +18,6 @@ import { SUPPLIER_CATEGORY_LABELS, colors } from '@/constants';
 import { useAuthStore, useOrderStore, useSettingsStore } from '@/store';
 import { SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
-import { getInventoryWithStock } from '@/lib/api/stock';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
 
@@ -127,6 +126,37 @@ function formatQuantity(value: number): string {
   return Number.isInteger(value) ? `${value}` : `${value}`.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
 }
 
+function encodeHistorySignaturePart(value: string | null | undefined): string {
+  return encodeURIComponent(value ?? '');
+}
+
+function decodeHistorySignaturePart(value: string | undefined): string {
+  if (!value) return '';
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function formatLastOrderedLabel(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'recently';
+  const deltaMs = Date.now() - date.getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const days = Math.floor(deltaMs / dayMs);
+  if (days <= 0) return 'today';
+  if (days === 1) return '1d ago';
+  if (days < 30) return `${days}d ago`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function assertNoReportedInExportText(message: string) {
+  if (__DEV__ && /\breported\b/i.test(message)) {
+    throw new Error('Exported fulfillment message cannot contain "reported".');
+  }
+}
+
 export default function FulfillmentConfirmationScreen() {
   const params = useLocalSearchParams<{ items?: string; supplier?: string; remaining?: string }>();
   const { user } = useAuthStore();
@@ -134,6 +164,7 @@ export default function FulfillmentConfirmationScreen() {
   const {
     createOrderLaterItem,
     finalizeSupplierOrder,
+    getLastOrderedQuantities,
     removeSupplierDraftItems,
     updateSupplierDraftItemQuantity,
   } = useOrderStore();
@@ -268,8 +299,11 @@ export default function FulfillmentConfirmationScreen() {
   const [remainingItems, setRemainingItems] = useState<RemainingConfirmationItem[]>(initialRemainingItems);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [savingRemainingIds, setSavingRemainingIds] = useState<Set<string>>(new Set());
-  const [targetByItemKey, setTargetByItemKey] = useState<Record<string, number>>({});
-  const [loadingTargets, setLoadingTargets] = useState(false);
+  const [lastOrderedByRemainingId, setLastOrderedByRemainingId] = useState<
+    Record<string, { quantity: number; orderedAt: string }>
+  >({});
+  const [loadingLastOrdered, setLoadingLastOrdered] = useState(false);
+  const [historyUnavailableOffline, setHistoryUnavailableOffline] = useState(false);
   const [showRetryActions, setShowRetryActions] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const [orderLaterTarget, setOrderLaterTarget] = useState<
@@ -371,62 +405,119 @@ export default function FulfillmentConfirmationScreen() {
     [syncOrderStoreDecision, user?.id]
   );
 
-  const remainingTargetSignature = useMemo(() => {
-    return Array.from(new Set(remainingItems.map((item) => item.locationId))).sort().join('|');
+  const remainingHistorySignature = useMemo(() => {
+    return remainingItems
+      .map((item) =>
+        [
+          encodeHistorySignaturePart(item.orderItemId),
+          encodeHistorySignaturePart(item.inventoryItemId),
+          encodeHistorySignaturePart(item.unitLabel.toLowerCase()),
+          encodeHistorySignaturePart(item.locationId),
+          encodeHistorySignaturePart(item.locationGroup),
+        ].join('|')
+      )
+      .sort()
+      .join('||');
   }, [remainingItems]);
+
+  const remainingHistoryLookupItems = useMemo(
+    () =>
+      remainingHistorySignature
+        .split('||')
+        .map((entry) => {
+          if (!entry) return null;
+          const [rawKey, rawItemId, rawUnit, rawLocationId, rawLocationGroup] = entry.split('|');
+          const key = decodeHistorySignaturePart(rawKey);
+          const itemId = decodeHistorySignaturePart(rawItemId);
+          const unit = decodeHistorySignaturePart(rawUnit);
+          const locationId = decodeHistorySignaturePart(rawLocationId);
+          const locationGroup = decodeHistorySignaturePart(rawLocationGroup);
+          if (!key || !itemId || !unit) return null;
+          return {
+            key,
+            itemId,
+            unit,
+            locationId: locationId || null,
+            locationGroup:
+              locationGroup === 'sushi' || locationGroup === 'poki' ? locationGroup : null,
+          };
+        })
+        .filter(
+          (
+            item
+          ): item is {
+            key: string;
+            itemId: string;
+            unit: string;
+            locationId: string | null;
+            locationGroup: 'sushi' | 'poki' | null;
+          } => Boolean(item)
+        ),
+    [remainingHistorySignature]
+  );
 
   useEffect(() => {
     let isActive = true;
 
-    const loadTargets = async () => {
-      const locationIds = remainingTargetSignature.length > 0 ? remainingTargetSignature.split('|') : [];
-      if (locationIds.length === 0) {
+    const loadLastOrdered = async () => {
+      if (!supplierId || remainingHistoryLookupItems.length === 0) {
         if (isActive) {
-          setTargetByItemKey({});
-          setLoadingTargets(false);
+          setLastOrderedByRemainingId({});
+          setHistoryUnavailableOffline(false);
+          setLoadingLastOrdered(false);
         }
         return;
       }
 
-      setLoadingTargets(true);
-      const nextTargets: Record<string, number> = {};
+      setLoadingLastOrdered(true);
+      try {
+        const result = await getLastOrderedQuantities({
+          supplierId,
+          managerId: user?.id ?? null,
+          items: remainingHistoryLookupItems,
+        });
 
-      await Promise.all(
-        locationIds.map(async (locationId) => {
-          try {
-            const rows = await getInventoryWithStock(locationId);
-            rows.forEach((row) => {
-              const target = row.max_quantity > 0 ? row.max_quantity : row.min_quantity > 0 ? row.min_quantity : 0;
-              if (target > 0) {
-                nextTargets[`${locationId}:${row.inventory_item.id}`] = target;
-              }
-            });
-          } catch {
-            // Ignore stock target fetch failures. Suggestions are optional.
-          }
-        })
-      );
-
-      if (isActive) {
-        setTargetByItemKey(nextTargets);
-        setLoadingTargets(false);
+        if (isActive) {
+          const nextValues: Record<string, { quantity: number; orderedAt: string }> = {};
+          Object.entries(result.values).forEach(([key, value]) => {
+            nextValues[key] = {
+              quantity: value.quantity,
+              orderedAt: value.orderedAt,
+            };
+          });
+          setLastOrderedByRemainingId(nextValues);
+          setHistoryUnavailableOffline(result.historyUnavailableOffline);
+          setLoadingLastOrdered(false);
+        }
+      } catch {
+        if (isActive) {
+          setLastOrderedByRemainingId({});
+          setHistoryUnavailableOffline(true);
+          setLoadingLastOrdered(false);
+        }
       }
     };
 
-    void loadTargets();
+    void loadLastOrdered();
 
     return () => {
       isActive = false;
     };
-  }, [remainingTargetSignature]);
+  }, [
+    getLastOrderedQuantities,
+    remainingHistoryLookupItems,
+    remainingHistorySignature,
+    supplierId,
+    user?.id,
+  ]);
 
   const getSuggestion = useCallback(
     (item: RemainingConfirmationItem) => {
-      const target = targetByItemKey[`${item.locationId}:${item.inventoryItemId}`];
-      if (!Number.isFinite(target) || target <= 0) return null;
-      return Math.max(0, target - item.reportedRemaining);
+      const lastOrdered = lastOrderedByRemainingId[item.orderItemId];
+      if (!lastOrdered || !Number.isFinite(lastOrdered.quantity) || lastOrdered.quantity <= 0) return null;
+      return Math.max(0, lastOrdered.quantity);
     },
-    [targetByItemKey]
+    [lastOrderedByRemainingId]
   );
 
   const suggestionCount = useMemo(() => {
@@ -488,7 +579,7 @@ export default function FulfillmentConfirmationScreen() {
             item.decidedQuantity == null || !Number.isFinite(item.decidedQuantity) || item.decidedQuantity <= 0
               ? '[set qty]'
               : `${item.decidedQuantity}`;
-          lines.push(`- ${item.name}: ${decidedQty} ${item.unitLabel} (reported ${item.reportedRemaining})`);
+          lines.push(`- ${item.name}: ${decidedQty} ${item.unitLabel}`);
         });
 
         if (lines.length === 0) return null;
@@ -518,7 +609,9 @@ export default function FulfillmentConfirmationScreen() {
       return text.replace(pattern, value);
     }, exportFormat.template);
 
-    return filled.replace(/\\n/g, '\n');
+    const normalizedMessage = filled.replace(/\\n/g, '\n');
+    assertNoReportedInExportText(normalizedMessage);
+    return normalizedMessage;
   }, [exportFormat.template, formattedItems, supplierLabel]);
 
   const toggleExpand = useCallback((id: string) => {
@@ -741,7 +834,19 @@ export default function FulfillmentConfirmationScreen() {
   );
 
   const handleAutoFillSuggestions = useCallback(async () => {
-    const candidates = remainingItems
+    const unresolvedItems = remainingItems.filter(
+      (item) =>
+        item.decidedQuantity == null ||
+        !Number.isFinite(item.decidedQuantity) ||
+        item.decidedQuantity <= 0
+    );
+
+    if (unresolvedItems.length === 0) {
+      Alert.alert('Already Filled', 'All remaining items already have final quantities.');
+      return;
+    }
+
+    const candidates = unresolvedItems
       .map((item) => ({ item, suggestion: getSuggestion(item) }))
       .filter(
         (entry): entry is { item: RemainingConfirmationItem; suggestion: number } =>
@@ -749,7 +854,12 @@ export default function FulfillmentConfirmationScreen() {
       );
 
     if (candidates.length === 0) {
-      Alert.alert('No Suggestions Available', 'No stock targets are available for these remaining items.');
+      Alert.alert(
+        historyUnavailableOffline ? 'History Unavailable Offline' : 'No History Available',
+        historyUnavailableOffline
+          ? 'Reconnect to load last ordered quantities.'
+          : 'No previous order quantities were found for the unresolved items.'
+      );
       return;
     }
 
@@ -790,7 +900,13 @@ export default function FulfillmentConfirmationScreen() {
       }
       Alert.alert('Suggestions Applied', `Updated ${successCount} remaining item${successCount === 1 ? '' : 's'}.`);
     }
-  }, [getSuggestion, persistRemainingDecision, remainingItems, setRemainingDecisionLocal]);
+  }, [
+    getSuggestion,
+    historyUnavailableOffline,
+    persistRemainingDecision,
+    remainingItems,
+    setRemainingDecisionLocal,
+  ]);
 
   const orderLaterRegularItem = useMemo(() => {
     if (!orderLaterTarget || orderLaterTarget.kind !== 'regular') return null;
@@ -861,9 +977,39 @@ export default function FulfillmentConfirmationScreen() {
       ])
     );
 
+    const historyLineItems = [
+      ...regularPayload.map((item) => ({
+        itemId: item.inventoryItemId,
+        itemName: item.name,
+        unit: item.unitLabel,
+        quantity: item.quantity,
+        locationId: null,
+        locationName: null,
+        locationGroup: item.locationGroup,
+        unitType: item.unitType,
+      })),
+      ...remainingPayload.map((item) => ({
+        itemId: item.inventoryItemId,
+        itemName: item.name,
+        unit: item.unitLabel,
+        quantity: item.decidedQuantity ?? item.quantity,
+        locationId: item.locationId,
+        locationName: item.locationName,
+        locationGroup: item.locationGroup,
+        unitType: item.unitType,
+      })),
+    ].filter(
+      (line) =>
+        typeof line.itemId === 'string' &&
+        line.itemId.trim().length > 0 &&
+        Number.isFinite(line.quantity) &&
+        line.quantity > 0
+    );
+
     return {
       regularPayload,
       remainingPayload,
+      historyLineItems,
       locationLabels: Array.from(locationSet),
       consumedOrderItemIds,
       consumedDraftItemIds,
@@ -903,6 +1049,7 @@ export default function FulfillmentConfirmationScreen() {
           },
           consumedOrderItemIds: payload.consumedOrderItemIds,
           consumedDraftItemIds: payload.consumedDraftItemIds,
+          lineItems: payload.historyLineItems,
         });
 
         if (Platform.OS !== 'web') {
@@ -1118,9 +1265,9 @@ export default function FulfillmentConfirmationScreen() {
                 </View>
                 <TouchableOpacity
                   onPress={handleAutoFillSuggestions}
-                  disabled={suggestionCount === 0 || loadingTargets || savingRemainingIds.size > 0}
+                  disabled={suggestionCount === 0 || loadingLastOrdered || savingRemainingIds.size > 0}
                   className={`px-3 py-2 rounded-lg ${
-                    suggestionCount === 0 || loadingTargets || savingRemainingIds.size > 0
+                    suggestionCount === 0 || loadingLastOrdered || savingRemainingIds.size > 0
                       ? 'bg-amber-100'
                       : 'bg-amber-200'
                   }`}
@@ -1155,6 +1302,7 @@ export default function FulfillmentConfirmationScreen() {
                           !Number.isFinite(item.decidedQuantity) ||
                           item.decidedQuantity <= 0;
                         const suggested = getSuggestion(item);
+                        const historyEntry = lastOrderedByRemainingId[item.orderItemId];
                         const isSaving = savingRemainingIds.has(item.orderItemId);
 
                         return (
@@ -1233,10 +1381,22 @@ export default function FulfillmentConfirmationScreen() {
                                   onPress={() => handleRemainingQuantityChange(item, suggested)}
                                   className="ml-auto px-2.5 py-1.5 rounded-md bg-amber-100"
                                 >
-                                  <Text className="text-[11px] font-semibold text-amber-800">Use {suggested}</Text>
+                                  <Text className="text-[11px] font-semibold text-amber-800">
+                                    Last: {formatQuantity(suggested)}
+                                  </Text>
                                 </TouchableOpacity>
                               )}
                             </View>
+
+                            <Text className="text-[11px] text-gray-500 mt-2">
+                              {historyEntry
+                                ? `Last ordered ${formatLastOrderedLabel(historyEntry.orderedAt)}: ${formatQuantity(historyEntry.quantity)} ${item.unitLabel}`
+                                : loadingLastOrdered
+                                  ? 'Loading history...'
+                                : historyUnavailableOffline
+                                  ? 'History unavailable offline.'
+                                  : 'No history.'}
+                            </Text>
 
                             {isMissing && (
                               <Text className="text-[11px] text-red-600 mt-2">

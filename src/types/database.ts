@@ -155,6 +155,23 @@ export interface PastOrderRow {
   share_method: PastOrderShareMethod;
 }
 
+export interface PastOrderItemRow {
+  id: string;
+  past_order_id: string;
+  supplier_id: string;
+  created_by: string;
+  item_id: string;
+  item_name: string;
+  unit: string;
+  quantity: number;
+  location_id: string | null;
+  location_name: string | null;
+  location_group: OrderLaterLocationGroup | null;
+  unit_type: UnitType | null;
+  ordered_at: string;
+  created_at: string;
+}
+
 export interface OrderLaterItemRow {
   id: string;
   created_by: string;
@@ -441,6 +458,14 @@ export interface Database {
           created_at?: string;
         };
         Update: Partial<Omit<PastOrderRow, 'id' | 'created_at'>>;
+      };
+      past_order_items: {
+        Row: PastOrderItemRow;
+        Insert: Omit<PastOrderItemRow, 'id' | 'created_at' | 'ordered_at'> & {
+          created_at?: string;
+          ordered_at?: string;
+        };
+        Update: Partial<Omit<PastOrderItemRow, 'id' | 'created_at'>>;
       };
       order_later_items: {
         Row: OrderLaterItemRow;

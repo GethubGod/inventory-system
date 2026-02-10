@@ -140,11 +140,49 @@ export interface FinalizeSupplierOrderInput {
   messageText: string;
   shareMethod: PastOrderShareMethod;
   payload: Record<string, unknown>;
+  lineItems?: FinalizedPastOrderLineItemInput[];
   consumedOrderItemIds?: string[];
   consumedDraftItemIds?: string[];
 }
 
+export interface FinalizedPastOrderLineItemInput {
+  itemId: string;
+  itemName: string;
+  unit: string;
+  quantity: number;
+  locationId?: string | null;
+  locationName?: string | null;
+  locationGroup?: FulfillmentLocationGroup | null;
+  unitType?: UnitType | null;
+}
+
+export interface LastOrderedQuantityLookupInput {
+  key: string;
+  itemId: string;
+  unit: string;
+  locationId?: string | null;
+  locationGroup?: FulfillmentLocationGroup | null;
+}
+
+export interface LastOrderedQuantityLookupResult {
+  quantity: number;
+  orderedAt: string;
+  matchedBy: 'location' | 'supplier';
+}
+
+export interface LastOrderedQuantitiesResponse {
+  values: Record<string, LastOrderedQuantityLookupResult>;
+  fromCache: boolean;
+  historyUnavailableOffline: boolean;
+}
+
 type SupplierDraftsBySupplier = Record<string, SupplierDraftItem[]>;
+type LastOrderedCacheBySupplier = Record<string, Record<string, LastOrderedQuantityCacheValue>>;
+
+interface LastOrderedQuantityCacheValue {
+  quantity: number;
+  orderedAt: string;
+}
 
 interface OrderState {
   cartByLocation: CartByLocation;
@@ -154,6 +192,7 @@ interface OrderState {
   supplierDrafts: SupplierDraftsBySupplier;
   orderLaterQueue: OrderLaterItem[];
   pastOrders: PastOrder[];
+  lastOrderedCacheBySupplier: LastOrderedCacheBySupplier;
   isFulfillmentLoading: boolean;
 
   // Cart actions (location-aware)
@@ -238,6 +277,12 @@ interface OrderState {
       quantity?: number;
     }
   ) => Promise<SupplierDraftItem | null>;
+  getLastOrderedQuantities: (params: {
+    supplierId: SupplierCategory;
+    managerId?: string | null;
+    items: LastOrderedQuantityLookupInput[];
+    forceRefresh?: boolean;
+  }) => Promise<LastOrderedQuantitiesResponse>;
   finalizeSupplierOrder: (input: FinalizeSupplierOrderInput) => Promise<PastOrder>;
 }
 
@@ -247,6 +292,7 @@ const createCartItemId = () =>
 let orderItemsNoteColumnAvailable: boolean | null = null;
 let pastOrdersTableAvailable: boolean | null = null;
 let orderLaterItemsTableAvailable: boolean | null = null;
+let pastOrderItemsTableAvailable: boolean | null = null;
 
 function toValidNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -524,6 +570,114 @@ function toStringArray(value: unknown): string[] {
   return value
     .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
     .filter((entry) => entry.length > 0);
+}
+
+function normalizeHistoryLookupUnit(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function createLastOrderedAnyKey(itemId: string, unit: string): string {
+  return `${itemId}::${unit}::any`;
+}
+
+function createLastOrderedLocationIdKey(itemId: string, unit: string, locationId: string): string {
+  return `${itemId}::${unit}::loc:${locationId}`;
+}
+
+function createLastOrderedLocationGroupKey(
+  itemId: string,
+  unit: string,
+  locationGroup: FulfillmentLocationGroup
+): string {
+  return `${itemId}::${unit}::group:${locationGroup}`;
+}
+
+function normalizeLastOrderedLookupInput(
+  input: LastOrderedQuantityLookupInput
+): LastOrderedQuantityLookupInput | null {
+  const key = typeof input.key === 'string' ? input.key.trim() : '';
+  const itemId = typeof input.itemId === 'string' ? input.itemId.trim() : '';
+  const unit = normalizeHistoryLookupUnit(input.unit);
+  if (!key || !itemId || !unit) return null;
+
+  return {
+    key,
+    itemId,
+    unit,
+    locationId:
+      typeof input.locationId === 'string' && input.locationId.trim().length > 0
+        ? input.locationId.trim()
+        : null,
+    locationGroup: normalizeLocationGroup(input.locationGroup),
+  };
+}
+
+function resolveLastOrderedFromCache(
+  cache: Record<string, LastOrderedQuantityCacheValue>,
+  input: LastOrderedQuantityLookupInput
+): LastOrderedQuantityLookupResult | null {
+  const lookupOrder: Array<{ key: string; matchedBy: LastOrderedQuantityLookupResult['matchedBy'] }> = [];
+  if (input.locationId) {
+    lookupOrder.push({
+      key: createLastOrderedLocationIdKey(input.itemId, input.unit, input.locationId),
+      matchedBy: 'location',
+    });
+  }
+  if (input.locationGroup) {
+    lookupOrder.push({
+      key: createLastOrderedLocationGroupKey(input.itemId, input.unit, input.locationGroup),
+      matchedBy: 'location',
+    });
+  }
+  lookupOrder.push({
+    key: createLastOrderedAnyKey(input.itemId, input.unit),
+    matchedBy: 'supplier',
+  });
+
+  for (const lookup of lookupOrder) {
+    const found = cache[lookup.key];
+    if (!found || !Number.isFinite(found.quantity) || found.quantity <= 0) continue;
+    return {
+      quantity: found.quantity,
+      orderedAt: found.orderedAt,
+      matchedBy: lookup.matchedBy,
+    };
+  }
+
+  return null;
+}
+
+function upsertLastOrderedCacheValue(
+  cache: Record<string, LastOrderedQuantityCacheValue>,
+  key: string,
+  next: LastOrderedQuantityCacheValue
+) {
+  const existing = cache[key];
+  if (!existing) {
+    cache[key] = next;
+    return;
+  }
+
+  const existingAt = new Date(existing.orderedAt).getTime();
+  const nextAt = new Date(next.orderedAt).getTime();
+  if (Number.isFinite(nextAt) && (!Number.isFinite(existingAt) || nextAt > existingAt)) {
+    cache[key] = next;
+  }
+}
+
+function isNetworkLikeError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { message?: string; details?: string };
+  const text = `${err.message || ''} ${err.details || ''}`.toLowerCase();
+  return (
+    text.includes('network') ||
+    text.includes('offline') ||
+    text.includes('failed to fetch') ||
+    text.includes('connection') ||
+    text.includes('timed out')
+  );
 }
 
 function isMissingTableError(error: unknown, tableName: string): boolean {
@@ -864,6 +1018,7 @@ export const useOrderStore = create<OrderState>()(
       supplierDrafts: {},
       orderLaterQueue: [],
       pastOrders: [],
+      lastOrderedCacheBySupplier: {},
       isFulfillmentLoading: false,
 
       // Legacy cart property - returns flattened cart for backward compatibility
@@ -2069,6 +2224,133 @@ export const useOrderStore = create<OrderState>()(
         return draftItem;
       },
 
+      getLastOrderedQuantities: async ({ supplierId, managerId, items, forceRefresh }) => {
+        const normalizedItems = Array.from(
+          new Map(
+            items
+              .map((item) => normalizeLastOrderedLookupInput(item))
+              .filter((item): item is LastOrderedQuantityLookupInput => Boolean(item))
+              .map((item) => [item.key, item])
+          ).values()
+        );
+
+        if (normalizedItems.length === 0) {
+          return {
+            values: {},
+            fromCache: true,
+            historyUnavailableOffline: false,
+          };
+        }
+
+        const existingCache = { ...(get().lastOrderedCacheBySupplier[supplierId] || {}) };
+        const buildValuesFromCache = (cache: Record<string, LastOrderedQuantityCacheValue>) =>
+          normalizedItems.reduce<Record<string, LastOrderedQuantityLookupResult>>((acc, item) => {
+            const resolved = resolveLastOrderedFromCache(cache, item);
+            if (resolved) {
+              acc[item.key] = resolved;
+            }
+            return acc;
+          }, {});
+
+        const cachedValues = buildValuesFromCache(existingCache);
+        const hasCompleteCache = normalizedItems.every((item) => Boolean(cachedValues[item.key]));
+        if (hasCompleteCache && !forceRefresh) {
+          return {
+            values: cachedValues,
+            fromCache: true,
+            historyUnavailableOffline: false,
+          };
+        }
+
+        if (!managerId || pastOrderItemsTableAvailable === false) {
+          return {
+            values: cachedValues,
+            fromCache: true,
+            historyUnavailableOffline: false,
+          };
+        }
+
+        const itemIds = Array.from(new Set(normalizedItems.map((item) => item.itemId)));
+        const units = Array.from(new Set(normalizedItems.map((item) => item.unit)));
+        let nextCache = existingCache;
+
+        const { data, error } = await (supabase as any)
+          .from('past_order_items')
+          .select('item_id, unit, quantity, location_id, location_group, ordered_at, created_at')
+          .eq('created_by', managerId)
+          .eq('supplier_id', supplierId)
+          .in('item_id', itemIds)
+          .in('unit', units)
+          .order('ordered_at', { ascending: false })
+          .limit(Math.min(2500, Math.max(600, normalizedItems.length * 120)));
+
+        if (error) {
+          if (isMissingTableError(error, 'past_order_items')) {
+            pastOrderItemsTableAvailable = false;
+          } else {
+            console.warn('Unable to load past_order_items history.', error);
+          }
+          return {
+            values: cachedValues,
+            fromCache: true,
+            historyUnavailableOffline: isNetworkLikeError(error) && !hasCompleteCache,
+          };
+        }
+
+        pastOrderItemsTableAvailable = true;
+        nextCache = { ...existingCache };
+        (data || []).forEach((rawRow: any) => {
+          const itemId =
+            typeof rawRow?.item_id === 'string' && rawRow.item_id.trim().length > 0
+              ? rawRow.item_id.trim()
+              : '';
+          const unit = normalizeHistoryLookupUnit(rawRow?.unit);
+          const quantity = toValidNumber(rawRow?.quantity);
+          if (!itemId || !unit || quantity === null || quantity <= 0) return;
+
+          const cacheValue: LastOrderedQuantityCacheValue = {
+            quantity: Math.max(0, quantity),
+            orderedAt: toIsoString(rawRow?.ordered_at ?? rawRow?.created_at),
+          };
+
+          upsertLastOrderedCacheValue(nextCache, createLastOrderedAnyKey(itemId, unit), cacheValue);
+
+          const locationId =
+            typeof rawRow?.location_id === 'string' && rawRow.location_id.trim().length > 0
+              ? rawRow.location_id.trim()
+              : null;
+          if (locationId) {
+            upsertLastOrderedCacheValue(
+              nextCache,
+              createLastOrderedLocationIdKey(itemId, unit, locationId),
+              cacheValue
+            );
+          }
+
+          const locationGroup = normalizeLocationGroup(rawRow?.location_group);
+          if (locationGroup) {
+            upsertLastOrderedCacheValue(
+              nextCache,
+              createLastOrderedLocationGroupKey(itemId, unit, locationGroup),
+              cacheValue
+            );
+          }
+        });
+
+        set((state) => ({
+          lastOrderedCacheBySupplier: {
+            ...state.lastOrderedCacheBySupplier,
+            [supplierId]: nextCache,
+          },
+        }));
+
+        return {
+          values: buildValuesFromCache(nextCache),
+          fromCache: false,
+          historyUnavailableOffline: false,
+        };
+      },
+
       finalizeSupplierOrder: async (input) => {
         const now = new Date().toISOString();
         const consumedOrderItemIds = Array.from(
@@ -2083,6 +2365,43 @@ export const useOrderStore = create<OrderState>()(
               .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
           )
         );
+        const normalizedLineItems = (input.lineItems || [])
+          .map((line) => {
+            const itemId = typeof line.itemId === 'string' ? line.itemId.trim() : '';
+            const itemName = typeof line.itemName === 'string' ? line.itemName.trim() : '';
+            const unit = normalizeHistoryLookupUnit(line.unit);
+            const quantity = toValidNumber(line.quantity);
+            if (!itemId || !itemName || !unit || quantity === null || quantity <= 0) {
+              return null;
+            }
+
+            return {
+              itemId,
+              itemName,
+              unit,
+              quantity: Math.max(0, quantity),
+              locationId:
+                typeof line.locationId === 'string' && line.locationId.trim().length > 0
+                  ? line.locationId.trim()
+                  : null,
+              locationName:
+                typeof line.locationName === 'string' && line.locationName.trim().length > 0
+                  ? line.locationName.trim()
+                  : null,
+              locationGroup: normalizeLocationGroup(line.locationGroup),
+              unitType: line.unitType === 'base' || line.unitType === 'pack' ? line.unitType : null,
+            };
+          })
+          .filter((line): line is {
+            itemId: string;
+            itemName: string;
+            unit: string;
+            quantity: number;
+            locationId: string | null;
+            locationName: string | null;
+            locationGroup: FulfillmentLocationGroup | null;
+            unitType: UnitType | null;
+          } => Boolean(line));
 
         const payload = {
           ...toJsonObject(input.payload),
@@ -2102,6 +2421,7 @@ export const useOrderStore = create<OrderState>()(
           messageText: input.messageText,
           shareMethod: input.shareMethod,
         };
+        let persistedPastOrderId: string | null = null;
 
         if (pastOrdersTableAvailable !== false) {
           const { data, error } = await (supabase as any)
@@ -2125,10 +2445,49 @@ export const useOrderStore = create<OrderState>()(
             }
           } else {
             pastOrdersTableAvailable = true;
+            if (typeof data?.id === 'string' && data.id.trim().length > 0) {
+              persistedPastOrderId = data.id;
+            }
             const parsed = normalizePastOrder(data);
             if (parsed) {
               nextPastOrder = parsed;
+              persistedPastOrderId = parsed.id;
             }
+          }
+        }
+
+        if (
+          persistedPastOrderId &&
+          normalizedLineItems.length > 0 &&
+          pastOrderItemsTableAvailable !== false
+        ) {
+          const { error } = await (supabase as any)
+            .from('past_order_items')
+            .insert(
+              normalizedLineItems.map((line) => ({
+                past_order_id: persistedPastOrderId,
+                supplier_id: input.supplierId,
+                created_by: input.createdBy,
+                item_id: line.itemId,
+                item_name: line.itemName,
+                unit: line.unit,
+                quantity: line.quantity,
+                location_id: line.locationId,
+                location_name: line.locationName,
+                location_group: line.locationGroup,
+                unit_type: line.unitType,
+                ordered_at: nextPastOrder.createdAt,
+              }))
+            );
+
+          if (error) {
+            if (isMissingTableError(error, 'past_order_items')) {
+              pastOrderItemsTableAvailable = false;
+            } else {
+              console.warn('Unable to persist past_order_items rows.', error);
+            }
+          } else {
+            pastOrderItemsTableAvailable = true;
           }
         }
 
@@ -2146,10 +2505,45 @@ export const useOrderStore = create<OrderState>()(
             }
           });
 
+          const nextLastOrderedCacheBySupplier = { ...state.lastOrderedCacheBySupplier };
+          if (normalizedLineItems.length > 0) {
+            const supplierCache = { ...(nextLastOrderedCacheBySupplier[input.supplierId] || {}) };
+            normalizedLineItems.forEach((line) => {
+              const cacheValue: LastOrderedQuantityCacheValue = {
+                quantity: line.quantity,
+                orderedAt: nextPastOrder.createdAt,
+              };
+
+              upsertLastOrderedCacheValue(
+                supplierCache,
+                createLastOrderedAnyKey(line.itemId, line.unit),
+                cacheValue
+              );
+
+              if (line.locationId) {
+                upsertLastOrderedCacheValue(
+                  supplierCache,
+                  createLastOrderedLocationIdKey(line.itemId, line.unit, line.locationId),
+                  cacheValue
+                );
+              }
+              if (line.locationGroup) {
+                upsertLastOrderedCacheValue(
+                  supplierCache,
+                  createLastOrderedLocationGroupKey(line.itemId, line.unit, line.locationGroup),
+                  cacheValue
+                );
+              }
+            });
+
+            nextLastOrderedCacheBySupplier[input.supplierId] = supplierCache;
+          }
+
           return {
             pastOrders: nextPastOrders,
             orders: nextOrders,
             supplierDrafts: nextSupplierDrafts,
+            lastOrderedCacheBySupplier: nextLastOrderedCacheBySupplier,
           };
         });
 
