@@ -391,11 +391,7 @@ export default function ManagerDashboard() {
                         isSelected ? 'bg-primary-500' : 'bg-gray-200'
                       }`}
                     >
-                      <Text
-                        className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}
-                      >
-                        {loc.short_code}
-                      </Text>
+                      <BrandLogo variant="inline" size={18} colorMode={isSelected ? 'dark' : 'light'} />
                     </View>
                     <Text className="flex-1 text-gray-900 font-medium">{loc.name}</Text>
                     {isSelected && <Ionicons name="checkmark" size={18} color="#F97316" />}

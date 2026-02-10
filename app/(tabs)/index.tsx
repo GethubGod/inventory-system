@@ -322,16 +322,16 @@ export default function OrderScreen() {
         <View className="flex-row items-center justify-between px-4 py-3">
           <TouchableOpacity
             onPress={toggleLocationDropdown}
-            className="flex-row items-center bg-gray-100 rounded-xl flex-1 mr-3"
-            style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(8) }}
+            className="flex-row items-center bg-gray-100 rounded-full flex-1 mr-3"
+            style={{ paddingHorizontal: ds.spacing(12), minHeight: headerActionButtonSize }}
           >
-            <BrandLogo variant="header" size={28} style={{ marginRight: ds.spacing(8) }} />
-            <Text className="font-semibold text-gray-900 flex-1" numberOfLines={1} style={{ fontSize: ds.fontSize(15) }}>
+            <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
+            <Text className="font-medium text-gray-900 flex-1" numberOfLines={1} style={{ fontSize: ds.fontSize(15), marginLeft: ds.spacing(8) }}>
               {location?.name || 'Select Location'}
             </Text>
             <Ionicons
               name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
-              size={ds.icon(18)}
+              size={ds.icon(14)}
               color={colors.gray[500]}
             />
           </TouchableOpacity>
@@ -388,9 +388,7 @@ export default function OrderScreen() {
                     <View className={`w-9 h-9 rounded-full items-center justify-center mr-3 ${
                       isSelected ? 'bg-primary-500' : 'bg-gray-200'
                     }`}>
-                      <Text className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
-                        {loc.short_code}
-                      </Text>
+                      <BrandLogo variant="inline" size={18} colorMode={isSelected ? 'dark' : 'light'} />
                     </View>
                     <Text className={`text-base ${isSelected ? 'font-semibold text-primary-700' : 'text-gray-800'}`}>
                       {loc.name}

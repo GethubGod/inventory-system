@@ -9,7 +9,7 @@ import { colors } from '@/constants';
 import { Reminder } from '@/types/settings';
 import { ReminderModal, ReminderListItem, SettingToggle, TimePickerRow } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { useSettingsBackRoute } from '@/hooks/useSettingsBackRoute';
+
 import {
   requestNotificationPermissions,
   scheduleReminder,
@@ -222,7 +222,6 @@ function RemindersSection({
 
 export default function RemindersSettingsScreen() {
   const ds = useScaledStyles();
-  const settingsBackRoute = useSettingsBackRoute();
   const { addReminder, updateReminder } = useSettingsStore();
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
@@ -252,7 +251,7 @@ export default function RemindersSettingsScreen() {
         style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
       >
         <TouchableOpacity
-          onPress={() => router.replace(settingsBackRoute)}
+          onPress={() => router.back()}
           style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >

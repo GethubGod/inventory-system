@@ -68,13 +68,6 @@ function formatLastChecked(lastCheckedAt: string | null): string {
   return `Last checked: ${days} day${days === 1 ? '' : 's'} ago`;
 }
 
-function getLocationLabel(name: string | null, shortCode: string | null): string {
-  if (!name && !shortCode) return 'No location';
-  const lower = (name || '').toLowerCase();
-  if (lower.includes('sushi')) return 'Sushi';
-  if (lower.includes('poki') || lower.includes('poke') || lower.includes('pho')) return 'Poki';
-  return shortCode || name || 'Location';
-}
 
 export default function UpdateStockScreen() {
   const { location, locations, setLocation, fetchLocations } = useAuthStore();
@@ -112,11 +105,6 @@ export default function UpdateStockScreen() {
   const nfcCardHeight = Math.max(320, screenHeight * 0.5);
 
   useStockNetworkStatus();
-
-  const locationLabel = useMemo(
-    () => getLocationLabel(location?.name ?? null, location?.short_code ?? null),
-    [location?.name, location?.short_code]
-  );
 
   const pausedSessionForLocation = useMemo(() => {
     if (!pausedSession) return null;
@@ -353,58 +341,53 @@ export default function UpdateStockScreen() {
         }
       >
         <View
-          className="flex-row items-start justify-between"
+          className="flex-row items-center justify-between"
           style={{
             paddingHorizontal: ds.spacing(16),
             paddingTop: ds.spacing(20),
             paddingBottom: ds.spacing(8),
           }}
         >
-          <View className="flex-1" style={{ paddingRight: ds.spacing(12) }}>
-            <View className="flex-row items-center">
-              <TouchableOpacity
-                onPress={() => router.back()}
-                style={{
-                  width: Math.max(44, ds.icon(40)),
-                  height: Math.max(44, ds.icon(40)),
-                  borderRadius: ds.radius(10),
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginRight: ds.spacing(4),
-                }}
-              >
-                <Ionicons name="arrow-back" size={ds.icon(22)} color={colors.gray[700]} />
-              </TouchableOpacity>
-              <BrandLogo variant="header" size={28} style={{ marginRight: ds.spacing(8) }} />
-              <Text
-                className="font-bold text-gray-900"
-                style={{ fontSize: ds.fontSize(22) }}
-              >
-                Update Stock
-              </Text>
-            </View>
+          <View className="flex-row items-center flex-1" style={{ paddingRight: ds.spacing(12) }}>
             <TouchableOpacity
-              className="self-start flex-row items-center rounded-full bg-orange-100"
+              onPress={() => router.back()}
               style={{
-                marginTop: ds.spacing(8),
+                width: Math.max(44, ds.icon(40)),
+                height: Math.max(44, ds.icon(40)),
+                borderRadius: ds.radius(10),
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: ds.spacing(4),
+              }}
+            >
+              <Ionicons name="arrow-back" size={ds.icon(22)} color={colors.gray[700]} />
+            </TouchableOpacity>
+            <Text
+              className="font-bold text-gray-900"
+              style={{ fontSize: ds.fontSize(22), marginRight: ds.spacing(8) }}
+            >
+              Update Stock
+            </Text>
+            <TouchableOpacity
+              className="flex-row items-center bg-gray-100 rounded-full"
+              style={{
                 paddingHorizontal: ds.spacing(12),
                 paddingVertical: ds.spacing(6),
               }}
               onPress={toggleLocationDropdown}
             >
-              <View className="flex-row items-center">
-                <Ionicons name="location-outline" size={ds.icon(12)} color={colors.primary[700]} />
-                <Text
-                  className="font-semibold text-orange-700"
-                  style={{ fontSize: ds.fontSize(12), marginLeft: ds.spacing(4) }}
-                >
-                  {locationLabel}
-                </Text>
-              </View>
+              <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
+              <Text
+                className="font-medium text-gray-900"
+                style={{ fontSize: ds.fontSize(13), marginLeft: ds.spacing(6) }}
+                numberOfLines={1}
+              >
+                {location?.name || 'Select Location'}
+              </Text>
               <Ionicons
                 name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
                 size={ds.icon(14)}
-                color={colors.primary[700]}
+                color={colors.gray[500]}
                 style={{ marginLeft: ds.spacing(4) }}
               />
             </TouchableOpacity>
@@ -444,7 +427,7 @@ export default function UpdateStockScreen() {
                 <TouchableOpacity
                   key={loc.id}
                   className={`flex-row items-center justify-between ${
-                    isSelected ? 'bg-orange-50' : 'bg-white'
+                    isSelected ? 'bg-primary-50' : 'bg-white'
                   }`}
                   style={{
                     paddingHorizontal: ds.spacing(16),
@@ -455,7 +438,7 @@ export default function UpdateStockScreen() {
                   <View className="flex-row items-center">
                     <View
                       className={`rounded-full items-center justify-center ${
-                        isSelected ? 'bg-orange-500' : 'bg-gray-200'
+                        isSelected ? 'bg-primary-500' : 'bg-gray-200'
                       }`}
                       style={{
                         width: ds.spacing(32),
@@ -463,15 +446,10 @@ export default function UpdateStockScreen() {
                         marginRight: ds.spacing(12),
                       }}
                     >
-                      <Text
-                        className={`font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}
-                        style={{ fontSize: ds.fontSize(12) }}
-                      >
-                        {loc.short_code}
-                      </Text>
+                      <BrandLogo variant="inline" size={16} colorMode={isSelected ? 'dark' : 'light'} />
                     </View>
                     <Text
-                      className={`${isSelected ? 'font-semibold text-orange-700' : 'text-gray-800'}`}
+                      className={`${isSelected ? 'font-semibold text-primary-700' : 'text-gray-800'}`}
                       style={{ fontSize: ds.fontSize(14) }}
                     >
                       {loc.name}

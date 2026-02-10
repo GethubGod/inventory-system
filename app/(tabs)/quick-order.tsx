@@ -26,6 +26,7 @@ import type { OrderInputMode } from '@/store';
 import { InventoryItem, UnitType, Location, ItemCategory, SupplierCategory } from '@/types';
 import { colors, CATEGORY_LABELS } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { BrandLogo } from '@/components';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -519,17 +520,16 @@ export default function QuickOrderScreen() {
             style={{ marginHorizontal: ds.spacing(6) }}
           >
             <View
-              className="flex-row items-center bg-gray-100"
+              className="flex-row items-center bg-gray-100 rounded-full"
               style={{
-                borderRadius: ds.radius(10),
                 paddingHorizontal: ds.spacing(12),
-                minHeight: Math.max(44, ds.buttonH - ds.spacing(6)),
+                minHeight: headerIconButtonSize,
               }}
             >
-              <Ionicons name="location" size={ds.icon(16)} color={colors.primary[500]} />
+              <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
               <Text
-                className="font-semibold text-gray-900"
-                style={{ fontSize: ds.fontSize(16), marginHorizontal: ds.spacing(8), flexShrink: 1 }}
+                className="font-medium text-gray-900"
+                style={{ fontSize: ds.fontSize(15), marginLeft: ds.spacing(8), marginRight: ds.spacing(6), flexShrink: 1 }}
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
@@ -537,7 +537,7 @@ export default function QuickOrderScreen() {
               </Text>
               <Ionicons
                 name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
-                size={ds.icon(16)}
+                size={ds.icon(14)}
                 color={colors.gray[500]}
               />
             </View>
@@ -599,9 +599,7 @@ export default function QuickOrderScreen() {
                     <View className={`rounded-full items-center justify-center ${
                       isSelected ? 'bg-primary-500' : 'bg-gray-200'
                     }`} style={{ width: ds.icon(32), height: ds.icon(32), marginRight: ds.spacing(12) }}>
-                      <Text style={{ fontSize: ds.fontSize(11) }} className={`font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
-                        {loc.short_code}
-                      </Text>
+                      <BrandLogo variant="inline" size={16} colorMode={isSelected ? 'dark' : 'light'} />
                     </View>
                     <Text style={{ fontSize: ds.fontSize(15) }} className={`${isSelected ? 'font-semibold text-primary-700' : 'text-gray-800'}`}>
                       {loc.name}

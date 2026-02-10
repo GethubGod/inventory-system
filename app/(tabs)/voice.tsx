@@ -24,6 +24,7 @@ import { SoundVisualizer } from '@/components/tuna-specialist/SoundVisualizer';
 import { ConversationHistory } from '@/components/tuna-specialist/ConversationHistory';
 import { DebugPanel } from '@/components/tuna-specialist/DebugPanel';
 import type { Location } from '@/types/database';
+import { BrandLogo } from '@/components';
 
 // ━━━ FEATURE FLAG ━━━
 // Flip to `true` to re-enable the full voice interface
@@ -529,10 +530,11 @@ export default function VoiceScreen() {
               backgroundColor: 'rgba(255,255,255,0.08)',
               paddingHorizontal: ds.spacing(16),
               paddingVertical: ds.spacing(8),
-              borderRadius: ds.radius(20),
+              borderRadius: 999,
             }}
           >
-            <Text style={{ fontSize: ds.fontSize(13), color: '#E2E8F0', fontWeight: '600' }}>
+            <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
+            <Text style={{ fontSize: ds.fontSize(13), color: '#E2E8F0', fontWeight: '600', marginLeft: ds.spacing(6) }}>
               {location?.name || 'Select Location'}
             </Text>
             <Ionicons
@@ -622,17 +624,25 @@ export default function VoiceScreen() {
                     marginBottom: ds.spacing(4),
                   }}
                 >
-                  <Ionicons
-                    name={isSelected ? 'radio-button-on' : 'radio-button-off'}
-                    size={ds.icon(16)}
-                    color={isSelected ? '#F97316' : '#6B7280'}
-                  />
-                  <Text style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(14), color: isSelected ? '#F97316' : '#D1D5DB', fontWeight: isSelected ? '600' : '400' }}>
+                  <View
+                    style={{
+                      width: ds.icon(32),
+                      height: ds.icon(32),
+                      borderRadius: ds.icon(16),
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isSelected ? '#F97316' : 'rgba(255,255,255,0.1)',
+                      marginRight: ds.spacing(10),
+                    }}
+                  >
+                    <BrandLogo variant="inline" size={16} colorMode="dark" />
+                  </View>
+                  <Text style={{ flex: 1, fontSize: ds.fontSize(14), color: isSelected ? '#F97316' : '#D1D5DB', fontWeight: isSelected ? '600' : '400' }}>
                     {loc.name}
                   </Text>
-                  <Text style={{ marginLeft: ds.spacing(6), fontSize: ds.fontSize(12), color: '#6B7280' }}>
-                    {loc.short_code}
-                  </Text>
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={ds.icon(18)} color="#F97316" />
+                  )}
                 </TouchableOpacity>
               );
             })}

@@ -5,8 +5,7 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
-  Modal,
-  Pressable,
+  LayoutAnimation,
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,6 +18,7 @@ import { useAuthStore } from '@/store';
 import { Order, OrderStatus, Location } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { BrandLogo } from '@/components';
 
 type FilterStatus = OrderStatus | 'all';
 
@@ -150,6 +150,7 @@ export default function ManagerOrdersScreen() {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setSelectedLocation(loc);
     setShowLocationPicker(false);
   };
@@ -258,16 +259,64 @@ export default function ManagerOrdersScreen() {
         {/* Location Selector */}
         <TouchableOpacity
           className="bg-gray-100 rounded-full px-3 py-2 flex-row items-center"
-          onPress={() => setShowLocationPicker(true)}
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setShowLocationPicker((prev) => !prev);
+          }}
           activeOpacity={0.7}
         >
           <Ionicons name="location" size={14} color="#F97316" />
-          <Text className="text-gray-700 font-medium ml-1.5 text-sm">
-            {selectedLocation?.short_code || 'All'}
+          <Text className="text-gray-900 font-medium ml-2" numberOfLines={1}>
+            {selectedLocation?.name || 'All Locations'}
           </Text>
-          <Ionicons name="chevron-down" size={14} color="#6B7280" style={{ marginLeft: 4 }} />
+          <Ionicons
+            name={showLocationPicker ? 'chevron-up' : 'chevron-down'}
+            size={14}
+            color="#6B7280"
+            className="ml-1.5"
+          />
         </TouchableOpacity>
       </View>
+
+      {showLocationPicker && (
+        <View className="bg-white border-b border-gray-100">
+          <View className="mt-1 bg-white rounded-2xl border border-gray-100 overflow-hidden mx-4 mb-2">
+            <TouchableOpacity
+              className="flex-row items-center px-4 py-3"
+              onPress={() => handleSelectLocation(null)}
+              activeOpacity={0.7}
+            >
+              <View className="w-9 h-9 rounded-full bg-primary-100 items-center justify-center mr-3">
+                <Ionicons name="globe" size={18} color="#F97316" />
+              </View>
+              <Text className="flex-1 text-gray-900 font-medium">All Locations</Text>
+              {!selectedLocation && <Ionicons name="checkmark" size={18} color="#F97316" />}
+            </TouchableOpacity>
+
+            {locations.map((loc) => {
+              const isSelected = selectedLocation?.id === loc.id;
+              return (
+                <TouchableOpacity
+                  key={loc.id}
+                  className="flex-row items-center px-4 py-3 border-t border-gray-100"
+                  onPress={() => handleSelectLocation(loc)}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    className={`w-9 h-9 rounded-full items-center justify-center mr-3 ${
+                      isSelected ? 'bg-primary-500' : 'bg-gray-200'
+                    }`}
+                  >
+                    <BrandLogo variant="inline" size={18} colorMode={isSelected ? 'dark' : 'light'} />
+                  </View>
+                  <Text className="flex-1 text-gray-900 font-medium">{loc.name}</Text>
+                  {isSelected && <Ionicons name="checkmark" size={18} color="#F97316" />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      )}
 
       {/* Status Filter Tabs */}
       <View className="bg-white border-b border-gray-200">
@@ -354,117 +403,6 @@ export default function ManagerOrdersScreen() {
         }
       />
 
-      {/* Location Picker Modal */}
-      <Modal
-        visible={showLocationPicker}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowLocationPicker(false)}
-      >
-        <Pressable
-          className="flex-1 bg-black/50 justify-end"
-          onPress={() => setShowLocationPicker(false)}
-        >
-          <Pressable
-            className="bg-white rounded-t-3xl"
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View className="items-center pt-3 pb-2">
-              <View className="w-10 h-1 bg-gray-300 rounded-full" />
-            </View>
-
-            <View className="px-6 pb-8">
-              <Text className="text-2xl font-bold text-gray-900 mb-2">
-                Filter by Location
-              </Text>
-              <Text className="text-gray-500 mb-6">
-                View orders for a specific location
-              </Text>
-
-              <TouchableOpacity
-                className={`flex-row items-center p-4 rounded-2xl mb-3 border-2 ${
-                  !selectedLocation
-                    ? 'border-primary-500 bg-primary-50'
-                    : 'border-gray-200 bg-white'
-                }`}
-                onPress={() => handleSelectLocation(null)}
-                activeOpacity={0.7}
-              >
-                <View
-                  className={`w-12 h-12 rounded-full items-center justify-center ${
-                    !selectedLocation ? 'bg-primary-500' : 'bg-gray-100'
-                  }`}
-                >
-                  <Ionicons
-                    name="globe"
-                    size={24}
-                    color={!selectedLocation ? 'white' : '#6B7280'}
-                  />
-                </View>
-                <View className="flex-1 ml-4">
-                  <Text
-                    className={`font-bold text-lg ${
-                      !selectedLocation ? 'text-primary-700' : 'text-gray-900'
-                    }`}
-                  >
-                    All Locations
-                  </Text>
-                </View>
-                {!selectedLocation && (
-                  <Ionicons name="checkmark-circle" size={24} color="#F97316" />
-                )}
-              </TouchableOpacity>
-
-              {locations.map((loc) => {
-                const isSelected = selectedLocation?.id === loc.id;
-                return (
-                  <TouchableOpacity
-                    key={loc.id}
-                    className={`flex-row items-center p-4 rounded-2xl mb-3 border-2 ${
-                      isSelected
-                        ? 'border-primary-500 bg-primary-50'
-                        : 'border-gray-200 bg-white'
-                    }`}
-                    onPress={() => handleSelectLocation(loc)}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      className={`w-12 h-12 rounded-full items-center justify-center ${
-                        isSelected ? 'bg-primary-500' : 'bg-gray-100'
-                      }`}
-                    >
-                      <Ionicons
-                        name="restaurant"
-                        size={24}
-                        color={isSelected ? 'white' : '#6B7280'}
-                      />
-                    </View>
-                    <View className="flex-1 ml-4">
-                      <Text
-                        className={`font-bold text-lg ${
-                          isSelected ? 'text-primary-700' : 'text-gray-900'
-                        }`}
-                      >
-                        {loc.name}
-                      </Text>
-                      <Text
-                        className={`text-sm ${
-                          isSelected ? 'text-primary-600' : 'text-gray-500'
-                        }`}
-                      >
-                        {loc.short_code}
-                      </Text>
-                    </View>
-                    {isSelected && (
-                      <Ionicons name="checkmark-circle" size={24} color="#F97316" />
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
       </ManagerScaleContainer>
     </SafeAreaView>
   );

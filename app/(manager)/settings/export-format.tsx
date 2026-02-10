@@ -17,12 +17,11 @@ import { useSettingsStore, useDisplayStore } from '@/store';
 import { DEFAULT_EXPORT_FORMAT_SETTINGS } from '@/types/settings';
 import { colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
-import { useSettingsBackRoute } from '@/hooks/useSettingsBackRoute';
+
 
 export default function ExportFormatSettingsScreen() {
   const { exportFormat, setExportFormat } = useSettingsStore();
   const { hapticFeedback } = useDisplayStore();
-  const settingsBackRoute = useSettingsBackRoute();
   const [template, setTemplate] = useState(exportFormat.template);
 
   const handleSave = () => {
@@ -30,7 +29,7 @@ export default function ExportFormatSettingsScreen() {
     if (hapticFeedback && Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
-    router.replace(settingsBackRoute);
+    router.back();
   };
 
   const handleReset = () => {
@@ -58,7 +57,7 @@ export default function ExportFormatSettingsScreen() {
         {/* Header */}
         <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center justify-between">
           <TouchableOpacity
-            onPress={() => router.replace(settingsBackRoute)}
+            onPress={() => router.back()}
             className="p-2"
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >

@@ -31,7 +31,7 @@ import { getInventoryWithStock, InventoryWithStock } from '@/lib/api/stock';
 import { supabase } from '@/lib/supabase';
 import { getCheckStatus } from '@/store/stock.store';
 import { useStockNetworkStatus } from '@/hooks';
-import { useSettingsBackRoute } from '@/hooks/useSettingsBackRoute';
+
 
 const categories: ItemCategory[] = [
   'fish',
@@ -140,7 +140,6 @@ const getStatus = (item: InventoryWithStock): InventoryStatus => {
 };
 
 export default function ManagerInventoryScreen() {
-  const settingsBackRoute = useSettingsBackRoute();
   const { user, locations } = useAuthStore();
   const { addItem, fetchItems } = useInventoryStore();
   const { addToCart, getTotalCartCount } = useOrderStore();
@@ -1485,7 +1484,7 @@ export default function ManagerInventoryScreen() {
               <View className="flex-row items-center">
                 <TouchableOpacity
                   className="h-9 w-9 rounded-full bg-gray-100 items-center justify-center mr-2"
-                  onPress={() => router.replace(settingsBackRoute)}
+                  onPress={() => router.back()}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
                   <Ionicons name="arrow-back" size={18} color={colors.gray[700]} />
