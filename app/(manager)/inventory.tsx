@@ -25,7 +25,6 @@ import {
 } from '@/types';
 import { CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS, categoryColors, colors } from '@/constants';
 import { SpinningFish } from '@/components';
-import { BrandLogo } from '@/components/BrandLogo';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { getInventoryWithStock, InventoryWithStock } from '@/lib/api/stock';
 import { supabase } from '@/lib/supabase';
@@ -1480,7 +1479,7 @@ export default function ManagerInventoryScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <View className="flex-row items-center justify-between">
+            <View>
               <View className="flex-row items-center">
                 <TouchableOpacity
                   className="h-9 w-9 rounded-full bg-gray-100 items-center justify-center mr-2"
@@ -1489,10 +1488,12 @@ export default function ManagerInventoryScreen() {
                 >
                   <Ionicons name="arrow-back" size={18} color={colors.gray[700]} />
                 </TouchableOpacity>
-                <BrandLogo variant="header" size={28} style={{ marginRight: 8 }} />
-                <Text className="text-2xl font-bold text-gray-900">Inventory</Text>
+                <Text className="text-2xl font-bold text-gray-900 flex-shrink" numberOfLines={1}>
+                  Inventory
+                </Text>
               </View>
-              <View className="flex-row items-center">
+
+              <View className="mt-2 flex-row items-center justify-end">
                 <TouchableOpacity
                   className="h-9 w-9 rounded-full bg-gray-100 items-center justify-center mr-2"
                   onPress={() => router.push('/(manager)/cart')}
@@ -1506,10 +1507,13 @@ export default function ManagerInventoryScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   className="flex-row items-center bg-gray-100 rounded-full px-3 py-2"
+                  style={{ maxWidth: '72%' }}
                   onPress={() => setShowLocationModal(true)}
                 >
                   <Ionicons name="location-outline" size={14} color={colors.gray[600]} />
-                  <Text className="ml-1 text-xs font-semibold text-gray-700">{locationLabel}</Text>
+                  <Text className="ml-1 text-xs font-semibold text-gray-700 flex-shrink" numberOfLines={1}>
+                    {locationLabel}
+                  </Text>
                   <Ionicons name="chevron-down" size={12} color={colors.gray[500]} />
                 </TouchableOpacity>
                 <TouchableOpacity

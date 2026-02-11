@@ -341,59 +341,36 @@ export default function UpdateStockScreen() {
         }
       >
         <View
-          className="flex-row items-center justify-between"
           style={{
             paddingHorizontal: ds.spacing(16),
             paddingTop: ds.spacing(20),
             paddingBottom: ds.spacing(8),
           }}
         >
-          <View className="flex-row items-center flex-1" style={{ paddingRight: ds.spacing(12) }}>
-            <TouchableOpacity
-              onPress={() => router.back()}
-              style={{
-                width: Math.max(44, ds.icon(40)),
-                height: Math.max(44, ds.icon(40)),
-                borderRadius: ds.radius(10),
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: ds.spacing(4),
-              }}
-            >
-              <Ionicons name="arrow-back" size={ds.icon(22)} color={colors.gray[700]} />
-            </TouchableOpacity>
-            <Text
-              className="font-bold text-gray-900"
-              style={{ fontSize: ds.fontSize(22), marginRight: ds.spacing(8) }}
-            >
-              Update Stock
-            </Text>
-            <TouchableOpacity
-              className="flex-row items-center bg-gray-100 rounded-full"
-              style={{
-                paddingHorizontal: ds.spacing(12),
-                paddingVertical: ds.spacing(6),
-              }}
-              onPress={toggleLocationDropdown}
-            >
-              <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
+          <View className="flex-row items-center">
+            <View className="flex-row items-center flex-1" style={{ minWidth: 0, paddingRight: ds.spacing(8) }}>
+              <TouchableOpacity
+                onPress={() => router.back()}
+                style={{
+                  width: Math.max(44, ds.icon(40)),
+                  height: Math.max(44, ds.icon(40)),
+                  borderRadius: ds.radius(10),
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginRight: ds.spacing(4),
+                }}
+              >
+                <Ionicons name="arrow-back" size={ds.icon(22)} color={colors.gray[700]} />
+              </TouchableOpacity>
               <Text
-                className="font-medium text-gray-900"
-                style={{ fontSize: ds.fontSize(13), marginLeft: ds.spacing(6) }}
+                className="font-bold text-gray-900"
+                style={{ fontSize: ds.fontSize(22), flexShrink: 1 }}
                 numberOfLines={1}
               >
-                {location?.name || 'Select Location'}
+                Update Stock
               </Text>
-              <Ionicons
-                name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
-                size={ds.icon(14)}
-                color={colors.gray[500]}
-                style={{ marginLeft: ds.spacing(4) }}
-              />
-            </TouchableOpacity>
-          </View>
+            </View>
 
-          <View className="items-end">
             {pendingUpdates.length > 0 && (
               <View
                 className="flex-row items-center rounded-full bg-amber-100"
@@ -409,6 +386,33 @@ export default function UpdateStockScreen() {
               </View>
             )}
           </View>
+
+          <TouchableOpacity
+            className="flex-row items-center bg-gray-100 rounded-full self-start"
+            style={{
+              marginTop: ds.spacing(8),
+              marginLeft: Math.max(44, ds.icon(40)) + ds.spacing(4),
+              paddingHorizontal: ds.spacing(12),
+              paddingVertical: ds.spacing(6),
+              maxWidth: '100%',
+            }}
+            onPress={toggleLocationDropdown}
+          >
+            <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
+            <Text
+              className="font-medium text-gray-900"
+              style={{ fontSize: ds.fontSize(13), marginLeft: ds.spacing(6), flexShrink: 1 }}
+              numberOfLines={1}
+            >
+              {location?.name || 'Select Location'}
+            </Text>
+            <Ionicons
+              name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
+              size={ds.icon(14)}
+              color={colors.gray[500]}
+              style={{ marginLeft: ds.spacing(4) }}
+            />
+          </TouchableOpacity>
         </View>
 
         {showLocationDropdown && (

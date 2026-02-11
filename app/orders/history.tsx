@@ -14,7 +14,7 @@ import { useOrderStore, useAuthStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { OrderWithDetails, OrderStatus } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS, colors } from '@/constants';
-import { BrandLogo } from '@/components';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 const statuses: (OrderStatus | null)[] = [null, 'submitted', 'fulfilled', 'cancelled'];
 
@@ -28,6 +28,7 @@ const STATUS_EMOJI: Record<string, string> = {
 };
 
 function OrderListCard({ order }: { order: OrderWithDetails }) {
+  const ds = useScaledStyles();
   const statusStyle = statusColors[order.status] || statusColors.draft;
   const statusLabel = ORDER_STATUS_LABELS[order.status] || order.status;
   const statusEmoji = STATUS_EMOJI[order.status] || '⚪';
@@ -52,8 +53,11 @@ function OrderListCard({ order }: { order: OrderWithDetails }) {
   return (
     <TouchableOpacity
       onPress={() => router.push(`/orders/${order.id}`)}
-      className="bg-white rounded-xl p-4"
+      className="bg-white"
       style={{
+        borderRadius: ds.radius(16),
+        paddingHorizontal: ds.spacing(16),
+        paddingVertical: ds.spacing(14),
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 1 },
         shadowOpacity: 0.05,
@@ -63,18 +67,23 @@ function OrderListCard({ order }: { order: OrderWithDetails }) {
       activeOpacity={0.7}
     >
       {/* Header Row */}
-      <View className="flex-row items-start justify-between mb-2">
-        <Text className="text-gray-900 font-bold text-lg">
+      <View className="flex-row items-start justify-between" style={{ marginBottom: ds.spacing(8) }}>
+        <Text className="text-gray-900 font-bold" style={{ fontSize: ds.fontSize(22), flexShrink: 1 }}>
           Order #{order.order_number}
         </Text>
         <View
-          className="flex-row items-center px-2.5 py-1 rounded-full"
-          style={{ backgroundColor: statusStyle.bg }}
+          className="flex-row items-center rounded-full"
+          style={{
+            backgroundColor: statusStyle.bg,
+            paddingHorizontal: ds.spacing(10),
+            paddingVertical: ds.spacing(4),
+            marginLeft: ds.spacing(8),
+          }}
         >
           <Text className="mr-1">{statusEmoji}</Text>
           <Text
-            className="font-medium text-sm"
-            style={{ color: statusStyle.text }}
+            className="font-medium"
+            style={{ color: statusStyle.text, fontSize: ds.fontSize(13) }}
           >
             {statusLabel}
           </Text>
@@ -82,20 +91,20 @@ function OrderListCard({ order }: { order: OrderWithDetails }) {
       </View>
 
       {/* Date Row */}
-      <Text className="text-gray-500 text-sm mb-2">
+      <Text className="text-gray-500" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
         {formatDate(order.created_at)}
       </Text>
 
       {/* Location & Items Row */}
       <View className="flex-row items-center">
-        <Ionicons name="location" size={14} color={colors.gray[400]} />
-        <Text className="text-gray-600 text-sm ml-1">{locationName}</Text>
+        <Ionicons name="location" size={ds.icon(14)} color={colors.gray[400]} />
+        <Text className="text-gray-600 ml-1" style={{ fontSize: ds.fontSize(14), flexShrink: 1 }}>{locationName}</Text>
         <Text className="text-gray-400 mx-2">•</Text>
-        <Text className="text-gray-600 text-sm">{itemCount} item{itemCount !== 1 ? 's' : ''}</Text>
+        <Text className="text-gray-600" style={{ fontSize: ds.fontSize(14) }}>{itemCount} item{itemCount !== 1 ? 's' : ''}</Text>
         {noteCount > 0 && (
           <>
             <Text className="text-gray-400 mx-2">•</Text>
-            <Text className="text-blue-700 text-sm">{noteCount} note{noteCount !== 1 ? 's' : ''}</Text>
+            <Text className="text-blue-700" style={{ fontSize: ds.fontSize(14) }}>{noteCount} note{noteCount !== 1 ? 's' : ''}</Text>
           </>
         )}
       </View>
@@ -104,6 +113,7 @@ function OrderListCard({ order }: { order: OrderWithDetails }) {
 }
 
 export default function OrdersScreen() {
+  const ds = useScaledStyles();
   const { user } = useAuthStore();
   const { orders, fetchUserOrders } = useOrderStore();
   const [selectedStatus, setSelectedStatus] = useState<OrderStatus | null>(null);
@@ -183,17 +193,25 @@ export default function OrdersScreen() {
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Header */}
-      <View className="bg-white px-5 py-3 border-b border-gray-100 flex-row items-center">
+      <View
+        className="bg-white border-b border-gray-100 flex-row items-center"
+        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(10) }}
+      >
         <View className="flex-row items-center flex-1">
           <TouchableOpacity
             onPress={() => router.back()}
-            className="p-2 mr-2"
+            style={{
+              minWidth: 44,
+              minHeight: 44,
+              marginRight: ds.spacing(8),
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={20} color={colors.gray[700]} />
+            <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
           </TouchableOpacity>
-          <BrandLogo variant="header" size={24} style={{ marginRight: 8 }} />
-          <Text className="text-2xl font-bold text-gray-900">My Orders</Text>
+          <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(22) }}>My Orders</Text>
         </View>
       </View>
 
@@ -204,7 +222,7 @@ export default function OrdersScreen() {
           data={statuses}
           keyExtractor={(item) => item || 'all'}
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }}
+          contentContainerStyle={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(12) }}
           renderItem={({ item: status }) => {
             const isSelected = selectedStatus === status;
             const label = status ? ORDER_STATUS_LABELS[status] : 'All';
@@ -212,14 +230,20 @@ export default function OrdersScreen() {
             return (
               <TouchableOpacity
                 onPress={() => setSelectedStatus(status)}
-                className={`px-4 py-2 rounded-full mr-2 ${
+                className={`rounded-full ${
                   isSelected ? 'bg-primary-500' : 'bg-gray-100'
                 }`}
+                style={{
+                  marginRight: ds.spacing(8),
+                  paddingHorizontal: ds.spacing(16),
+                  paddingVertical: ds.spacing(8),
+                }}
               >
                 <Text
                   className={`font-medium ${
                     isSelected ? 'text-white' : 'text-gray-600'
                   }`}
+                  style={{ fontSize: ds.fontSize(14) }}
                 >
                   {label}
                 </Text>
@@ -234,24 +258,28 @@ export default function OrdersScreen() {
         data={filteredOrders as OrderWithDetails[]}
         renderItem={renderItem}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ padding: 16, flexGrow: 1 }}
-        ItemSeparatorComponent={() => <View className="h-3" />}
+        contentContainerStyle={{ padding: ds.spacing(16), flexGrow: 1 }}
+        ItemSeparatorComponent={() => <View style={{ height: ds.spacing(12) }} />}
         ListEmptyComponent={() => (
           <View className="flex-1 items-center justify-center py-16">
-            <View className="w-20 h-20 bg-gray-100 rounded-full items-center justify-center mb-4">
-              <Ionicons name="receipt-outline" size={40} color={colors.gray[400]} />
+            <View
+              className="bg-gray-100 rounded-full items-center justify-center"
+              style={{ width: ds.icon(80), height: ds.icon(80), marginBottom: ds.spacing(16) }}
+            >
+              <Ionicons name="receipt-outline" size={ds.icon(40)} color={colors.gray[400]} />
             </View>
-            <Text className="text-gray-900 font-semibold text-lg mb-1">
+            <Text className="text-gray-900 font-semibold" style={{ fontSize: ds.fontSize(18), marginBottom: ds.spacing(4) }}>
               No orders yet
             </Text>
-            <Text className="text-gray-500 text-center px-8">
+            <Text className="text-gray-500 text-center" style={{ paddingHorizontal: ds.spacing(32), fontSize: ds.fontSize(14) }}>
               Your submitted orders will appear here
             </Text>
             <TouchableOpacity
               onPress={() => router.push('/quick-order')}
-              className="mt-6 bg-primary-500 px-6 py-3 rounded-xl"
+              className="mt-6 bg-primary-500 rounded-xl"
+              style={{ paddingHorizontal: ds.spacing(24), paddingVertical: ds.spacing(12) }}
             >
-              <Text className="text-white font-semibold">Start Ordering</Text>
+              <Text className="text-white font-semibold" style={{ fontSize: ds.fontSize(15) }}>Start Ordering</Text>
             </TouchableOpacity>
           </View>
         )}

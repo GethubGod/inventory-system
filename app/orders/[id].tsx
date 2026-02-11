@@ -15,12 +15,12 @@ import { useOrderStore, useAuthStore } from '@/store';
 import { OrderItemWithInventory } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS, CATEGORY_LABELS, categoryColors } from '@/constants';
 import { supabase } from '@/lib/supabase';
-import { BrandLogo, SpinningFish } from '@/components';
+import { SpinningFish } from '@/components';
 
 export default function OrderDetailScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const orderId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const { user } = useAuthStore();
+  const { user, viewMode } = useAuthStore();
   const {
     currentOrder,
     fetchOrder,
@@ -187,35 +187,6 @@ export default function OrderDetailScreen() {
     );
   };
 
-  const handleRequestCancellation = () => {
-    if (!currentOrder) return;
-
-    Alert.alert(
-      'Request Cancellation',
-      'Send a cancellation request for this order?',
-      [
-        { text: 'No', style: 'cancel' },
-        {
-          text: 'Yes, Request',
-          onPress: async () => {
-            try {
-              setIsUpdating(true);
-              await updateOrderStatus(currentOrder.id, 'cancel_requested');
-              if (Platform.OS !== 'web') {
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              }
-              await fetchOrder(currentOrder.id);
-            } catch (error: any) {
-              Alert.alert('Error', error.message || 'Failed to request cancellation');
-            } finally {
-              setIsUpdating(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString('en-US', {
@@ -269,10 +240,12 @@ export default function OrderDetailScreen() {
   }
 
   const colors = statusColors[currentOrder.status];
-  const isManager = user?.role === 'manager';
-  const canMarkProcessing = currentOrder.status === 'submitted' && isManager;
-  const canMarkFulfilled = currentOrder.status === 'processing' && isManager;
-  const canCancel = (currentOrder.status === 'submitted' || currentOrder.status === 'processing') && isManager;
+  const isManagerView = user?.role === 'manager' && viewMode === 'manager';
+  const isEmployeeView = !isManagerView;
+  const canMarkProcessing = currentOrder.status === 'submitted' && isManagerView;
+  const canMarkFulfilled = currentOrder.status === 'processing' && isManagerView;
+  const canCancelAsManager =
+    (currentOrder.status === 'submitted' || currentOrder.status === 'processing') && isManagerView;
   const isFulfilled = currentOrder.status === 'fulfilled';
   const isCancelled = currentOrder.status === 'cancelled';
   const isCancelRequested = currentOrder.status === 'cancel_requested';
@@ -280,11 +253,13 @@ export default function OrderDetailScreen() {
   const minutesSinceCreated = Math.floor(
     (Date.now() - new Date(currentOrder.created_at).getTime()) / (1000 * 60)
   );
-  const withinGracePeriod = minutesSinceCreated < 5;
+  const withinEmployeeCancelWindow = minutesSinceCreated <= 10;
   const isCancellableStatus =
     currentOrder.status === 'submitted' || currentOrder.status === 'processing';
-  const showEmployeeCancellation =
+  const showEmployeeCancellationAction =
+    isEmployeeView &&
     isCancellableStatus && !isFulfilled && !isCancelled && !isCancelRequested;
+  const canEmployeeCancelNow = showEmployeeCancellationAction && withinEmployeeCancelWindow;
 
   const renderOrderItem = ({ item }: { item: OrderItemWithInventory }) => {
     const categoryColor = categoryColors[item.inventory_item.category] || '#6B7280';
@@ -346,14 +321,8 @@ export default function OrderDetailScreen() {
           headerBackTitle: 'Back',
           headerTintColor: '#F97316',
           headerStyle: { backgroundColor: '#FFFFFF' },
-          headerTitle: () => (
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <BrandLogo variant="header" size={24} style={{ marginRight: 8 }} />
-              <Text style={{ color: '#111827', fontSize: 17, fontWeight: '600' }}>
-                Order #{currentOrder.order_number}
-              </Text>
-            </View>
-          ),
+          title: `Order #${currentOrder.order_number}`,
+          headerTitleStyle: { color: '#111827', fontSize: 17, fontWeight: '600' },
         }}
       />
       <SafeAreaView className="flex-1 bg-gray-50" edges={['left', 'right', 'bottom']}>
@@ -451,7 +420,7 @@ export default function OrderDetailScreen() {
         />
 
         {/* Action Buttons */}
-        {(canMarkProcessing || canMarkFulfilled || currentOrder.status === 'draft' || showEmployeeCancellation) && (
+        {(canMarkProcessing || canMarkFulfilled || currentOrder.status === 'draft' || showEmployeeCancellationAction) && (
           <View className="p-4 bg-white border-t border-gray-200">
             {/* Draft Status - Employee can submit */}
             {currentOrder.status === 'draft' && (
@@ -483,7 +452,7 @@ export default function OrderDetailScreen() {
             {/* Pending Status - Manager can mark as processing */}
             {canMarkProcessing && (
               <View className="flex-row">
-                {canCancel && (
+                {canCancelAsManager && (
                   <TouchableOpacity
                     className="flex-1 bg-gray-200 rounded-xl py-4 items-center mr-2"
                     onPress={handleCancel}
@@ -493,7 +462,7 @@ export default function OrderDetailScreen() {
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
-                  className={`flex-1 bg-blue-500 rounded-xl py-4 items-center ${canCancel ? 'ml-2' : ''} flex-row justify-center`}
+                  className={`flex-1 bg-blue-500 rounded-xl py-4 items-center ${canCancelAsManager ? 'ml-2' : ''} flex-row justify-center`}
                   onPress={handleMarkProcessing}
                   disabled={isUpdating}
                 >
@@ -512,7 +481,7 @@ export default function OrderDetailScreen() {
             {/* Processing Status - Manager can mark as fulfilled */}
             {canMarkFulfilled && (
               <View className="flex-row">
-                {canCancel && (
+                {canCancelAsManager && (
                   <TouchableOpacity
                     className="flex-1 bg-gray-200 rounded-xl py-4 items-center mr-2"
                     onPress={handleCancel}
@@ -522,7 +491,7 @@ export default function OrderDetailScreen() {
                   </TouchableOpacity>
                 )}
                 <TouchableOpacity
-                  className={`flex-1 bg-green-500 rounded-xl py-4 items-center ${canCancel ? 'ml-2' : ''} flex-row justify-center`}
+                  className={`flex-1 bg-green-500 rounded-xl py-4 items-center ${canCancelAsManager ? 'ml-2' : ''} flex-row justify-center`}
                   onPress={handleMarkFulfilled}
                   disabled={isUpdating}
                 >
@@ -538,39 +507,38 @@ export default function OrderDetailScreen() {
               </View>
             )}
 
-            {/* Cancellation - Time Based */}
-            {!isManager && showEmployeeCancellation && (
-              <View className="flex-row mt-3">
-                {withinGracePeriod ? (
-                  <TouchableOpacity
-                    className="flex-1 bg-red-500 rounded-xl py-4 items-center flex-row justify-center"
-                    onPress={handleCancel}
-                    disabled={isUpdating}
-                  >
-                    {isUpdating ? (
-                      <SpinningFish size="small" />
-                    ) : (
-                      <>
-                        <Ionicons name="close-circle" size={18} color="white" />
-                        <Text className="text-white font-semibold ml-2">Cancel Order</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    className="flex-1 bg-amber-500 rounded-xl py-4 items-center flex-row justify-center"
-                    onPress={handleRequestCancellation}
-                    disabled={isUpdating}
-                  >
-                    {isUpdating ? (
-                      <SpinningFish size="small" />
-                    ) : (
-                      <>
-                        <Ionicons name="alert-circle" size={18} color="white" />
-                        <Text className="text-white font-semibold ml-2">Request Cancellation</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
+            {/* Employee view action */}
+            {showEmployeeCancellationAction && (
+              <View className="mt-3">
+                <TouchableOpacity
+                  className={`rounded-xl py-4 items-center flex-row justify-center ${
+                    canEmployeeCancelNow ? 'bg-red-500' : 'bg-gray-300'
+                  }`}
+                  onPress={handleCancel}
+                  disabled={isUpdating || !canEmployeeCancelNow}
+                >
+                  {isUpdating ? (
+                    <SpinningFish size="small" />
+                  ) : (
+                    <>
+                      <Ionicons
+                        name="close-circle"
+                        size={18}
+                        color={canEmployeeCancelNow ? 'white' : '#6B7280'}
+                      />
+                      <Text
+                        className="font-semibold ml-2"
+                        style={{ color: canEmployeeCancelNow ? 'white' : '#6B7280' }}
+                      >
+                        Cancel Order
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+                {!withinEmployeeCancelWindow && (
+                  <Text className="text-center text-gray-500 text-xs mt-2">
+                    Cancellation is only available within 10 minutes of ordering.
+                  </Text>
                 )}
               </View>
             )}
