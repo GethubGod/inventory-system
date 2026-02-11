@@ -318,9 +318,6 @@ export default function ManagerDashboard() {
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center">
               <BrandLogo variant="header" size={28} />
-              <View className="ml-2 rounded-full bg-purple-100 px-3 py-1">
-                <Text className="text-purple-700 text-xs font-semibold">Manager</Text>
-              </View>
             </View>
 
             <View className="flex-row items-center">

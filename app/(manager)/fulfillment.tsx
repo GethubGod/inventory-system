@@ -20,7 +20,6 @@ import { useAuthStore, useDisplayStore, useOrderStore } from '@/store';
 import { CATEGORY_LABELS, colors, SUPPLIER_CATEGORY_LABELS } from '@/constants';
 import { InventoryItem, ItemCategory, OrderWithDetails, SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
-import { BrandLogo } from '@/components/BrandLogo';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
 
@@ -1475,7 +1474,6 @@ export default function FulfillmentScreen() {
       <ManagerScaleContainer>
         <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center justify-between">
           <View className="flex-row items-center">
-            <BrandLogo variant="header" size={28} style={{ marginRight: 8 }} />
             <Text className="text-xl font-bold text-gray-900">Fulfillment</Text>
           </View>
           <TouchableOpacity

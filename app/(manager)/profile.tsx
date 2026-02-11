@@ -53,7 +53,6 @@ export default function ManagerSettingsScreen() {
           style={{ paddingHorizontal: ds.spacing(20), paddingVertical: ds.spacing(16) }}
         >
           <View className="flex-row items-center">
-            <BrandLogo variant="header" size={28} style={{ marginRight: ds.spacing(10) }} />
             <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(24) }}>Settings</Text>
           </View>
           <View
