@@ -3,7 +3,7 @@ import { LogBox, View, Text, Appearance, AppState, AppStateStatus } from 'react-
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore, useDisplayStore } from '@/store';
-import { useOrderSubscription } from '@/hooks';
+import { useInventorySubscription, useOrderSubscription } from '@/hooks';
 import { supabase, supabaseConfigError } from '@/lib/supabase';
 import '../global.css';
 
@@ -14,10 +14,10 @@ LogBox.ignoreLogs([
   '[expo-notifications]: `shouldShowAlert` is deprecated',
 ]);
 
-// Separate component for subscription to avoid hook issues
-function OrderSubscriptionProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuthStore();
+// Separate component for subscriptions to avoid hook issues.
+function RealtimeSubscriptionProvider({ children }: { children: React.ReactNode }) {
   useOrderSubscription();
+  useInventorySubscription();
   return <>{children}</>;
 }
 
@@ -117,7 +117,7 @@ export default function RootLayout() {
 
   // Only enable subscriptions when user is logged in
   if (user) {
-    return <OrderSubscriptionProvider>{content}</OrderSubscriptionProvider>;
+    return <RealtimeSubscriptionProvider>{content}</RealtimeSubscriptionProvider>;
   }
 
   return content;

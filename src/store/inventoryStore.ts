@@ -18,12 +18,13 @@ interface InventoryState {
   items: InventoryItem[];
   isLoading: boolean;
   lastFetched: number | null;
+  hasFetchedThisSession: boolean;
   selectedCategory: ItemCategory | null;
   selectedSupplierCategory: SupplierCategory | null;
   searchQuery: string;
 
   // Actions
-  fetchItems: () => Promise<void>;
+  fetchItems: (options?: { force?: boolean }) => Promise<void>;
   addItem: (item: NewInventoryItem) => Promise<InventoryItem>;
   updateItem: (id: string, updates: Partial<NewInventoryItem>) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
@@ -43,15 +44,18 @@ export const useInventoryStore = create<InventoryState>()(
       items: [],
       isLoading: false,
       lastFetched: null,
+      hasFetchedThisSession: false,
       selectedCategory: null,
       selectedSupplierCategory: null,
       searchQuery: '',
 
-      fetchItems: async () => {
-        const { lastFetched, items } = get();
+      fetchItems: async (options) => {
+        const force = options?.force === true;
+        const { lastFetched, items, hasFetchedThisSession } = get();
 
-        // Check cache validity
-        if (lastFetched && items.length > 0) {
+        // Only reuse cache after one fresh fetch in the current app session.
+        // This prevents stale persisted data after app relaunch.
+        if (!force && hasFetchedThisSession && lastFetched && items.length > 0) {
           const cacheAge = Date.now() - lastFetched;
           if (cacheAge < CACHE_DURATION) {
             return;
@@ -72,6 +76,7 @@ export const useInventoryStore = create<InventoryState>()(
           set({
             items: data || [],
             lastFetched: Date.now(),
+            hasFetchedThisSession: true,
           });
         } finally {
           set({ isLoading: false });
@@ -108,7 +113,7 @@ export const useInventoryStore = create<InventoryState>()(
 
           // Fallback: refresh items if representation wasn't returned
           set({ lastFetched: null });
-          await get().fetchItems();
+          await get().fetchItems({ force: true });
           const created = get().items.find(
             (existing) =>
               existing.name.toLowerCase() === item.name.toLowerCase() &&
@@ -206,7 +211,6 @@ export const useInventoryStore = create<InventoryState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         items: state.items,
-        lastFetched: state.lastFetched,
       }),
     }
   )

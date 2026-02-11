@@ -288,7 +288,7 @@ export default function ManagerInventoryScreen() {
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchInventoryStock();
-    await fetchItems();
+    await fetchItems({ force: true });
     setRefreshing(false);
   };
 
@@ -987,7 +987,7 @@ export default function ManagerInventoryScreen() {
       setForm(initialForm);
       setNewItemEmoji('');
       fetchInventoryStock();
-      fetchItems();
+      fetchItems({ force: true });
       Alert.alert('Success', 'Item added to selected areas.');
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to add item');

@@ -142,7 +142,7 @@ export default function OrderScreen() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchItems();
+    await fetchItems({ force: true });
     await loadUnreadReminderNotifications();
     setRefreshing(false);
   };
