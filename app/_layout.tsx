@@ -1,14 +1,17 @@
 import { useEffect } from 'react';
-import { LogBox, View, Appearance, AppState, AppStateStatus } from 'react-native';
+import { LogBox, View, Text, Appearance, AppState, AppStateStatus } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useAuthStore, useDisplayStore } from '@/store';
 import { useOrderSubscription } from '@/hooks';
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseConfigError } from '@/lib/supabase';
 import '../global.css';
 
 LogBox.ignoreLogs([
-  "SafeAreaView has been deprecated and will be removed in a future release. Please use 'react-native-safe-area-context' instead.",
+  'SafeAreaView has been deprecated',
+  'expo-notifications: Android Push notifications (remote notifications) functionality provided by expo-notifications was removed from Expo Go',
+  '`expo-notifications` functionality is not fully supported in Expo Go',
+  '[expo-notifications]: `shouldShowAlert` is deprecated',
 ]);
 
 // Separate component for subscription to avoid hook issues
@@ -41,6 +44,8 @@ export default function RootLayout() {
   const reduceMotion = useDisplayStore((state) => state.reduceMotion);
 
   useEffect(() => {
+    if (supabaseConfigError) return;
+
     const onAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === 'active') {
         supabase.auth.startAutoRefresh();
@@ -62,12 +67,30 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    if (supabaseConfigError) return;
+
     if (!isInitialized) {
       initialize();
     }
-  }, [isInitialized, initialize]);
+  }, [initialize, isInitialized]);
 
   const statusBarStyle = theme === 'dark' ? 'light' : 'dark';
+
+  if (supabaseConfigError) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#FFFFFF', paddingHorizontal: 24, justifyContent: 'center' }}>
+        <StatusBar style={statusBarStyle} />
+        <Text style={{ fontSize: 22, fontWeight: '700', color: '#111827', marginBottom: 10 }}>
+          App Configuration Required
+        </Text>
+        <Text style={{ fontSize: 15, color: '#4B5563', lineHeight: 22 }}>
+          {__DEV__
+            ? `${supabaseConfigError}. Add these values to your Expo environment and restart the app.`
+            : 'This build is missing required configuration. Please reinstall the app or contact support.'}
+        </Text>
+      </View>
+    );
+  }
 
   // Wrap in subscription provider when user is authenticated
   const content = (

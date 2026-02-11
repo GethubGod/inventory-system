@@ -470,7 +470,23 @@ export default function StockCountingScreen() {
   }, [animateToPrevious, currentItemIndex, previousItem, showInlineToast]);
 
   if (!areaId) {
-    return null;
+    return (
+      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center px-6">
+        <Ionicons name="alert-circle-outline" size={32} color="#DC2626" />
+        <Text className="mt-3 text-base font-semibold text-gray-900 text-center">
+          Invalid stock session
+        </Text>
+        <Text className="mt-1 text-sm text-gray-500 text-center">
+          No storage area was provided for this screen.
+        </Text>
+        <TouchableOpacity
+          className="mt-5 rounded-xl bg-primary-500 px-4 py-2"
+          onPress={() => router.replace('/(tabs)/stock')}
+        >
+          <Text className="text-white font-semibold">Back to Stock</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
   }
 
   const countedItems = (currentSession?.items_checked ?? 0) + (currentSession?.items_skipped ?? 0);

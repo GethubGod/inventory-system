@@ -32,36 +32,48 @@ interface LocationQuantity {
   quantity: number;
 }
 
+function firstParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] ?? '' : value ?? '';
+}
+
+function parseJsonArrayParam<T>(value: string | string[] | undefined): T[] {
+  const raw = firstParam(value);
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function ExportFishOrderScreen() {
   const params = useLocalSearchParams<{
     // New multi-item format
-    locationName: string;
-    locationShortCode: string;
-    fishItems: string; // JSON array of FishItemOrder
+    locationName?: string | string[];
+    locationShortCode?: string | string[];
+    fishItems?: string | string[]; // JSON array of FishItemOrder
     // Legacy single item format
-    fishItemId: string;
-    fishItemName: string;
-    fishItemQuantity: string;
-    fishItemUnit: string;
-    fishItemLocations: string;
+    fishItemId?: string | string[];
+    fishItemName?: string | string[];
+    fishItemQuantity?: string | string[];
+    fishItemUnit?: string | string[];
+    fishItemLocations?: string | string[];
   }>();
 
   // Detect which format is being used
-  const isMultiItemFormat = !!params.fishItems;
+  const isMultiItemFormat = firstParam(params.fishItems).length > 0;
 
   // Parse params for multi-item format
-  const locationName = params.locationName || 'Location';
-  const locationShortCode = params.locationShortCode || '??';
-  const initialFishItems: FishItemOrder[] = params.fishItems
-    ? JSON.parse(params.fishItems)
-    : [];
+  const locationName = firstParam(params.locationName) || 'Location';
+  const locationShortCode = firstParam(params.locationShortCode) || '??';
+  const initialFishItems = parseJsonArrayParam<FishItemOrder>(params.fishItems);
 
   // Parse params for legacy single-item format
-  const legacyItemName = params.fishItemName || 'Fish Item';
-  const legacyItemUnit = params.fishItemUnit || 'case';
-  const legacyLocations: LocationQuantity[] = params.fishItemLocations
-    ? JSON.parse(params.fishItemLocations)
-    : [];
+  const legacyItemName = firstParam(params.fishItemName) || 'Fish Item';
+  const legacyItemUnit = firstParam(params.fishItemUnit) || 'case';
+  const legacyLocations = parseJsonArrayParam<LocationQuantity>(params.fishItemLocations);
 
   // Editable state for multi-item format
   const [fishItems, setFishItems] = useState<FishItemOrder[]>(

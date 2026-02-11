@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Modal,
   Pressable,
   TextInput,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -372,9 +373,15 @@ export default function CartScreen() {
     locationName: string;
     itemCount: number;
   } | null>(null);
+  const submitInFlightRef = useRef(false);
+  const handleCloseConfirmation = useCallback(() => {
+    setConfirmation(null);
+  }, []);
 
   // Handle submit order for location
   const handleSubmitOrder = useCallback(async (locationId: string, locationName: string) => {
+    if (submitInFlightRef.current) return;
+
     if (!user) {
       Alert.alert('Error', 'Please log in first');
       return;
@@ -386,11 +393,9 @@ export default function CartScreen() {
       return;
     }
 
+    submitInFlightRef.current = true;
     setSubmittingLocation(locationId);
     try {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
       const order = await createAndSubmitOrder(locationId, user.id);
       setConfirmation({
         orderNumber: order.order_number.toString(),
@@ -400,6 +405,7 @@ export default function CartScreen() {
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to submit order');
     } finally {
+      submitInFlightRef.current = false;
       setSubmittingLocation(null);
     }
   }, [user, getCartItems, createAndSubmitOrder]);
@@ -662,10 +668,10 @@ export default function CartScreen() {
         {/* Submit Order Button */}
         <TouchableOpacity
           onPress={() => handleSubmitOrder(location.id, location.name)}
-          disabled={submittingLocation === location.id}
+          disabled={submittingLocation !== null}
           style={{ height: ds.buttonH + 4, borderBottomLeftRadius: ds.radius(12), borderBottomRightRadius: ds.radius(12) }}
           className={`items-center flex-row justify-center ${
-            submittingLocation === location.id
+            submittingLocation !== null
               ? 'bg-primary-300'
               : 'bg-primary-500'
           }`}
@@ -835,7 +841,7 @@ export default function CartScreen() {
         orderNumber={confirmation?.orderNumber ?? '---'}
         locationName={confirmation?.locationName ?? 'Location'}
         itemCount={confirmation?.itemCount ?? 0}
-        onClose={() => setConfirmation(null)}
+        onClose={handleCloseConfirmation}
       />
 
       {/* Item Actions Menu */}
@@ -944,64 +950,70 @@ export default function CartScreen() {
         }}
       >
         <Pressable
-          className="flex-1 bg-black/40 justify-end"
+          className="flex-1 bg-black/40"
           onPress={() => {
             setShowItemNoteModal(false);
             setItemNoteDraft('');
             setMenuItem(null);
           }}
         >
-          <Pressable
-            style={{ paddingHorizontal: ds.spacing(24) }}
-            className="bg-white rounded-t-3xl pt-4 pb-6"
-            onPress={(e) => e.stopPropagation()}
+          <KeyboardAvoidingView
+            style={{ flex: 1, justifyContent: 'flex-end' }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={0}
           >
-            <View className="items-center pb-3">
-              <View className="w-10 h-1 bg-gray-300 rounded-full" />
-            </View>
-            <Text style={{ fontSize: ds.fontSize(18) }} className="font-bold text-gray-900 mb-1">
-              {menuItem?.item.note ? 'Edit Note' : 'Add Note'}
-            </Text>
-            <Text style={{ fontSize: ds.fontSize(13) }} className="text-gray-500 mb-4">
-              {menuItem?.item.inventoryItem?.name || 'Item'}
-            </Text>
+            <Pressable
+              style={{ paddingHorizontal: ds.spacing(24) }}
+              className="bg-white rounded-t-3xl pt-4 pb-6"
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View className="items-center pb-3">
+                <View className="w-10 h-1 bg-gray-300 rounded-full" />
+              </View>
+              <Text style={{ fontSize: ds.fontSize(18) }} className="font-bold text-gray-900 mb-1">
+                {menuItem?.item.note ? 'Edit Note' : 'Add Note'}
+              </Text>
+              <Text style={{ fontSize: ds.fontSize(13) }} className="text-gray-500 mb-4">
+                {menuItem?.item.inventoryItem?.name || 'Item'}
+              </Text>
 
-            <TextInput
-              value={itemNoteDraft}
-              onChangeText={setItemNoteDraft}
-              placeholder="Add special request for manager..."
-              placeholderTextColor={colors.gray[400]}
-              multiline
-              maxLength={240}
-              textAlignVertical="top"
-              style={{ fontSize: ds.fontSize(14), borderRadius: ds.radius(12), paddingHorizontal: ds.spacing(16) }}
-              className="min-h-[110px] border border-gray-200 py-3 text-gray-900 bg-gray-50"
-            />
-            <Text style={{ fontSize: ds.fontSize(12) }} className="text-gray-400 mt-2">
-              {itemNoteDraft.length}/240
-            </Text>
+              <TextInput
+                value={itemNoteDraft}
+                onChangeText={setItemNoteDraft}
+                placeholder="Add special request for manager..."
+                placeholderTextColor={colors.gray[400]}
+                multiline
+                maxLength={240}
+                textAlignVertical="top"
+                style={{ fontSize: ds.fontSize(14), borderRadius: ds.radius(12), paddingHorizontal: ds.spacing(16) }}
+                className="min-h-[110px] border border-gray-200 py-3 text-gray-900 bg-gray-50"
+              />
+              <Text style={{ fontSize: ds.fontSize(12) }} className="text-gray-400 mt-2">
+                {itemNoteDraft.length}/240
+              </Text>
 
-            <View className="flex-row mt-5">
-              <TouchableOpacity
-                onPress={() => {
-                  setShowItemNoteModal(false);
-                  setItemNoteDraft('');
-                  setMenuItem(null);
-                }}
-                style={{ height: ds.buttonH, borderRadius: ds.radius(12) }}
-                className="flex-1 bg-gray-100 mr-2 items-center justify-center"
-              >
-                <Text style={{ fontSize: ds.buttonFont }} className="text-gray-700 font-semibold">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleSaveItemNote}
-                style={{ height: ds.buttonH, borderRadius: ds.radius(12) }}
-                className="flex-1 bg-primary-500 ml-2 items-center justify-center"
-              >
-                <Text style={{ fontSize: ds.buttonFont }} className="text-white font-semibold">Save Note</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
+              <View className="flex-row mt-5">
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowItemNoteModal(false);
+                    setItemNoteDraft('');
+                    setMenuItem(null);
+                  }}
+                  style={{ height: ds.buttonH, borderRadius: ds.radius(12) }}
+                  className="flex-1 bg-gray-100 mr-2 items-center justify-center"
+                >
+                  <Text style={{ fontSize: ds.buttonFont }} className="text-gray-700 font-semibold">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveItemNote}
+                  style={{ height: ds.buttonH, borderRadius: ds.radius(12) }}
+                  className="flex-1 bg-primary-500 ml-2 items-center justify-center"
+                >
+                  <Text style={{ fontSize: ds.buttonFont }} className="text-white font-semibold">Save Note</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
 

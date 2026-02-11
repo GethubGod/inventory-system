@@ -18,7 +18,8 @@ import { supabase } from '@/lib/supabase';
 import { BrandLogo, SpinningFish } from '@/components';
 
 export default function OrderDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const orderId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { user } = useAuthStore();
   const {
     currentOrder,
@@ -30,12 +31,25 @@ export default function OrderDetailScreen() {
   } = useOrderStore();
   const [isUpdating, setIsUpdating] = useState(false);
   const [fulfilledByUser, setFulfilledByUser] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (id) {
-      fetchOrder(id);
+    if (!orderId) {
+      setLoadError('Invalid order ID.');
+      return;
     }
-  }, [id]);
+
+    let isMounted = true;
+    setLoadError(null);
+    fetchOrder(orderId).catch((error: any) => {
+      if (!isMounted) return;
+      setLoadError(error?.message || 'Unable to load this order.');
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [fetchOrder, orderId]);
 
   // Fetch the user who fulfilled the order
   useEffect(() => {
@@ -49,9 +63,11 @@ export default function OrderDetailScreen() {
         if (data) {
           setFulfilledByUser((data as { name: string }).name);
         }
+      } else {
+        setFulfilledByUser(null);
       }
     };
-    fetchFulfilledBy();
+    fetchFulfilledBy().catch(() => setFulfilledByUser(null));
   }, [currentOrder?.fulfilled_by]);
 
   const handleSubmit = () => {
@@ -71,7 +87,7 @@ export default function OrderDetailScreen() {
               if (Platform.OS !== 'web') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
-              fetchOrder(currentOrder.id);
+              await fetchOrder(currentOrder.id);
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to submit order');
             } finally {
@@ -100,7 +116,7 @@ export default function OrderDetailScreen() {
               if (Platform.OS !== 'web') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
-              fetchOrder(currentOrder.id);
+              await fetchOrder(currentOrder.id);
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to update order');
             } finally {
@@ -129,7 +145,7 @@ export default function OrderDetailScreen() {
               if (Platform.OS !== 'web') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               }
-              fetchOrder(currentOrder.id);
+              await fetchOrder(currentOrder.id);
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to fulfill order');
             } finally {
@@ -159,7 +175,7 @@ export default function OrderDetailScreen() {
               if (Platform.OS !== 'web') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
               }
-              fetchOrder(currentOrder.id);
+              await fetchOrder(currentOrder.id);
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to cancel order');
             } finally {
@@ -188,7 +204,7 @@ export default function OrderDetailScreen() {
               if (Platform.OS !== 'web') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
               }
-              fetchOrder(currentOrder.id);
+              await fetchOrder(currentOrder.id);
             } catch (error: any) {
               Alert.alert('Error', error.message || 'Failed to request cancellation');
             } finally {
@@ -211,7 +227,40 @@ export default function OrderDetailScreen() {
     });
   };
 
-  if (isLoading || !currentOrder) {
+  if (!orderId) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center px-6">
+        <Ionicons name="alert-circle-outline" size={30} color="#DC2626" />
+        <Text className="text-gray-900 font-semibold mt-3 text-center">Invalid order link</Text>
+        <TouchableOpacity
+          className="mt-5 bg-primary-500 rounded-lg px-4 py-2"
+          onPress={() => router.back()}
+        >
+          <Text className="text-white font-semibold">Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center px-6">
+        <Ionicons name="warning-outline" size={30} color="#F59E0B" />
+        <Text className="text-gray-900 font-semibold mt-3 text-center">Unable to load order</Text>
+        <Text className="text-gray-500 mt-2 text-center">{loadError}</Text>
+        <TouchableOpacity
+          className="mt-5 bg-primary-500 rounded-lg px-4 py-2"
+          onPress={() => router.back()}
+        >
+          <Text className="text-white font-semibold">Go Back</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  const isCurrentOrderLoaded = currentOrder?.id === orderId;
+
+  if (isLoading || !isCurrentOrderLoaded || !currentOrder) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
         <SpinningFish size="large" showText text="Loading order..." />

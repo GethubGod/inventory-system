@@ -4,13 +4,13 @@
     "slug": "babytuna-internal",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/babytuna-logo-icon.png",
+    "icon": "./assets/images/app-icon.png",
     "scheme": "babytuna",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/images/babytuna-logo.png",
+      "image": "./assets/images/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#F97316"
+      "backgroundColor": "#000000"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -18,15 +18,21 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.babytuna.app",
+      "buildNumber": "1",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "Camera access is required to scan QR codes.",
         "NSMicrophoneUsageDescription": "Microphone access is needed for voice ordering.",
-        "NSSpeechRecognitionUsageDescription": "Speech recognition is needed for voice ordering."
+        "NSSpeechRecognitionUsageDescription": "Speech recognition is needed for voice ordering.",
+        "NSPhotoLibraryUsageDescription": "Photo library access is needed to update your profile photo.",
+        "NFCReaderUsageDescription": "NFC access is required to scan tags."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/babytuna-logo-icon.png",
+        "foregroundImage": "./assets/images/app-icon.png",
         "backgroundColor": "#000000"
       },
       "package": "com.babytuna.inventory"
@@ -34,17 +40,24 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/babytuna-logo-icon.png"
+      "favicon": "./assets/images/app-icon.png"
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#000000"
+        }
+      ],
       "@react-native-community/datetimepicker",
       [
         "expo-camera",
         {
-          "cameraPermission": "Camera access is required to scan QR codes.",
-          "microphonePermission": "Microphone access is required to record video."
+          "cameraPermission": "Camera access is required to scan QR codes."
         }
       ],
       [

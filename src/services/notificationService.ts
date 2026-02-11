@@ -18,7 +18,6 @@ Notifications.setNotificationHandler({
     );
 
     return {
-      shouldShowAlert: !inQuietHours,
       shouldPlaySound: notifications.soundEnabled && !inQuietHours,
       shouldSetBadge: true,
       shouldShowBanner: !inQuietHours,
@@ -66,6 +65,12 @@ export async function registerCurrentDevicePushToken(
   userId: string
 ): Promise<string | null> {
   if (!userId) return null;
+
+  // Expo Go does not support remote push token registration reliably.
+  // Keep local notifications enabled, but skip remote token enrollment.
+  if ((Constants as any)?.appOwnership === 'expo') {
+    return null;
+  }
 
   const { status } = await Notifications.getPermissionsAsync();
   if (status !== 'granted') {

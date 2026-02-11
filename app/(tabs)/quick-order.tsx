@@ -546,16 +546,13 @@ export default function QuickOrderScreen() {
           {/* Cart Button */}
           <TouchableOpacity
             onPress={() => router.push('/cart' as any)}
-            className="relative"
+            className="relative rounded-full bg-gray-100 items-center justify-center"
             style={{
               width: headerIconButtonSize,
               height: headerIconButtonSize,
-              borderRadius: ds.radius(10),
-              alignItems: 'center',
-              justifyContent: 'center',
             }}
           >
-            <Ionicons name="cart-outline" size={ds.icon(22)} color={colors.gray[700]} />
+            <Ionicons name="cart-outline" size={ds.icon(20)} color={colors.gray[700]} />
             {totalCartCount > 0 && (
               <View
                 className="absolute bg-primary-500 rounded-full items-center justify-center"

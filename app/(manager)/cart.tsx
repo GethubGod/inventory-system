@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -297,9 +297,15 @@ export default function ManagerCartScreen() {
     locationName: string;
     itemCount: number;
   } | null>(null);
+  const submitInFlightRef = useRef(false);
+  const handleCloseConfirmation = useCallback(() => {
+    setConfirmation(null);
+  }, []);
 
   // Handle submit order for location
   const handleSubmitOrder = useCallback(async (locationId: string, locationName: string) => {
+    if (submitInFlightRef.current) return;
+
     if (!user) {
       Alert.alert('Error', 'Please log in first');
       return;
@@ -320,11 +326,9 @@ export default function ManagerCartScreen() {
       return;
     }
 
+    submitInFlightRef.current = true;
     setSubmittingLocation(locationId);
     try {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }
       const order = await createAndSubmitOrder(locationId, user.id);
       setConfirmation({
         orderNumber: order.order_number.toString(),
@@ -334,6 +338,7 @@ export default function ManagerCartScreen() {
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to submit order');
     } finally {
+      submitInFlightRef.current = false;
       setSubmittingLocation(null);
     }
   }, [user, getCartItems, getUndecidedRemainingItems, createAndSubmitOrder]);
@@ -648,9 +653,9 @@ export default function ManagerCartScreen() {
         {/* Submit Order Button */}
         <TouchableOpacity
           onPress={() => handleSubmitOrder(location.id, location.name)}
-          disabled={submittingLocation === location.id || hasUndecided}
+          disabled={submittingLocation !== null || hasUndecided}
           className={`py-3 rounded-b-xl items-center flex-row justify-center ${
-            submittingLocation === location.id || hasUndecided ? 'bg-primary-300' : 'bg-primary-500'
+            submittingLocation !== null || hasUndecided ? 'bg-primary-300' : 'bg-primary-500'
           }`}
         >
           {submittingLocation === location.id ? (
@@ -804,7 +809,7 @@ export default function ManagerCartScreen() {
         orderNumber={confirmation?.orderNumber ?? '---'}
         locationName={confirmation?.locationName ?? 'Location'}
         itemCount={confirmation?.itemCount ?? 0}
-        onClose={() => setConfirmation(null)}
+        onClose={handleCloseConfirmation}
       />
       </ManagerScaleContainer>
     </SafeAreaView>

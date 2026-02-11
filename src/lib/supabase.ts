@@ -15,10 +15,29 @@ const ExpoSecureStoreAdapter = {
   },
 };
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? '';
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? '';
+const missingConfig = [
+  !supabaseUrl ? 'EXPO_PUBLIC_SUPABASE_URL' : null,
+  !supabaseAnonKey ? 'EXPO_PUBLIC_SUPABASE_ANON_KEY' : null,
+].filter((entry): entry is string => Boolean(entry));
 
-export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+export const supabaseConfigError =
+  missingConfig.length > 0
+    ? `Missing environment variables: ${missingConfig.join(', ')}`
+    : null;
+
+if (__DEV__ && supabaseConfigError) {
+  console.warn(
+    `${supabaseConfigError}. Supabase features will be unavailable until these values are set.`
+  );
+}
+
+// Keep app startup resilient if env vars are missing.
+const resolvedSupabaseUrl = supabaseUrl || 'https://invalid.supabase.local';
+const resolvedSupabaseAnonKey = supabaseAnonKey || 'invalid-anon-key';
+
+export const supabase = createClient<Database>(resolvedSupabaseUrl, resolvedSupabaseAnonKey, {
   auth: {
     storage: ExpoSecureStoreAdapter,
     autoRefreshToken: true,

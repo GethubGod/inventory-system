@@ -9,6 +9,9 @@ import { colors } from '@/constants';
 import { SettingsRow } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
+const SUPPORT_EMAIL = 'babytunalovessushi@gmail.com';
+const PRIVACY_POLICY_URL =
+  'https://www.notion.so/Babytuna-Internal-Privacy-Policy-3032ac6e131b807da732efe1834f2531';
 
 function AboutSection() {
   const appVersion = Constants.expoConfig?.version || '1.0.0';
@@ -61,7 +64,7 @@ function AboutSection() {
         title="Contact Support"
         subtitle="Get help with the app"
         onPress={() => {
-          void openMailDraft('babytunalovessushi@gmail.com', 'Babytuna Support');
+          void openMailDraft(SUPPORT_EMAIL, 'Babytuna Support');
         }}
       />
 
@@ -72,7 +75,7 @@ function AboutSection() {
         title="Send Feedback"
         subtitle="Tell us what you think"
         onPress={() => {
-          void openMailDraft('dontusemyemailathotmail.com@gmail.com', 'Babytuna Feedback');
+          void openMailDraft(SUPPORT_EMAIL, 'Babytuna Feedback');
         }}
       />
 
@@ -82,9 +85,7 @@ function AboutSection() {
         iconBgColor="#F3F4F6"
         title="Privacy Policy"
         onPress={() => {
-          void openExternalUrl(
-            'https://www.notion.so/Babytuna-Internal-Privacy-Policy-3032ac6e131b807da732efe1834f2531?t=new&showMoveTo=true&saveParent=true'
-          );
+          void openExternalUrl(PRIVACY_POLICY_URL);
         }}
         showBorder={false}
       />

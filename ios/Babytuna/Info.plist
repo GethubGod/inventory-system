@@ -28,7 +28,7 @@
         <key>CFBundleURLSchemes</key>
         <array>
           <string>babytuna</string>
-          <string>com.babytuna.inventory</string>
+          <string>com.babytuna.app</string>
         </array>
       </dict>
     </array>
@@ -40,6 +40,8 @@
     <true/>
     <key>NFCReaderUsageDescription</key>
     <string>NFC access is required to scan tags.</string>
+    <key>ITSAppUsesNonExemptEncryption</key>
+    <false/>
     <key>NSAppTransportSecurity</key>
     <dict>
       <key>NSAllowsArbitraryLoads</key>
@@ -52,9 +54,11 @@
     <key>NSFaceIDUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Microphone access is required to record video.</string>
+    <string>Microphone access is needed for voice ordering.</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your photos</string>
+    <string>Photo library access is needed to update your profile photo.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Speech recognition is needed for voice ordering.</string>
     <key>NSUserActivityTypes</key>
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>

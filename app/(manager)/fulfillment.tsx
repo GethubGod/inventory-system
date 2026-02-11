@@ -16,7 +16,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
-import { useAuthStore, useOrderStore } from '@/store';
+import { useAuthStore, useDisplayStore, useOrderStore } from '@/store';
 import { CATEGORY_LABELS, colors, SUPPLIER_CATEGORY_LABELS } from '@/constants';
 import { InventoryItem, ItemCategory, OrderWithDetails, SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
@@ -187,6 +187,11 @@ function toItemCategory(value: unknown): ItemCategory {
 
 export default function FulfillmentScreen() {
   const { user, locations } = useAuthStore();
+  const { uiScale, buttonSize, textScale } = useDisplayStore((state) => ({
+    uiScale: state.uiScale,
+    buttonSize: state.buttonSize,
+    textScale: state.textScale,
+  }));
   const {
     orders,
     orderLaterQueue,
@@ -210,6 +215,9 @@ export default function FulfillmentScreen() {
   const [scheduleEditItemId, setScheduleEditItemId] = useState<string | null>(null);
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const useStackedSupplierActions =
+    uiScale === 'large' || buttonSize === 'large' || textScale >= 1.1;
+  const useCompactHeaderActions = uiScale === 'large' || textScale >= 1.1;
 
   const fetchPendingOrders = useCallback(async () => {
     try {
@@ -1296,38 +1304,78 @@ export default function FulfillmentScreen() {
       return (
         <View key={supplierGroup.supplierCategory} className="mb-4">
           <TouchableOpacity
-            className={`flex-row items-center justify-between p-4 rounded-xl ${colorScheme.bg} border ${colorScheme.border}`}
+            className={`p-4 rounded-xl ${colorScheme.bg} border ${colorScheme.border}`}
             onPress={() => toggleSupplier(supplierGroup.supplierCategory)}
             activeOpacity={0.7}
           >
-            <View className="flex-row items-center flex-1">
-              <Text className="text-2xl mr-3">{emoji}</Text>
+            {useStackedSupplierActions ? (
               <View>
-                <Text className={`font-bold text-base ${colorScheme.text}`}>{label}</Text>
-                <Text className="text-sm text-gray-500">
-                  {supplierItemCount} item{supplierItemCount !== 1 ? 's' : ''} • {supplierRemainingCount} remaining
-                </Text>
+                <View className="flex-row items-center">
+                  <Text className="text-2xl mr-3">{emoji}</Text>
+                  <View className="flex-1 min-w-0">
+                    <Text className={`font-bold text-base ${colorScheme.text}`} numberOfLines={1}>
+                      {label}
+                    </Text>
+                    <Text className="text-sm text-gray-500">
+                      {supplierItemCount} item{supplierItemCount !== 1 ? 's' : ''} • {supplierRemainingCount} remaining
+                    </Text>
+                  </View>
+                </View>
+
+                <View className="mt-3 flex-row items-center">
+                  <Ionicons
+                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color={colors.gray[500]}
+                  />
+
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleSend(supplierGroup);
+                    }}
+                    className="ml-3 flex-1 bg-primary-500 rounded-xl border border-primary-600 flex-row items-center justify-center"
+                    style={{ minHeight: 46, paddingHorizontal: 14, paddingVertical: 8 }}
+                  >
+                    <Ionicons name="checkmark-done-outline" size={14} color="white" />
+                    <Text className="text-sm font-bold text-white ml-1.5">Confirm Order</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
+            ) : (
+              <View className="flex-row items-center justify-between">
+                <View className="flex-row items-center flex-1 min-w-0">
+                  <Text className="text-2xl mr-3">{emoji}</Text>
+                  <View className="flex-1 min-w-0">
+                    <Text className={`font-bold text-base ${colorScheme.text}`} numberOfLines={1}>
+                      {label}
+                    </Text>
+                    <Text className="text-sm text-gray-500">
+                      {supplierItemCount} item{supplierItemCount !== 1 ? 's' : ''} • {supplierRemainingCount} remaining
+                    </Text>
+                  </View>
+                </View>
 
-            <View className="flex-row items-center">
-              <Ionicons
-                name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                size={20}
-                color={colors.gray[500]}
-              />
+                <View className="flex-row items-center ml-3">
+                  <Ionicons
+                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={20}
+                    color={colors.gray[500]}
+                  />
 
-              <TouchableOpacity
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handleSend(supplierGroup);
-                }}
-                className="ml-3 px-4 py-2.5 bg-primary-500 rounded-xl border border-primary-600 flex-row items-center"
-              >
-                <Ionicons name="checkmark-done-outline" size={14} color="white" />
-                <Text className="text-sm font-bold text-white ml-1.5">Confirm Order</Text>
-              </TouchableOpacity>
-            </View>
+                  <TouchableOpacity
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      handleSend(supplierGroup);
+                    }}
+                    className="ml-3 px-4 py-2.5 bg-primary-500 rounded-xl border border-primary-600 flex-row items-center"
+                  >
+                    <Ionicons name="checkmark-done-outline" size={14} color="white" />
+                    <Text className="text-sm font-bold text-white ml-1.5">Confirm Order</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
           </TouchableOpacity>
 
           {isExpanded && (
@@ -1410,7 +1458,16 @@ export default function FulfillmentScreen() {
         </View>
       );
     },
-    [buildLocationGroupedItems, expandedLocationSections, expandedSuppliers, handleSend, renderItem, toggleLocationSection, toggleSupplier]
+    [
+      buildLocationGroupedItems,
+      expandedLocationSections,
+      expandedSuppliers,
+      handleSend,
+      renderItem,
+      toggleLocationSection,
+      toggleSupplier,
+      useStackedSupplierActions,
+    ]
   );
 
   return (
@@ -1423,10 +1480,17 @@ export default function FulfillmentScreen() {
           </View>
           <TouchableOpacity
             onPress={() => router.push('/(manager)/fulfillment-history')}
-            className="px-3 py-2 rounded-lg border border-gray-200 bg-gray-50 flex-row items-center"
+            className="rounded-lg border border-gray-200 bg-gray-50 flex-row items-center justify-center"
+            style={{
+              minHeight: 40,
+              paddingHorizontal: useCompactHeaderActions ? 10 : 12,
+              paddingVertical: 8,
+            }}
           >
             <Ionicons name="time-outline" size={14} color={colors.gray[600]} />
-            <Text className="ml-1.5 text-xs font-semibold text-gray-700">Past Orders</Text>
+            <Text className="ml-1.5 text-xs font-semibold text-gray-700" numberOfLines={1}>
+              Past Orders
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -1486,22 +1550,22 @@ export default function FulfillmentScreen() {
                         Order on: {formatScheduleLabel(item.scheduledAt)}
                       </Text>
 
-                      <View className="flex-row mt-3">
+                      <View className="flex-row flex-wrap mt-3 -mr-2">
                         <TouchableOpacity
                           onPress={() => openAddToModal(item.id)}
-                          className="px-3 py-2 rounded-lg bg-primary-500 mr-2"
+                          className="px-3 py-2 rounded-lg bg-primary-500 mr-2 mb-2"
                         >
                           <Text className="text-[11px] font-semibold text-white">Add to...</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => setScheduleEditItemId(item.id)}
-                          className="px-3 py-2 rounded-lg bg-gray-100 mr-2"
+                          className="px-3 py-2 rounded-lg bg-gray-100 mr-2 mb-2"
                         >
                           <Text className="text-[11px] font-semibold text-gray-700">Edit schedule</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => handleRemoveOrderLater(item.id, item.itemName)}
-                          className="px-3 py-2 rounded-lg bg-red-50 border border-red-100"
+                          className="px-3 py-2 rounded-lg bg-red-50 border border-red-100 mr-2 mb-2"
                         >
                           <Text className="text-[11px] font-semibold text-red-600">Remove</Text>
                         </TouchableOpacity>

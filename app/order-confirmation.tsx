@@ -18,7 +18,10 @@ const AUTO_DISMISS_SECONDS = 3;
 
 export default function OrderConfirmationScreen() {
   const { currentOrder } = useOrderStore();
-  const params = useLocalSearchParams<{ orderNumber: string; locationName: string }>();
+  const params = useLocalSearchParams<{
+    orderNumber?: string | string[];
+    locationName?: string | string[];
+  }>();
   const [countdown, setCountdown] = useState(AUTO_DISMISS_SECONDS);
 
   // Animation values
@@ -27,8 +30,10 @@ export default function OrderConfirmationScreen() {
   const checkmarkScale = useRef(new Animated.Value(0)).current;
   const progressWidth = useRef(new Animated.Value(100)).current;
 
-  const orderNumber = params.orderNumber || currentOrder?.order_number?.toString() || '---';
-  const locationName = params.locationName || currentOrder?.location?.name || 'Location';
+  const routeOrderNumber = Array.isArray(params.orderNumber) ? params.orderNumber[0] : params.orderNumber;
+  const routeLocationName = Array.isArray(params.locationName) ? params.locationName[0] : params.locationName;
+  const orderNumber = routeOrderNumber || currentOrder?.order_number?.toString() || '---';
+  const locationName = routeLocationName || currentOrder?.location?.name || 'Location';
   const itemCount = currentOrder?.order_items?.length || 0;
 
   const handleClose = () => {
