@@ -263,6 +263,7 @@ export default function FulfillmentScreen() {
     createOrderLaterItem,
   } = useOrderStore();
   const [refreshing, setRefreshing] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
   const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(new Set());
   const [expandedLocationSections, setExpandedLocationSections] = useState<Set<string>>(new Set());
@@ -346,15 +347,15 @@ export default function FulfillmentScreen() {
       ]);
     } catch (error) {
       console.error('Error refreshing fulfillment data:', error);
+    } finally {
+      setDataReady(true);
     }
   }, [fetchPendingOrders, fetchSuppliers, loadFulfillmentData, user?.id]);
 
-  useEffect(() => {
-    void refreshAll();
-  }, [refreshAll]);
-
   useFocusEffect(
     useCallback(() => {
+      // Reset gate on every focus so stale data is hidden while fetching
+      setDataReady(false);
       void refreshAll();
     }, [refreshAll])
   );
@@ -1944,8 +1945,8 @@ export default function FulfillmentScreen() {
                     className="ml-3 flex-1 bg-primary-500 rounded-xl border border-primary-600 flex-row items-center justify-center"
                     style={{ minHeight: 46, paddingHorizontal: 14, paddingVertical: 8 }}
                   >
-                    <Ionicons name="checkmark-done-outline" size={14} color="white" />
-                    <Text className="text-sm font-bold text-white ml-1.5">Confirm Order</Text>
+                    <Ionicons name="paper-plane-outline" size={14} color="white" />
+                    <Text className="text-sm font-bold text-white ml-1.5">Order</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1984,8 +1985,8 @@ export default function FulfillmentScreen() {
                     }}
                     className="ml-3 px-4 py-2.5 bg-primary-500 rounded-xl border border-primary-600 flex-row items-center"
                   >
-                    <Ionicons name="checkmark-done-outline" size={14} color="white" />
-                    <Text className="text-sm font-bold text-white ml-1.5">Confirm Order</Text>
+                    <Ionicons name="paper-plane-outline" size={14} color="white" />
+                    <Text className="text-sm font-bold text-white ml-1.5">Order</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -2184,7 +2185,11 @@ export default function FulfillmentScreen() {
             )}
           </View>
 
-          {supplierGroups.length === 0 ? (
+          {!dataReady ? (
+            <View className="items-center py-12">
+              <Text className="text-gray-400 text-center text-sm">Loading orders...</Text>
+            </View>
+          ) : supplierGroups.length === 0 ? (
             <View className="items-center py-12">
               <Text className="text-4xl mb-4">✅</Text>
               <Text className="text-gray-500 text-center text-lg font-medium">All orders fulfilled</Text>

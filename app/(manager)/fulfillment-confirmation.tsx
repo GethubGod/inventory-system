@@ -344,6 +344,17 @@ export default function FulfillmentConfirmationScreen() {
     return SUPPLIER_CATEGORY_LABELS[supplierId as keyof typeof SUPPLIER_CATEGORY_LABELS] || supplierId;
   }, [supplierId, supplierLabelParam]);
 
+  // Reset local state when the supplier param changes (prevents stale flash from previous supplier)
+  useEffect(() => {
+    setItems(initialItems);
+    setRemainingItems(initialRemainingItems);
+    setExpandedItems(new Set());
+    setSavingRemainingIds(new Set());
+    setShowRetryActions(false);
+    setIsFinalizing(false);
+    setOrderLaterTarget(null);
+  }, [supplierId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const refreshFromSupplierSource = useCallback(async () => {
     if (!supplierId) return;
 
@@ -375,12 +386,6 @@ export default function FulfillmentConfirmationScreen() {
   );
 
   const handleBackPress = useCallback(() => {
-    const canGoBack = (router as any)?.canGoBack?.();
-    if (canGoBack) {
-      router.back();
-      return;
-    }
-
     router.replace('/(manager)/fulfillment');
   }, []);
 
@@ -1089,43 +1094,7 @@ export default function FulfillmentConfirmationScreen() {
         return false;
       }
 
-      let payload = buildFinalizePayload();
-
-      try {
-        // Reconcile with the latest supplier snapshot so consumed order_item ids are never stale/missing.
-        await fetchPendingFulfillmentOrders();
-        const supplierLookup = await loadSupplierLookup();
-        const state = useOrderStore.getState();
-        const rebuilt = buildSupplierConfirmationData({
-          supplierId,
-          orders: (state.orders || []) as any,
-          supplierLookup,
-          supplierDraftItems: (state.getSupplierDraftItems(supplierId) || []) as any,
-        });
-
-        const reconciledConsumedOrderItemIds = Array.from(
-          new Set([
-            ...payload.consumedOrderItemIds,
-            ...rebuilt.regularItems.flatMap((item) => item.sourceOrderItemIds),
-            ...rebuilt.remainingItems.map((item) => item.orderItemId),
-          ])
-        );
-        const reconciledSourceOrderIds = Array.from(
-          new Set([
-            ...payload.sourceOrderIds,
-            ...rebuilt.regularItems.flatMap((item) => item.sourceOrderIds),
-            ...rebuilt.remainingItems.map((item) => item.orderId),
-          ])
-        );
-
-        payload = {
-          ...payload,
-          consumedOrderItemIds: reconciledConsumedOrderItemIds,
-          sourceOrderIds: reconciledSourceOrderIds,
-        };
-      } catch {
-        // Continue with the current payload; finalize guard below still prevents empty source links.
-      }
+      const payload = buildFinalizePayload();
 
       if (payload.consumedOrderItemIds.length === 0) {
         Alert.alert(
@@ -1137,12 +1106,19 @@ export default function FulfillmentConfirmationScreen() {
 
       if (__DEV__) {
         console.log(
-          '[Fulfillment:Confirm] finalize consumed order_item ids:',
-          payload.consumedOrderItemIds
+          '[Fulfillment:Confirm] finalize — consumed order_item ids:',
+          payload.consumedOrderItemIds.length,
+          payload.consumedOrderItemIds.slice(0, 5)
         );
       }
+
       setIsFinalizing(true);
       try {
+        // createPastOrder (called by finalizeSupplierOrder) handles:
+        //   1. Inserting into past_orders + past_order_items tables
+        //   2. Calling markOrderItemsStatus to set status='sent'
+        //   3. Updating local state (pastOrders, orders) to remove consumed items
+        //   4. Queueing for offline sync if DB operations fail
         await finalizeSupplierOrder({
           supplierId,
           supplierName: supplierLabel,
@@ -1155,6 +1131,8 @@ export default function FulfillmentConfirmationScreen() {
             locations: payload.locationLabels,
             sourceOrderIds: payload.sourceOrderIds,
             source_order_ids: payload.sourceOrderIds,
+            sourceOrderItemIds: payload.consumedOrderItemIds,
+            source_order_item_ids: payload.consumedOrderItemIds,
             totalItemCount: payload.totalItemCount,
             finalizedAt: new Date().toISOString(),
           },
@@ -1163,15 +1141,12 @@ export default function FulfillmentConfirmationScreen() {
           lineItems: payload.historyLineItems,
         });
 
-        if (payload.consumedOrderItemIds.length > 0) {
-          const marked = await markOrderItemsStatus(payload.consumedOrderItemIds, 'sent');
-          if (!marked && __DEV__) {
-            console.warn(
-              '[Fulfillment:Confirm] markOrderItemsStatus failed during finalize; relying on past-order consumed IDs for filtering.'
-            );
-          }
+        // Refresh fulfillment data so the cleared items don't reappear
+        try {
+          await fetchPendingFulfillmentOrders();
+        } catch {
+          // Non-critical: local state was already updated by createPastOrder
         }
-        await fetchPendingFulfillmentOrders();
 
         if (Platform.OS !== 'web') {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1179,6 +1154,7 @@ export default function FulfillmentConfirmationScreen() {
         router.replace('/(manager)/fulfillment');
         return true;
       } catch (error: any) {
+        console.error('[Fulfillment:Confirm] finalizeOrder failed:', error);
         Alert.alert('Finalize Failed', error?.message || 'Unable to move this order to past orders.');
         return false;
       } finally {
@@ -1189,7 +1165,6 @@ export default function FulfillmentConfirmationScreen() {
       buildFinalizePayload,
       fetchPendingFulfillmentOrders,
       finalizeSupplierOrder,
-      markOrderItemsStatus,
       messageText,
       supplierId,
       supplierLabel,
@@ -1322,28 +1297,23 @@ export default function FulfillmentConfirmationScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
+    // Start finalization in parallel with the share sheet so DB work
+    // happens while the user is interacting with the share dialog.
+    const finalizePromise = finalizeOrder('share');
+
     try {
-      const result = await Share.share({
+      await Share.share({
         message: messageText,
         title: `${supplierLabel} Order`,
       });
+    } catch {
+      // Share dialog threw (rare) — finalization still running in background.
+    }
 
-      const wasDismissed =
-        typeof (result as any)?.action === 'string' &&
-        (result as any).action === (Share as any).dismissedAction;
-
-      if (wasDismissed) {
-        setShowRetryActions(true);
-        return;
-      }
-
-      const finalized = await finalizeOrder('share');
-      if (!finalized) {
-        setShowRetryActions(true);
-      }
-    } catch (error: any) {
+    // Wait for finalization to finish (usually already done by now).
+    const finalized = await finalizePromise;
+    if (!finalized) {
       setShowRetryActions(true);
-      Alert.alert('Share Failed', error?.message || 'Failed to share. You can copy or retry share.');
     }
   }, [actionsDisabled, finalizeOrder, messageText, supplierLabel]);
 
@@ -1358,15 +1328,11 @@ export default function FulfillmentConfirmationScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
-    Alert.alert('Copied', 'Mark this order as sent?', [
-      { text: 'No', style: 'cancel' },
-      {
-        text: 'Yes',
-        onPress: () => {
-          void finalizeOrder('copy');
-        },
-      },
-    ]);
+    // Always finalize after copy — the order is done.
+    const finalized = await finalizeOrder('copy');
+    if (!finalized) {
+      setShowRetryActions(true);
+    }
   }, [actionsDisabled, finalizeOrder, messageText]);
 
   return (
@@ -1383,7 +1349,7 @@ export default function FulfillmentConfirmationScreen() {
             </TouchableOpacity>
             <View>
               <Text className="text-lg font-bold text-gray-900">{supplierLabel}</Text>
-              <Text className="text-xs text-gray-500">Confirm Order</Text>
+              <Text className="text-xs text-gray-500">Review Order</Text>
             </View>
           </View>
           <TouchableOpacity onPress={() => router.push('/(manager)/settings/export-format')} className="p-2">
@@ -1863,12 +1829,12 @@ export default function FulfillmentConfirmationScreen() {
               }`}
             >
               <Ionicons
-                name="paper-plane-outline"
+                name={isFinalizing ? 'hourglass-outline' : 'share-social-outline'}
                 size={18}
                 color={actionsDisabled ? colors.gray[400] : 'white'}
               />
               <Text className={`font-semibold ml-2 ${actionsDisabled ? 'text-gray-400' : 'text-white'}`}>
-                {isFinalizing ? 'Finalizing...' : 'Order'}
+                {isFinalizing ? 'Sending...' : 'Share'}
               </Text>
             </TouchableOpacity>
           )}
