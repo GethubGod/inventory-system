@@ -27,6 +27,7 @@ import { BrandLogo } from '@/components';
 import { InventoryItemCard } from '@/components/InventoryItemCard';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { supabase } from '@/lib/supabase';
+import { triggerPendingReminderLocalNotification } from '@/services/notificationService';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -150,6 +151,11 @@ export default function OrderScreen() {
     const rows = data ?? [];
     setUnreadReminderCount(rows.length);
     setLatestReminderMessage(rows[0]?.body ?? null);
+
+    // Trigger a local notification so employees see it even if they backgrounded the app
+    if (rows.length > 0) {
+      triggerPendingReminderLocalNotification(rows[0]?.body).catch(() => {});
+    }
   }, [user?.id]);
 
   useFocusEffect(
@@ -157,6 +163,27 @@ export default function OrderScreen() {
       loadUnreadReminderNotifications();
     }, [loadUnreadReminderNotifications])
   );
+
+  // Realtime: reload reminder banner when notifications table changes for this user
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`employee-reminder-notifs-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => { loadUnreadReminderNotifications(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user?.id, loadUnreadReminderNotifications]);
 
   const onRefresh = async () => {
     setRefreshing(true);

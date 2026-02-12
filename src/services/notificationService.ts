@@ -403,6 +403,53 @@ export async function sendReminderToEmployees(employeeIds: string[]): Promise<vo
   // });
 }
 
+// Trigger local notification for employee with a pending manager reminder.
+// Called on app foreground / focus when unread reminder notifications exist.
+export async function triggerPendingReminderLocalNotification(
+  message?: string
+): Promise<void> {
+  const { notifications } = useSettingsStore.getState();
+  if (!notifications.pushEnabled) return;
+
+  const granted = await requestNotificationPermissions();
+  if (!granted) return;
+
+  // Avoid duplicate: cancel any existing pending-reminder notification first
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  for (const n of scheduled) {
+    if (n.content.data?.type === 'employee-pending-reminder') {
+      await Notifications.cancelScheduledNotificationAsync(n.identifier);
+    }
+  }
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: 'Order Reminder',
+      body: message || 'A manager reminded you to place your order.',
+      data: { type: 'employee-pending-reminder' },
+      sound: true,
+    },
+    trigger: null,
+  });
+}
+
+// Mark pending reminder notifications as read and resolve active reminders
+// client-side after an order is submitted. Belt-and-suspenders alongside DB trigger.
+export async function completePendingRemindersForUser(
+  userId: string
+): Promise<void> {
+  if (!userId) return;
+  const db = supabase as any;
+
+  // Mark in-app reminder notifications as read
+  await db
+    .from('notifications')
+    .update({ read_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('notification_type', 'employee_reminder')
+    .is('read_at', null);
+}
+
 // Send order status update notification
 export async function sendOrderStatusNotification(
   status: string,

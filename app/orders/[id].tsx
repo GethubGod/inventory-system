@@ -16,6 +16,7 @@ import { OrderItemWithInventory } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS, CATEGORY_LABELS, categoryColors } from '@/constants';
 import { supabase } from '@/lib/supabase';
 import { SpinningFish } from '@/components';
+import { completePendingRemindersForUser } from '@/services/notificationService';
 
 export default function OrderDetailScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
@@ -86,6 +87,9 @@ export default function OrderDetailScreen() {
               await submitOrder(currentOrder.id);
               if (Platform.OS !== 'web') {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              }
+              if (user?.id) {
+                completePendingRemindersForUser(user.id).catch(() => {});
               }
               await fetchOrder(currentOrder.id);
             } catch (error: any) {

@@ -22,6 +22,7 @@ import { colors } from '@/constants';
 import { Location, InventoryItem, UnitType } from '@/types';
 import { BrandLogo, OrderConfirmationPopup, SpinningFish } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { completePendingRemindersForUser } from '@/services/notificationService';
 
 // Category emoji mapping
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -440,6 +441,8 @@ export default function CartScreen() {
         locationName,
         itemCount: order.order_items?.length ?? cartItems.length,
       });
+      // Mark pending reminders as completed client-side (DB trigger is primary)
+      completePendingRemindersForUser(user.id).catch(() => {});
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to submit order');
     } finally {

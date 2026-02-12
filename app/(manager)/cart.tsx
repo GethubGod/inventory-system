@@ -21,6 +21,7 @@ import { Location, InventoryItem, UnitType } from '@/types';
 import { OrderConfirmationPopup, SpinningFish } from '@/components';
 import { getInventoryWithStock } from '@/lib/api/stock';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { completePendingRemindersForUser } from '@/services/notificationService';
 
 // Category emoji mapping
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -364,6 +365,7 @@ export default function ManagerCartScreen() {
         locationName,
         itemCount: order.order_items?.length ?? cartItems.length,
       });
+      completePendingRemindersForUser(user.id).catch(() => {});
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to submit order');
     } finally {

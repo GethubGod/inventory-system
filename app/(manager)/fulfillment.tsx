@@ -2190,19 +2190,21 @@ export default function FulfillmentScreen() {
               <Text className="text-gray-400 text-center text-sm mt-4">Searching for orders...</Text>
             </View>
           ) : supplierGroups.length === 0 ? (
-            <View className="items-center py-12">
-              <Text className="text-4xl mb-4">✅</Text>
-              <Text className="text-gray-500 text-center text-lg font-medium">All orders fulfilled</Text>
+            <View className="flex-1 items-center justify-center" style={{ minHeight: 320 }}>
+              <Ionicons name="checkmark-done-outline" size={40} color={colors.gray[300]} />
+              <Text className="text-gray-700 text-center text-lg font-semibold mt-4">All orders fulfilled</Text>
               <Text className="text-gray-400 text-center text-sm mt-2">
-                No pending orders from employees
+                No pending supplier orders right now.
               </Text>
               <TouchableOpacity
                 onPress={() => router.push('/(manager)/employee-reminders')}
-                className="mt-6 px-6 py-3 bg-primary-500 rounded-xl flex-row items-center"
+                className="mt-8 px-7 py-3.5 bg-primary-500 rounded-xl flex-row items-center"
+                style={{ shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}
               >
-                <Ionicons name="notifications-outline" size={16} color="white" />
-                <Text className="text-white font-semibold ml-2">Remind Employees</Text>
+                <Ionicons name="megaphone-outline" size={18} color="white" />
+                <Text className="text-white font-semibold ml-2 text-base">Remind Employees</Text>
               </TouchableOpacity>
+              <Text className="text-gray-300 text-xs mt-4">Pull down to refresh</Text>
             </View>
           ) : (
             supplierGroups.map((group) => renderSupplierSection(group))

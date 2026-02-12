@@ -189,6 +189,24 @@ export default function NotificationsSettingsScreen() {
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
         <NotificationsSection />
+
+        {__DEV__ && (
+          <TouchableOpacity
+            onPress={() => router.push('/settings/notifications-debug')}
+            className="bg-gray-100 rounded-xl flex-row items-center justify-center"
+            style={{
+              marginHorizontal: ds.spacing(16),
+              marginTop: ds.spacing(16),
+              minHeight: Math.max(44, 44),
+              borderRadius: 12,
+            }}
+          >
+            <Ionicons name="bug-outline" size={16} color={colors.gray[500]} />
+            <Text className="text-gray-500 font-medium ml-2" style={{ fontSize: ds.fontSize(13) }}>
+              Notifications Debug (DEV)
+            </Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
