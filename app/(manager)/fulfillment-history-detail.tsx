@@ -1,38 +1,79 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, ScrollView, Share, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
-import { useOrderStore } from '@/store';
+import { useAuthStore, useOrderStore } from '@/store';
 
-function asArray(value: unknown): Array<Record<string, unknown>> {
-  if (!Array.isArray(value)) return [];
-  return value.filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === 'object'));
-}
-
-function toText(value: unknown, fallback = '') {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : fallback;
-}
-
-function toNumber(value: unknown, fallback = 0) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+function formatQuantity(value: number): string {
+  if (!Number.isFinite(value)) return '0';
+  return Number.isInteger(value) ? `${value}` : `${value}`.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
 }
 
 export default function FulfillmentHistoryDetailScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
-  const { pastOrders } = useOrderStore();
+  const { user } = useAuthStore();
+  const { fetchPastOrderById } = useOrderStore();
+  const [isLoading, setIsLoading] = useState(true);
+  const [detail, setDetail] = useState<Awaited<ReturnType<typeof fetchPastOrderById>>>(null);
 
   const targetId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const pastOrder = useMemo(
-    () => pastOrders.find((item) => item.id === targetId) ?? null,
-    [pastOrders, targetId]
+
+  const refreshDetail = useCallback(async () => {
+    if (!targetId) {
+      setDetail(null);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const result = await fetchPastOrderById(targetId, user?.id ?? null);
+      setDetail(result);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [fetchPastOrderById, targetId, user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshDetail();
+    }, [refreshDetail])
   );
 
-  if (!pastOrder) {
+  const pastOrder = detail?.order ?? null;
+  const items = detail?.items ?? [];
+  const supplierLabel = useMemo(() => {
+    if (!pastOrder) return 'Past Order';
+    if (pastOrder.supplierName && pastOrder.supplierName.trim().length > 0) return pastOrder.supplierName;
+    if (pastOrder.supplierId && pastOrder.supplierId.trim().length > 0) {
+      return `Unknown Supplier (${pastOrder.supplierId.slice(0, 8)})`;
+    }
+    return 'Unknown Supplier';
+  }, [pastOrder]);
+
+  const shareMessage = useCallback(async () => {
+    if (!pastOrder) return;
+    try {
+      await Share.share({
+        title: `${supplierLabel} Order`,
+        message: pastOrder.messageText,
+      });
+    } catch (error: any) {
+      Alert.alert('Share Failed', error?.message || 'Unable to open share sheet.');
+    }
+  }, [pastOrder, supplierLabel]);
+
+  const copyMessage = useCallback(async () => {
+    if (!pastOrder) return;
+    await Clipboard.setStringAsync(pastOrder.messageText);
+    Alert.alert('Copied', 'Message copied to clipboard.');
+  }, [pastOrder]);
+
+  if (!isLoading && !pastOrder) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
         <ManagerScaleContainer>
@@ -54,27 +95,6 @@ export default function FulfillmentHistoryDetailScreen() {
     );
   }
 
-  const payload = (pastOrder.payload || {}) as Record<string, unknown>;
-  const regularItems = asArray(payload.regularItems);
-  const remainingItems = asArray(payload.remainingItems);
-  const allItems = [...regularItems, ...remainingItems];
-
-  const shareMessage = async () => {
-    try {
-      await Share.share({
-        title: `${pastOrder.supplierName} Order`,
-        message: pastOrder.messageText,
-      });
-    } catch (error: any) {
-      Alert.alert('Share Failed', error?.message || 'Unable to open share sheet.');
-    }
-  };
-
-  const copyMessage = async () => {
-    await Clipboard.setStringAsync(pastOrder.messageText);
-    Alert.alert('Copied', 'Message copied to clipboard.');
-  };
-
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right', 'bottom']}>
       <ManagerScaleContainer>
@@ -87,8 +107,17 @@ export default function FulfillmentHistoryDetailScreen() {
             <Ionicons name="arrow-back" size={20} color={colors.gray[700]} />
           </TouchableOpacity>
           <View className="flex-1">
-            <Text className="text-lg font-bold text-gray-900">{pastOrder.supplierName}</Text>
-            <Text className="text-xs text-gray-500">{new Date(pastOrder.createdAt).toLocaleString()}</Text>
+            <View className="flex-row items-center">
+              <Text className="text-lg font-bold text-gray-900">{supplierLabel}</Text>
+              {pastOrder?.syncStatus === 'pending_sync' && (
+                <View className="ml-2 rounded-full border border-orange-300 bg-orange-100 px-2 py-0.5">
+                  <Text className="text-[10px] font-semibold text-orange-800">Pending sync</Text>
+                </View>
+              )}
+            </View>
+            <Text className="text-xs text-gray-500">
+              {pastOrder ? new Date(pastOrder.createdAt).toLocaleString() : 'Loading...'}
+            </Text>
           </View>
         </View>
 
@@ -96,42 +125,39 @@ export default function FulfillmentHistoryDetailScreen() {
           <View className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
             <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Summary</Text>
             <Text className="text-sm text-gray-700">
-              {allItems.length} line{allItems.length === 1 ? '' : 's'} • Sent via{' '}
-              {pastOrder.shareMethod === 'copy' ? 'copy' : 'share'}
+              {(pastOrder?.itemCount ?? items.length)} line
+              {(pastOrder?.itemCount ?? items.length) === 1 ? '' : 's'} •{' '}
+              {(pastOrder?.remainingCount ?? 0)} remaining • Sent via{' '}
+              {pastOrder?.shareMethod === 'copy' ? 'copy' : 'share'}
             </Text>
+            {pastOrder?.syncError && (
+              <Text className="text-xs text-orange-700 mt-2">{pastOrder.syncError}</Text>
+            )}
           </View>
 
           <View className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
             <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Items</Text>
-            {allItems.length === 0 ? (
+            {items.length === 0 ? (
               <Text className="text-sm text-gray-500">No item snapshot available.</Text>
             ) : (
-              allItems.map((item, index) => {
-                const name = toText(item.name, 'Unnamed Item');
-                const quantity = toNumber(item.quantity ?? item.decidedQuantity ?? item.decided_quantity, 0);
-                const unit = toText(item.unitLabel ?? item.unit, 'unit');
-                const location = toText(
-                  item.locationName ?? item.location_name ?? item.locationGroup ?? item.location_group,
-                  ''
-                );
-                const note = toText(item.note ?? item.notes, '');
-
+              items.map((item, index) => {
+                const locationLabel = item.locationName || item.locationGroup || '';
                 return (
                   <View
-                    key={`${name}-${index}`}
-                    className={`py-2.5 ${index < allItems.length - 1 ? 'border-b border-gray-100' : ''}`}
+                    key={item.id}
+                    className={`py-2.5 ${index < items.length - 1 ? 'border-b border-gray-100' : ''}`}
                   >
                     <View className="flex-row items-center justify-between">
-                      <Text className="text-sm font-medium text-gray-900 flex-1 pr-3">{name}</Text>
+                      <Text className="text-sm font-medium text-gray-900 flex-1 pr-3">{item.itemName}</Text>
                       <Text className="text-sm font-semibold text-gray-700">
-                        {quantity} {unit}
+                        {formatQuantity(item.quantity)} {item.unit}
                       </Text>
                     </View>
-                    {location.length > 0 && (
-                      <Text className="text-xs text-gray-500 mt-1">{location}</Text>
+                    {locationLabel.length > 0 && (
+                      <Text className="text-xs text-gray-500 mt-1">{locationLabel}</Text>
                     )}
-                    {note.length > 0 && (
-                      <Text className="text-xs text-blue-700 mt-1">Note: {note}</Text>
+                    {item.note && (
+                      <Text className="text-xs text-blue-700 mt-1">Note: {item.note}</Text>
                     )}
                   </View>
                 );
@@ -142,7 +168,9 @@ export default function FulfillmentHistoryDetailScreen() {
           <View className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
             <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Message</Text>
             <View className="bg-gray-50 rounded-xl p-3">
-              <Text className="text-sm text-gray-800 leading-5">{pastOrder.messageText}</Text>
+              <Text className="text-sm text-gray-800 leading-5">
+                {pastOrder?.messageText || 'No message available.'}
+              </Text>
             </View>
           </View>
         </ScrollView>
@@ -152,6 +180,7 @@ export default function FulfillmentHistoryDetailScreen() {
             <TouchableOpacity
               onPress={copyMessage}
               className="flex-1 rounded-xl py-3 items-center justify-center bg-gray-100 mr-3 flex-row"
+              disabled={!pastOrder}
             >
               <Ionicons name="copy-outline" size={17} color={colors.gray[700]} />
               <Text className="text-gray-700 font-semibold ml-2">Copy</Text>
@@ -159,6 +188,7 @@ export default function FulfillmentHistoryDetailScreen() {
             <TouchableOpacity
               onPress={shareMessage}
               className="flex-1 rounded-xl py-3 items-center justify-center bg-primary-500 flex-row"
+              disabled={!pastOrder}
             >
               <Ionicons name="share-social-outline" size={17} color="white" />
               <Text className="text-white font-semibold ml-2">Share Again</Text>

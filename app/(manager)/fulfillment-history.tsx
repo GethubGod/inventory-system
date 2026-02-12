@@ -13,8 +13,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { useAuthStore, useOrderStore } from '@/store';
+import { supabase } from '@/lib/supabase';
 
 type DateFilter = 'all' | 'today' | '7d' | '30d';
+
+interface SupplierLookupRow {
+  name: string;
+  active: boolean;
+}
 
 const DATE_FILTER_OPTIONS: Array<{ key: DateFilter; label: string }> = [
   { key: 'all', label: 'All' },
@@ -79,14 +85,50 @@ function isInDateFilter(createdAt: string, filter: DateFilter) {
 
 export default function FulfillmentHistoryScreen() {
   const { user } = useAuthStore();
-  const { pastOrders, loadFulfillmentData } = useOrderStore();
+  const { pastOrders, fetchPastOrders, flushPendingPastOrderSync } = useOrderStore();
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [supplierById, setSupplierById] = useState<Record<string, SupplierLookupRow>>({});
+
+  const loadSuppliers = useCallback(async () => {
+    const run = async (columns: string) =>
+      (supabase as any)
+        .from('suppliers')
+        .select(columns)
+        .order('name', { ascending: true });
+
+    let data: any[] | null = null;
+    let error: any = null;
+
+    ({ data, error } = await run('id,name,active'));
+    if (error?.code === '42703') {
+      ({ data, error } = await run('id,name'));
+    }
+    if (error) {
+      console.warn('Unable to load suppliers for past-orders list.', error);
+      return;
+    }
+
+    const lookup: Record<string, SupplierLookupRow> = {};
+    (Array.isArray(data) ? data : []).forEach((row) => {
+      const id = typeof row?.id === 'string' ? row.id.trim() : '';
+      const name = typeof row?.name === 'string' ? row.name.trim() : '';
+      if (!id || !name) return;
+      lookup[id] = {
+        name,
+        active: row?.active !== false,
+      };
+    });
+
+    setSupplierById(lookup);
+  }, []);
 
   const refreshData = useCallback(async () => {
-    await loadFulfillmentData(user?.id ?? null);
-  }, [loadFulfillmentData, user?.id]);
+    const managerId = user?.id ?? null;
+    await flushPendingPastOrderSync(managerId);
+    await Promise.all([fetchPastOrders(managerId), loadSuppliers()]);
+  }, [fetchPastOrders, flushPendingPastOrderSync, loadSuppliers, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -105,9 +147,15 @@ export default function FulfillmentHistoryScreen() {
     return pastOrders.filter((row) => {
       if (!isInDateFilter(row.createdAt, dateFilter)) return false;
       if (!normalizedSearch) return true;
-      return row.supplierName.toLowerCase().includes(normalizedSearch);
+      const supplierLookup = row.supplierId ? supplierById[row.supplierId] : null;
+      const fallbackName =
+        typeof row.supplierId === 'string' && row.supplierId.length > 0
+          ? `Unknown Supplier (${row.supplierId.slice(0, 8)})`
+          : 'Unknown Supplier';
+      const displayName = (supplierLookup?.name || row.supplierName || fallbackName).toLowerCase();
+      return displayName.includes(normalizedSearch);
     });
-  }, [dateFilter, normalizedSearch, pastOrders]);
+  }, [dateFilter, normalizedSearch, pastOrders, supplierById]);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
@@ -176,28 +224,58 @@ export default function FulfillmentHistoryScreen() {
             return (
               <TouchableOpacity
                 onPress={() =>
-                  router.push({
-                    pathname: '/(manager)/fulfillment-history-detail',
-                    params: { id: item.id },
-                  } as any)
+                    router.push({
+                      pathname: '/(manager)/past-orders/[id]',
+                      params: { id: item.id },
+                    } as any)
                 }
                 className="bg-white rounded-2xl border border-gray-100 px-4 py-3"
                 activeOpacity={0.7}
               >
+                {(() => {
+                  const supplierLookup = item.supplierId ? supplierById[item.supplierId] : null;
+                  const fallbackName =
+                    typeof item.supplierId === 'string' && item.supplierId.length > 0
+                      ? `Unknown Supplier (${item.supplierId.slice(0, 8)})`
+                      : 'Unknown Supplier';
+                  const supplierLabel = supplierLookup?.name || item.supplierName || fallbackName;
+                  const supplierInactive = supplierLookup ? supplierLookup.active === false : false;
+                  return (
                 <View className="flex-row items-start justify-between">
                   <View className="flex-1 pr-2">
-                    <Text className="text-base font-semibold text-gray-900">{item.supplierName}</Text>
+                    <View className="flex-row items-center">
+                      <Text className="text-base font-semibold text-gray-900">{supplierLabel}</Text>
+                      {supplierInactive && (
+                        <View className="ml-2 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5">
+                          <Text className="text-[10px] font-semibold text-amber-800">Inactive</Text>
+                        </View>
+                      )}
+                      {item.syncStatus === 'pending_sync' && (
+                        <View className="ml-2 rounded-full border border-orange-300 bg-orange-100 px-2 py-0.5">
+                          <Text className="text-[10px] font-semibold text-orange-800">Pending sync</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text className="text-xs text-gray-500 mt-1">{dateLabel}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={16} color={colors.gray[400]} />
                 </View>
+                  );
+                })()}
 
                 <View className="flex-row items-center mt-3">
                   <View className="px-2.5 py-1 rounded-full bg-gray-100 mr-2">
                     <Text className="text-[11px] font-semibold text-gray-700">
-                      {summary.totalItemCount} item{summary.totalItemCount === 1 ? '' : 's'}
+                      {item.itemCount} item{item.itemCount === 1 ? '' : 's'}
                     </Text>
                   </View>
+                  {item.remainingCount > 0 && (
+                    <View className="px-2.5 py-1 rounded-full bg-amber-100 mr-2">
+                      <Text className="text-[11px] font-semibold text-amber-800">
+                        {item.remainingCount} remaining
+                      </Text>
+                    </View>
+                  )}
                   {summary.locations.length > 0 && (
                     <Text className="text-xs text-gray-600">
                       {summary.locations.join(', ')}

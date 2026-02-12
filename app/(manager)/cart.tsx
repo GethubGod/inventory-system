@@ -75,6 +75,25 @@ export default function ManagerCartScreen() {
     Record<string, { min: number; max: number }>
   >({});
 
+  const areStockTargetMapsEqual = useCallback(
+    (
+      a: Record<string, { min: number; max: number }>,
+      b: Record<string, { min: number; max: number }>
+    ) => {
+      const aKeys = Object.keys(a);
+      const bKeys = Object.keys(b);
+      if (aKeys.length !== bKeys.length) return false;
+      for (const key of aKeys) {
+        const aValue = a[key];
+        const bValue = b[key];
+        if (!bValue) return false;
+        if (aValue.min !== bValue.min || aValue.max !== bValue.max) return false;
+      }
+      return true;
+    },
+    []
+  );
+
   useEffect(() => {
     void fetchItems();
   }, [fetchItems]);
@@ -117,7 +136,7 @@ export default function ManagerCartScreen() {
 
       if (locationIds.length === 0) {
         if (isMounted) {
-          setStockTargetsByKey({});
+          setStockTargetsByKey((prev) => (Object.keys(prev).length === 0 ? prev : {}));
         }
         return;
       }
@@ -141,7 +160,7 @@ export default function ManagerCartScreen() {
       );
 
       if (isMounted) {
-        setStockTargetsByKey(nextMap);
+        setStockTargetsByKey((prev) => (areStockTargetMapsEqual(prev, nextMap) ? prev : nextMap));
       }
     };
 
@@ -150,7 +169,7 @@ export default function ManagerCartScreen() {
     return () => {
       isMounted = false;
     };
-  }, [cartLocationIds, getCartItems, remainingSignature]);
+  }, [areStockTargetMapsEqual, cartLocationIds, getCartItems, remainingSignature]);
 
   // Get cart items with inventory details for a location
   const getCartWithDetails = useCallback((locationId: string): CartItemWithDetails[] => {

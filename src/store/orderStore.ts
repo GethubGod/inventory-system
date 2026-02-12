@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
+import NetInfo from '@react-native-community/netinfo';
 import {
   ItemCategory,
   Order,
@@ -52,6 +53,7 @@ type CartByLocation = Record<string, CartItem[]>;
 export type FulfillmentLocationGroup = 'sushi' | 'poki';
 export type OrderLaterItemStatus = 'queued' | 'added' | 'cancelled';
 export type PastOrderShareMethod = 'share' | 'copy';
+export type PastOrderSyncStatus = 'synced' | 'pending_sync';
 
 export interface SupplierDraftItem {
   id: string;
@@ -130,6 +132,52 @@ export interface PastOrder {
   payload: Record<string, unknown>;
   messageText: string;
   shareMethod: PastOrderShareMethod;
+  syncStatus: PastOrderSyncStatus;
+  pendingSyncJobId: string | null;
+  syncError: string | null;
+  itemCount: number;
+  remainingCount: number;
+}
+
+export interface PastOrderItem {
+  id: string;
+  pastOrderId: string;
+  supplierId: string | null;
+  createdBy: string | null;
+  itemId: string;
+  itemName: string;
+  unit: string;
+  quantity: number;
+  locationId: string | null;
+  locationName: string | null;
+  locationGroup: FulfillmentLocationGroup | null;
+  unitType: UnitType | null;
+  orderedAt: string;
+  createdAt: string;
+  note: string | null;
+}
+
+export interface PastOrderDetail {
+  order: PastOrder;
+  items: PastOrderItem[];
+}
+
+interface PendingPastOrderSyncJob {
+  id: string;
+  localPastOrderId: string;
+  existingPastOrderId: string | null;
+  queuedAt: string;
+  supplierId: string;
+  supplierName: string;
+  createdBy: string;
+  messageText: string;
+  shareMethod: PastOrderShareMethod;
+  payload: Record<string, unknown>;
+  lineItems: FinalizedPastOrderLineItemInput[];
+  consumedOrderItemIds: string[];
+  consumedDraftItemIds: string[];
+  retryCount: number;
+  lastError: string | null;
 }
 
 export interface FinalizeSupplierOrderInput {
@@ -153,6 +201,7 @@ export interface FinalizedPastOrderLineItemInput {
   locationName?: string | null;
   locationGroup?: FulfillmentLocationGroup | null;
   unitType?: UnitType | null;
+  note?: string | null;
 }
 
 export interface LastOrderedQuantityLookupInput {
@@ -191,8 +240,10 @@ interface OrderState {
   supplierDrafts: SupplierDraftsBySupplier;
   orderLaterQueue: OrderLaterItem[];
   pastOrders: PastOrder[];
+  pendingPastOrderSyncQueue: PendingPastOrderSyncJob[];
   lastOrderedCacheBySupplier: LastOrderedCacheBySupplier;
   isFulfillmentLoading: boolean;
+  isPastOrderSyncing: boolean;
 
   // Cart actions (location-aware)
   addToCart: (
@@ -257,6 +308,13 @@ interface OrderState {
 
   // Fulfillment actions/state
   loadFulfillmentData: (managerId?: string | null) => Promise<void>;
+  fetchPastOrders: (managerId?: string | null) => Promise<PastOrder[]>;
+  fetchPastOrderById: (
+    pastOrderId: string,
+    managerId?: string | null
+  ) => Promise<PastOrderDetail | null>;
+  flushPendingPastOrderSync: (managerId?: string | null) => Promise<void>;
+  createPastOrder: (input: FinalizeSupplierOrderInput) => Promise<PastOrder>;
   fetchPendingFulfillmentOrders: () => Promise<void>;
   addSupplierDraftItem: (input: SupplierDraftItemInput) => SupplierDraftItem;
   updateSupplierDraftItemQuantity: (draftItemId: string, quantity: number) => void;
@@ -291,6 +349,8 @@ const createCartItemId = () =>
 let pastOrdersTableAvailable: boolean | null = null;
 let orderLaterItemsTableAvailable: boolean | null = null;
 let pastOrderItemsTableAvailable: boolean | null = null;
+let pastOrderItemsNoteColumnAvailable: boolean | null = null;
+let pastOrderSyncListenerInitialized = false;
 
 const ORDER_ITEM_OPTIONAL_COLUMNS = [
   'input_mode',
@@ -706,6 +766,18 @@ function isMissingTableError(error: unknown, tableName: string): boolean {
   );
 }
 
+function isMissingColumnError(error: unknown, columnName: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as { code?: string; message?: string; details?: string; hint?: string };
+  const text = `${err.message || ''} ${err.details || ''} ${err.hint || ''}`.toLowerCase();
+  if (!text.includes(columnName.toLowerCase())) return false;
+  return (
+    err.code === '42703' ||
+    err.code === 'PGRST204' ||
+    text.includes('column') && text.includes('does not exist')
+  );
+}
+
 function normalizeSupplierDraftItem(raw: unknown): SupplierDraftItem | null {
   if (!raw || typeof raw !== 'object') return null;
   const value = raw as Record<string, unknown>;
@@ -867,6 +939,38 @@ function normalizeOrderLaterQueue(raw: unknown): OrderLaterItem[] {
     });
 }
 
+function getPastOrderCountsFromPayload(payload: Record<string, unknown>): {
+  itemCount: number;
+  remainingCount: number;
+} {
+  const regularItems = Array.isArray(payload.regularItems)
+    ? payload.regularItems
+    : Array.isArray(payload.regular_items)
+      ? payload.regular_items
+      : [];
+  const remainingItems = Array.isArray(payload.remainingItems)
+    ? payload.remainingItems
+    : Array.isArray(payload.remaining_items)
+      ? payload.remaining_items
+      : [];
+  const totalRaw =
+    typeof payload.totalItemCount === 'number'
+      ? payload.totalItemCount
+      : typeof payload.total_item_count === 'number'
+        ? payload.total_item_count
+        : regularItems.length + remainingItems.length;
+  const remainingRaw =
+    typeof payload.remainingCount === 'number'
+      ? payload.remainingCount
+      : typeof payload.remaining_count === 'number'
+        ? payload.remaining_count
+        : remainingItems.length;
+
+  const itemCount = Number.isFinite(totalRaw) ? Math.max(0, Number(totalRaw)) : 0;
+  const remainingCount = Number.isFinite(remainingRaw) ? Math.max(0, Number(remainingRaw)) : 0;
+  return { itemCount, remainingCount };
+}
+
 function normalizePastOrder(raw: unknown): PastOrder | null {
   if (!raw || typeof raw !== 'object') return null;
   const value = raw as Record<string, unknown>;
@@ -884,6 +988,12 @@ function normalizePastOrder(raw: unknown): PastOrder | null {
 
   const shareMethod: PastOrderShareMethod =
     value.share_method === 'copy' || value.shareMethod === 'copy' ? 'copy' : 'share';
+  const payload = toJsonObject(value.payload);
+  const counts = getPastOrderCountsFromPayload(payload);
+  const syncStatus: PastOrderSyncStatus =
+    value.sync_status === 'pending_sync' || value.syncStatus === 'pending_sync'
+      ? 'pending_sync'
+      : 'synced';
 
   return {
     id:
@@ -904,9 +1014,26 @@ function normalizePastOrder(raw: unknown): PastOrder | null {
           ? value.createdBy
           : null,
     createdAt: toIsoString(value.created_at ?? value.createdAt),
-    payload: toJsonObject(value.payload),
+    payload,
     messageText,
     shareMethod,
+    syncStatus,
+    pendingSyncJobId:
+      typeof value.pendingSyncJobId === 'string' && value.pendingSyncJobId.trim().length > 0
+        ? value.pendingSyncJobId
+        : null,
+    syncError:
+      typeof value.syncError === 'string' && value.syncError.trim().length > 0
+        ? value.syncError
+        : null,
+    itemCount:
+      typeof value.itemCount === 'number' && Number.isFinite(value.itemCount)
+        ? Math.max(0, value.itemCount)
+        : counts.itemCount,
+    remainingCount:
+      typeof value.remainingCount === 'number' && Number.isFinite(value.remainingCount)
+        ? Math.max(0, value.remainingCount)
+        : counts.remainingCount,
   };
 }
 
@@ -916,6 +1043,279 @@ function normalizePastOrders(raw: unknown): PastOrder[] {
     .map((item) => normalizePastOrder(item))
     .filter((item): item is PastOrder => Boolean(item))
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+function normalizePastOrderItem(raw: unknown): PastOrderItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  const pastOrderId =
+    typeof value.past_order_id === 'string'
+      ? value.past_order_id.trim()
+      : typeof value.pastOrderId === 'string'
+        ? value.pastOrderId.trim()
+        : '';
+  const itemId =
+    typeof value.item_id === 'string'
+      ? value.item_id.trim()
+      : typeof value.itemId === 'string'
+        ? value.itemId.trim()
+        : '';
+  const itemName =
+    typeof value.item_name === 'string'
+      ? value.item_name.trim()
+      : typeof value.itemName === 'string'
+        ? value.itemName.trim()
+        : '';
+  const unit = normalizeHistoryLookupUnit(value.unit);
+  const quantity = toValidNumber(value.quantity);
+  if (!pastOrderId || !itemId || !itemName || !unit || quantity === null || quantity <= 0) return null;
+
+  const id =
+    typeof value.id === 'string' && value.id.trim().length > 0
+      ? value.id
+      : createFulfillmentId('past_item');
+  const locationGroup = normalizeLocationGroup(value.location_group ?? value.locationGroup);
+
+  return {
+    id,
+    pastOrderId,
+    supplierId:
+      typeof value.supplier_id === 'string' && value.supplier_id.trim().length > 0
+        ? value.supplier_id
+        : typeof value.supplierId === 'string' && value.supplierId.trim().length > 0
+          ? value.supplierId
+          : null,
+    createdBy:
+      typeof value.created_by === 'string' && value.created_by.trim().length > 0
+        ? value.created_by
+        : typeof value.createdBy === 'string' && value.createdBy.trim().length > 0
+          ? value.createdBy
+          : null,
+    itemId,
+    itemName,
+    unit,
+    quantity: Math.max(0, quantity),
+    locationId:
+      typeof value.location_id === 'string' && value.location_id.trim().length > 0
+        ? value.location_id
+        : typeof value.locationId === 'string' && value.locationId.trim().length > 0
+          ? value.locationId
+          : null,
+    locationName:
+      typeof value.location_name === 'string' && value.location_name.trim().length > 0
+        ? value.location_name
+        : typeof value.locationName === 'string' && value.locationName.trim().length > 0
+          ? value.locationName
+          : null,
+    locationGroup,
+    unitType: value.unit_type === 'base' || value.unit_type === 'pack'
+      ? value.unit_type
+      : value.unitType === 'base' || value.unitType === 'pack'
+        ? value.unitType
+        : null,
+    orderedAt: toIsoString(value.ordered_at ?? value.orderedAt),
+    createdAt: toIsoString(value.created_at ?? value.createdAt),
+    note: normalizeNote(value.note),
+  };
+}
+
+function normalizePastOrderItems(raw: unknown): PastOrderItem[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => normalizePastOrderItem(item))
+    .filter((item): item is PastOrderItem => Boolean(item))
+    .sort((a, b) => new Date(a.orderedAt).getTime() - new Date(b.orderedAt).getTime());
+}
+
+function createPastOrderSyncJobId() {
+  return `past_sync_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizePendingPastOrderSyncJob(raw: unknown): PendingPastOrderSyncJob | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const value = raw as Record<string, unknown>;
+  const id =
+    typeof value.id === 'string' && value.id.trim().length > 0
+      ? value.id
+      : createPastOrderSyncJobId();
+  const localPastOrderId =
+    typeof value.localPastOrderId === 'string' && value.localPastOrderId.trim().length > 0
+      ? value.localPastOrderId
+      : '';
+  const supplierId =
+    typeof value.supplierId === 'string' && value.supplierId.trim().length > 0
+      ? value.supplierId
+      : '';
+  const supplierName =
+    typeof value.supplierName === 'string' && value.supplierName.trim().length > 0
+      ? value.supplierName
+      : '';
+  const createdBy =
+    typeof value.createdBy === 'string' && value.createdBy.trim().length > 0
+      ? value.createdBy
+      : '';
+  const messageText =
+    typeof value.messageText === 'string' && value.messageText.trim().length > 0
+      ? value.messageText
+      : '';
+  if (!localPastOrderId || !supplierId || !supplierName || !createdBy || !messageText) return null;
+
+  const shareMethod: PastOrderShareMethod = value.shareMethod === 'copy' ? 'copy' : 'share';
+  const lineItems: FinalizedPastOrderLineItemInput[] = Array.isArray(value.lineItems)
+    ? value.lineItems.reduce<FinalizedPastOrderLineItemInput[]>((acc, rawLine) => {
+        const line = rawLine as Record<string, unknown>;
+        const itemId = typeof line.itemId === 'string' ? line.itemId.trim() : '';
+        const itemName = typeof line.itemName === 'string' ? line.itemName.trim() : '';
+        const unit = normalizeHistoryLookupUnit(line.unit);
+        const quantity = toValidNumber(line.quantity);
+        if (!itemId || !itemName || !unit || quantity === null || quantity <= 0) {
+          return acc;
+        }
+
+        acc.push({
+          itemId,
+          itemName,
+          unit,
+          quantity: Math.max(0, quantity),
+          locationId:
+            typeof line.locationId === 'string' && line.locationId.trim().length > 0
+              ? line.locationId.trim()
+              : null,
+          locationName:
+            typeof line.locationName === 'string' && line.locationName.trim().length > 0
+              ? line.locationName.trim()
+              : null,
+          locationGroup: normalizeLocationGroup(line.locationGroup),
+          unitType: line.unitType === 'base' || line.unitType === 'pack' ? line.unitType : null,
+          note: normalizeNote(line.note),
+        });
+
+        return acc;
+      }, [])
+    : [];
+
+  return {
+    id,
+    localPastOrderId,
+    existingPastOrderId:
+      typeof value.existingPastOrderId === 'string' && value.existingPastOrderId.trim().length > 0
+        ? value.existingPastOrderId
+        : null,
+    queuedAt: toIsoString(value.queuedAt),
+    supplierId,
+    supplierName,
+    createdBy,
+    messageText,
+    shareMethod,
+    payload: toJsonObject(value.payload),
+    lineItems,
+    consumedOrderItemIds: toStringArray(value.consumedOrderItemIds),
+    consumedDraftItemIds: toStringArray(value.consumedDraftItemIds),
+    retryCount:
+      typeof value.retryCount === 'number' && Number.isFinite(value.retryCount)
+        ? Math.max(0, Math.floor(value.retryCount))
+        : 0,
+    lastError:
+      typeof value.lastError === 'string' && value.lastError.trim().length > 0
+        ? value.lastError.trim()
+        : null,
+  };
+}
+
+function normalizePendingPastOrderSyncQueue(raw: unknown): PendingPastOrderSyncJob[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((entry) => normalizePendingPastOrderSyncJob(entry))
+    .filter((entry): entry is PendingPastOrderSyncJob => Boolean(entry))
+    .sort((a, b) => new Date(a.queuedAt).getTime() - new Date(b.queuedAt).getTime());
+}
+
+function mergeRemoteAndPendingPastOrders(
+  remote: PastOrder[],
+  local: PastOrder[],
+  queue: PendingPastOrderSyncJob[]
+): PastOrder[] {
+  const remoteById = new Set(remote.map((row) => row.id));
+  const queueByOrderId = new Set(queue.map((job) => job.localPastOrderId));
+  const pendingLocal = local.filter(
+    (row) => row.syncStatus === 'pending_sync' || queueByOrderId.has(row.id)
+  );
+  const unsyncedOnly = pendingLocal.filter((row) => !remoteById.has(row.id));
+  return [...unsyncedOnly, ...remote].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+
+function extractPastOrderItemsFromPayload(order: PastOrder): PastOrderItem[] {
+  const payload = toJsonObject(order.payload);
+  const regularItems = Array.isArray(payload.regularItems)
+    ? payload.regularItems
+    : Array.isArray(payload.regular_items)
+      ? payload.regular_items
+      : [];
+  const remainingItems = Array.isArray(payload.remainingItems)
+    ? payload.remainingItems
+    : Array.isArray(payload.remaining_items)
+      ? payload.remaining_items
+      : [];
+  const rows = [...regularItems, ...remainingItems];
+
+  return rows
+    .map((row, index) => {
+      if (!row || typeof row !== 'object') return null;
+      const value = row as Record<string, unknown>;
+      const itemId =
+        typeof value.inventoryItemId === 'string'
+          ? value.inventoryItemId.trim()
+          : typeof value.itemId === 'string'
+            ? value.itemId.trim()
+            : '';
+      const itemName =
+        typeof value.name === 'string'
+          ? value.name.trim()
+          : typeof value.itemName === 'string'
+            ? value.itemName.trim()
+            : '';
+      const unit = normalizeHistoryLookupUnit(value.unitLabel ?? value.unit);
+      const quantity = toValidNumber(value.quantity ?? value.decidedQuantity ?? value.decided_quantity);
+      if (!itemId || !itemName || !unit || quantity === null || quantity <= 0) return null;
+
+      const itemIdForRow = `payload_item_${order.id}_${index}`;
+      const locationGroup = normalizeLocationGroup(value.locationGroup ?? value.location_group);
+      const note = normalizeNote(value.note);
+      return {
+        id: itemIdForRow,
+        pastOrderId: order.id,
+        supplierId: order.supplierId,
+        createdBy: order.createdBy,
+        itemId,
+        itemName,
+        unit,
+        quantity: Math.max(0, quantity),
+        locationId:
+          typeof value.locationId === 'string' && value.locationId.trim().length > 0
+            ? value.locationId.trim()
+            : typeof value.location_id === 'string' && value.location_id.trim().length > 0
+              ? value.location_id.trim()
+              : null,
+        locationName:
+          typeof value.locationName === 'string' && value.locationName.trim().length > 0
+            ? value.locationName.trim()
+            : typeof value.location_name === 'string' && value.location_name.trim().length > 0
+              ? value.location_name.trim()
+              : null,
+        locationGroup,
+        unitType: value.unitType === 'base' || value.unitType === 'pack'
+          ? value.unitType
+          : value.unit_type === 'base' || value.unit_type === 'pack'
+            ? value.unit_type
+            : null,
+        orderedAt: order.createdAt,
+        createdAt: order.createdAt,
+        note,
+      } satisfies PastOrderItem;
+    })
+    .filter((row): row is PastOrderItem => Boolean(row));
 }
 
 function extractConsumedOrderItemIds(pastOrders: PastOrder[]): Set<string> {
@@ -1030,8 +1430,10 @@ export const useOrderStore = create<OrderState>()(
       supplierDrafts: {},
       orderLaterQueue: [],
       pastOrders: [],
+      pendingPastOrderSyncQueue: [],
       lastOrderedCacheBySupplier: {},
       isFulfillmentLoading: false,
+      isPastOrderSyncing: false,
 
       // Legacy cart property - returns flattened cart for backward compatibility
       get cart() {
@@ -1691,6 +2093,588 @@ export const useOrderStore = create<OrderState>()(
         }
       },
 
+      createPastOrder: async (input) => {
+        const now = new Date().toISOString();
+        const consumedOrderItemIds = Array.from(
+          new Set(
+            (input.consumedOrderItemIds || [])
+              .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+          )
+        );
+        const consumedDraftItemIds = Array.from(
+          new Set(
+            (input.consumedDraftItemIds || [])
+              .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+          )
+        );
+        const normalizedLineItems = (input.lineItems || [])
+          .map((line) => {
+            const itemId = typeof line.itemId === 'string' ? line.itemId.trim() : '';
+            const itemName = typeof line.itemName === 'string' ? line.itemName.trim() : '';
+            const unit = normalizeHistoryLookupUnit(line.unit);
+            const quantity = toValidNumber(line.quantity);
+            if (!itemId || !itemName || !unit || quantity === null || quantity <= 0) {
+              return null;
+            }
+
+            return {
+              itemId,
+              itemName,
+              unit,
+              quantity: Math.max(0, quantity),
+              locationId:
+                typeof line.locationId === 'string' && line.locationId.trim().length > 0
+                  ? line.locationId.trim()
+                  : null,
+              locationName:
+                typeof line.locationName === 'string' && line.locationName.trim().length > 0
+                  ? line.locationName.trim()
+                  : null,
+              locationGroup: normalizeLocationGroup(line.locationGroup),
+              unitType: line.unitType === 'base' || line.unitType === 'pack' ? line.unitType : null,
+              note: normalizeNote(line.note),
+            };
+          })
+          .filter((line): line is {
+            itemId: string;
+            itemName: string;
+            unit: string;
+            quantity: number;
+            locationId: string | null;
+            locationName: string | null;
+            locationGroup: FulfillmentLocationGroup | null;
+            unitType: UnitType | null;
+            note: string | null;
+          } => Boolean(line));
+
+        const payload = {
+          ...toJsonObject(input.payload),
+          sourceOrderItemIds: consumedOrderItemIds,
+          source_order_item_ids: consumedOrderItemIds,
+          sourceDraftItemIds: consumedDraftItemIds,
+          source_draft_item_ids: consumedDraftItemIds,
+        };
+        const counts = getPastOrderCountsFromPayload(payload);
+
+        let nextPastOrder: PastOrder = {
+          id: createFulfillmentId('past'),
+          supplierId: input.supplierId,
+          supplierName: input.supplierName,
+          createdBy: input.createdBy,
+          createdAt: now,
+          payload,
+          messageText: input.messageText,
+          shareMethod: input.shareMethod,
+          syncStatus: 'synced',
+          pendingSyncJobId: null,
+          syncError: null,
+          itemCount: counts.itemCount,
+          remainingCount: counts.remainingCount,
+        };
+
+        const syncJobId = createPastOrderSyncJobId();
+        let queueJob: PendingPastOrderSyncJob | null = null;
+        let persistedPastOrderId: string | null = null;
+
+        const queueForSync = (errorMessage: string, existingPastOrderId: string | null) => {
+          if (!queueJob) {
+            queueJob = {
+              id: syncJobId,
+              localPastOrderId: nextPastOrder.id,
+              existingPastOrderId,
+              queuedAt: now,
+              supplierId: input.supplierId,
+              supplierName: input.supplierName,
+              createdBy: input.createdBy,
+              messageText: input.messageText,
+              shareMethod: input.shareMethod,
+              payload,
+              lineItems: normalizedLineItems,
+              consumedOrderItemIds,
+              consumedDraftItemIds,
+              retryCount: 0,
+              lastError: errorMessage,
+            };
+          } else {
+            queueJob = {
+              ...queueJob,
+              existingPastOrderId: queueJob.existingPastOrderId || existingPastOrderId,
+              lastError: errorMessage,
+            };
+          }
+          nextPastOrder = {
+            ...nextPastOrder,
+            syncStatus: 'pending_sync',
+            pendingSyncJobId: syncJobId,
+            syncError: errorMessage,
+          };
+        };
+
+        if (pastOrdersTableAvailable !== false) {
+          const { data, error } = await (supabase as any)
+            .from('past_orders')
+            .insert({
+              supplier_id: input.supplierId,
+              supplier_name: input.supplierName,
+              created_by: input.createdBy,
+              payload,
+              message_text: input.messageText,
+              share_method: input.shareMethod,
+            })
+            .select('*')
+            .single();
+
+          if (error) {
+            if (isMissingTableError(error, 'past_orders')) {
+              pastOrdersTableAvailable = false;
+            }
+            if (isNetworkLikeError(error) || isMissingTableError(error, 'past_orders')) {
+              queueForSync(error?.message || 'Pending sync while offline.', null);
+            } else {
+              throw error;
+            }
+          } else {
+            pastOrdersTableAvailable = true;
+            if (typeof data?.id === 'string' && data.id.trim().length > 0) {
+              persistedPastOrderId = data.id;
+            }
+            const parsed = normalizePastOrder(data);
+            if (parsed) {
+              nextPastOrder = {
+                ...parsed,
+                syncStatus: 'synced',
+                pendingSyncJobId: null,
+                syncError: null,
+              };
+              persistedPastOrderId = parsed.id;
+            }
+          }
+        } else {
+          queueForSync('Past orders table unavailable. Pending sync.', null);
+        }
+
+        if (
+          persistedPastOrderId &&
+          normalizedLineItems.length > 0 &&
+          pastOrderItemsTableAvailable !== false
+        ) {
+          const buildRows = (includeNote: boolean) =>
+            normalizedLineItems.map((line) => ({
+              past_order_id: persistedPastOrderId,
+              supplier_id: input.supplierId,
+              created_by: input.createdBy,
+              item_id: line.itemId,
+              item_name: line.itemName,
+              unit: line.unit,
+              quantity: line.quantity,
+              location_id: line.locationId,
+              location_name: line.locationName,
+              location_group: line.locationGroup,
+              unit_type: line.unitType,
+              ordered_at: nextPastOrder.createdAt,
+              ...(includeNote ? { note: line.note } : {}),
+            }));
+
+          let includeNote = pastOrderItemsNoteColumnAvailable !== false;
+          let { error } = await (supabase as any)
+            .from('past_order_items')
+            .insert(buildRows(includeNote));
+
+          if (error && includeNote && isMissingColumnError(error, 'note')) {
+            pastOrderItemsNoteColumnAvailable = false;
+            includeNote = false;
+            ({ error } = await (supabase as any)
+              .from('past_order_items')
+              .insert(buildRows(includeNote)));
+          }
+
+          if (error) {
+            if (isMissingTableError(error, 'past_order_items')) {
+              pastOrderItemsTableAvailable = false;
+            }
+            if (isNetworkLikeError(error) || isMissingTableError(error, 'past_order_items')) {
+              queueForSync(
+                error?.message || 'Pending sync for past-order items.',
+                persistedPastOrderId
+              );
+            } else {
+              throw error;
+            }
+          } else {
+            pastOrderItemsTableAvailable = true;
+            if (includeNote) {
+              pastOrderItemsNoteColumnAvailable = true;
+            }
+          }
+        }
+
+        if (!persistedPastOrderId && !queueJob) {
+          queueForSync('Pending sync while offline.', null);
+        }
+
+        set((state) => {
+          const nextQueue = queueJob
+            ? normalizePendingPastOrderSyncQueue([
+                ...state.pendingPastOrderSyncQueue.filter((job) => job.id !== queueJob?.id),
+                queueJob,
+              ])
+            : state.pendingPastOrderSyncQueue;
+          const nextPastOrders = normalizePastOrders([
+            nextPastOrder,
+            ...state.pastOrders.filter((row) => row.id !== nextPastOrder.id),
+          ]);
+          const nextConsumedIds = extractConsumedOrderItemIds(nextPastOrders);
+          const nextOrders = removeConsumedOrderItems(state.orders, nextConsumedIds);
+
+          const nextLastOrderedCacheBySupplier = { ...state.lastOrderedCacheBySupplier };
+          if (normalizedLineItems.length > 0) {
+            const supplierCache = { ...(nextLastOrderedCacheBySupplier[input.supplierId] || {}) };
+            normalizedLineItems.forEach((line) => {
+              const cacheValue: LastOrderedQuantityCacheValue = {
+                quantity: line.quantity,
+                orderedAt: nextPastOrder.createdAt,
+              };
+
+              upsertLastOrderedCacheValue(
+                supplierCache,
+                createLastOrderedAnyKey(line.itemId, line.unit),
+                cacheValue
+              );
+
+              if (line.locationId) {
+                upsertLastOrderedCacheValue(
+                  supplierCache,
+                  createLastOrderedLocationIdKey(line.itemId, line.unit, line.locationId),
+                  cacheValue
+                );
+              }
+              if (line.locationGroup) {
+                upsertLastOrderedCacheValue(
+                  supplierCache,
+                  createLastOrderedLocationGroupKey(line.itemId, line.unit, line.locationGroup),
+                  cacheValue
+                );
+              }
+            });
+
+            nextLastOrderedCacheBySupplier[input.supplierId] = supplierCache;
+          }
+
+          return {
+            pastOrders: nextPastOrders,
+            pendingPastOrderSyncQueue: nextQueue,
+            orders: nextOrders,
+            lastOrderedCacheBySupplier: nextLastOrderedCacheBySupplier,
+          };
+        });
+
+        return nextPastOrder;
+      },
+
+      flushPendingPastOrderSync: async (managerId) => {
+        const queueSnapshot = [...get().pendingPastOrderSyncQueue];
+        if (queueSnapshot.length === 0) return;
+
+        set({ isPastOrderSyncing: true });
+        try {
+          let nextQueue: PendingPastOrderSyncJob[] = [];
+          let nextPastOrders = [...get().pastOrders];
+
+          for (const job of queueSnapshot) {
+            let persistedPastOrderId = job.existingPastOrderId;
+            let syncedOrder: PastOrder | null = null;
+            let retryError: string | null = null;
+
+            try {
+              if (!persistedPastOrderId) {
+                if (pastOrdersTableAvailable === false) {
+                  throw new Error('past_orders table unavailable');
+                }
+
+                const { data, error } = await (supabase as any)
+                  .from('past_orders')
+                  .insert({
+                    supplier_id: job.supplierId,
+                    supplier_name: job.supplierName,
+                    created_by: job.createdBy,
+                    payload: job.payload,
+                    message_text: job.messageText,
+                    share_method: job.shareMethod,
+                  })
+                  .select('*')
+                  .single();
+
+                if (error) throw error;
+                pastOrdersTableAvailable = true;
+                const parsed = normalizePastOrder(data);
+                if (parsed) {
+                  syncedOrder = parsed;
+                  persistedPastOrderId = parsed.id;
+                } else if (typeof data?.id === 'string' && data.id.trim().length > 0) {
+                  persistedPastOrderId = data.id;
+                }
+              }
+
+              if (persistedPastOrderId && job.lineItems.length > 0) {
+                if (pastOrderItemsTableAvailable === false) {
+                  throw new Error('past_order_items table unavailable');
+                }
+
+                // Make retries idempotent for an already-created past order.
+                await (supabase as any)
+                  .from('past_order_items')
+                  .delete()
+                  .eq('past_order_id', persistedPastOrderId)
+                  .eq('created_by', job.createdBy);
+
+                const buildRows = (includeNote: boolean) =>
+                  job.lineItems.map((line) => ({
+                    past_order_id: persistedPastOrderId,
+                    supplier_id: job.supplierId,
+                    created_by: job.createdBy,
+                    item_id: line.itemId,
+                    item_name: line.itemName,
+                    unit: line.unit,
+                    quantity: line.quantity,
+                    location_id: line.locationId ?? null,
+                    location_name: line.locationName ?? null,
+                    location_group: line.locationGroup ?? null,
+                    unit_type: line.unitType ?? null,
+                    ordered_at: syncedOrder?.createdAt || new Date().toISOString(),
+                    ...(includeNote ? { note: line.note ?? null } : {}),
+                  }));
+
+                let includeNote = pastOrderItemsNoteColumnAvailable !== false;
+                let { error } = await (supabase as any)
+                  .from('past_order_items')
+                  .insert(buildRows(includeNote));
+
+                if (error && includeNote && isMissingColumnError(error, 'note')) {
+                  pastOrderItemsNoteColumnAvailable = false;
+                  includeNote = false;
+                  ({ error } = await (supabase as any)
+                    .from('past_order_items')
+                    .insert(buildRows(includeNote)));
+                }
+
+                if (error) throw error;
+                pastOrderItemsTableAvailable = true;
+                if (includeNote) {
+                  pastOrderItemsNoteColumnAvailable = true;
+                }
+              }
+
+              if (!syncedOrder) {
+                const existing = nextPastOrders.find(
+                  (row) => row.id === (persistedPastOrderId || job.localPastOrderId)
+                );
+                syncedOrder = {
+                  ...(existing || {
+                    id: persistedPastOrderId || job.localPastOrderId,
+                    supplierId: job.supplierId,
+                    supplierName: job.supplierName,
+                    createdBy: job.createdBy,
+                    createdAt: new Date().toISOString(),
+                    payload: job.payload,
+                    messageText: job.messageText,
+                    shareMethod: job.shareMethod,
+                    itemCount: getPastOrderCountsFromPayload(job.payload).itemCount,
+                    remainingCount: getPastOrderCountsFromPayload(job.payload).remainingCount,
+                  }),
+                  id: persistedPastOrderId || job.localPastOrderId,
+                  syncStatus: 'synced',
+                  pendingSyncJobId: null,
+                  syncError: null,
+                };
+              } else {
+                syncedOrder = {
+                  ...syncedOrder,
+                  syncStatus: 'synced',
+                  pendingSyncJobId: null,
+                  syncError: null,
+                };
+              }
+
+              nextPastOrders = normalizePastOrders([
+                syncedOrder,
+                ...nextPastOrders.filter(
+                  (row) => row.id !== job.localPastOrderId && row.id !== syncedOrder?.id
+                ),
+              ]);
+            } catch (error: any) {
+              if (isMissingTableError(error, 'past_orders')) pastOrdersTableAvailable = false;
+              if (isMissingTableError(error, 'past_order_items')) pastOrderItemsTableAvailable = false;
+              retryError = error?.message || 'Pending sync failed.';
+            }
+
+            if (retryError) {
+              nextQueue.push({
+                ...job,
+                existingPastOrderId: persistedPastOrderId || job.existingPastOrderId,
+                retryCount: job.retryCount + 1,
+                lastError: retryError,
+              });
+              nextPastOrders = normalizePastOrders(
+                nextPastOrders.map((row) =>
+                  row.id === job.localPastOrderId
+                    ? {
+                        ...row,
+                        syncStatus: 'pending_sync',
+                        pendingSyncJobId: job.id,
+                        syncError: retryError,
+                      }
+                    : row
+                )
+              );
+            }
+          }
+
+          set({
+            pendingPastOrderSyncQueue: normalizePendingPastOrderSyncQueue(nextQueue),
+            pastOrders: nextPastOrders,
+          });
+
+          const userId =
+            typeof managerId === 'string' && managerId.trim().length > 0 ? managerId : null;
+          if (userId) {
+            await get().fetchPastOrders(userId);
+          }
+        } finally {
+          set({ isPastOrderSyncing: false });
+        }
+      },
+
+      fetchPastOrders: async (managerId) => {
+        let remotePastOrders: PastOrder[] | null = null;
+        if (pastOrdersTableAvailable !== false) {
+          const { data, error } = await (supabase as any)
+            .from('past_orders')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(500);
+
+          if (error) {
+            if (isMissingTableError(error, 'past_orders')) {
+              pastOrdersTableAvailable = false;
+            } else {
+              console.warn('Unable to load past_orders, using local fallback.', error);
+            }
+          } else {
+            pastOrdersTableAvailable = true;
+            remotePastOrders = normalizePastOrders(data || []);
+          }
+        }
+
+        if (remotePastOrders && remotePastOrders.length > 0 && pastOrderItemsTableAvailable !== false) {
+          const ids = remotePastOrders.map((row) => row.id);
+          const { data, error } = await (supabase as any)
+            .from('past_order_items')
+            .select('past_order_id')
+            .in('past_order_id', ids)
+            .limit(12000);
+
+          if (error) {
+            if (isMissingTableError(error, 'past_order_items')) {
+              pastOrderItemsTableAvailable = false;
+            } else {
+              console.warn('Unable to load past_order_items counts.', error);
+            }
+          } else {
+            pastOrderItemsTableAvailable = true;
+            const countsByPastOrderId = new Map<string, number>();
+            (data || []).forEach((row: any) => {
+              const pastOrderId =
+                typeof row?.past_order_id === 'string' && row.past_order_id.trim().length > 0
+                  ? row.past_order_id
+                  : '';
+              if (!pastOrderId) return;
+              countsByPastOrderId.set(pastOrderId, (countsByPastOrderId.get(pastOrderId) || 0) + 1);
+            });
+
+            remotePastOrders = remotePastOrders.map((row) => ({
+              ...row,
+              itemCount: countsByPastOrderId.get(row.id) ?? row.itemCount,
+            }));
+          }
+        }
+
+        const merged = remotePastOrders
+          ? mergeRemoteAndPendingPastOrders(
+              remotePastOrders,
+              get().pastOrders,
+              get().pendingPastOrderSyncQueue
+            )
+          : normalizePastOrders(get().pastOrders);
+
+        set({ pastOrders: merged });
+        return merged;
+      },
+
+      fetchPastOrderById: async (pastOrderId, managerId) => {
+        const normalizedPastOrderId =
+          typeof pastOrderId === 'string' && pastOrderId.trim().length > 0 ? pastOrderId.trim() : '';
+        if (!normalizedPastOrderId) return null;
+
+        let order = get().pastOrders.find((row) => row.id === normalizedPastOrderId) || null;
+        if (pastOrdersTableAvailable !== false) {
+          const { data, error } = await (supabase as any)
+            .from('past_orders')
+            .select('*')
+            .eq('id', normalizedPastOrderId)
+            .maybeSingle();
+
+          if (error) {
+            if (isMissingTableError(error, 'past_orders')) {
+              pastOrdersTableAvailable = false;
+            } else {
+              console.warn('Unable to load past_orders detail.', error);
+            }
+          } else if (data) {
+            pastOrdersTableAvailable = true;
+            const parsed = normalizePastOrder(data);
+            if (parsed) {
+              const existingPending = get().pastOrders.find((row) => row.id === parsed.id);
+              order = existingPending?.syncStatus === 'pending_sync'
+                ? {
+                    ...parsed,
+                    syncStatus: existingPending.syncStatus,
+                    pendingSyncJobId: existingPending.pendingSyncJobId,
+                    syncError: existingPending.syncError,
+                  }
+                : parsed;
+            }
+          }
+        }
+
+        if (!order) return null;
+
+        let items: PastOrderItem[] = [];
+        if (pastOrderItemsTableAvailable !== false) {
+          const { data, error } = await (supabase as any)
+            .from('past_order_items')
+            .select('*')
+            .eq('past_order_id', normalizedPastOrderId)
+            .order('ordered_at', { ascending: true });
+
+          if (error) {
+            if (isMissingTableError(error, 'past_order_items')) {
+              pastOrderItemsTableAvailable = false;
+            } else {
+              console.warn('Unable to load past_order_items detail.', error);
+            }
+          } else {
+            pastOrderItemsTableAvailable = true;
+            items = normalizePastOrderItems(data || []);
+          }
+        }
+
+        if (items.length === 0) {
+          items = extractPastOrderItemsFromPayload(order);
+        }
+
+        return { order, items };
+      },
+
       loadFulfillmentData: async (managerId) => {
         const userId =
           typeof managerId === 'string' && managerId.trim().length > 0
@@ -1699,28 +2683,10 @@ export const useOrderStore = create<OrderState>()(
 
         set({ isFulfillmentLoading: true });
         try {
-          let nextPastOrders = get().pastOrders;
+          await get().flushPendingPastOrderSync(userId);
+
+          const nextPastOrders = await get().fetchPastOrders(userId);
           let nextOrderLaterQueue = get().orderLaterQueue;
-
-          if (userId && pastOrdersTableAvailable !== false) {
-            const { data, error } = await (supabase as any)
-              .from('past_orders')
-              .select('*')
-              .eq('created_by', userId)
-              .order('created_at', { ascending: false })
-              .limit(400);
-
-            if (error) {
-              if (isMissingTableError(error, 'past_orders')) {
-                pastOrdersTableAvailable = false;
-              } else {
-                console.warn('Unable to load past_orders, using local fallback.', error);
-              }
-            } else {
-              pastOrdersTableAvailable = true;
-              nextPastOrders = normalizePastOrders(data || []);
-            }
-          }
 
           if (userId && orderLaterItemsTableAvailable !== false) {
             const { data, error } = await (supabase as any)
@@ -2374,150 +3340,15 @@ export const useOrderStore = create<OrderState>()(
       },
 
       finalizeSupplierOrder: async (input) => {
-        const now = new Date().toISOString();
-        const consumedOrderItemIds = Array.from(
-          new Set(
-            (input.consumedOrderItemIds || [])
-              .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-          )
-        );
         const consumedDraftItemIds = Array.from(
           new Set(
             (input.consumedDraftItemIds || [])
               .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
           )
         );
-        const normalizedLineItems = (input.lineItems || [])
-          .map((line) => {
-            const itemId = typeof line.itemId === 'string' ? line.itemId.trim() : '';
-            const itemName = typeof line.itemName === 'string' ? line.itemName.trim() : '';
-            const unit = normalizeHistoryLookupUnit(line.unit);
-            const quantity = toValidNumber(line.quantity);
-            if (!itemId || !itemName || !unit || quantity === null || quantity <= 0) {
-              return null;
-            }
-
-            return {
-              itemId,
-              itemName,
-              unit,
-              quantity: Math.max(0, quantity),
-              locationId:
-                typeof line.locationId === 'string' && line.locationId.trim().length > 0
-                  ? line.locationId.trim()
-                  : null,
-              locationName:
-                typeof line.locationName === 'string' && line.locationName.trim().length > 0
-                  ? line.locationName.trim()
-                  : null,
-              locationGroup: normalizeLocationGroup(line.locationGroup),
-              unitType: line.unitType === 'base' || line.unitType === 'pack' ? line.unitType : null,
-            };
-          })
-          .filter((line): line is {
-            itemId: string;
-            itemName: string;
-            unit: string;
-            quantity: number;
-            locationId: string | null;
-            locationName: string | null;
-            locationGroup: FulfillmentLocationGroup | null;
-            unitType: UnitType | null;
-          } => Boolean(line));
-
-        const payload = {
-          ...toJsonObject(input.payload),
-          sourceOrderItemIds: consumedOrderItemIds,
-          source_order_item_ids: consumedOrderItemIds,
-          sourceDraftItemIds: consumedDraftItemIds,
-          source_draft_item_ids: consumedDraftItemIds,
-        };
-
-        let nextPastOrder: PastOrder = {
-          id: createFulfillmentId('past'),
-          supplierId: input.supplierId,
-          supplierName: input.supplierName,
-          createdBy: input.createdBy,
-          createdAt: now,
-          payload,
-          messageText: input.messageText,
-          shareMethod: input.shareMethod,
-        };
-        let persistedPastOrderId: string | null = null;
-
-        if (pastOrdersTableAvailable !== false) {
-          const { data, error } = await (supabase as any)
-            .from('past_orders')
-            .insert({
-              supplier_id: input.supplierId,
-              supplier_name: input.supplierName,
-              created_by: input.createdBy,
-              payload,
-              message_text: input.messageText,
-              share_method: input.shareMethod,
-            })
-            .select('*')
-            .single();
-
-          if (error) {
-            if (isMissingTableError(error, 'past_orders')) {
-              pastOrdersTableAvailable = false;
-            } else {
-              console.warn('Unable to persist past_orders row; using local fallback.', error);
-            }
-          } else {
-            pastOrdersTableAvailable = true;
-            if (typeof data?.id === 'string' && data.id.trim().length > 0) {
-              persistedPastOrderId = data.id;
-            }
-            const parsed = normalizePastOrder(data);
-            if (parsed) {
-              nextPastOrder = parsed;
-              persistedPastOrderId = parsed.id;
-            }
-          }
-        }
-
-        if (
-          persistedPastOrderId &&
-          normalizedLineItems.length > 0 &&
-          pastOrderItemsTableAvailable !== false
-        ) {
-          const { error } = await (supabase as any)
-            .from('past_order_items')
-            .insert(
-              normalizedLineItems.map((line) => ({
-                past_order_id: persistedPastOrderId,
-                supplier_id: input.supplierId,
-                created_by: input.createdBy,
-                item_id: line.itemId,
-                item_name: line.itemName,
-                unit: line.unit,
-                quantity: line.quantity,
-                location_id: line.locationId,
-                location_name: line.locationName,
-                location_group: line.locationGroup,
-                unit_type: line.unitType,
-                ordered_at: nextPastOrder.createdAt,
-              }))
-            );
-
-          if (error) {
-            if (isMissingTableError(error, 'past_order_items')) {
-              pastOrderItemsTableAvailable = false;
-            } else {
-              console.warn('Unable to persist past_order_items rows.', error);
-            }
-          } else {
-            pastOrderItemsTableAvailable = true;
-          }
-        }
+        const nextPastOrder = await get().createPastOrder(input);
 
         set((state) => {
-          const nextPastOrders = normalizePastOrders([nextPastOrder, ...state.pastOrders]);
-          const nextConsumedIds = extractConsumedOrderItemIds(nextPastOrders);
-          const nextOrders = removeConsumedOrderItems(state.orders, nextConsumedIds);
-
           const draftRemovalSet = new Set(consumedDraftItemIds);
           const nextSupplierDrafts: SupplierDraftsBySupplier = {};
           Object.entries(state.supplierDrafts).forEach(([supplierKey, rows]) => {
@@ -2526,48 +3357,14 @@ export const useOrderStore = create<OrderState>()(
               nextSupplierDrafts[supplierKey] = filteredRows;
             }
           });
-
-          const nextLastOrderedCacheBySupplier = { ...state.lastOrderedCacheBySupplier };
-          if (normalizedLineItems.length > 0) {
-            const supplierCache = { ...(nextLastOrderedCacheBySupplier[input.supplierId] || {}) };
-            normalizedLineItems.forEach((line) => {
-              const cacheValue: LastOrderedQuantityCacheValue = {
-                quantity: line.quantity,
-                orderedAt: nextPastOrder.createdAt,
-              };
-
-              upsertLastOrderedCacheValue(
-                supplierCache,
-                createLastOrderedAnyKey(line.itemId, line.unit),
-                cacheValue
-              );
-
-              if (line.locationId) {
-                upsertLastOrderedCacheValue(
-                  supplierCache,
-                  createLastOrderedLocationIdKey(line.itemId, line.unit, line.locationId),
-                  cacheValue
-                );
-              }
-              if (line.locationGroup) {
-                upsertLastOrderedCacheValue(
-                  supplierCache,
-                  createLastOrderedLocationGroupKey(line.itemId, line.unit, line.locationGroup),
-                  cacheValue
-                );
-              }
-            });
-
-            nextLastOrderedCacheBySupplier[input.supplierId] = supplierCache;
-          }
-
           return {
-            pastOrders: nextPastOrders,
-            orders: nextOrders,
             supplierDrafts: nextSupplierDrafts,
-            lastOrderedCacheBySupplier: nextLastOrderedCacheBySupplier,
           };
         });
+
+        if (nextPastOrder.syncStatus === 'pending_sync') {
+          void get().flushPendingPastOrderSync(input.createdBy);
+        }
 
         return nextPastOrder;
       },
@@ -2580,6 +3377,7 @@ export const useOrderStore = create<OrderState>()(
         supplierDrafts: state.supplierDrafts,
         orderLaterQueue: state.orderLaterQueue,
         pastOrders: state.pastOrders,
+        pendingPastOrderSyncQueue: state.pendingPastOrderSyncQueue,
       }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState || {}) as Partial<OrderState>;
@@ -2593,8 +3391,22 @@ export const useOrderStore = create<OrderState>()(
           supplierDrafts: normalizeSupplierDrafts((persistedState as any)?.supplierDrafts),
           orderLaterQueue: normalizeOrderLaterQueue((persistedState as any)?.orderLaterQueue),
           pastOrders: normalizePastOrders((persistedState as any)?.pastOrders),
+          pendingPastOrderSyncQueue: normalizePendingPastOrderSyncQueue(
+            (persistedState as any)?.pendingPastOrderSyncQueue
+          ),
         };
       },
     }
   )
 );
+
+if (!pastOrderSyncListenerInitialized) {
+  pastOrderSyncListenerInitialized = true;
+  NetInfo.addEventListener((state) => {
+    const online = Boolean(state.isConnected) && state.isInternetReachable !== false;
+    if (!online) return;
+    const store = useOrderStore.getState();
+    if (store.pendingPastOrderSyncQueue.length === 0) return;
+    void store.flushPendingPastOrderSync();
+  });
+}

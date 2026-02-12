@@ -169,6 +169,7 @@ export interface PastOrderItemRow {
   location_group: OrderLaterLocationGroup | null;
   unit_type: UnitType | null;
   ordered_at: string;
+  note: string | null;
   created_at: string;
 }
 
@@ -241,8 +242,9 @@ export interface Supplier {
   id: string;
   name: string;
   phone: string | null;
-  supplier_type: SupplierCategory;
-  is_default: boolean;
+  supplier_type?: SupplierCategory | null;
+  is_default?: boolean;
+  active?: boolean;
   created_at: string;
 }
 
@@ -462,9 +464,10 @@ export interface Database {
       };
       past_order_items: {
         Row: PastOrderItemRow;
-        Insert: Omit<PastOrderItemRow, 'id' | 'created_at' | 'ordered_at'> & {
+        Insert: Omit<PastOrderItemRow, 'id' | 'created_at' | 'ordered_at' | 'note'> & {
           created_at?: string;
           ordered_at?: string;
+          note?: string | null;
         };
         Update: Partial<Omit<PastOrderItemRow, 'id' | 'created_at'>>;
       };

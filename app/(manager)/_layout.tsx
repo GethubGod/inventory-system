@@ -191,6 +191,20 @@ export default function ManagerLayout() {
         }}
       />
       <Tabs.Screen
+        name="past-orders/index"
+        options={{
+          href: null,
+          tabBarStyle: { display: 'none' },
+        }}
+      />
+      <Tabs.Screen
+        name="past-orders/[id]"
+        options={{
+          href: null,
+          tabBarStyle: { display: 'none' },
+        }}
+      />
+      <Tabs.Screen
         name="settings/export-format"
         options={{
           href: null,

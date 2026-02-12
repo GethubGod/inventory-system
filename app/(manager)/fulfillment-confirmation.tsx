@@ -65,6 +65,8 @@ interface ConfirmationItem {
   contributors: ConfirmationContributor[];
   notes: ConfirmationNote[];
   details: ConfirmationDetail[];
+  secondarySupplierName: string | null;
+  secondarySupplierId: string | null;
 }
 
 interface RemainingConfirmationItem {
@@ -83,6 +85,8 @@ interface RemainingConfirmationItem {
   decidedQuantity: number | null;
   note: string | null;
   orderedBy: string;
+  secondarySupplierName: string | null;
+  secondarySupplierId: string | null;
 }
 
 function parseParamArray<T>(value: string | string[] | undefined): T[] {
@@ -161,11 +165,13 @@ export default function FulfillmentConfirmationScreen() {
     items?: string;
     supplier?: string;
     supplierLabel?: string;
+    from?: string;
     remaining?: string;
   }>();
   const { user } = useAuthStore();
   const { exportFormat } = useSettingsStore();
   const {
+    addSupplierDraftItem,
     createOrderLaterItem,
     finalizeSupplierOrder,
     getLastOrderedQuantities,
@@ -332,6 +338,22 @@ export default function FulfillmentConfirmationScreen() {
     if (!supplierId) return 'Supplier';
     return SUPPLIER_CATEGORY_LABELS[supplierId as keyof typeof SUPPLIER_CATEGORY_LABELS] || supplierId;
   }, [supplierId, supplierLabelParam]);
+  const sourceParam = Array.isArray(params.from) ? params.from[0] : params.from;
+
+  const handleBackPress = useCallback(() => {
+    if (sourceParam === 'fulfillment') {
+      router.replace('/(manager)/fulfillment');
+      return;
+    }
+
+    const canGoBack = (router as any)?.canGoBack?.();
+    if (canGoBack) {
+      router.back();
+      return;
+    }
+
+    router.replace('/(manager)/fulfillment');
+  }, [sourceParam]);
 
   const syncOrderStoreDecision = useCallback(
     (orderItemId: string, decidedQuantity: number, decidedBy: string, decidedAt: string) => {
@@ -727,6 +749,102 @@ export default function FulfillmentConfirmationScreen() {
     [syncOrderStoreOrderItemDeletion]
   );
 
+  const handleMoveToSecondarySupplier = useCallback(
+    (item: ConfirmationItem) => {
+      if (!item.secondarySupplierId || !item.secondarySupplierName) return;
+      const targetName = item.secondarySupplierName;
+      const targetId = item.secondarySupplierId;
+
+      Alert.alert(
+        `Move to ${targetName}?`,
+        `${item.name} will be removed from this order and added to ${targetName}.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Move',
+            onPress: () => {
+              void (async () => {
+                const removed = await persistRegularRemoval(item.sourceOrderItemIds);
+                if (!removed) return;
+
+                if (item.sourceDraftItemIds.length > 0) {
+                  removeSupplierDraftItems(item.sourceDraftItemIds);
+                }
+
+                addSupplierDraftItem({
+                  supplierId: targetId,
+                  inventoryItemId: item.inventoryItemId,
+                  name: item.name,
+                  category: item.category,
+                  quantity: item.quantity,
+                  unitType: item.unitType,
+                  unitLabel: item.unitLabel,
+                  locationGroup: item.locationGroup,
+                  locationId: null,
+                  locationName: null,
+                  note: null,
+                });
+
+                if (Platform.OS !== 'web') {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+                setItems((prev) => prev.filter((row) => row.id !== item.id));
+              })();
+            },
+          },
+        ]
+      );
+    },
+    [addSupplierDraftItem, persistRegularRemoval, removeSupplierDraftItems]
+  );
+
+  const handleMoveRemainingToSecondarySupplier = useCallback(
+    (item: RemainingConfirmationItem) => {
+      if (!item.secondarySupplierId || !item.secondarySupplierName) return;
+      const targetName = item.secondarySupplierName;
+      const targetId = item.secondarySupplierId;
+
+      Alert.alert(
+        `Move to ${targetName}?`,
+        `${item.name} will be removed from this order and added to ${targetName}.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Move',
+            onPress: () => {
+              void (async () => {
+                const removed = await persistRemainingRemoval(item.orderItemId);
+                if (!removed) return;
+
+                addSupplierDraftItem({
+                  supplierId: targetId,
+                  inventoryItemId: item.inventoryItemId,
+                  name: item.name,
+                  category: item.category,
+                  quantity: item.decidedQuantity ?? 1,
+                  unitType: item.unitType,
+                  unitLabel: item.unitLabel,
+                  locationGroup: item.locationGroup,
+                  locationId: item.locationId,
+                  locationName: item.locationName,
+                  note: item.note,
+                });
+
+                if (Platform.OS !== 'web') {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+                setRemainingItems((prev) =>
+                  prev.filter((row) => row.orderItemId !== item.orderItemId)
+                );
+              })();
+            },
+          },
+        ]
+      );
+    },
+    [addSupplierDraftItem, persistRemainingRemoval]
+  );
+
   const handleDelete = useCallback(
     (item: ConfirmationItem) => {
       Alert.alert('Remove Item', `Remove ${item.name} from this supplier order?`, [
@@ -993,6 +1111,7 @@ export default function FulfillmentConfirmationScreen() {
         locationName: null,
         locationGroup: item.locationGroup,
         unitType: item.unitType,
+        note: item.notes.length > 0 ? item.notes[0] : null,
       })),
       ...remainingPayload.map((item) => ({
         itemId: item.inventoryItemId,
@@ -1003,6 +1122,7 @@ export default function FulfillmentConfirmationScreen() {
         locationName: item.locationName,
         locationGroup: item.locationGroup,
         unitType: item.unitType,
+        note: item.note,
       })),
     ].filter(
       (line) =>
@@ -1198,6 +1318,25 @@ export default function FulfillmentConfirmationScreen() {
         title: `${supplierLabel} Order`,
       });
 
+      const askForFinalizeConfirmation = () =>
+        Alert.alert('Did you send the order?', 'Only finalize if this order was actually sent.', [
+          { text: 'Not yet', style: 'cancel', onPress: () => setShowRetryActions(true) },
+          {
+            text: 'Yes, sent',
+            onPress: () => {
+              void finalizeOrder('share').then((finalized) => {
+                if (!finalized) setShowRetryActions(true);
+              });
+            },
+          },
+        ]);
+
+      // iOS share callbacks are not always reliable for "sent" confirmation.
+      if (Platform.OS === 'ios') {
+        askForFinalizeConfirmation();
+        return;
+      }
+
       if (result.action === Share.sharedAction) {
         const finalized = await finalizeOrder('share');
         if (!finalized) {
@@ -1240,15 +1379,15 @@ export default function FulfillmentConfirmationScreen() {
         <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center justify-between">
           <View className="flex-row items-center flex-1">
             <TouchableOpacity
-              onPress={() => router.back()}
+              onPress={handleBackPress}
               className="p-2 mr-2"
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Ionicons name="arrow-back" size={20} color={colors.gray[700]} />
             </TouchableOpacity>
             <View>
-              <Text className="text-lg font-bold text-gray-900">Confirm Order</Text>
-              <Text className="text-xs text-gray-500">{supplierLabel}</Text>
+              <Text className="text-lg font-bold text-gray-900">{supplierLabel}</Text>
+              <Text className="text-xs text-gray-500">Confirm Order</Text>
             </View>
           </View>
           <TouchableOpacity onPress={() => router.push('/(manager)/settings/export-format')} className="p-2">
@@ -1337,6 +1476,16 @@ export default function FulfillmentConfirmationScreen() {
                                       <Text className="text-[11px] font-semibold text-blue-700">Set to Order Later</Text>
                                     </TouchableOpacity>
                                   </>
+                                )}
+                                {item.secondarySupplierName && (
+                                  <TouchableOpacity
+                                    onPress={() => handleMoveRemainingToSecondarySupplier(item)}
+                                    className="self-start mt-2 px-2.5 py-1.5 rounded-md bg-purple-50 border border-purple-200"
+                                  >
+                                    <Text className="text-[11px] font-semibold text-purple-700">
+                                      Move to {item.secondarySupplierName}
+                                    </Text>
+                                  </TouchableOpacity>
                                 )}
                               </View>
                             </View>
@@ -1631,6 +1780,18 @@ export default function FulfillmentConfirmationScreen() {
                                   >
                                     <Ionicons name="time-outline" size={16} color="#1D4ED8" />
                                     <Text className="ml-2 text-sm font-semibold text-blue-700">Set to Order Later</Text>
+                                  </TouchableOpacity>
+                                )}
+
+                                {item.secondarySupplierName && (
+                                  <TouchableOpacity
+                                    onPress={() => handleMoveToSecondarySupplier(item)}
+                                    className="mt-3 flex-row items-center justify-center rounded-xl border border-purple-200 bg-purple-50 py-2.5"
+                                  >
+                                    <Ionicons name="swap-horizontal-outline" size={16} color="#7C3AED" />
+                                    <Text className="ml-2 text-sm font-semibold text-purple-700">
+                                      Move to {item.secondarySupplierName}
+                                    </Text>
                                   </TouchableOpacity>
                                 )}
 

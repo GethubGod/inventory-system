@@ -88,8 +88,7 @@ export const DEFAULT_REMINDER_SETTINGS: ReminderSettings = {
 };
 
 export const DEFAULT_EXPORT_FORMAT_SETTINGS: ExportFormatSettings = {
-  template:
-    "Hi, I'd like to place an order:\n\nORDER - Babytuna\nSupplier: {{supplier}}\nDate: {{date}}\n\n{{items}}\n\nPlease confirm availability.\nThank you!",
+  template: '{{items}}\n\nThank you!',
 };
 
 export const DEFAULT_INVENTORY_VIEW: InventoryView = 'list';
