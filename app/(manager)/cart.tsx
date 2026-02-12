@@ -53,7 +53,7 @@ export default function ManagerCartScreen() {
     clearAllCarts,
     createAndSubmitOrder,
   } = useOrderStore();
-  const { items } = useInventoryStore();
+  const { items, fetchItems } = useInventoryStore();
   const { user, locations } = useAuthStore();
 
   // Track expanded items
@@ -75,9 +75,23 @@ export default function ManagerCartScreen() {
     Record<string, { min: number; max: number }>
   >({});
 
+  useEffect(() => {
+    void fetchItems();
+  }, [fetchItems]);
+
   // Get locations with cart items
   const locationsWithCart = useMemo(() => {
-    return locations.filter(loc => cartLocationIds.includes(loc.id));
+    return cartLocationIds.map((locationId) => {
+      const match = locations.find((loc) => loc.id === locationId);
+      if (match) return match;
+      return {
+        id: locationId,
+        name: 'Unknown Location',
+        short_code: '?',
+        active: true,
+        created_at: '',
+      } as Location;
+    });
   }, [locations, cartLocationIds]);
 
   const remainingSignature = useMemo(() => {
@@ -330,8 +344,12 @@ export default function ManagerCartScreen() {
     setSubmittingLocation(locationId);
     try {
       const order = await createAndSubmitOrder(locationId, user.id);
+      const normalizedOrderNumber =
+        typeof order.order_number === 'number' || typeof order.order_number === 'string'
+          ? String(order.order_number)
+          : '---';
       setConfirmation({
-        orderNumber: order.order_number.toString(),
+        orderNumber: normalizedOrderNumber,
         locationName,
         itemCount: order.order_items?.length ?? cartItems.length,
       });
@@ -345,18 +363,21 @@ export default function ManagerCartScreen() {
 
   // Render a compact cart item
   const renderCartItem = useCallback((locationId: string, item: CartItemWithDetails) => {
-    if (!item.inventoryItem) return null;
-
-    const { inventoryItem, unitType } = item;
+    const { unitType } = item;
+    const inventoryItem = item.inventoryItem;
+    const itemName = inventoryItem?.name || `Item ${item.inventoryItemId.slice(0, 8)}`;
+    const category = inventoryItem?.category || 'dry';
     const isRemainingMode = item.inputMode === 'remaining';
     const remainingValue = item.remainingReported ?? 0;
     const quantityValue = item.quantityRequested ?? item.quantity;
     const undecided = isRemainingMode && (item.decidedQuantity === null || item.decidedQuantity < 0);
-    const emoji = CATEGORY_EMOJI[inventoryItem.category] || '📦';
-    const unitLabel = unitType === 'pack' ? inventoryItem.pack_unit : inventoryItem.base_unit;
+    const emoji = CATEGORY_EMOJI[category] || '📦';
+    const packUnitLabel = inventoryItem?.pack_unit || 'pack';
+    const baseUnitLabel = inventoryItem?.base_unit || 'unit';
+    const unitLabel = unitType === 'pack' ? packUnitLabel : baseUnitLabel;
     const key = `${locationId}-${item.id}`;
     const isExpanded = expandedItems.has(key);
-    const targetMeta = stockTargetsByKey[`${locationId}:${inventoryItem.id}`];
+    const targetMeta = stockTargetsByKey[`${locationId}:${item.inventoryItemId}`];
     const target = targetMeta?.max && targetMeta.max > 0 ? targetMeta.max : targetMeta?.min ?? 0;
     const suggestedQuantity = Math.max(0, target - remainingValue);
 
@@ -371,7 +392,7 @@ export default function ManagerCartScreen() {
           <Text className="text-lg mr-2">{emoji}</Text>
           <View className="flex-1">
             <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
-              {inventoryItem.name}
+              {itemName}
             </Text>
             {isRemainingMode && (
               <View className={`self-start mt-1 px-2 py-0.5 rounded-full ${undecided ? 'bg-red-100' : 'bg-amber-100'}`}>
@@ -453,7 +474,7 @@ export default function ManagerCartScreen() {
                   <Text className={`text-xs font-medium ${
                     unitType === 'pack' ? 'text-white' : 'text-gray-600'
                   }`}>
-                    {inventoryItem.pack_unit}
+                    {packUnitLabel}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -472,7 +493,7 @@ export default function ManagerCartScreen() {
                   <Text className={`text-xs font-medium ${
                     unitType === 'base' ? 'text-white' : 'text-gray-600'
                   }`}>
-                    {inventoryItem.base_unit}
+                    {baseUnitLabel}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -482,7 +503,7 @@ export default function ManagerCartScreen() {
                 {/* Move to Another Location Button */}
                 {locations.length > 1 && (
                   <TouchableOpacity
-                    onPress={() => handleOpenMoveModal(locationId, item.id, inventoryItem.id, inventoryItem.name, unitType)}
+                    onPress={() => handleOpenMoveModal(locationId, item.id, item.inventoryItemId, itemName, unitType)}
                     className="p-2 mr-1"
                   >
                     <Ionicons name="swap-horizontal" size={18} color={colors.primary[500]} />
@@ -491,7 +512,7 @@ export default function ManagerCartScreen() {
 
                 {/* Remove Button */}
                 <TouchableOpacity
-                  onPress={() => handleRemoveItem(locationId, inventoryItem.id, inventoryItem.name, item.id)}
+                  onPress={() => handleRemoveItem(locationId, item.inventoryItemId, itemName, item.id)}
                   className="p-2"
                 >
                   <Ionicons name="trash-outline" size={18} color={colors.error} />
@@ -576,7 +597,7 @@ export default function ManagerCartScreen() {
               </View>
             ) : (
               <Text className="text-xs text-gray-400 mt-2">
-                {inventoryItem.pack_size} {inventoryItem.base_unit} per {inventoryItem.pack_unit}
+                {(inventoryItem?.pack_size ?? 1)} {baseUnitLabel} per {packUnitLabel}
               </Text>
             )}
           </View>

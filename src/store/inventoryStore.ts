@@ -38,6 +38,15 @@ interface InventoryState {
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+function extractMissingSchemaColumn(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  const err = error as { code?: string; message?: string };
+  if (err.code !== 'PGRST204') return null;
+  const message = typeof err.message === 'string' ? err.message : '';
+  const matches = Array.from(message.matchAll(/'([^']+)'/g)).map((match) => match[1]);
+  return matches.length > 0 ? matches[0] : null;
+}
+
 export const useInventoryStore = create<InventoryState>()(
   persist(
     (set, get) => ({
@@ -86,14 +95,38 @@ export const useInventoryStore = create<InventoryState>()(
       addItem: async (item) => {
         set({ isLoading: true });
         try {
-          const { data, error } = await supabase
-            .from('inventory_items')
-            .insert({
-              ...item,
-              active: true,
-            })
-            .select()
-            .single();
+          const insertPayload: Record<string, unknown> = {
+            ...item,
+            active: true,
+          };
+
+          let data: any = null;
+          let error: any = null;
+          let insertAttempt = 0;
+
+          while (insertAttempt < 2) {
+            const response = await supabase
+              .from('inventory_items')
+              .insert(insertPayload as any)
+              .select()
+              .single();
+
+            data = response.data;
+            error = response.error;
+            if (!error) break;
+
+            const missingColumn = extractMissingSchemaColumn(error);
+            if (
+              missingColumn === 'created_by' &&
+              Object.prototype.hasOwnProperty.call(insertPayload, 'created_by')
+            ) {
+              delete insertPayload.created_by;
+              insertAttempt += 1;
+              continue;
+            }
+
+            break;
+          }
 
           if (error) throw error;
           if (data) {

@@ -99,7 +99,7 @@ export interface RecurringReminderRule {
 }
 
 export interface ReminderSystemSettings {
-  id: string;
+  id?: string;
   org_id: string;
   overdue_threshold_days: number;
   reminder_rate_limit_minutes: number;
@@ -380,15 +380,19 @@ export async function updateReminderSystemSettings(patch: {
 }): Promise<ReminderSystemSettings> {
   const db = supabase as any;
   const existing = await getReminderSystemSettings();
+  let query = db
+    .from('reminder_system_settings')
+    .update(patch);
 
-  if (!existing?.id) {
+  if (existing?.id) {
+    query = query.eq('id', existing.id);
+  } else if (existing?.org_id) {
+    query = query.eq('org_id', existing.org_id);
+  } else {
     throw new Error('Reminder settings row not found.');
   }
 
-  const { data, error } = await db
-    .from('reminder_system_settings')
-    .update(patch)
-    .eq('id', existing.id)
+  const { data, error } = await query
     .select('*')
     .single();
 

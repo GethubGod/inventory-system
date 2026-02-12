@@ -47,6 +47,7 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
   const tinyFontSize = ds.fontSize(11);
   const modeToggleHeight = Math.max(42, ds.buttonH - ds.spacing(8));
   const modeToggleFontSize = ds.fontSize(14);
+  const actionButtonSize = Math.max(44, ds.icon(40));
 
   const parsedQuantity = Number.parseFloat(quantity);
   const parsedRemaining = Number.parseFloat(remaining);
@@ -74,6 +75,15 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
       });
       setIsExpanded(false);
     }
+  };
+
+  const handleCancelExpand = () => {
+    if (cartItem) return;
+    setIsExpanded(false);
+    setInputMode('quantity');
+    setQuantity('1');
+    setRemaining('0');
+    setUnitType('pack');
   };
 
   const handleUpdateQuantity = (newQty: string) => {
@@ -364,17 +374,29 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
               </TouchableOpacity>
             </View>
 
-            {/* Confirm/Add button when expanded but not in cart */}
+            {/* Cancel/Confirm actions when expanded but not in cart */}
             {isExpanded && !cartItem && (
-              <TouchableOpacity
-                className={`bg-primary-500 w-10 h-10 rounded-lg items-center justify-center ${
-                  !isInputValid ? 'opacity-50' : ''
-                }`}
-                onPress={handleAddToCart}
-                disabled={!isInputValid}
-              >
-                <Ionicons name="checkmark" size={20} color="white" />
-              </TouchableOpacity>
+              <View className="flex-row items-center">
+                <TouchableOpacity
+                  className="bg-gray-100 rounded-lg items-center justify-center"
+                  style={{ width: actionButtonSize, height: actionButtonSize }}
+                  onPress={handleCancelExpand}
+                  accessibilityLabel="Cancel add item"
+                >
+                  <Ionicons name="close" size={ds.icon(20)} color="#6B7280" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  className={`bg-primary-500 rounded-lg items-center justify-center ml-2 ${
+                    !isInputValid ? 'opacity-50' : ''
+                  }`}
+                  style={{ width: actionButtonSize, height: actionButtonSize }}
+                  onPress={handleAddToCart}
+                  disabled={!isInputValid}
+                  accessibilityLabel="Confirm add item"
+                >
+                  <Ionicons name="checkmark" size={ds.icon(20)} color="white" />
+                </TouchableOpacity>
+              </View>
             )}
           </View>
 

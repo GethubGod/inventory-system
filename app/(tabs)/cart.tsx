@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import { useOrderStore, useInventoryStore, useAuthStore } from '@/store';
 import type { CartItem } from '@/store';
 import { colors } from '@/constants';
 import { Location, InventoryItem, UnitType } from '@/types';
-import { OrderConfirmationPopup, SpinningFish } from '@/components';
+import { BrandLogo, OrderConfirmationPopup, SpinningFish } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 // Category emoji mapping
@@ -56,7 +56,7 @@ export default function CartScreen() {
     createAndSubmitOrder,
     setCartItemNote,
   } = useOrderStore();
-  const { items } = useInventoryStore();
+  const { items, fetchItems } = useInventoryStore();
   const { user, locations } = useAuthStore();
 
   // Track expanded items
@@ -80,9 +80,23 @@ export default function CartScreen() {
   const cartLocationIds = getCartLocationIds();
   const totalCartCount = getTotalCartCount();
 
+  useEffect(() => {
+    void fetchItems();
+  }, [fetchItems]);
+
   // Get locations with cart items
   const locationsWithCart = useMemo(() => {
-    return locations.filter(loc => cartLocationIds.includes(loc.id));
+    return cartLocationIds.map((locationId) => {
+      const match = locations.find((loc) => loc.id === locationId);
+      if (match) return match;
+      return {
+        id: locationId,
+        name: 'Unknown Location',
+        short_code: '?',
+        active: true,
+        created_at: '',
+      } as Location;
+    });
   }, [locations, cartLocationIds]);
 
   const hasOtherLocations = useMemo(() => {
@@ -397,8 +411,12 @@ export default function CartScreen() {
     setSubmittingLocation(locationId);
     try {
       const order = await createAndSubmitOrder(locationId, user.id);
+      const normalizedOrderNumber =
+        typeof order.order_number === 'number' || typeof order.order_number === 'string'
+          ? String(order.order_number)
+          : '---';
       setConfirmation({
-        orderNumber: order.order_number.toString(),
+        orderNumber: normalizedOrderNumber,
         locationName,
         itemCount: order.order_items?.length ?? cartItems.length,
       });
@@ -412,14 +430,17 @@ export default function CartScreen() {
 
   // Render a compact cart item
   const renderCartItem = useCallback((locationId: string, item: CartItemWithDetails) => {
-    if (!item.inventoryItem) return null;
-
-    const { inventoryItem, unitType } = item;
+    const { unitType } = item;
+    const inventoryItem = item.inventoryItem;
+    const itemName = inventoryItem?.name || `Item ${item.inventoryItemId.slice(0, 8)}`;
+    const category = inventoryItem?.category || 'dry';
     const isRemainingMode = item.inputMode === 'remaining';
     const value = isRemainingMode ? item.remainingReported ?? 0 : item.quantityRequested ?? item.quantity;
     const valueLabel = isRemainingMode ? 'Remaining' : 'Order';
-    const emoji = CATEGORY_EMOJI[inventoryItem.category] || '📦';
-    const unitLabel = unitType === 'pack' ? inventoryItem.pack_unit : inventoryItem.base_unit;
+    const emoji = CATEGORY_EMOJI[category] || '📦';
+    const packUnitLabel = inventoryItem?.pack_unit || 'pack';
+    const baseUnitLabel = inventoryItem?.base_unit || 'unit';
+    const unitLabel = unitType === 'pack' ? packUnitLabel : baseUnitLabel;
     const key = `${locationId}-${item.id}`;
     const isExpanded = expandedItems.has(key);
     const itemActionButtonSize = Math.max(52, ds.icon(44));
@@ -439,7 +460,7 @@ export default function CartScreen() {
           <Text style={{ fontSize: ds.fontSize(18) }} className="mr-2">{emoji}</Text>
           <View className="flex-1 mr-2">
             <Text style={{ fontSize: ds.fontSize(15) }} className="font-medium text-gray-900" numberOfLines={1} ellipsizeMode="tail">
-              {inventoryItem.name}
+              {itemName}
             </Text>
             <View className="flex-row items-center flex-wrap mt-1">
               <Text style={{ fontSize: ds.fontSize(13) }} className="font-semibold text-gray-700 mr-2">
@@ -517,7 +538,7 @@ export default function CartScreen() {
 
                 {/* Remove Button */}
                 <TouchableOpacity
-                  onPress={() => handleRemoveItem(locationId, inventoryItem.id, inventoryItem.name, item.id)}
+                  onPress={() => handleRemoveItem(locationId, item.inventoryItemId, itemName, item.id)}
                   style={{
                     width: itemActionButtonSize,
                     height: itemActionButtonSize,
@@ -543,7 +564,7 @@ export default function CartScreen() {
                   <Text style={{ fontSize: ds.fontSize(12) }} className={`font-medium ${
                     unitType === 'pack' ? 'text-white' : 'text-gray-600'
                   }`}>
-                    {inventoryItem.pack_unit}
+                    {packUnitLabel}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -554,7 +575,7 @@ export default function CartScreen() {
                   <Text style={{ fontSize: ds.fontSize(12) }} className={`font-medium ${
                     unitType === 'base' ? 'text-white' : 'text-gray-600'
                   }`}>
-                    {inventoryItem.base_unit}
+                    {baseUnitLabel}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -566,7 +587,7 @@ export default function CartScreen() {
                     className="text-gray-400 text-left"
                     numberOfLines={2}
                   >
-                    {inventoryItem.pack_size} {inventoryItem.base_unit} per {inventoryItem.pack_unit}
+                    {(inventoryItem?.pack_size ?? 1)} {baseUnitLabel} per {packUnitLabel}
                   </Text>
                 </View>
               )}
@@ -608,19 +629,35 @@ export default function CartScreen() {
         {/* Location Header */}
         <View style={{ paddingHorizontal: ds.spacing(16), borderTopLeftRadius: ds.radius(12), borderTopRightRadius: ds.radius(12) }} className="bg-white py-3 border border-gray-200 border-b-0">
           <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center flex-1 mr-2">
-              <View style={{ width: ds.icon(40), height: ds.icon(40), borderRadius: ds.icon(20) }} className="bg-primary-500 items-center justify-center mr-3">
-                <Text style={{ fontSize: ds.fontSize(13) }} className="text-white font-bold">{location.short_code}</Text>
+            <TouchableOpacity
+              onPress={() => handleOpenCartLocationModal(location)}
+              className="flex-row items-center flex-1 mr-2"
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <View
+                style={{ width: ds.icon(40), height: ds.icon(40), borderRadius: ds.icon(20) }}
+                className="bg-gray-100 items-center justify-center mr-3"
+              >
+                <BrandLogo variant="inline" size={18} colorMode="light" />
               </View>
               <View className="flex-1">
-                <Text style={{ fontSize: ds.fontSize(16) }} className="font-semibold text-gray-900" numberOfLines={1} ellipsizeMode="tail">
-                  {location.name}
-                </Text>
+                <View className="flex-row items-center">
+                  <Text style={{ fontSize: ds.fontSize(16) }} className="font-semibold text-gray-900 flex-shrink" numberOfLines={1} ellipsizeMode="tail">
+                    {location.name}
+                  </Text>
+                  <Ionicons
+                    name="chevron-down"
+                    size={ds.icon(14)}
+                    color={colors.gray[500]}
+                    style={{ marginLeft: ds.spacing(6) }}
+                  />
+                </View>
                 <Text style={{ fontSize: ds.fontSize(13) }} className="text-gray-500">
                   {itemCount} item{itemCount !== 1 ? 's' : ''} in cart
                 </Text>
               </View>
-            </View>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => handleClearLocationCart(location.id, location.name)}
               className="p-2"
@@ -633,35 +670,6 @@ export default function CartScreen() {
 
         {/* Items List */}
         <View style={{ paddingHorizontal: ds.spacing(16) }} className="bg-white border-l border-r border-gray-200">
-          <TouchableOpacity
-            onPress={() => handleOpenCartLocationModal(location)}
-            className="border-b border-gray-100"
-            style={{
-              minHeight: Math.max(ds.rowH, 60),
-              justifyContent: 'center',
-              paddingVertical: ds.spacing(8),
-            }}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <View className="flex-row items-center">
-              <Ionicons name="location-outline" size={ds.icon(16)} color={colors.gray[500]} />
-              <View style={{ marginLeft: ds.spacing(8), flex: 1, marginRight: ds.spacing(8) }}>
-                <Text style={{ fontSize: ds.fontSize(12) }} className="text-gray-600">
-                  Order Location
-                </Text>
-                <Text
-                  style={{ fontSize: ds.fontSize(14) }}
-                  className="font-semibold text-gray-900"
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {location.name}
-                </Text>
-              </View>
-              <Ionicons name="chevron-down" size={ds.icon(16)} color={colors.gray[500]} />
-            </View>
-          </TouchableOpacity>
-
           {cartWithDetails.map((item) => renderCartItem(location.id, item))}
         </View>
 

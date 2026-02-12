@@ -75,6 +75,15 @@ interface UpdateStorageAreaOptions {
   last_checked_at?: string;
 }
 
+function extractMissingSchemaColumn(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  const err = error as { code?: string; message?: string };
+  if (err.code !== 'PGRST204') return null;
+  const message = typeof err.message === 'string' ? err.message : '';
+  const matches = Array.from(message.matchAll(/'([^']+)'/g)).map((match) => match[1]);
+  return matches.length > 0 ? matches[0] : null;
+}
+
 export async function getStorageAreas(locationId: string): Promise<StorageAreaWithCount[]> {
   const { data, error } = await supabase
     .from('storage_areas')
@@ -187,31 +196,75 @@ export async function updateAreaItemQuantity(
   quantity: number,
   options: UpdateAreaItemQuantityOptions = {}
 ): Promise<void> {
-  const { error } = await supabase
-    .from('area_items')
-    .update({
-      current_quantity: quantity,
-      last_updated_at: options.updated_at ?? new Date().toISOString(),
-      last_updated_by: options.updated_by ?? null,
-    })
-    .eq('id', areaItemId);
+  const payload: Record<string, unknown> = {
+    current_quantity: quantity,
+    last_updated_at: options.updated_at ?? new Date().toISOString(),
+    last_updated_by: options.updated_by ?? null,
+  };
 
-  if (error) throw error;
+  let attempts = 0;
+  while (attempts < 3) {
+    const { error } = await supabase
+      .from('area_items')
+      .update(payload as any)
+      .eq('id', areaItemId);
+
+    if (!error) return;
+
+    const missingColumn = extractMissingSchemaColumn(error);
+    if (
+      missingColumn &&
+      (missingColumn === 'last_updated_at' || missingColumn === 'last_updated_by') &&
+      Object.prototype.hasOwnProperty.call(payload, missingColumn)
+    ) {
+      delete payload[missingColumn];
+      attempts += 1;
+      continue;
+    }
+
+    throw error;
+  }
+
+  throw new Error('Unable to update area item quantity with current schema.');
 }
 
 export async function updateStorageAreaLastChecked(
   areaId: string,
   options: UpdateStorageAreaOptions = {}
 ): Promise<void> {
-  const { error } = await supabase
-    .from('storage_areas')
-    .update({
-      last_checked_at: options.last_checked_at ?? new Date().toISOString(),
-      last_checked_by: options.last_checked_by ?? null,
-    })
-    .eq('id', areaId);
+  const payload: Record<string, unknown> = {
+    last_checked_at: options.last_checked_at ?? new Date().toISOString(),
+    last_checked_by: options.last_checked_by ?? null,
+  };
 
-  if (error) throw error;
+  let attempts = 0;
+  while (attempts < 3) {
+    if (Object.keys(payload).length === 0) {
+      return;
+    }
+
+    const { error } = await supabase
+      .from('storage_areas')
+      .update(payload as any)
+      .eq('id', areaId);
+
+    if (!error) return;
+
+    const missingColumn = extractMissingSchemaColumn(error);
+    if (
+      missingColumn &&
+      (missingColumn === 'last_checked_at' || missingColumn === 'last_checked_by') &&
+      Object.prototype.hasOwnProperty.call(payload, missingColumn)
+    ) {
+      delete payload[missingColumn];
+      attempts += 1;
+      continue;
+    }
+
+    throw error;
+  }
+
+  throw new Error('Unable to update storage area check metadata with current schema.');
 }
 
 export async function getReorderSuggestions(
@@ -272,34 +325,66 @@ export async function getStockHistory(
 }
 
 export async function getInventoryWithStock(locationId?: string): Promise<InventoryWithStock[]> {
-  let query = supabase
-    .from('area_items')
-    .select(
-      `
-        id,
-        active,
-        current_quantity,
-        min_quantity,
-        max_quantity,
-        par_level,
-        unit_type,
-        order_unit,
-        conversion_factor,
-        last_updated_at,
-        inventory_item:inventory_items(*),
-        area:storage_areas(
-          id,
-          name,
-          location_id,
-          check_frequency,
-          last_checked_at,
-          location:locations(*)
-        )
-      `
+  const fullSelect = `
+    id,
+    active,
+    current_quantity,
+    min_quantity,
+    max_quantity,
+    par_level,
+    unit_type,
+    order_unit,
+    conversion_factor,
+    last_updated_at,
+    inventory_item:inventory_items(*),
+    area:storage_areas(
+      id,
+      name,
+      location_id,
+      check_frequency,
+      last_checked_at,
+      location:locations(*)
     )
+  `;
+
+  const fallbackSelect = `
+    id,
+    active,
+    current_quantity,
+    min_quantity,
+    max_quantity,
+    par_level,
+    unit_type,
+    inventory_item:inventory_items(*),
+    area:storage_areas(
+      id,
+      name,
+      location_id,
+      check_frequency,
+      location:locations(*)
+    )
+  `;
+
+  let data: any[] | null = null;
+  let error: any = null;
+
+  const fullAttempt = await supabase
+    .from('area_items')
+    .select(fullSelect)
     .eq('active', true);
 
-  const { data, error } = await query;
+  data = fullAttempt.data as any[] | null;
+  error = fullAttempt.error;
+
+  if (error && extractMissingSchemaColumn(error)) {
+    const fallbackAttempt = await supabase
+      .from('area_items')
+      .select(fallbackSelect)
+      .eq('active', true);
+    data = fallbackAttempt.data as any[] | null;
+    error = fallbackAttempt.error;
+  }
+
   if (error) throw error;
 
   const rows = (data || []) as any[];
@@ -315,6 +400,9 @@ export async function getInventoryWithStock(locationId?: string): Promise<Invent
       last_checked_at: string | null;
       location: Location;
     };
+    if (!inventoryItem || !area?.id || !area?.location_id || !area?.location?.id) {
+      return;
+    }
     const key = `${inventoryItem.id}-${area.location_id}`;
     const current = Number(row.current_quantity ?? 0);
     const min = Number(row.min_quantity ?? 0);

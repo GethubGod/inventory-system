@@ -289,10 +289,23 @@ interface OrderState {
 const createCartItemId = () =>
   `cart_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 
-let orderItemsNoteColumnAvailable: boolean | null = null;
 let pastOrdersTableAvailable: boolean | null = null;
 let orderLaterItemsTableAvailable: boolean | null = null;
 let pastOrderItemsTableAvailable: boolean | null = null;
+
+const ORDER_ITEM_OPTIONAL_COLUMNS = [
+  'input_mode',
+  'quantity_requested',
+  'remaining_reported',
+  'decided_quantity',
+  'decided_by',
+  'decided_at',
+  'note',
+] as const;
+
+type OrderItemOptionalColumn = (typeof ORDER_ITEM_OPTIONAL_COLUMNS)[number];
+
+const missingOrderItemsColumns = new Set<OrderItemOptionalColumn>();
 
 function toValidNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -462,19 +475,26 @@ function toOrderItemInsert(orderId: string, item: CartItem): Omit<OrderItem, 'id
   };
 }
 
-function stripOrderItemNote(
-  item: Omit<OrderItem, 'id' | 'created_at'>
-): Omit<Omit<OrderItem, 'id' | 'created_at'>, 'note'> {
-  const { note: _note, ...rest } = item;
-  return rest;
+function getMissingColumnFromSchemaCacheError(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+  const err = error as { code?: string; message?: string };
+  if (err.code !== 'PGRST204') return null;
+  const message = typeof err.message === 'string' ? err.message : '';
+  const matches = Array.from(message.matchAll(/'([^']+)'/g)).map((match) => match[1]);
+  return matches.length > 0 ? matches[0] : null;
 }
 
-function isMissingOrderItemNoteColumnError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const err = error as { code?: string; message?: string };
-  if (err.code !== 'PGRST204') return false;
-  const message = typeof err.message === 'string' ? err.message : '';
-  return message.includes("'note'") && message.includes("'order_items'");
+function omitOrderItemColumns(
+  item: Omit<OrderItem, 'id' | 'created_at'>,
+  omittedColumns: Set<OrderItemOptionalColumn>
+): Record<string, unknown> {
+  const row = { ...item } as Record<string, unknown>;
+  ORDER_ITEM_OPTIONAL_COLUMNS.forEach((column) => {
+    if (omittedColumns.has(column)) {
+      delete row[column];
+    }
+  });
+  return row;
 }
 
 async function insertOrderItemsWithFallback(
@@ -482,45 +502,43 @@ async function insertOrderItemsWithFallback(
   options?: { includeInventorySelect?: boolean }
 ) {
   const includeInventorySelect = options?.includeInventorySelect === true;
-  const shouldSendNote = orderItemsNoteColumnAvailable !== false;
-  const payload = shouldSendNote ? orderItems : orderItems.map(stripOrderItemNote);
+  const omittedColumns = new Set<OrderItemOptionalColumn>(missingOrderItemsColumns);
+  let attemptCount = 0;
 
-  let query = (supabase as any).from('order_items').insert(payload);
-  if (includeInventorySelect) {
-    query = query.select(`
-      *,
-      inventory_item:inventory_items(*)
-    `);
-  }
-
-  const firstAttempt = await query;
-  if (!firstAttempt.error) {
-    if (shouldSendNote) {
-      orderItemsNoteColumnAvailable = true;
+  while (attemptCount <= ORDER_ITEM_OPTIONAL_COLUMNS.length) {
+    const payload = orderItems.map((item) => omitOrderItemColumns(item, omittedColumns));
+    let query = (supabase as any).from('order_items').insert(payload);
+    if (includeInventorySelect) {
+      query = query.select(`
+        *,
+        inventory_item:inventory_items(*)
+      `);
     }
-    return firstAttempt;
+
+    const attempt = await query;
+    if (!attempt.error) {
+      return attempt;
+    }
+
+    const missingColumn = getMissingColumnFromSchemaCacheError(attempt.error);
+    if (!missingColumn) {
+      throw attempt.error;
+    }
+
+    if (
+      !ORDER_ITEM_OPTIONAL_COLUMNS.includes(missingColumn as OrderItemOptionalColumn) ||
+      omittedColumns.has(missingColumn as OrderItemOptionalColumn)
+    ) {
+      throw attempt.error;
+    }
+
+    const optionalColumn = missingColumn as OrderItemOptionalColumn;
+    omittedColumns.add(optionalColumn);
+    missingOrderItemsColumns.add(optionalColumn);
+    attemptCount += 1;
   }
 
-  if (!shouldSendNote || !isMissingOrderItemNoteColumnError(firstAttempt.error)) {
-    throw firstAttempt.error;
-  }
-
-  // Fallback for environments that have not applied the note migration yet.
-  orderItemsNoteColumnAvailable = false;
-  const fallbackPayload = orderItems.map(stripOrderItemNote);
-  let fallbackQuery = (supabase as any).from('order_items').insert(fallbackPayload);
-  if (includeInventorySelect) {
-    fallbackQuery = fallbackQuery.select(`
-      *,
-      inventory_item:inventory_items(*)
-    `);
-  }
-
-  const fallbackAttempt = await fallbackQuery;
-  if (fallbackAttempt.error) {
-    throw fallbackAttempt.error;
-  }
-  return fallbackAttempt;
+  throw new Error('Unable to insert order items due to missing schema columns.');
 }
 
 function createFulfillmentId(prefix: string) {
@@ -1509,6 +1527,11 @@ export const useOrderStore = create<OrderState>()(
           throw new Error('Cart is empty for this location');
         }
 
+        const cartItemsForInsert = locationCart.filter((item) => getEffectiveQuantity(item) > 0);
+        if (cartItemsForInsert.length === 0) {
+          throw new Error('All cart items are zero quantity. Update at least one item before submit.');
+        }
+
         set({ isLoading: true });
         try {
           // Create order
@@ -1529,7 +1552,7 @@ export const useOrderStore = create<OrderState>()(
           if (!order?.id) throw new Error('Failed to create order');
 
           // Create order items
-          const orderItems: Omit<OrderItem, 'id' | 'created_at'>[] = locationCart.map((item) =>
+          const orderItems: Omit<OrderItem, 'id' | 'created_at'>[] = cartItemsForInsert.map((item) =>
             toOrderItemInsert(order.id, item)
           );
 
@@ -1548,6 +1571,11 @@ export const useOrderStore = create<OrderState>()(
 
         if (locationCart.length === 0) {
           throw new Error('Cart is empty for this location');
+        }
+
+        const cartItemsForInsert = locationCart.filter((item) => getEffectiveQuantity(item) > 0);
+        if (cartItemsForInsert.length === 0) {
+          throw new Error('All cart items are zero quantity. Update at least one item before submit.');
         }
 
         set({ isLoading: true });
@@ -1573,7 +1601,7 @@ export const useOrderStore = create<OrderState>()(
           if (!order?.id) throw new Error('Failed to create order');
 
           // Create order items
-          const orderItemsToInsert: Omit<OrderItem, 'id' | 'created_at'>[] = locationCart.map((item) =>
+          const orderItemsToInsert: Omit<OrderItem, 'id' | 'created_at'>[] = cartItemsForInsert.map((item) =>
             toOrderItemInsert(order.id, item)
           );
 
