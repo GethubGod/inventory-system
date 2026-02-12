@@ -51,7 +51,9 @@ interface CategoryGroup {
 }
 
 interface SupplierGroup {
-  supplierCategory: SupplierCategory;
+  supplierId: string;
+  supplierName: string;
+  supplierType: SupplierCategory | null;
   categoryGroups: CategoryGroup[];
   totalItems: number;
 }
@@ -111,6 +113,13 @@ interface AddLocationOption {
   shortCode: string;
 }
 
+interface SupplierOption {
+  id: string;
+  name: string;
+  supplierType: SupplierCategory | null;
+  isDefault: boolean;
+}
+
 interface RemainingConfirmationItem {
   orderItemId: string;
   orderId: string;
@@ -134,7 +143,7 @@ const LOCATION_GROUP_LABELS: Record<LocationGroup, string> = {
   poki: 'Poki',
 };
 
-const SUPPLIER_ORDER: SupplierCategory[] = ['fish_supplier', 'main_distributor', 'asian_market'];
+const LEGACY_SUPPLIER_IDS: SupplierCategory[] = ['fish_supplier', 'main_distributor', 'asian_market'];
 const SUPPLIER_EMOJI: Record<SupplierCategory, string> = {
   fish_supplier: '🐟',
   main_distributor: '📦',
@@ -145,6 +154,12 @@ const SUPPLIER_COLORS: Record<SupplierCategory, { bg: string; text: string; bord
   fish_supplier: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
   main_distributor: { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200' },
   asian_market: { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200' },
+};
+
+const DEFAULT_SUPPLIER_COLOR = {
+  bg: 'bg-gray-50',
+  text: 'text-gray-800',
+  border: 'border-gray-200',
 };
 
 const getLocationGroup = (locationName?: string, shortCode?: string): LocationGroup => {
@@ -184,6 +199,16 @@ function toItemCategory(value: unknown): ItemCategory {
   }
 }
 
+function isSupplierCategory(value: unknown): value is SupplierCategory {
+  return value === 'fish_supplier' || value === 'main_distributor' || value === 'asian_market';
+}
+
+function toSupplierId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 export default function FulfillmentScreen() {
   const { user, locations } = useAuthStore();
   const { uiScale, buttonSize, textScale } = useDisplayStore((state) => ({
@@ -194,6 +219,7 @@ export default function FulfillmentScreen() {
   const {
     orders,
     orderLaterQueue,
+    supplierDrafts,
     getSupplierDraftItems,
     loadFulfillmentData,
     fetchPendingFulfillmentOrders,
@@ -202,13 +228,14 @@ export default function FulfillmentScreen() {
     updateOrderLaterItemSchedule,
   } = useOrderStore();
   const [refreshing, setRefreshing] = useState(false);
-  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<SupplierCategory>>(new Set());
+  const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
+  const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(new Set());
   const [expandedLocationSections, setExpandedLocationSections] = useState<Set<string>>(new Set());
   const [editedQuantities, setEditedQuantities] = useState<Record<string, number>>({});
   const [expandedNotes, setExpandedNotes] = useState<Set<string>>(new Set());
   const [orderLaterExpanded, setOrderLaterExpanded] = useState(false);
   const [addToTargetItemId, setAddToTargetItemId] = useState<string | null>(null);
-  const [addToSupplier, setAddToSupplier] = useState<SupplierCategory>('fish_supplier');
+  const [addToSupplier, setAddToSupplier] = useState<string>('');
   const [addToLocationGroup, setAddToLocationGroup] = useState<LocationGroup>('sushi');
   const [addToLocationId, setAddToLocationId] = useState<string | null>(null);
   const [scheduleEditItemId, setScheduleEditItemId] = useState<string | null>(null);
@@ -226,16 +253,63 @@ export default function FulfillmentScreen() {
     }
   }, [fetchPendingFulfillmentOrders]);
 
+  const fetchSuppliers = useCallback(async () => {
+    try {
+      const loadSuppliers = async (columns: string) =>
+        (supabase as any)
+          .from('suppliers')
+          .select(columns)
+          .order('name', { ascending: true });
+
+      let data: any[] | null = null;
+      let error: any = null;
+
+      ({ data, error } = await loadSuppliers('id,name,supplier_type,is_default'));
+
+      // Older supplier schemas may not have supplier_type / is_default yet.
+      if (error?.code === '42703') {
+        ({ data, error } = await loadSuppliers('id,name,is_default'));
+      }
+      if (error?.code === '42703') {
+        ({ data, error } = await loadSuppliers('id,name'));
+      }
+      if (error) throw error;
+
+      const normalized = (Array.isArray(data) ? data : [])
+        .map((row) => {
+          const id = toSupplierId(row?.id);
+          const name =
+            typeof row?.name === 'string' && row.name.trim().length > 0 ? row.name.trim() : null;
+          if (!id || !name) return null;
+          const rawSupplierType =
+            row?.supplier_type ?? row?.supplier_category ?? row?.category ?? row?.type;
+          const supplierType = isSupplierCategory(rawSupplierType) ? rawSupplierType : null;
+          return {
+            id,
+            name,
+            supplierType,
+            isDefault: row?.is_default === true,
+          } satisfies SupplierOption;
+        })
+        .filter((row): row is SupplierOption => Boolean(row));
+
+      setSupplierOptions(normalized);
+    } catch (error) {
+      console.error('Error fetching suppliers:', error);
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     try {
-      if (user?.id) {
-        await loadFulfillmentData(user.id);
-      }
-      await fetchPendingOrders();
+      await Promise.all([
+        user?.id ? loadFulfillmentData(user.id) : Promise.resolve(),
+        fetchPendingOrders(),
+        fetchSuppliers(),
+      ]);
     } catch (error) {
       console.error('Error refreshing fulfillment data:', error);
     }
-  }, [fetchPendingOrders, loadFulfillmentData, user?.id]);
+  }, [fetchPendingOrders, fetchSuppliers, loadFulfillmentData, user?.id]);
 
   useEffect(() => {
     void refreshAll();
@@ -258,7 +332,7 @@ export default function FulfillmentScreen() {
         clearTimeout(refreshTimeoutRef.current);
       }
       refreshTimeoutRef.current = setTimeout(() => {
-        void fetchPendingOrders();
+        void Promise.all([fetchPendingOrders(), fetchSuppliers()]);
       }, 250);
     };
 
@@ -272,6 +346,11 @@ export default function FulfillmentScreen() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'order_items' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'suppliers' },
         scheduleRefresh
       )
       .subscribe();
@@ -288,7 +367,7 @@ export default function FulfillmentScreen() {
         realtimeChannelRef.current = null;
       }
     };
-  }, [fetchPendingOrders]);
+  }, [fetchPendingOrders, fetchSuppliers]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -299,6 +378,103 @@ export default function FulfillmentScreen() {
   const pendingOrders = useMemo(() => {
     return (orders as OrderWithDetails[]).filter((order) => order.status === 'submitted');
   }, [orders]);
+
+  const supplierOptionById = useMemo(() => {
+    const map = new Map<string, SupplierOption>();
+    supplierOptions.forEach((supplier) => {
+      map.set(supplier.id, supplier);
+    });
+    return map;
+  }, [supplierOptions]);
+
+  const defaultSupplierIdByType = useMemo(() => {
+    const map = new Map<SupplierCategory, string>();
+    LEGACY_SUPPLIER_IDS.forEach((supplierType) => {
+      const defaultSupplier =
+        supplierOptions.find((row) => row.supplierType === supplierType && row.isDefault) ||
+        supplierOptions.find((row) => row.supplierType === supplierType);
+      if (defaultSupplier) {
+        map.set(supplierType, defaultSupplier.id);
+      }
+    });
+    return map;
+  }, [supplierOptions]);
+
+  const resolveSupplierId = useCallback(
+    (item: InventoryItem) => {
+      const supplierId = toSupplierId((item as InventoryItem & { supplier_id?: string | null }).supplier_id);
+      if (supplierId) return supplierId;
+      return defaultSupplierIdByType.get(item.supplier_category) || item.supplier_category;
+    },
+    [defaultSupplierIdByType]
+  );
+
+  const resolveSupplierType = useCallback(
+    (supplierId: string, fallbackType?: SupplierCategory | null): SupplierCategory | null => {
+      const optionType = supplierOptionById.get(supplierId)?.supplierType;
+      if (optionType) return optionType;
+      if (fallbackType && isSupplierCategory(fallbackType)) return fallbackType;
+      if (isSupplierCategory(supplierId)) return supplierId;
+      return null;
+    },
+    [supplierOptionById]
+  );
+
+  const resolveSupplierName = useCallback(
+    (supplierId: string, fallbackType?: SupplierCategory | null) => {
+      const optionName = supplierOptionById.get(supplierId)?.name;
+      if (optionName) return optionName;
+      if (fallbackType && SUPPLIER_CATEGORY_LABELS[fallbackType]) {
+        return SUPPLIER_CATEGORY_LABELS[fallbackType];
+      }
+      if (isSupplierCategory(supplierId) && SUPPLIER_CATEGORY_LABELS[supplierId]) {
+        return SUPPLIER_CATEGORY_LABELS[supplierId];
+      }
+      return supplierId;
+    },
+    [supplierOptionById]
+  );
+
+  const availableSuppliers = useMemo(() => {
+    const map = new Map<string, SupplierOption>();
+
+    supplierOptions.forEach((row) => {
+      map.set(row.id, row);
+    });
+
+    const ensureSupplier = (supplierId: string) => {
+      if (map.has(supplierId)) return;
+      const supplierType = resolveSupplierType(supplierId, null);
+      map.set(supplierId, {
+        id: supplierId,
+        name: resolveSupplierName(supplierId, supplierType),
+        supplierType,
+        isDefault: false,
+      });
+    };
+
+    Object.keys(supplierDrafts || {}).forEach((supplierId) => {
+      if (supplierId.trim().length > 0) ensureSupplier(supplierId);
+    });
+
+    orderLaterQueue.forEach((item) => {
+      const supplierId = toSupplierId(item.preferredSupplierId);
+      if (supplierId) ensureSupplier(supplierId);
+    });
+
+    if (map.size === 0) {
+      LEGACY_SUPPLIER_IDS.forEach((supplierType) => {
+        map.set(supplierType, {
+          id: supplierType,
+          name: SUPPLIER_CATEGORY_LABELS[supplierType],
+          supplierType,
+          isDefault: false,
+        });
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [orderLaterQueue, resolveSupplierName, resolveSupplierType, supplierDrafts, supplierOptions]);
 
   const supplierGroups = useMemo(() => {
     const itemMap = new Map<string, AggregatedItem>();
@@ -324,10 +500,11 @@ export default function FulfillmentScreen() {
           : Math.max(0, toSafeNumber(orderItem.quantity, 0));
 
         const aggregateModeKey = isRemainingMode ? 'remaining' : 'quantity';
+        const supplierId = resolveSupplierId(item);
         const aggregateKey = [
           item.id,
           item.name.trim().toLowerCase(),
-          item.supplier_category,
+          supplierId,
           item.category,
           aggregateModeKey,
           orderItem.unit_type,
@@ -396,17 +573,21 @@ export default function FulfillmentScreen() {
       });
     });
 
-    const supplierMap = new Map<SupplierCategory, Map<ItemCategory, AggregatedItem[]>>();
+    const supplierMap = new Map<string, Map<ItemCategory, AggregatedItem[]>>();
+    const supplierTypeById = new Map<string, SupplierCategory | null>();
 
     Array.from(itemMap.values()).forEach((aggregatedItem) => {
-      const supplierCategory = aggregatedItem.inventoryItem.supplier_category;
+      const fallbackType = aggregatedItem.inventoryItem.supplier_category;
+      const supplierId = resolveSupplierId(aggregatedItem.inventoryItem);
       const itemCategory = aggregatedItem.inventoryItem.category;
+      const supplierType = resolveSupplierType(supplierId, fallbackType);
+      supplierTypeById.set(supplierId, supplierType);
 
-      if (!supplierMap.has(supplierCategory)) {
-        supplierMap.set(supplierCategory, new Map());
+      if (!supplierMap.has(supplierId)) {
+        supplierMap.set(supplierId, new Map());
       }
 
-      const categoryMap = supplierMap.get(supplierCategory)!;
+      const categoryMap = supplierMap.get(supplierId)!;
       if (!categoryMap.has(itemCategory)) {
         categoryMap.set(itemCategory, []);
       }
@@ -414,11 +595,19 @@ export default function FulfillmentScreen() {
     });
 
     const groups: SupplierGroup[] = [];
-    SUPPLIER_ORDER.forEach((supplierCategory) => {
-      const categoryMap = supplierMap.get(supplierCategory);
-      const draftCount = getSupplierDraftItems(supplierCategory).length;
+    const supplierIds = new Set<string>([
+      ...Array.from(supplierMap.keys()),
+      ...Object.keys(supplierDrafts || {}),
+    ]);
+
+    Array.from(supplierIds.values())
+      .sort((a, b) => resolveSupplierName(a).localeCompare(resolveSupplierName(b)))
+      .forEach((supplierId) => {
+      const categoryMap = supplierMap.get(supplierId);
+      const draftCount = getSupplierDraftItems(supplierId).length;
       if ((!categoryMap || categoryMap.size === 0) && draftCount === 0) return;
 
+      const supplierType = supplierTypeById.get(supplierId) ?? resolveSupplierType(supplierId, null);
       const categoryGroups: CategoryGroup[] = [];
       let totalItems = draftCount;
 
@@ -435,14 +624,23 @@ export default function FulfillmentScreen() {
       );
 
       groups.push({
-        supplierCategory,
+        supplierId,
+        supplierName: resolveSupplierName(supplierId, supplierType),
+        supplierType,
         categoryGroups,
         totalItems,
       });
     });
 
     return groups;
-  }, [getSupplierDraftItems, pendingOrders]);
+  }, [
+    getSupplierDraftItems,
+    pendingOrders,
+    resolveSupplierId,
+    resolveSupplierName,
+    resolveSupplierType,
+    supplierDrafts,
+  ]);
 
   const buildLocationGroupedItems = useCallback((supplierGroup: SupplierGroup) => {
     const groupedItems: LocationGroupedItem[] = [];
@@ -491,7 +689,7 @@ export default function FulfillmentScreen() {
       });
     });
 
-    const draftItems = getSupplierDraftItems(supplierGroup.supplierCategory);
+    const draftItems = getSupplierDraftItems(supplierGroup.supplierId);
     draftItems.forEach((draftItem) => {
       const shortCode =
         typeof draftItem.locationName === 'string' && draftItem.locationName.trim().length > 0
@@ -507,7 +705,7 @@ export default function FulfillmentScreen() {
           id: draftItem.inventoryItemId || `draft-${draftItem.id}`,
           name: draftItem.name,
           category: toItemCategory(draftItem.category),
-          supplier_category: supplierGroup.supplierCategory,
+          supplier_category: supplierGroup.supplierType || 'main_distributor',
           base_unit: draftItem.unitType === 'base' ? draftItem.unitLabel : 'unit',
           pack_unit: draftItem.unitType === 'pack' ? draftItem.unitLabel : 'pack',
           pack_size: 1,
@@ -537,16 +735,16 @@ export default function FulfillmentScreen() {
     return groupedItems;
   }, [getSupplierDraftItems]);
 
-  const toggleSupplier = useCallback((supplier: SupplierCategory) => {
+  const toggleSupplier = useCallback((supplierId: string) => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setExpandedSuppliers((prev) => {
       const next = new Set(prev);
-      if (next.has(supplier)) {
-        next.delete(supplier);
+      if (next.has(supplierId)) {
+        next.delete(supplierId);
       } else {
-        next.add(supplier);
+        next.add(supplierId);
       }
       return next;
     });
@@ -643,7 +841,7 @@ export default function FulfillmentScreen() {
         order.order_items?.forEach((orderItem) => {
           const inventoryItem = orderItem.inventory_item;
           if (!inventoryItem) return;
-          if (inventoryItem.supplier_category !== supplierGroup.supplierCategory) return;
+          if (resolveSupplierId(inventoryItem) !== supplierGroup.supplierId) return;
           if (orderItem.input_mode === 'remaining') return;
 
           const locationGroup = getLocationGroup(order.location?.name, order.location?.short_code);
@@ -772,7 +970,7 @@ export default function FulfillmentScreen() {
         });
       });
 
-      const draftItems = getSupplierDraftItems(supplierGroup.supplierCategory);
+      const draftItems = getSupplierDraftItems(supplierGroup.supplierId);
       draftItems.forEach((draftItem) => {
         const locationGroup = draftItem.locationGroup;
         const unitType = draftItem.unitType;
@@ -944,7 +1142,7 @@ export default function FulfillmentScreen() {
           return a.name.localeCompare(b.name);
         });
     },
-    [buildLocationGroupedItems, getDisplayQuantity, getSupplierDraftItems, pendingOrders]
+    [buildLocationGroupedItems, getDisplayQuantity, getSupplierDraftItems, pendingOrders, resolveSupplierId]
   );
 
   const buildRemainingConfirmationItems = useCallback(
@@ -955,7 +1153,7 @@ export default function FulfillmentScreen() {
         order.order_items?.forEach((orderItem) => {
           const inventoryItem = orderItem.inventory_item;
           if (!inventoryItem) return;
-          if (inventoryItem.supplier_category !== supplierGroup.supplierCategory) return;
+          if (resolveSupplierId(inventoryItem) !== supplierGroup.supplierId) return;
           if (orderItem.input_mode !== 'remaining') return;
 
           const decidedQuantity =
@@ -994,7 +1192,7 @@ export default function FulfillmentScreen() {
 
       return rows;
     },
-    [pendingOrders]
+    [pendingOrders, resolveSupplierId]
   );
 
   const handleSend = useCallback(
@@ -1014,7 +1212,8 @@ export default function FulfillmentScreen() {
       router.push({
         pathname: '/(manager)/fulfillment-confirmation',
         params: {
-          supplier: supplierGroup.supplierCategory,
+          supplier: supplierGroup.supplierId,
+          supplierLabel: supplierGroup.supplierName,
           items: encodeURIComponent(JSON.stringify(regularItems)),
           remaining: encodeURIComponent(JSON.stringify(remainingItems)),
         },
@@ -1051,15 +1250,28 @@ export default function FulfillmentScreen() {
   );
 
   useEffect(() => {
+    if (availableSuppliers.length === 0) return;
+    const hasSelection = availableSuppliers.some((supplier) => supplier.id === addToSupplier);
+    if (!hasSelection) {
+      setAddToSupplier(availableSuppliers[0].id);
+    }
+  }, [addToSupplier, availableSuppliers]);
+
+  useEffect(() => {
     if (!addToTargetItem) return;
 
-    if (addToTargetItem.preferredSupplierId) {
+    if (
+      addToTargetItem.preferredSupplierId &&
+      availableSuppliers.some((supplier) => supplier.id === addToTargetItem.preferredSupplierId)
+    ) {
       setAddToSupplier(addToTargetItem.preferredSupplierId);
+    } else if (!addToSupplier && availableSuppliers.length > 0) {
+      setAddToSupplier(availableSuppliers[0].id);
     }
 
     const preferredGroup = addToTargetItem.preferredLocationGroup || 'sushi';
     setAddToLocationGroup(preferredGroup);
-  }, [addToTargetItem]);
+  }, [addToSupplier, addToTargetItem, availableSuppliers]);
 
   useEffect(() => {
     if (!addToTargetItemId) return;
@@ -1087,6 +1299,10 @@ export default function FulfillmentScreen() {
 
   const handleConfirmAddTo = useCallback(async () => {
     if (!addToTargetItem) return;
+    if (!addToSupplier) {
+      Alert.alert('Missing Supplier', 'Select a supplier before adding this item.');
+      return;
+    }
 
     const selectedLocation = locationOptionsByGroup[addToLocationGroup].find(
       (option) => option.id === addToLocationId
@@ -1106,7 +1322,10 @@ export default function FulfillmentScreen() {
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
-      Alert.alert('Added', `${addToTargetItem.itemName} was added to ${SUPPLIER_CATEGORY_LABELS[addToSupplier]}.`);
+      Alert.alert(
+        'Added',
+        `${addToTargetItem.itemName} was added to ${resolveSupplierName(addToSupplier)}.`
+      );
     }
 
     closeAddToModal();
@@ -1118,6 +1337,7 @@ export default function FulfillmentScreen() {
     closeAddToModal,
     locationOptionsByGroup,
     moveOrderLaterItemToSupplierDraft,
+    resolveSupplierName,
   ]);
 
   const handleRemoveOrderLater = useCallback((itemId: string, itemName: string) => {
@@ -1288,10 +1508,12 @@ export default function FulfillmentScreen() {
 
   const renderSupplierSection = useCallback(
     (supplierGroup: SupplierGroup) => {
-      const isExpanded = expandedSuppliers.has(supplierGroup.supplierCategory);
-      const colorScheme = SUPPLIER_COLORS[supplierGroup.supplierCategory];
-      const emoji = SUPPLIER_EMOJI[supplierGroup.supplierCategory];
-      const label = SUPPLIER_CATEGORY_LABELS[supplierGroup.supplierCategory];
+      const isExpanded = expandedSuppliers.has(supplierGroup.supplierId);
+      const colorScheme = supplierGroup.supplierType
+        ? SUPPLIER_COLORS[supplierGroup.supplierType]
+        : DEFAULT_SUPPLIER_COLOR;
+      const emoji = supplierGroup.supplierType ? SUPPLIER_EMOJI[supplierGroup.supplierType] : '🏪';
+      const label = supplierGroup.supplierName;
       const locationItems = buildLocationGroupedItems(supplierGroup);
       const supplierItemCount = locationItems.length;
       const supplierRemainingCount = locationItems.filter((item) => item.isRemainingMode).length;
@@ -1301,10 +1523,10 @@ export default function FulfillmentScreen() {
       ].filter((section) => section.items.length > 0);
 
       return (
-        <View key={supplierGroup.supplierCategory} className="mb-4">
+        <View key={supplierGroup.supplierId} className="mb-4">
           <TouchableOpacity
             className={`p-4 rounded-xl ${colorScheme.bg} border ${colorScheme.border}`}
-            onPress={() => toggleSupplier(supplierGroup.supplierCategory)}
+            onPress={() => toggleSupplier(supplierGroup.supplierId)}
             activeOpacity={0.7}
           >
             {useStackedSupplierActions ? (
@@ -1380,7 +1602,7 @@ export default function FulfillmentScreen() {
           {isExpanded && (
             <View className="mt-3">
               {sections.map((section) => {
-                const sectionKey = `${supplierGroup.supplierCategory}-${section.group}`;
+                const sectionKey = `${supplierGroup.supplierId}-${section.group}`;
                 const sectionExpanded = expandedLocationSections.has(sectionKey);
                 const locationLabel = LOCATION_GROUP_LABELS[section.group];
                 const sectionInitial = locationLabel.charAt(0);
@@ -1609,19 +1831,19 @@ export default function FulfillmentScreen() {
               </View>
 
               <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Supplier</Text>
-              <View className="flex-row mb-3">
-                {SUPPLIER_ORDER.map((supplierId) => {
-                  const selected = supplierId === addToSupplier;
+              <View className="flex-row flex-wrap mb-3">
+                {availableSuppliers.map((supplier) => {
+                  const selected = supplier.id === addToSupplier;
                   return (
                     <TouchableOpacity
-                      key={supplierId}
-                      onPress={() => setAddToSupplier(supplierId)}
-                      className={`px-3 py-2 rounded-lg mr-2 ${
+                      key={supplier.id}
+                      onPress={() => setAddToSupplier(supplier.id)}
+                      className={`px-3 py-2 rounded-lg mr-2 mb-2 ${
                         selected ? 'bg-primary-500' : 'bg-white border border-gray-200'
                       }`}
                     >
                       <Text className={`text-xs font-semibold ${selected ? 'text-white' : 'text-gray-700'}`}>
-                        {SUPPLIER_CATEGORY_LABELS[supplierId]}
+                        {supplier.name}
                       </Text>
                     </TouchableOpacity>
                   );

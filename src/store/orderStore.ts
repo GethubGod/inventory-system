@@ -8,7 +8,6 @@ import {
   OrderItem,
   OrderStatus,
   OrderWithDetails,
-  SupplierCategory,
   UnitType,
 } from '@/types';
 import { supabase } from '@/lib/supabase';
@@ -56,7 +55,7 @@ export type PastOrderShareMethod = 'share' | 'copy';
 
 export interface SupplierDraftItem {
   id: string;
-  supplierId: SupplierCategory;
+  supplierId: string;
   inventoryItemId: string | null;
   name: string;
   category: ItemCategory | string;
@@ -72,7 +71,7 @@ export interface SupplierDraftItem {
 }
 
 export interface SupplierDraftItemInput {
-  supplierId: SupplierCategory;
+  supplierId: string;
   inventoryItemId?: string | null;
   name: string;
   category?: ItemCategory | string;
@@ -97,7 +96,7 @@ export interface OrderLaterItem {
   locationId: string | null;
   locationName: string | null;
   notes: string | null;
-  preferredSupplierId: SupplierCategory | null;
+  preferredSupplierId: string | null;
   preferredLocationGroup: FulfillmentLocationGroup | null;
   sourceOrderItemId: string | null;
   sourceOrderId: string | null;
@@ -115,7 +114,7 @@ export interface CreateOrderLaterItemInput {
   locationId?: string | null;
   locationName?: string | null;
   notes?: string | null;
-  preferredSupplierId?: SupplierCategory | null;
+  preferredSupplierId?: string | null;
   preferredLocationGroup?: FulfillmentLocationGroup | null;
   sourceOrderItemId?: string | null;
   sourceOrderId?: string | null;
@@ -263,13 +262,13 @@ interface OrderState {
   updateSupplierDraftItemQuantity: (draftItemId: string, quantity: number) => void;
   removeSupplierDraftItem: (draftItemId: string) => void;
   removeSupplierDraftItems: (draftItemIds: string[]) => void;
-  getSupplierDraftItems: (supplierId: SupplierCategory) => SupplierDraftItem[];
+  getSupplierDraftItems: (supplierId: string) => SupplierDraftItem[];
   createOrderLaterItem: (input: CreateOrderLaterItemInput) => Promise<OrderLaterItem>;
   updateOrderLaterItemSchedule: (itemId: string, scheduledAt: string) => Promise<OrderLaterItem | null>;
   removeOrderLaterItem: (itemId: string) => Promise<void>;
   moveOrderLaterItemToSupplierDraft: (
     itemId: string,
-    supplierId: SupplierCategory,
+    supplierId: string,
     locationGroup: FulfillmentLocationGroup,
     options?: {
       locationId?: string | null;
@@ -278,7 +277,7 @@ interface OrderState {
     }
   ) => Promise<SupplierDraftItem | null>;
   getLastOrderedQuantities: (params: {
-    supplierId: SupplierCategory;
+    supplierId: string;
     managerId?: string | null;
     items: LastOrderedQuantityLookupInput[];
     forceRefresh?: boolean;
@@ -567,15 +566,10 @@ function toJsonObject(value: unknown): Record<string, unknown> {
   return {};
 }
 
-function normalizeSupplierCategory(value: unknown): SupplierCategory | null {
-  if (
-    value === 'fish_supplier' ||
-    value === 'main_distributor' ||
-    value === 'asian_market'
-  ) {
-    return value;
-  }
-  return null;
+function normalizeSupplierId(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 function normalizeLocationGroup(value: unknown): FulfillmentLocationGroup | null {
@@ -715,7 +709,7 @@ function isMissingTableError(error: unknown, tableName: string): boolean {
 function normalizeSupplierDraftItem(raw: unknown): SupplierDraftItem | null {
   if (!raw || typeof raw !== 'object') return null;
   const value = raw as Record<string, unknown>;
-  const supplierId = normalizeSupplierCategory(value.supplierId);
+  const supplierId = normalizeSupplierId(value.supplierId);
   const name = typeof value.name === 'string' ? value.name.trim() : '';
   if (!supplierId || name.length === 0) return null;
 
@@ -770,7 +764,7 @@ function normalizeSupplierDrafts(raw: unknown): SupplierDraftsBySupplier {
   const next: SupplierDraftsBySupplier = {};
 
   Object.entries(source).forEach(([supplierId, rows]) => {
-    const normalizedSupplierId = normalizeSupplierCategory(supplierId);
+    const normalizedSupplierId = normalizeSupplierId(supplierId);
     if (!normalizedSupplierId || !Array.isArray(rows)) return;
     const normalizedRows = rows
       .map((row) => normalizeSupplierDraftItem(row))
@@ -833,7 +827,7 @@ function normalizeOrderLaterItem(raw: unknown): OrderLaterItem | null {
           ? value.locationName.trim()
           : null,
     notes: normalizeNote(value.notes),
-    preferredSupplierId: normalizeSupplierCategory(value.preferred_supplier_id ?? value.preferredSupplierId),
+    preferredSupplierId: normalizeSupplierId(value.preferred_supplier_id ?? value.preferredSupplierId),
     preferredLocationGroup: normalizeLocationGroup(
       value.preferred_location_group ?? value.preferredLocationGroup
     ),
@@ -2000,7 +1994,7 @@ export const useOrderStore = create<OrderState>()(
               ? input.locationName.trim()
               : null,
           notes: normalizeNote(input.notes),
-          preferredSupplierId: normalizeSupplierCategory(input.preferredSupplierId),
+          preferredSupplierId: normalizeSupplierId(input.preferredSupplierId),
           preferredLocationGroup: normalizeLocationGroup(input.preferredLocationGroup),
           sourceOrderItemId:
             typeof input.sourceOrderItemId === 'string' && input.sourceOrderItemId.trim().length > 0

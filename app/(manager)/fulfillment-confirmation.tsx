@@ -16,7 +16,6 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { SUPPLIER_CATEGORY_LABELS, colors } from '@/constants';
 import { useAuthStore, useOrderStore, useSettingsStore } from '@/store';
-import { SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
@@ -158,7 +157,12 @@ function assertNoReportedInExportText(message: string) {
 }
 
 export default function FulfillmentConfirmationScreen() {
-  const params = useLocalSearchParams<{ items?: string; supplier?: string; remaining?: string }>();
+  const params = useLocalSearchParams<{
+    items?: string;
+    supplier?: string;
+    supplierLabel?: string;
+    remaining?: string;
+  }>();
   const { user } = useAuthStore();
   const { exportFormat } = useSettingsStore();
   const {
@@ -313,19 +317,21 @@ export default function FulfillmentConfirmationScreen() {
   >(null);
 
   const supplierParam = Array.isArray(params.supplier) ? params.supplier[0] : params.supplier;
-  const supplierLabel = supplierParam
-    ? SUPPLIER_CATEGORY_LABELS[supplierParam as keyof typeof SUPPLIER_CATEGORY_LABELS]
-    : 'Supplier';
+  const supplierLabelParam = Array.isArray(params.supplierLabel)
+    ? params.supplierLabel[0]
+    : params.supplierLabel;
   const supplierId = useMemo(() => {
-    if (
-      supplierParam === 'fish_supplier' ||
-      supplierParam === 'main_distributor' ||
-      supplierParam === 'asian_market'
-    ) {
-      return supplierParam as SupplierCategory;
-    }
-    return null;
+    if (typeof supplierParam !== 'string') return null;
+    const trimmed = supplierParam.trim();
+    return trimmed.length > 0 ? trimmed : null;
   }, [supplierParam]);
+  const supplierLabel = useMemo(() => {
+    if (typeof supplierLabelParam === 'string' && supplierLabelParam.trim().length > 0) {
+      return supplierLabelParam.trim();
+    }
+    if (!supplierId) return 'Supplier';
+    return SUPPLIER_CATEGORY_LABELS[supplierId as keyof typeof SUPPLIER_CATEGORY_LABELS] || supplierId;
+  }, [supplierId, supplierLabelParam]);
 
   const syncOrderStoreDecision = useCallback(
     (orderItemId: string, decidedQuantity: number, decidedBy: string, decidedAt: string) => {

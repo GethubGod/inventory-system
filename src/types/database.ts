@@ -200,6 +200,7 @@ export interface InventoryItem {
   name: string;
   category: ItemCategory;
   supplier_category: SupplierCategory;
+  supplier_id?: string | null;
   base_unit: string;
   pack_unit: string;
   pack_size: number;
