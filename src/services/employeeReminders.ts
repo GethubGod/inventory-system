@@ -143,6 +143,482 @@ export class ReminderServiceError extends Error {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const db = supabase as any;
+
+function isoOrNull(value: any): string | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+function daysSince(lastOrderIso: string | null): number | null {
+  if (!lastOrderIso) return null;
+  const orderDate = new Date(lastOrderIso);
+  if (Number.isNaN(orderDate.getTime())) return null;
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const orderStart = new Date(orderDate);
+  orderStart.setHours(0, 0, 0, 0);
+  const diff = now.getTime() - orderStart.getTime();
+  return diff < 0 ? 0 : Math.floor(diff / (1000 * 60 * 60 * 24));
+}
+
+async function loadSettings(): Promise<{
+  overdueThresholdDays: number;
+  reminderRateLimitMinutes: number;
+  recurringWindowMinutes: number;
+}> {
+  const { data } = await db
+    .from('reminder_system_settings')
+    .select('overdue_threshold_days, reminder_rate_limit_minutes, recurring_window_minutes')
+    .limit(1)
+    .maybeSingle();
+
+  return {
+    overdueThresholdDays: Math.max(1, Number(data?.overdue_threshold_days ?? 7) || 7),
+    reminderRateLimitMinutes: Math.max(1, Number(data?.reminder_rate_limit_minutes ?? 15) || 15),
+    recurringWindowMinutes: Math.max(1, Number(data?.recurring_window_minutes ?? 15) || 15),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// listEmployeesWithReminderStatus — direct DB (no Edge Function required)
+// ---------------------------------------------------------------------------
+
+export async function listEmployeesWithReminderStatus(params?: {
+  locationId?: string | null;
+  includeManagers?: boolean;
+  overdueThresholdDays?: number;
+}): Promise<EmployeeReminderOverview> {
+  const settings = await loadSettings();
+  const overdueThresholdDays = params?.overdueThresholdDays ?? settings.overdueThresholdDays;
+
+  // 1. Fetch employees
+  let usersQuery = db
+    .from('users')
+    .select('id, name, email, role, default_location_id, created_at')
+    .order('name', { ascending: true });
+
+  if (params?.includeManagers) {
+    usersQuery = usersQuery.in('role', ['employee', 'manager']);
+  } else {
+    usersQuery = usersQuery.eq('role', 'employee');
+  }
+
+  if (params?.locationId) {
+    usersQuery = usersQuery.eq('default_location_id', params.locationId);
+  }
+
+  const { data: users, error: usersError } = await usersQuery;
+  if (usersError) {
+    throw new ReminderServiceError(usersError.message || 'Unable to load users.');
+  }
+
+  const userRows: any[] = users ?? [];
+  const userIds = userRows.map((r: any) => r.id);
+
+  if (userIds.length === 0) {
+    return {
+      employees: [],
+      stats: { pendingReminders: 0, overdueEmployees: 0, notificationsOff: 0 },
+      settings: {
+        overdueThresholdDays,
+        reminderRateLimitMinutes: settings.reminderRateLimitMinutes,
+        recurringWindowMinutes: settings.recurringWindowMinutes,
+      },
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  // 2. Parallel fetch: profiles, locations, latest orders, active reminders
+  const [profilesRes, locationsRes, ordersRes, remindersRes] = await Promise.all([
+    db
+      .from('profiles')
+      .select('id, notifications_enabled, is_suspended, last_active_at, last_order_at')
+      .in('id', userIds),
+    db
+      .from('locations')
+      .select('id, name, short_code')
+      .eq('active', true),
+    db
+      .from('orders')
+      .select('id, user_id, location_id, created_at, status')
+      .in('user_id', userIds)
+      .neq('status', 'draft')
+      .order('created_at', { ascending: false }),
+    db
+      .from('reminders')
+      .select('id, employee_id, manager_id, location_id, created_at, last_reminded_at, reminder_count, status')
+      .in('employee_id', userIds)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false }),
+  ]);
+
+  const profiles: any[] = profilesRes.data ?? [];
+  const locations: any[] = locationsRes.data ?? [];
+  const orders: any[] = ordersRes.data ?? [];
+  const activeRemindersRaw: any[] = remindersRes.data ?? [];
+
+  const profileById = new Map(profiles.map((r: any) => [r.id, r]));
+  const locationById = new Map(locations.map((r: any) => [r.id, r]));
+
+  // Latest order per user
+  const latestOrderByUserId = new Map<string, any>();
+  for (const order of orders) {
+    if (!latestOrderByUserId.has(order.user_id)) {
+      latestOrderByUserId.set(order.user_id, order);
+    }
+  }
+
+  // Active reminders — auto-resolve stale ones
+  let pendingReminderCount = 0;
+  const activeReminderByEmployeeId = new Map<string, any>();
+
+  for (const reminder of activeRemindersRaw) {
+    const employeeId = reminder.employee_id;
+    const latestOrder = latestOrderByUserId.get(employeeId);
+
+    if (latestOrder?.created_at) {
+      const latestOrderAt = new Date(latestOrder.created_at).getTime();
+      const reminderCreatedAt = new Date(reminder.created_at).getTime();
+
+      if (
+        !Number.isNaN(latestOrderAt) &&
+        !Number.isNaN(reminderCreatedAt) &&
+        latestOrderAt > reminderCreatedAt
+      ) {
+        // Auto-resolve via security-definer RPC
+        db.rpc('resolve_active_reminders_for_employee', {
+          p_employee_id: employeeId,
+          p_order_created_at: latestOrder.created_at,
+          p_order_id: latestOrder.id ?? null,
+        }).catch(() => {});
+        continue;
+      }
+    }
+
+    pendingReminderCount += 1;
+    if (!activeReminderByEmployeeId.has(employeeId)) {
+      activeReminderByEmployeeId.set(employeeId, reminder);
+    }
+  }
+
+  // 3. Build employee rows
+  const employees: EmployeeReminderStatusRow[] = userRows.map((userRow: any) => {
+    const profile = profileById.get(userRow.id);
+    const defaultLocation = userRow.default_location_id
+      ? locationById.get(userRow.default_location_id)
+      : null;
+    const latestOrder = latestOrderByUserId.get(userRow.id);
+    const latestOrderAt =
+      isoOrNull(latestOrder?.created_at) ?? isoOrNull(profile?.last_order_at);
+    const latestActivityAt = isoOrNull(profile?.last_active_at);
+    const employeeDaysSince = daysSince(latestOrderAt);
+    const activeReminder = activeReminderByEmployeeId.get(userRow.id) ?? null;
+    const notificationsEnabled = profile?.notifications_enabled !== false;
+
+    let status: EmployeeReminderState = 'ok';
+    if (activeReminder) {
+      status = 'reminder_active';
+    } else if (employeeDaysSince == null || employeeDaysSince >= overdueThresholdDays) {
+      status = 'overdue';
+    }
+
+    const latestLocation = latestOrder?.location_id
+      ? locationById.get(latestOrder.location_id)
+      : null;
+    const locationName =
+      defaultLocation?.name || latestLocation?.name || 'Unassigned';
+
+    return {
+      userId: userRow.id,
+      name: userRow.name || userRow.email || 'Unknown',
+      email: userRow.email,
+      role: userRow.role,
+      locationId: userRow.default_location_id,
+      locationName,
+      locationShortCode:
+        defaultLocation?.short_code || latestLocation?.short_code || null,
+      lastOrderAt: latestOrderAt,
+      lastActivityAt: latestActivityAt,
+      daysSinceLastOrder: employeeDaysSince,
+      status,
+      notificationsEnabled,
+      notificationsOff: !notificationsEnabled,
+      activeReminder: activeReminder
+        ? {
+            id: activeReminder.id,
+            locationId: activeReminder.location_id,
+            managerId: activeReminder.manager_id,
+            createdAt: isoOrNull(activeReminder.created_at),
+            lastRemindedAt: isoOrNull(activeReminder.last_reminded_at),
+            reminderCount: Number(activeReminder.reminder_count ?? 1),
+          }
+        : null,
+      isSuspended: Boolean(profile?.is_suspended),
+    };
+  });
+
+  const overdueEmployees = employees.filter((e) => e.status === 'overdue').length;
+  const notificationsOff = employees.filter((e) => e.notificationsOff).length;
+
+  return {
+    employees,
+    stats: { pendingReminders: pendingReminderCount, overdueEmployees, notificationsOff },
+    settings: {
+      overdueThresholdDays,
+      reminderRateLimitMinutes: settings.reminderRateLimitMinutes,
+      recurringWindowMinutes: settings.recurringWindowMinutes,
+    },
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// sendReminder — direct DB with optional Edge Function push
+// ---------------------------------------------------------------------------
+
+export async function sendReminder(params: {
+  employeeId: string;
+  locationId?: string | null;
+  message?: string;
+  overrideRateLimit?: boolean;
+  source?: 'manual' | 'manual_repeat' | 'recurring' | 'system';
+  channels?: {
+    push?: boolean;
+    in_app?: boolean;
+  };
+}): Promise<SendReminderResult> {
+  // Try Edge Function first (it handles push notifications server-side)
+  try {
+    const { data, error } = await supabase.functions.invoke('send-reminder', {
+      body: {
+        employeeId: params.employeeId,
+        locationId: params.locationId ?? null,
+        message: params.message,
+        overrideRateLimit: Boolean(params.overrideRateLimit),
+        source: params.source ?? 'manual',
+        channels: params.channels,
+      },
+    });
+
+    if (!error) {
+      const typedData = data as SendReminderResult | null;
+      if (typedData?.success) {
+        return typedData;
+      }
+    }
+
+    // If edge function returned a structured rate-limit error, propagate it
+    if (error) {
+      const parsed = await parseFunctionError(error);
+      if (parsed.code === 'RATE_LIMITED') {
+        throw new ReminderServiceError(
+          parsed.message || 'Reminder was sent recently.',
+          parsed
+        );
+      }
+    }
+  } catch (e: any) {
+    // Re-throw rate limit errors
+    if (e instanceof ReminderServiceError && e.code === 'RATE_LIMITED') {
+      throw e;
+    }
+    // Fall through to direct DB path
+  }
+
+  // ----- Direct DB fallback (works without Edge Functions) -----
+  return sendReminderDirect(params);
+}
+
+async function sendReminderDirect(params: {
+  employeeId: string;
+  locationId?: string | null;
+  message?: string;
+  overrideRateLimit?: boolean;
+  source?: 'manual' | 'manual_repeat' | 'recurring' | 'system';
+  channels?: {
+    push?: boolean;
+    in_app?: boolean;
+  };
+}): Promise<SendReminderResult> {
+  const settings = await loadSettings();
+  const nowIso = new Date().toISOString();
+  const locationId = params.locationId ?? null;
+  const source = params.source ?? 'manual';
+
+  // Check for existing active reminder
+  let activeQuery = db
+    .from('reminders')
+    .select('*')
+    .eq('employee_id', params.employeeId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+    .limit(1);
+
+  activeQuery = locationId
+    ? activeQuery.eq('location_id', locationId)
+    : activeQuery.is('location_id', null);
+
+  const { data: activeReminder } = await activeQuery.maybeSingle();
+
+  // Rate limiting
+  const lastRemindedAt = activeReminder?.last_reminded_at
+    ? isoOrNull(activeReminder.last_reminded_at)
+    : null;
+
+  if (!params.overrideRateLimit && lastRemindedAt) {
+    const elapsedMs = Date.now() - new Date(lastRemindedAt).getTime();
+    const elapsedMinutes = Math.floor(elapsedMs / (1000 * 60));
+    if (elapsedMinutes < settings.reminderRateLimitMinutes) {
+      const remaining = settings.reminderRateLimitMinutes - elapsedMinutes;
+      throw new ReminderServiceError(
+        `Reminder was sent recently. Try again in ${remaining} minute(s).`,
+        {
+          code: 'RATE_LIMITED',
+          retryAfterSeconds: Math.max(1, remaining * 60),
+        }
+      );
+    }
+  }
+
+  // Get current user (manager) id
+  const { data: { user: authUser } } = await supabase.auth.getUser();
+  const managerId = authUser?.id ?? null;
+
+  let reminderRow: any;
+  let eventType: 'sent' | 'reminded_again' = 'sent';
+
+  if (activeReminder) {
+    const nextCount = Math.max(1, Number(activeReminder.reminder_count ?? 1) + 1);
+    const { data: updated, error: updateError } = await db
+      .from('reminders')
+      .update({
+        manager_id: managerId,
+        last_reminded_at: nowIso,
+        reminder_count: nextCount,
+      })
+      .eq('id', activeReminder.id)
+      .select('*')
+      .single();
+
+    if (updateError || !updated) {
+      throw new ReminderServiceError(
+        updateError?.message || 'Failed to update reminder.'
+      );
+    }
+    reminderRow = updated;
+    eventType = 'reminded_again';
+  } else {
+    const { data: created, error: createError } = await db
+      .from('reminders')
+      .insert({
+        employee_id: params.employeeId,
+        manager_id: managerId,
+        location_id: locationId,
+        status: 'active',
+        created_at: nowIso,
+        last_reminded_at: nowIso,
+        reminder_count: 1,
+      })
+      .select('*')
+      .single();
+
+    if (createError || !created) {
+      throw new ReminderServiceError(
+        createError?.message || 'Failed to create reminder.'
+      );
+    }
+    reminderRow = created;
+  }
+
+  // Create in-app notification for the employee
+  const reminderTitle = 'Order reminder';
+  const reminderBody =
+    typeof params.message === 'string' && params.message.trim().length > 0
+      ? params.message.trim()
+      : 'Please submit your order when you have a moment.';
+
+  let inAppNotificationId: string | null = null;
+  if (params.channels?.in_app !== false) {
+    const { data: notifRow } = await db
+      .from('notifications')
+      .insert({
+        user_id: params.employeeId,
+        title: reminderTitle,
+        body: reminderBody,
+        notification_type: 'employee_reminder',
+        payload: {
+          reminder_id: reminderRow.id,
+          source,
+          location_id: locationId,
+          manager_id: managerId,
+        },
+      })
+      .select('id')
+      .single();
+
+    inAppNotificationId = notifRow?.id ?? null;
+  }
+
+  // Log event
+  const channelsAttempted = ['in_app'];
+  const { data: eventRow } = await db
+    .from('reminder_events')
+    .insert({
+      reminder_id: reminderRow.id,
+      event_type: eventType,
+      sent_at: nowIso,
+      channels_attempted: channelsAttempted,
+      delivery_result: {
+        source,
+        in_app_notification_id: inAppNotificationId,
+        push: { attempted: false, status: 'edge_function_unavailable' },
+      },
+    })
+    .select('*')
+    .single();
+
+  return {
+    success: true,
+    reminder: {
+      id: reminderRow.id,
+      reminder_count: reminderRow.reminder_count,
+      status: reminderRow.status,
+      last_reminded_at: reminderRow.last_reminded_at,
+      created_at: reminderRow.created_at,
+    },
+    event: {
+      id: eventRow?.id ?? '',
+      event_type: eventType,
+      channels_attempted: channelsAttempted,
+      delivery_result: eventRow?.delivery_result ?? {},
+      sent_at: nowIso,
+    },
+    push: {
+      attempted: false,
+      status: 'edge_function_unavailable',
+      tokenCount: 0,
+      successCount: 0,
+      failureCount: 0,
+    },
+    notificationsEnabled: true,
+    inAppNotificationId,
+    settings: {
+      reminderRateLimitMinutes: settings.reminderRateLimitMinutes,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// parseFunctionError (shared helper for edge function error parsing)
+// ---------------------------------------------------------------------------
+
 async function parseFunctionError(error: unknown): Promise<{
   message: string | null;
   code?: string;
@@ -200,81 +676,9 @@ async function parseFunctionError(error: unknown): Promise<{
   return { message, code, retryAfterSeconds, status };
 }
 
-export async function listEmployeesWithReminderStatus(params?: {
-  locationId?: string | null;
-  includeManagers?: boolean;
-  overdueThresholdDays?: number;
-}): Promise<EmployeeReminderOverview> {
-  const { data, error } = await supabase.functions.invoke('list-employees-with-status', {
-    body: {
-      locationId: params?.locationId ?? null,
-      includeManagers: Boolean(params?.includeManagers),
-      overdueThresholdDays: params?.overdueThresholdDays,
-    },
-  });
-  const typedData = data as EmployeeReminderOverview | null;
-
-  if (error) {
-    const parsed = await parseFunctionError(error);
-    throw new ReminderServiceError(
-      parsed.message || 'Unable to load employee reminder status.',
-      parsed
-    );
-  }
-
-  return {
-    employees: typedData?.employees ?? [],
-    stats: typedData?.stats ?? {
-      pendingReminders: 0,
-      overdueEmployees: 0,
-      notificationsOff: 0,
-    },
-    settings: typedData?.settings ?? {
-      overdueThresholdDays: 7,
-      reminderRateLimitMinutes: 15,
-      recurringWindowMinutes: 15,
-    },
-    generatedAt: typedData?.generatedAt ?? new Date().toISOString(),
-  };
-}
-
-export async function sendReminder(params: {
-  employeeId: string;
-  locationId?: string | null;
-  message?: string;
-  overrideRateLimit?: boolean;
-  source?: 'manual' | 'manual_repeat' | 'recurring' | 'system';
-  channels?: {
-    push?: boolean;
-    in_app?: boolean;
-  };
-}): Promise<SendReminderResult> {
-  const { data, error } = await supabase.functions.invoke('send-reminder', {
-    body: {
-      employeeId: params.employeeId,
-      locationId: params.locationId ?? null,
-      message: params.message,
-      overrideRateLimit: Boolean(params.overrideRateLimit),
-      source: params.source ?? 'manual',
-      channels: params.channels,
-    },
-  });
-  const typedData = data as SendReminderResult | null;
-
-  if (error) {
-    const parsed = await parseFunctionError(error);
-    throw new ReminderServiceError(
-      parsed.message || 'Unable to send reminder.',
-      parsed
-    );
-  }
-
-  if (!typedData?.success) {
-    throw new Error('Unable to send reminder.');
-  }
-
-  return typedData;
-}
+// ---------------------------------------------------------------------------
+// Remaining functions (already work directly against DB)
+// ---------------------------------------------------------------------------
 
 export async function evaluateRecurringReminderRules(params?: { dryRun?: boolean }) {
   const { data, error } = await supabase.functions.invoke('evaluate-recurring-reminders', {
@@ -293,7 +697,6 @@ export async function evaluateRecurringReminderRules(params?: { dryRun?: boolean
 }
 
 export async function listRecurringReminderRules(): Promise<RecurringReminderRule[]> {
-  const db = supabase as any;
   const { data, error } = await db
     .from('recurring_reminder_rules')
     .select('*')
@@ -309,8 +712,6 @@ export async function listRecurringReminderRules(): Promise<RecurringReminderRul
 export async function upsertRecurringReminderRule(
   input: Omit<RecurringReminderRule, 'id' | 'created_at' | 'updated_at' | 'last_triggered_at'> & { id?: string }
 ): Promise<RecurringReminderRule> {
-  const db = supabase as any;
-
   const payload = {
     ...(input.id ? { id: input.id } : {}),
     scope: input.scope,
@@ -343,7 +744,6 @@ export async function upsertRecurringReminderRule(
 }
 
 export async function deleteRecurringReminderRule(ruleId: string): Promise<void> {
-  const db = supabase as any;
   const { error } = await db
     .from('recurring_reminder_rules')
     .delete()
@@ -355,7 +755,6 @@ export async function deleteRecurringReminderRule(ruleId: string): Promise<void>
 }
 
 export async function getReminderSystemSettings(): Promise<ReminderSystemSettings | null> {
-  const db = supabase as any;
   const { data, error } = await db
     .from('reminder_system_settings')
     .select('*')
@@ -374,7 +773,6 @@ export async function updateReminderSystemSettings(patch: {
   reminder_rate_limit_minutes?: number;
   recurring_window_minutes?: number;
 }): Promise<ReminderSystemSettings> {
-  const db = supabase as any;
   const existing = await getReminderSystemSettings();
   let query = db
     .from('reminder_system_settings')
@@ -400,7 +798,6 @@ export async function updateReminderSystemSettings(patch: {
 }
 
 export async function listReminderDeliveryEvents(limit = 50): Promise<ReminderDeliveryEvent[]> {
-  const db = supabase as any;
   const { data, error } = await db
     .from('reminder_events')
     .select(`

@@ -45,9 +45,8 @@ export default function CartScreen() {
   const ds = useScaledStyles();
 
   const {
+    cartByLocation,
     getCartItems,
-    getCartLocationIds,
-    getTotalCartCount,
     addToCart,
     updateCartItem,
     removeFromCart,
@@ -58,9 +57,8 @@ export default function CartScreen() {
     createAndSubmitOrder,
     setCartItemNote,
   } = useOrderStore(useShallow((state) => ({
+    cartByLocation: state.cartByLocation,
     getCartItems: state.getCartItems,
-    getCartLocationIds: state.getCartLocationIds,
-    getTotalCartCount: state.getTotalCartCount,
     addToCart: state.addToCart,
     updateCartItem: state.updateCartItem,
     removeFromCart: state.removeFromCart,
@@ -98,8 +96,21 @@ export default function CartScreen() {
     item: CartItemWithDetails;
   } | null>(null);
 
-  const cartLocationIds = getCartLocationIds();
-  const totalCartCount = getTotalCartCount();
+  const cartLocationIds = useMemo(
+    () =>
+      Object.entries(cartByLocation)
+        .filter(([, rawItems]) => Array.isArray(rawItems) && rawItems.length > 0)
+        .map(([locationId]) => locationId),
+    [cartByLocation]
+  );
+  const totalCartCount = useMemo(
+    () =>
+      Object.values(cartByLocation).reduce(
+        (total, rawItems) => total + (Array.isArray(rawItems) ? rawItems.length : 0),
+        0
+      ),
+    [cartByLocation]
+  );
 
   useEffect(() => {
     void fetchItems();

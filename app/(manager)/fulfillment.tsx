@@ -2190,9 +2190,8 @@ export default function FulfillmentScreen() {
               <Text className="text-gray-400 text-center text-sm mt-4">Searching for orders...</Text>
             </View>
           ) : supplierGroups.length === 0 ? (
-            <View className="flex-1 items-center justify-center" style={{ minHeight: 320 }}>
-              <Ionicons name="checkmark-done-outline" size={40} color={colors.gray[300]} />
-              <Text className="text-gray-700 text-center text-lg font-semibold mt-4">All orders fulfilled</Text>
+            <View className="flex-1 items-center justify-center" style={{ minHeight: 400, paddingVertical: 60 }}>
+              <Text className="text-gray-700 text-center text-lg font-semibold">All orders fulfilled</Text>
               <Text className="text-gray-400 text-center text-sm mt-2">
                 No pending supplier orders right now.
               </Text>

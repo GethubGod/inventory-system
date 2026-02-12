@@ -28,21 +28,32 @@ function UnitPillToggle({
     onUnitChange(exportUnitType === 'base' ? 'pack' : 'base');
   };
   const label = exportUnitType === 'base' ? baseUnitLabel : packUnitLabel;
+  const isPack = exportUnitType === 'pack';
 
   return (
     <TouchableOpacity
       onPress={handlePress}
       disabled={!canSwitchUnit}
-      className={`h-10 max-w-[112px] flex-row items-center rounded-lg bg-gray-100 px-2.5 ${
+      className={`h-10 max-w-[112px] flex-row items-center rounded-lg px-2.5 border ${
+        isPack ? 'bg-primary-500 border-primary-600' : 'bg-gray-100 border-gray-200'
+      } ${
         !canSwitchUnit ? 'opacity-45' : ''
       }`}
       activeOpacity={0.7}
       hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
     >
-      <Text className="max-w-[82px] text-sm font-medium text-gray-700" numberOfLines={1}>
+      <Text
+        className={`max-w-[82px] text-sm font-medium ${isPack ? 'text-white' : 'text-gray-700'}`}
+        numberOfLines={1}
+      >
         {label}
       </Text>
-      <Ionicons name="swap-horizontal" size={14} color="#6B7280" style={{ marginLeft: 3 }} />
+      <Ionicons
+        name="swap-horizontal"
+        size={14}
+        color={isPack ? '#FFFFFF' : '#6B7280'}
+        style={{ marginLeft: 3 }}
+      />
     </TouchableOpacity>
   );
 }
