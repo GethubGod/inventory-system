@@ -20,6 +20,7 @@ import type { Location } from '@/types';
 import { listEmployeesWithReminderStatus } from '@/services';
 import { BrandLogo } from '@/components';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 interface DashboardStats {
   pendingOrders: number;
@@ -59,10 +60,13 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 export default function ManagerDashboard() {
+  const ds = useScaledStyles();
   const { locations, fetchLocations } = useAuthStore();
   const { hapticFeedback } = useDisplayStore();
   const { getTotalCartCount } = useOrderStore();
   const cartCount = getTotalCartCount();
+  const headerIconButtonSize = Math.max(44, ds.icon(40));
+  const badgeSize = Math.max(18, ds.icon(20));
 
   const [stats, setStats] = useState<DashboardStats>({
     pendingOrders: 0,
@@ -313,65 +317,107 @@ export default function ManagerDashboard() {
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      <ManagerScaleContainer>
-        <View className="bg-white px-4 pt-3 pb-2 border-b border-gray-100">
-          <View className="flex-row items-center justify-between">
-            <View className="flex-row items-center">
-              <BrandLogo variant="header" size={28} />
-            </View>
-
-            <View className="flex-row items-center">
-              <TouchableOpacity
-                className="bg-gray-100 rounded-full px-3 py-2 flex-row items-center mr-2"
-                onPress={() => {
-                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                  setShowLocationPicker((prev) => !prev);
-                }}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="location" size={14} color="#F97316" />
-                <Text className="text-gray-900 font-medium ml-2" numberOfLines={1}>
-                  {selectedLocation?.name || 'All Locations'}
-                </Text>
-                <Ionicons
-                  name={showLocationPicker ? 'chevron-up' : 'chevron-down'}
-                  size={14}
-                  color="#6B7280"
-                  className="ml-1.5"
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                className="w-10 h-10 bg-gray-100 rounded-full items-center justify-center"
-                onPress={() => router.push('/(manager)/cart')}
-              >
-                <Ionicons name="cart-outline" size={20} color="#6B7280" />
-                {cartCount > 0 && (
-                  <View
-                    className="absolute -top-1 -right-1 bg-primary-500 h-5 rounded-full items-center justify-center px-1"
-                    style={{ minWidth: 20 }}
-                  >
-                    <Text className="text-white font-bold" style={{ fontSize: 10 }}>
-                      {cartCount > 99 ? '99+' : cartCount}
-                    </Text>
-                  </View>
-                )}
-              </TouchableOpacity>
-            </View>
+      <View className="bg-white border-b border-gray-100">
+        <View
+          className="flex-row items-center justify-between"
+          style={{
+            paddingHorizontal: ds.spacing(12),
+            paddingVertical: ds.spacing(8),
+          }}
+        >
+          <View className="flex-row items-center">
+            <BrandLogo variant="header" size={28} />
           </View>
 
-          {showLocationPicker && (
-            <View className="mt-3 bg-white rounded-2xl border border-gray-100 overflow-hidden">
+          <View className="flex-row items-center">
+            <TouchableOpacity
+              className="bg-gray-100 flex-row items-center"
+              style={{
+                borderRadius: headerIconButtonSize / 2,
+                minHeight: headerIconButtonSize,
+                paddingHorizontal: ds.spacing(12),
+                marginRight: ds.spacing(8),
+              }}
+              onPress={() => {
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setShowLocationPicker((prev) => !prev);
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
+              <Text
+                className="text-gray-900 font-medium"
+                style={{
+                  fontSize: ds.fontSize(15),
+                  marginLeft: ds.spacing(8),
+                  marginRight: ds.spacing(6),
+                  maxWidth: ds.spacing(160),
+                }}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {selectedLocation?.name || 'All Locations'}
+              </Text>
+              <Ionicons
+                name={showLocationPicker ? 'chevron-up' : 'chevron-down'}
+                size={ds.icon(14)}
+                color="#6B7280"
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              className="bg-gray-100 rounded-full items-center justify-center"
+              style={{
+                width: headerIconButtonSize,
+                height: headerIconButtonSize,
+              }}
+              onPress={() => router.push('/(manager)/cart')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="cart-outline" size={ds.icon(20)} color="#6B7280" />
+              {cartCount > 0 && (
+                <View
+                  className="absolute bg-primary-500 rounded-full items-center justify-center"
+                  style={{
+                    top: -ds.spacing(2),
+                    right: -ds.spacing(2),
+                    minWidth: badgeSize,
+                    height: badgeSize,
+                    paddingHorizontal: ds.spacing(4),
+                  }}
+                >
+                  <Text className="text-white font-bold" style={{ fontSize: ds.fontSize(11) }}>
+                    {cartCount > 99 ? '99+' : cartCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {showLocationPicker && (
+          <View className="border-t border-gray-100" style={{ paddingHorizontal: ds.spacing(12), paddingBottom: ds.spacing(8) }}>
+            <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
               <TouchableOpacity
-                className="flex-row items-center px-4 py-3"
+                className="flex-row items-center"
+                style={{
+                  minHeight: ds.rowH,
+                  paddingHorizontal: ds.spacing(16),
+                  paddingVertical: ds.spacing(12),
+                }}
                 onPress={() => handleSelectLocation(null)}
                 activeOpacity={0.7}
               >
-                <View className="w-9 h-9 rounded-full bg-primary-100 items-center justify-center mr-3">
-                  <Ionicons name="globe" size={18} color="#F97316" />
+                <View
+                  className="rounded-full bg-primary-100 items-center justify-center"
+                  style={{ width: ds.icon(32), height: ds.icon(32), marginRight: ds.spacing(12) }}
+                >
+                  <Ionicons name="globe" size={ds.icon(16)} color="#F97316" />
                 </View>
-                <Text className="flex-1 text-gray-900 font-medium">All Locations</Text>
-                {!selectedLocation && <Ionicons name="checkmark" size={18} color="#F97316" />}
+                <Text className="flex-1 text-gray-900 font-medium" style={{ fontSize: ds.fontSize(15) }}>
+                  All Locations
+                </Text>
+                {!selectedLocation && <Ionicons name="checkmark" size={ds.icon(18)} color="#F97316" />}
               </TouchableOpacity>
 
               {locations.map((loc) => {
@@ -379,26 +425,36 @@ export default function ManagerDashboard() {
                 return (
                   <TouchableOpacity
                     key={loc.id}
-                    className="flex-row items-center px-4 py-3 border-t border-gray-100"
+                    className="flex-row items-center border-t border-gray-100"
+                    style={{
+                      minHeight: ds.rowH,
+                      paddingHorizontal: ds.spacing(16),
+                      paddingVertical: ds.spacing(12),
+                    }}
                     onPress={() => handleSelectLocation(loc)}
                     activeOpacity={0.7}
                   >
                     <View
-                      className={`w-9 h-9 rounded-full items-center justify-center mr-3 ${
+                      className={`rounded-full items-center justify-center ${
                         isSelected ? 'bg-primary-500' : 'bg-gray-200'
                       }`}
+                      style={{ width: ds.icon(32), height: ds.icon(32), marginRight: ds.spacing(12) }}
                     >
-                      <BrandLogo variant="inline" size={18} colorMode={isSelected ? 'dark' : 'light'} />
+                      <BrandLogo variant="inline" size={16} colorMode={isSelected ? 'dark' : 'light'} />
                     </View>
-                    <Text className="flex-1 text-gray-900 font-medium">{loc.name}</Text>
-                    {isSelected && <Ionicons name="checkmark" size={18} color="#F97316" />}
+                    <Text className="flex-1 text-gray-900 font-medium" style={{ fontSize: ds.fontSize(15) }}>
+                      {loc.name}
+                    </Text>
+                    {isSelected && <Ionicons name="checkmark" size={ds.icon(18)} color="#F97316" />}
                   </TouchableOpacity>
                 );
               })}
             </View>
-          )}
-        </View>
+          </View>
+        )}
+      </View>
 
+      <ManagerScaleContainer>
         <ScrollView
           className="flex-1"
           contentContainerStyle={{ padding: 16 }}

@@ -5,7 +5,6 @@ import {
   ScrollView,
   Share,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -19,6 +18,8 @@ import { useAuthStore, useOrderStore, useSettingsStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
+import { QuantityExportSelector } from '@/components/QuantityExportSelector';
+import { ReviewItemRow } from '@/components/ReviewItemRow';
 import { buildSupplierConfirmationData } from '@/services/fulfillmentDataSource';
 import { loadSupplierLookup } from '@/services/supplierResolver';
 
@@ -144,23 +145,197 @@ function decodeHistorySignaturePart(value: string | undefined): string {
   }
 }
 
-function formatLastOrderedLabel(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return 'recently';
-  const deltaMs = Date.now() - date.getTime();
-  const dayMs = 24 * 60 * 60 * 1000;
-  const days = Math.floor(deltaMs / dayMs);
-  if (days <= 0) return 'today';
-  if (days === 1) return '1d ago';
-  if (days < 30) return `${days}d ago`;
-  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
 function assertNoReportedInExportText(message: string) {
   if (__DEV__ && /\breported\b/i.test(message)) {
     throw new Error('Exported fulfillment message cannot contain "reported".');
   }
 }
+
+interface InventoryUnitInfo {
+  id: string;
+  base_unit: string;
+  pack_unit: string;
+  pack_size: number;
+}
+
+interface ItemExportSettings {
+  exportUnitType: 'base' | 'pack';
+}
+
+function convertQuantity(
+  qty: number,
+  from: 'base' | 'pack',
+  to: 'base' | 'pack',
+  packSize: number
+): number {
+  if (from === to || packSize <= 0) return qty;
+  return from === 'base' ? qty / packSize : qty * packSize;
+}
+
+function canSwitchUnit(info: InventoryUnitInfo | undefined): boolean {
+  if (!info) return false;
+  if (info.base_unit === info.pack_unit) return false;
+  if (info.pack_size <= 1) return false;
+  return true;
+}
+
+interface RemainingContributorSummary {
+  name: string;
+  reportedTotal: number;
+  rowCount: number;
+}
+
+interface RemainingItemRowProps {
+  item: RemainingConfirmationItem;
+  suggested: number | null;
+  isSaving: boolean;
+  unitInfo: InventoryUnitInfo | undefined;
+  exportUnitType: 'base' | 'pack';
+  contributorBreakdown: RemainingContributorSummary[];
+  onUnitChange: (unit: 'base' | 'pack') => void;
+  onQuantityChange: (item: RemainingConfirmationItem, value: number | null) => void;
+  onOverflowPress: (item: RemainingConfirmationItem) => void;
+}
+
+const RemainingItemRow = React.memo(function RemainingItemRow({
+  item,
+  suggested,
+  isSaving,
+  unitInfo,
+  exportUnitType,
+  contributorBreakdown,
+  onUnitChange,
+  onQuantityChange,
+  onOverflowPress,
+}: RemainingItemRowProps) {
+  const [showDetails, setShowDetails] = useState(false);
+  const hasContributorBreakdown = contributorBreakdown.length > 1;
+
+  return (
+    <ReviewItemRow
+      title={item.name}
+      headerActions={(
+        <>
+          <TouchableOpacity
+            onPress={() => onOverflowPress(item)}
+            className="p-1.5 mr-1"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="ellipsis-horizontal" size={16} color={colors.gray[500]} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setShowDetails((prev) => !prev)}
+            className="p-1.5"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons
+              name={showDetails ? 'information-circle' : 'information-circle-outline'}
+              size={18}
+              color={showDetails ? colors.primary[500] : colors.gray[500]}
+            />
+          </TouchableOpacity>
+        </>
+      )}
+      chips={[
+        {
+          id: `${item.orderItemId}-reported`,
+          label: `Reported: ${formatQuantity(item.reportedRemaining)} ${item.unitLabel}`,
+          tone: 'gray',
+        },
+      ]}
+      trailingChip={
+        suggested != null ? (
+          <TouchableOpacity
+            onPress={() => onQuantityChange(item, suggested)}
+            className="px-2.5 py-1.5 rounded-full bg-amber-100 border border-amber-200"
+          >
+            <Text className="text-[11px] font-semibold text-amber-800">
+              Suggested: {formatQuantity(suggested)}
+            </Text>
+          </TouchableOpacity>
+        ) : undefined
+      }
+      quantityValue={item.decidedQuantity == null ? '' : `${item.decidedQuantity}`}
+      onQuantityChangeText={(text) => {
+        const sanitized = text.replace(/[^0-9.]/g, '');
+        if (sanitized.length === 0) {
+          onQuantityChange(item, null);
+          return;
+        }
+        const parsed = Number(sanitized);
+        if (!Number.isFinite(parsed) || parsed < 0) return;
+        onQuantityChange(item, parsed);
+      }}
+      onDecrement={() => {
+        const current = item.decidedQuantity ?? 0;
+        onQuantityChange(item, Math.max(0, current - 1));
+      }}
+      onIncrement={() => {
+        const current = item.decidedQuantity ?? 0;
+        onQuantityChange(item, current + 1);
+      }}
+      quantityPlaceholder="Set qty"
+      unitSelector={(
+        <QuantityExportSelector
+          exportUnitType={exportUnitType}
+          baseUnitLabel={unitInfo?.base_unit ?? item.unitLabel}
+          packUnitLabel={unitInfo?.pack_unit ?? item.unitLabel}
+          canSwitchUnit={canSwitchUnit(unitInfo)}
+          onUnitChange={onUnitChange}
+        />
+      )}
+      detailsVisible={showDetails}
+      details={(
+        <View className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+          <View className={hasContributorBreakdown || item.note ? 'mb-3' : 'mb-0'}>
+            <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Ordered By</Text>
+            <Text className="text-sm text-gray-800 mt-1">
+              {hasContributorBreakdown ? `${contributorBreakdown.length} people` : item.orderedBy}
+            </Text>
+          </View>
+
+          {hasContributorBreakdown && (
+            <View className={item.note ? 'mb-3' : 'mb-0'}>
+              {contributorBreakdown.map((entry, index) => (
+                <View
+                  key={`${item.orderItemId}-contributor-${entry.name}`}
+                  className={`flex-row items-center justify-between py-1.5 ${
+                    index < contributorBreakdown.length - 1 ? 'border-b border-gray-100' : ''
+                  }`}
+                >
+                  <Text className="text-sm text-gray-700">{entry.name}</Text>
+                  <Text className="text-xs font-medium text-gray-600">
+                    {formatQuantity(entry.reportedTotal)} {item.unitLabel}
+                    {entry.rowCount > 1 ? ` • ${entry.rowCount} entries` : ''}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          <View className={item.note ? 'mb-3' : 'mb-0'}>
+            <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Location</Text>
+            <Text className="text-sm text-gray-800 mt-1">
+              {item.locationName} ({item.shortCode})
+            </Text>
+            <Text className="text-xs text-gray-500 mt-1">
+              Reported amount: {formatQuantity(item.reportedRemaining)} {item.unitLabel}
+            </Text>
+          </View>
+
+          {item.note ? (
+            <View>
+              <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Notes</Text>
+              <Text className="text-sm text-blue-800 mt-1">{item.note}</Text>
+            </View>
+          ) : null}
+        </View>
+      )}
+      footer={isSaving ? <Text className="text-[11px] text-gray-500">Saving...</Text> : undefined}
+      disableControls={isSaving}
+    />
+  );
+});
 
 export default function FulfillmentConfirmationScreen() {
   const params = useLocalSearchParams<{
@@ -326,6 +501,27 @@ export default function FulfillmentConfirmationScreen() {
     | { kind: 'remaining'; id: string }
     | null
   >(null);
+  const [unitInfoMap, setUnitInfoMap] = useState<Record<string, InventoryUnitInfo>>({});
+  const [exportSettings, setExportSettings] = useState<Record<string, ItemExportSettings>>({});
+
+  const getExportSettings = useCallback(
+    (itemId: string, defaultUnitType: 'base' | 'pack'): ItemExportSettings =>
+      exportSettings[itemId] ?? { exportUnitType: defaultUnitType },
+    [exportSettings]
+  );
+
+  const updateExportSettings = useCallback(
+    (itemId: string, patch: Partial<ItemExportSettings>) => {
+      setExportSettings((prev) => ({
+        ...prev,
+        [itemId]: {
+          ...(prev[itemId] ?? { exportUnitType: 'base' }),
+          ...patch,
+        },
+      }));
+    },
+    []
+  );
 
   const supplierParam = Array.isArray(params.supplier) ? params.supplier[0] : params.supplier;
   const supplierLabelParam = Array.isArray(params.supplierLabel)
@@ -353,7 +549,37 @@ export default function FulfillmentConfirmationScreen() {
     setShowRetryActions(false);
     setIsFinalizing(false);
     setOrderLaterTarget(null);
+    setExportSettings({});
   }, [supplierId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Batch-load inventory item unit info for unit switching
+  useEffect(() => {
+    const ids = [
+      ...new Set([
+        ...items.map((i) => i.inventoryItemId),
+        ...remainingItems.map((i) => i.inventoryItemId),
+      ]),
+    ].filter((id) => id && id.length > 0);
+    if (ids.length === 0) return;
+
+    let active = true;
+    (supabase as any)
+      .from('inventory_items')
+      .select('id, base_unit, pack_unit, pack_size')
+      .in('id', ids)
+      .then(({ data }: { data: InventoryUnitInfo[] | null }) => {
+        if (!active || !data) return;
+        const map: Record<string, InventoryUnitInfo> = {};
+        data.forEach((row) => {
+          map[row.id] = row;
+        });
+        setUnitInfoMap(map);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [items, remainingItems]);
 
   const refreshFromSupplierSource = useCallback(async () => {
     if (!supplierId) return;
@@ -624,6 +850,50 @@ export default function FulfillmentConfirmationScreen() {
     );
   }, [remainingItems]);
 
+  const remainingContributorBreakdownByOrderItemId = useMemo(() => {
+    const groupedByItem = new Map<string, RemainingConfirmationItem[]>();
+    remainingItems.forEach((item) => {
+      const key = `${item.locationGroup}|${item.inventoryItemId}|${item.unitType}`;
+      const rows = groupedByItem.get(key);
+      if (rows) {
+        rows.push(item);
+      } else {
+        groupedByItem.set(key, [item]);
+      }
+    });
+
+    const next: Record<string, RemainingContributorSummary[]> = {};
+    groupedByItem.forEach((rows) => {
+      const summaryByName = new Map<string, RemainingContributorSummary>();
+      rows.forEach((row) => {
+        const rawName = typeof row.orderedBy === 'string' ? row.orderedBy : '';
+        const name = rawName.trim().length > 0 ? rawName.trim() : 'Unknown';
+        const existing = summaryByName.get(name);
+        if (existing) {
+          existing.reportedTotal += row.reportedRemaining;
+          existing.rowCount += 1;
+        } else {
+          summaryByName.set(name, {
+            name,
+            reportedTotal: row.reportedRemaining,
+            rowCount: 1,
+          });
+        }
+      });
+
+      const breakdown = Array.from(summaryByName.values()).sort((a, b) => {
+        if (b.reportedTotal !== a.reportedTotal) return b.reportedTotal - a.reportedTotal;
+        return a.name.localeCompare(b.name);
+      });
+
+      rows.forEach((row) => {
+        next[row.orderItemId] = breakdown;
+      });
+    });
+
+    return next;
+  }, [remainingItems]);
+
   const formattedItems = useMemo(() => {
     const groupOrder: LocationGroup[] = ['sushi', 'poki'];
     const output = groupOrder
@@ -633,15 +903,40 @@ export default function FulfillmentConfirmationScreen() {
         const remainingRows = groupedRemainingItems[group] || [];
 
         regularItems.forEach((item) => {
-          lines.push(`- ${item.name}: ${item.quantity} ${item.unitLabel}`);
+          const settings = getExportSettings(item.id, item.unitType);
+          const info = unitInfoMap[item.inventoryItemId];
+          const targetUnit = settings.exportUnitType;
+          const displayQty = info
+            ? convertQuantity(item.quantity, item.unitType, targetUnit, info.pack_size)
+            : item.quantity;
+          const displayLabel = info
+            ? targetUnit === 'pack'
+              ? info.pack_unit
+              : info.base_unit
+            : item.unitLabel;
+          lines.push(`- ${item.name}: ${formatQuantity(displayQty)} ${displayLabel}`);
         });
 
         remainingRows.forEach((item) => {
-          const decidedQty =
-            item.decidedQuantity == null || !Number.isFinite(item.decidedQuantity) || item.decidedQuantity <= 0
-              ? '[set qty]'
-              : `${item.decidedQuantity}`;
-          lines.push(`- ${item.name}: ${decidedQty} ${item.unitLabel}`);
+          const settings = getExportSettings(item.orderItemId, item.unitType);
+          const info = unitInfoMap[item.inventoryItemId];
+          const targetUnit = settings.exportUnitType;
+          const sourceQty = item.decidedQuantity;
+          const isValid =
+            sourceQty != null && Number.isFinite(sourceQty) && sourceQty > 0;
+          const displayQty = isValid
+            ? formatQuantity(
+                info
+                  ? convertQuantity(sourceQty!, item.unitType, targetUnit, info.pack_size)
+                  : sourceQty!
+              )
+            : '[set qty]';
+          const displayLabel = info
+            ? targetUnit === 'pack'
+              ? info.pack_unit
+              : info.base_unit
+            : item.unitLabel;
+          lines.push(`- ${item.name}: ${displayQty} ${displayLabel}`);
         });
 
         if (lines.length === 0) return null;
@@ -651,7 +946,7 @@ export default function FulfillmentConfirmationScreen() {
       .join('\n\n');
 
     return output.length > 0 ? output : 'No items to order.';
-  }, [groupedItems, groupedRemainingItems]);
+  }, [groupedItems, groupedRemainingItems, unitInfoMap, getExportSettings]);
 
   const messageText = useMemo(() => {
     const today = new Date().toLocaleDateString('en-US', {
@@ -816,6 +1111,66 @@ export default function FulfillmentConfirmationScreen() {
       ]);
     },
     [persistRegularRemoval, removeSupplierDraftItems]
+  );
+
+  const handleRegularItemOverflow = useCallback(
+    (item: ConfirmationItem) => {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+
+      const buttons: { text: string; onPress: () => void; style?: 'cancel' | 'destructive' }[] = [];
+
+      buttons.push({
+        text: 'Set to Order Later',
+        onPress: () => setOrderLaterTarget({ kind: 'regular', id: item.id }),
+      });
+
+      if (item.secondarySupplierId && item.secondarySupplierName) {
+        buttons.push({
+          text: `Move to ${item.secondarySupplierName}`,
+          onPress: () => handleMoveToSecondarySupplier(item),
+        });
+      }
+
+      buttons.push({
+        text: 'Remove',
+        style: 'destructive',
+        onPress: () => handleDelete(item),
+      });
+
+      buttons.push({ text: 'Cancel', style: 'cancel', onPress: () => {} });
+
+      Alert.alert(item.name, undefined, buttons);
+    },
+    [handleDelete, handleMoveToSecondarySupplier]
+  );
+
+  const handleRemainingItemOverflow = useCallback(
+    (item: RemainingConfirmationItem) => {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+
+      const buttons: { text: string; onPress: () => void; style?: 'cancel' | 'destructive' }[] = [];
+
+      buttons.push({
+        text: 'Set to Order Later',
+        onPress: () => setOrderLaterTarget({ kind: 'remaining', id: item.orderItemId }),
+      });
+
+      if (item.secondarySupplierId && item.secondarySupplierName) {
+        buttons.push({
+          text: `Move to ${item.secondarySupplierName}`,
+          onPress: () => handleMoveRemainingToSecondarySupplier(item),
+        });
+      }
+
+      buttons.push({ text: 'Cancel', style: 'cancel', onPress: () => {} });
+
+      Alert.alert(item.name, undefined, buttons);
+    },
+    [handleMoveRemainingToSecondarySupplier]
   );
 
   const handleQuantityChange = useCallback(
@@ -1335,6 +1690,18 @@ export default function FulfillmentConfirmationScreen() {
     }
   }, [actionsDisabled, finalizeOrder, messageText]);
 
+  const handleRemainingInstructionsPress = useCallback(() => {
+    Alert.alert(
+      'Remaining Item Instructions',
+      [
+        'Set a final order quantity greater than zero for each remaining item.',
+        'Use "Suggested" or "Auto-fill" when suggestions are available.',
+        'If you do not want to order now, open the item menu (•••) and choose "Set to Order Later".',
+        'Share stays disabled until all remaining items are resolved.',
+      ].join('\n\n')
+    );
+  }, []);
+
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right', 'bottom']}>
       <ManagerScaleContainer>
@@ -1363,12 +1730,15 @@ export default function FulfillmentConfirmationScreen() {
               <View className="flex-row items-start justify-between">
                 <View className="flex-1 pr-2">
                   <View className="flex-row items-center">
-                    <Ionicons name="alert-circle-outline" size={16} color="#B45309" />
-                    <Text className="ml-2 text-sm font-bold text-amber-900">Remaining Items (Required)</Text>
+                    <Text className="text-lg font-bold text-amber-900">Remaining Items</Text>
+                    <TouchableOpacity
+                      onPress={handleRemainingInstructionsPress}
+                      className="ml-1.5 p-1"
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons name="information-circle-outline" size={16} color="#B45309" />
+                    </TouchableOpacity>
                   </View>
-                  <Text className="text-xs text-amber-700 mt-1">
-                    Set a final order quantity greater than zero for each remaining-mode item before ordering.
-                  </Text>
                 </View>
                 <TouchableOpacity
                   onPress={handleAutoFillSuggestions}
@@ -1404,126 +1774,28 @@ export default function FulfillmentConfirmationScreen() {
                       </Text>
 
                       {rows.map((item) => {
-                        const isMissing =
-                          item.decidedQuantity == null ||
-                          !Number.isFinite(item.decidedQuantity) ||
-                          item.decidedQuantity <= 0;
                         const suggested = getSuggestion(item);
-                        const historyEntry = lastOrderedByRemainingId[item.orderItemId];
                         const isSaving = savingRemainingIds.has(item.orderItemId);
+                        const settings = getExportSettings(item.orderItemId, item.unitType);
+                        const unitInfo = unitInfoMap[item.inventoryItemId];
+                        const contributorBreakdown =
+                          remainingContributorBreakdownByOrderItemId[item.orderItemId] ?? [];
 
                         return (
-                          <View key={item.orderItemId} className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 mb-2 last:mb-0">
-                            <View className="flex-row items-start justify-between">
-                              <View className="flex-1 pr-2">
-                                <Text className="text-sm font-semibold text-gray-900">{item.name}</Text>
-                                <Text className="text-xs text-gray-500 mt-1">
-                                  {item.locationName} ({item.shortCode}) • Ordered by {item.orderedBy}
-                                </Text>
-                                <View className="flex-row items-center mt-1.5">
-                                  <View className="px-1.5 py-0.5 rounded-full bg-amber-100">
-                                    <Text className="text-[10px] font-semibold text-amber-700">Remaining</Text>
-                                  </View>
-                                  <Text className="ml-2 text-xs text-amber-700">
-                                    Reported: {item.reportedRemaining} {item.unitLabel}
-                                  </Text>
-                                </View>
-                                {item.note && (
-                                  <>
-                                    <Text className="text-xs text-blue-700 mt-1.5">Note: {item.note}</Text>
-                                    <TouchableOpacity
-                                      onPress={() => setOrderLaterTarget({ kind: 'remaining', id: item.orderItemId })}
-                                      className="self-start mt-2 px-2.5 py-1.5 rounded-md bg-blue-50 border border-blue-200"
-                                    >
-                                      <Text className="text-[11px] font-semibold text-blue-700">Set to Order Later</Text>
-                                    </TouchableOpacity>
-                                  </>
-                                )}
-                                {item.secondarySupplierName && (
-                                  <TouchableOpacity
-                                    onPress={() => handleMoveRemainingToSecondarySupplier(item)}
-                                    className="self-start mt-2 px-2.5 py-1.5 rounded-md bg-purple-50 border border-purple-200"
-                                  >
-                                    <Text className="text-[11px] font-semibold text-purple-700">
-                                      Move to {item.secondarySupplierName}
-                                    </Text>
-                                  </TouchableOpacity>
-                                )}
-                              </View>
-                            </View>
-
-                            <View className="flex-row items-center mt-3">
-                              <TouchableOpacity
-                                onPress={() => {
-                                  const current = item.decidedQuantity ?? 0;
-                                  handleRemainingQuantityChange(item, Math.max(0, current - 1));
-                                }}
-                                className="w-9 h-9 rounded-lg bg-white border border-gray-200 items-center justify-center"
-                              >
-                                <Ionicons name="remove" size={16} color={colors.gray[600]} />
-                              </TouchableOpacity>
-
-                              <TextInput
-                                value={item.decidedQuantity == null ? '' : `${item.decidedQuantity}`}
-                                onChangeText={(text) => {
-                                  const sanitized = text.replace(/[^0-9.]/g, '');
-                                  if (sanitized.length === 0) {
-                                    handleRemainingQuantityChange(item, null);
-                                    return;
-                                  }
-                                  const parsed = Number(sanitized);
-                                  if (!Number.isFinite(parsed) || parsed < 0) return;
-                                  handleRemainingQuantityChange(item, parsed);
-                                }}
-                                keyboardType="decimal-pad"
-                                placeholder="Set qty"
-                                placeholderTextColor={colors.gray[400]}
-                                className="mx-2 h-9 min-w-[84px] rounded-lg border border-gray-200 bg-white px-2 text-center text-sm font-semibold text-gray-900"
-                              />
-
-                              <TouchableOpacity
-                                onPress={() => {
-                                  const current = item.decidedQuantity ?? 0;
-                                  handleRemainingQuantityChange(item, current + 1);
-                                }}
-                                className="w-9 h-9 rounded-lg bg-white border border-gray-200 items-center justify-center"
-                              >
-                                <Ionicons name="add" size={16} color={colors.gray[600]} />
-                              </TouchableOpacity>
-
-                              <Text className="text-xs text-gray-500 ml-2">{item.unitLabel}</Text>
-
-                              {suggested != null && (
-                                <TouchableOpacity
-                                  onPress={() => handleRemainingQuantityChange(item, suggested)}
-                                  className="ml-auto px-2.5 py-1.5 rounded-md bg-amber-100"
-                                >
-                                  <Text className="text-[11px] font-semibold text-amber-800">
-                                    Last: {formatQuantity(suggested)}
-                                  </Text>
-                                </TouchableOpacity>
-                              )}
-                            </View>
-
-                            <Text className="text-[11px] text-gray-500 mt-2">
-                              {historyEntry
-                                ? `Last ordered ${formatLastOrderedLabel(historyEntry.orderedAt)}: ${formatQuantity(historyEntry.quantity)} ${item.unitLabel}`
-                                : loadingLastOrdered
-                                  ? 'Loading history...'
-                                : historyUnavailableOffline
-                                  ? 'History unavailable offline.'
-                                  : 'No history.'}
-                            </Text>
-
-                            {isMissing && (
-                              <Text className="text-[11px] text-red-600 mt-2">
-                                Final order quantity must be greater than zero before ordering.
-                              </Text>
-                            )}
-                            {isSaving && (
-                              <Text className="text-[11px] text-gray-500 mt-1">Saving...</Text>
-                            )}
-                          </View>
+                          <RemainingItemRow
+                            key={item.orderItemId}
+                            item={item}
+                            suggested={suggested}
+                            isSaving={isSaving}
+                            unitInfo={unitInfo}
+                            exportUnitType={settings.exportUnitType}
+                            contributorBreakdown={contributorBreakdown}
+                            onUnitChange={(unit) =>
+                              updateExportSettings(item.orderItemId, { exportUnitType: unit })
+                            }
+                            onQuantityChange={handleRemainingQuantityChange}
+                            onOverflowPress={handleRemainingItemOverflow}
+                          />
                         );
                       })}
                     </View>
@@ -1588,185 +1860,149 @@ export default function FulfillmentConfirmationScreen() {
                         const canResetToSum =
                           hasMultipleContributors &&
                           Math.abs(item.quantity - item.sumOfContributorQuantities) > 0.000001;
+                        const settings = getExportSettings(item.id, item.unitType);
+                        const unitInfo = unitInfoMap[item.inventoryItemId];
 
                         return (
-                          <View key={item.id} className="bg-white rounded-2xl border border-gray-100 mb-4">
-                            <View className="px-4 py-3">
-                              <View className="flex-row items-start justify-between">
-                                <View className="flex-1 pr-2">
-                                  <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
-                                    {item.name}
-                                  </Text>
-                                </View>
+                          <ReviewItemRow
+                            key={item.id}
+                            title={item.name}
+                            headerActions={(
+                              <>
+                                <TouchableOpacity
+                                  onPress={() => handleRegularItemOverflow(item)}
+                                  className="p-1.5 mr-1"
+                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                  <Ionicons name="ellipsis-horizontal" size={16} color={colors.gray[500]} />
+                                </TouchableOpacity>
                                 <TouchableOpacity
                                   onPress={() => toggleExpand(item.id)}
-                                  className="p-1"
+                                  className="p-1.5"
                                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                 >
                                   <Ionicons
-                                    name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                                    name={isExpanded ? 'information-circle' : 'information-circle-outline'}
                                     size={18}
-                                    color={colors.gray[400]}
+                                    color={isExpanded ? colors.primary[500] : colors.gray[500]}
                                   />
                                 </TouchableOpacity>
-                              </View>
+                              </>
+                            )}
+                            quantityValue={formatQuantity(item.quantity)}
+                            onQuantityChangeText={(text) => {
+                              const sanitized = text.replace(/[^0-9.]/g, '');
+                              if (sanitized.length === 0) return;
+                              const parsed = Number(sanitized);
+                              if (!Number.isFinite(parsed)) return;
+                              handleQuantityChange(item, parsed);
+                            }}
+                            onDecrement={() => handleQuantityChange(item, item.quantity - 1)}
+                            onIncrement={() => handleQuantityChange(item, item.quantity + 1)}
+                            unitSelector={(
+                              <QuantityExportSelector
+                                exportUnitType={settings.exportUnitType}
+                                baseUnitLabel={unitInfo?.base_unit ?? item.unitLabel}
+                                packUnitLabel={unitInfo?.pack_unit ?? item.unitLabel}
+                                canSwitchUnit={canSwitchUnit(unitInfo)}
+                                onUnitChange={(unit) =>
+                                  updateExportSettings(item.id, { exportUnitType: unit })
+                                }
+                              />
+                            )}
+                            detailsVisible={isExpanded}
+                            details={(
+                              <View className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                                <Text className="text-sm font-semibold text-gray-900">
+                                  Ordered by: {hasMultipleContributors ? `${contributorCount} people` : singleContributorName}
+                                </Text>
+                                <Text className="text-xs text-gray-500 mt-1">
+                                  Final total: {finalTotalText}
+                                </Text>
 
-                              <View className="flex-row items-center mt-3">
-                                <TouchableOpacity
-                                  onPress={() => handleQuantityChange(item, item.quantity - 1)}
-                                  className="w-9 h-9 rounded-lg bg-gray-100 items-center justify-center"
-                                >
-                                  <Ionicons name="remove" size={16} color={colors.gray[600]} />
-                                </TouchableOpacity>
+                                {hasMultipleContributors && (
+                                  <View className="mt-3">
+                                    <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                                      Per-person breakdown
+                                    </Text>
+                                    {item.contributors.map((contributor, contributorIndex) => (
+                                      <View
+                                        key={`${item.id}-contributor-${contributor.userId || contributor.name}-${contributorIndex}`}
+                                        className={`flex-row items-center justify-between py-1.5 ${
+                                          contributorIndex < item.contributors.length - 1 ? 'border-b border-gray-200' : ''
+                                        }`}
+                                      >
+                                        <Text className="text-sm text-gray-700">{contributor.name}</Text>
+                                        <Text className="text-sm font-medium text-gray-700">
+                                          {formatQuantity(contributor.quantity)} {item.unitLabel}
+                                        </Text>
+                                      </View>
+                                    ))}
+                                    <Text className="text-xs text-gray-500 mt-2">
+                                      Contributors total: {contributorTotalText}
+                                    </Text>
 
-                                <TextInput
-                                  value={formatQuantity(item.quantity)}
-                                  onChangeText={(text) => {
-                                    const sanitized = text.replace(/[^0-9.]/g, '');
-                                    if (sanitized.length === 0) return;
-                                    const parsed = Number(sanitized);
-                                    if (!Number.isFinite(parsed)) return;
-                                    handleQuantityChange(item, parsed);
-                                  }}
-                                  keyboardType="decimal-pad"
-                                  className="mx-2 h-9 min-w-[84px] rounded-lg border border-gray-200 bg-white px-2 text-center text-sm font-semibold text-gray-900"
-                                />
+                                    {canResetToSum && (
+                                      <TouchableOpacity
+                                        onPress={() => handleResetToSum(item)}
+                                        className="self-start mt-2 px-2.5 py-1.5 rounded-md bg-gray-200"
+                                      >
+                                        <Text className="text-[11px] font-semibold text-gray-700">Reset to sum</Text>
+                                      </TouchableOpacity>
+                                    )}
+                                  </View>
+                                )}
 
-                                <TouchableOpacity
-                                  onPress={() => handleQuantityChange(item, item.quantity + 1)}
-                                  className="w-9 h-9 rounded-lg bg-gray-100 items-center justify-center"
-                                >
-                                  <Ionicons name="add" size={16} color={colors.gray[600]} />
-                                </TouchableOpacity>
-
-                                <Text className="text-xs text-gray-500 ml-2">{item.unitLabel}</Text>
-                              </View>
-                            </View>
-
-                            {isExpanded && (
-                              <View className="px-4 pb-4 border-t border-gray-100">
-                                <View className="mt-3 bg-gray-50 rounded-xl p-3 border border-gray-200">
-                                  <Text className="text-sm font-semibold text-gray-900">
-                                    Ordered by: {hasMultipleContributors ? `${contributorCount} people` : singleContributorName}
-                                  </Text>
-                                  <Text className="text-xs text-gray-500 mt-1">
-                                    Final total: {finalTotalText}
-                                  </Text>
-
-                                  {hasMultipleContributors && (
-                                    <View className="mt-3">
-                                      <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                                        Per-person breakdown
-                                      </Text>
-                                      {item.contributors.map((contributor, contributorIndex) => (
-                                        <View
-                                          key={`${item.id}-contributor-${contributor.userId || contributor.name}-${contributorIndex}`}
-                                          className={`flex-row items-center justify-between py-1.5 ${
-                                            contributorIndex < item.contributors.length - 1 ? 'border-b border-gray-200' : ''
-                                          }`}
-                                        >
-                                          <Text className="text-sm text-gray-700">{contributor.name}</Text>
+                                {item.details.length > 0 && (
+                                  <View className="mt-3">
+                                    <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                                      Location breakdown
+                                    </Text>
+                                    {item.details.map((detail, detailIndex) => (
+                                      <View
+                                        key={`${item.id}-detail-${detail.locationId || detail.locationName}-${detailIndex}`}
+                                        className={`py-1.5 ${
+                                          detailIndex < item.details.length - 1 ? 'border-b border-gray-200' : ''
+                                        }`}
+                                      >
+                                        <View className="flex-row items-center justify-between">
+                                          <Text className="text-sm text-gray-700">
+                                            {detail.locationName}
+                                            {detail.shortCode ? ` (${detail.shortCode})` : ''}
+                                          </Text>
                                           <Text className="text-sm font-medium text-gray-700">
-                                            {formatQuantity(contributor.quantity)} {item.unitLabel}
+                                            {formatQuantity(detail.quantity)} {item.unitLabel}
                                           </Text>
                                         </View>
-                                      ))}
-                                      <Text className="text-xs text-gray-500 mt-2">
-                                        Contributors total: {contributorTotalText}
-                                      </Text>
-
-                                      {canResetToSum && (
-                                        <TouchableOpacity
-                                          onPress={() => handleResetToSum(item)}
-                                          className="self-start mt-2 px-2.5 py-1.5 rounded-md bg-gray-200"
-                                        >
-                                          <Text className="text-[11px] font-semibold text-gray-700">Reset to sum</Text>
-                                        </TouchableOpacity>
-                                      )}
-                                    </View>
-                                  )}
-
-                                  {item.details.length > 0 && (
-                                    <View className="mt-3">
-                                      <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                                        Location breakdown
-                                      </Text>
-                                      {item.details.map((detail, detailIndex) => (
-                                        <View
-                                          key={`${item.id}-detail-${detail.locationId || detail.locationName}-${detailIndex}`}
-                                          className={`py-1.5 ${
-                                            detailIndex < item.details.length - 1 ? 'border-b border-gray-200' : ''
-                                          }`}
-                                        >
-                                          <View className="flex-row items-center justify-between">
-                                            <Text className="text-sm text-gray-700">
-                                              {detail.locationName}
-                                              {detail.shortCode ? ` (${detail.shortCode})` : ''}
-                                            </Text>
-                                            <Text className="text-sm font-medium text-gray-700">
-                                              {formatQuantity(detail.quantity)} {item.unitLabel}
-                                            </Text>
-                                          </View>
-                                          <Text className="text-xs text-gray-500 mt-1">Ordered by {detail.orderedBy}</Text>
-                                        </View>
-                                      ))}
-                                    </View>
-                                  )}
-
-                                  {item.notes.length > 0 && (
-                                    <View className="mt-3">
-                                      <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                                        Notes
-                                      </Text>
-                                      {item.notes.map((note, noteIndex) => (
-                                        <View
-                                          key={note.id}
-                                          className={`rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2 ${
-                                            noteIndex < item.notes.length - 1 ? 'mb-2' : ''
-                                          }`}
-                                        >
-                                          <Text className="text-[11px] font-semibold text-blue-700">
-                                            {note.author} • {note.locationName} ({note.shortCode})
-                                          </Text>
-                                          <Text className="text-xs text-blue-900 mt-1">{note.text}</Text>
-                                        </View>
-                                      ))}
-                                    </View>
-                                  )}
-                                </View>
+                                        <Text className="text-xs text-gray-500 mt-1">Ordered by {detail.orderedBy}</Text>
+                                      </View>
+                                    ))}
+                                  </View>
+                                )}
 
                                 {item.notes.length > 0 && (
-                                  <TouchableOpacity
-                                    onPress={() => setOrderLaterTarget({ kind: 'regular', id: item.id })}
-                                    className="mt-3 flex-row items-center justify-center rounded-xl border border-blue-200 bg-blue-50 py-2.5"
-                                  >
-                                    <Ionicons name="time-outline" size={16} color="#1D4ED8" />
-                                    <Text className="ml-2 text-sm font-semibold text-blue-700">Set to Order Later</Text>
-                                  </TouchableOpacity>
-                                )}
-
-                                {item.secondarySupplierName && (
-                                  <TouchableOpacity
-                                    onPress={() => handleMoveToSecondarySupplier(item)}
-                                    className="mt-3 flex-row items-center justify-center rounded-xl border border-purple-200 bg-purple-50 py-2.5"
-                                  >
-                                    <Ionicons name="swap-horizontal-outline" size={16} color="#7C3AED" />
-                                    <Text className="ml-2 text-sm font-semibold text-purple-700">
-                                      Move to {item.secondarySupplierName}
+                                  <View className="mt-3">
+                                    <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                                      Notes
                                     </Text>
-                                  </TouchableOpacity>
+                                    {item.notes.map((note, noteIndex) => (
+                                      <View
+                                        key={note.id}
+                                        className={`rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2 ${
+                                          noteIndex < item.notes.length - 1 ? 'mb-2' : ''
+                                        }`}
+                                      >
+                                        <Text className="text-[11px] font-semibold text-blue-700">
+                                          {note.author} • {note.locationName} ({note.shortCode})
+                                        </Text>
+                                        <Text className="text-xs text-blue-900 mt-1">{note.text}</Text>
+                                      </View>
+                                    ))}
+                                  </View>
                                 )}
-
-                                <TouchableOpacity
-                                  onPress={() => handleDelete(item)}
-                                  className="mt-3 flex-row items-center justify-center rounded-xl border border-red-200 bg-red-50 py-2.5"
-                                >
-                                  <Ionicons name="trash-outline" size={16} color={colors.error} />
-                                  <Text className="ml-2 text-sm font-semibold text-red-600">Delete item</Text>
-                                </TouchableOpacity>
                               </View>
                             )}
-                          </View>
+                          />
                         );
                       })}
                     </View>

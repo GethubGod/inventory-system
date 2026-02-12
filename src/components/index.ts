@@ -8,6 +8,8 @@ export { OrderConfirmationPopup } from './OrderConfirmationPopup';
 export { QrScannerModal } from './QrScannerModal';
 export { AuthLogoHeader } from './AuthLogoHeader';
 export { BrandLogo } from './BrandLogo';
+export { QuantityExportSelector } from './QuantityExportSelector';
+export { ReviewItemRow } from './ReviewItemRow';
 
 // Settings components
 export * from './settings';
