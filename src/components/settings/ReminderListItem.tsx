@@ -16,7 +16,8 @@ interface ReminderListItemProps {
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-export function ReminderListItem({
+// Memoized to prevent re-renders in list virtualization
+function ReminderListItemInner({
   reminder,
   onToggle,
   onEdit,
@@ -148,3 +149,5 @@ export function ReminderListItem({
     </View>
   );
 }
+
+export const ReminderListItem = React.memo(ReminderListItemInner);

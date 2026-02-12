@@ -19,6 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Sparkles } from 'lucide-react-native';
 import { router, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { useShallow } from 'zustand/react/shallow';
 import { useInventoryStore, useAuthStore, useOrderStore } from '@/store';
 import { InventoryItem, ItemCategory, Location, SupplierCategory } from '@/types';
 import { CATEGORY_LABELS, categoryColors, colors } from '@/constants';
@@ -64,7 +65,13 @@ const SUPPLIER_CATEGORIES: { value: SupplierCategory; label: string }[] = [
 
 export default function OrderScreen() {
   const ds = useScaledStyles();
-  const { location, locations, setLocation, fetchLocations, user } = useAuthStore();
+  const { location, locations, setLocation, fetchLocations, user } = useAuthStore(useShallow((state) => ({
+    location: state.location,
+    locations: state.locations,
+    setLocation: state.setLocation,
+    fetchLocations: state.fetchLocations,
+    user: state.user,
+  })));
   const {
     fetchItems,
     getFilteredItems,
@@ -73,8 +80,19 @@ export default function OrderScreen() {
     searchQuery,
     setSearchQuery,
     addItem,
-  } = useInventoryStore();
-  const { getLocationCartTotal, getTotalCartCount } = useOrderStore();
+  } = useInventoryStore(useShallow((state) => ({
+    fetchItems: state.fetchItems,
+    getFilteredItems: state.getFilteredItems,
+    selectedCategory: state.selectedCategory,
+    setSelectedCategory: state.setSelectedCategory,
+    searchQuery: state.searchQuery,
+    setSearchQuery: state.setSearchQuery,
+    addItem: state.addItem,
+  })));
+  const { getLocationCartTotal, getTotalCartCount } = useOrderStore(useShallow((state) => ({
+    getLocationCartTotal: state.getLocationCartTotal,
+    getTotalCartCount: state.getTotalCartCount,
+  })));
 
   const [refreshing, setRefreshing] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);

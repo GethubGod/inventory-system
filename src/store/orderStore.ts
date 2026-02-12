@@ -12,6 +12,7 @@ import {
   UnitType,
 } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { perfMark, perfMeasure } from '@/lib/perf';
 import {
   loadPendingFulfillmentData,
 } from '@/services/fulfillmentDataSource';
@@ -405,6 +406,16 @@ function getEffectiveQuantity(item: CartItem): number {
   return item.decidedQuantity ?? 0;
 }
 
+/** Whether a cart item is valid for submission (non-zero quantity OR remaining-mode report). */
+function isSubmittableCartItem(item: CartItem): boolean {
+  if (item.inputMode === 'remaining') {
+    // Remaining-mode: employee reports how much is left; manager decides
+    // order quantity later. Valid as long as remainingReported is set.
+    return (item.remainingReported ?? 0) >= 0;
+  }
+  return getEffectiveQuantity(item) > 0;
+}
+
 function normalizeCartItem(raw: any): CartItem | null {
   const inputMode: OrderInputMode = raw?.inputMode === 'remaining' ? 'remaining' : 'quantity';
   const unitType: UnitType = raw?.unitType === 'base' ? 'base' : 'pack';
@@ -534,7 +545,14 @@ function findCartItemIndex(
 }
 
 function toOrderItemInsert(orderId: string, item: CartItem): Omit<OrderItem, 'id' | 'created_at'> {
-  const quantity = getEffectiveQuantity(item);
+  // For remaining-mode the employee hasn't specified an order quantity — the
+  // manager will decide later. Use remainingReported as the DB quantity so it
+  // satisfies any legacy `quantity > 0` constraint; fulfillment reads
+  // remaining_reported / decided_quantity directly, not this field.
+  const quantity =
+    item.inputMode === 'remaining'
+      ? Math.max(item.remainingReported ?? 0, 1)
+      : getEffectiveQuantity(item);
 
   return {
     order_id: orderId,
@@ -1962,7 +1980,7 @@ export const useOrderStore = create<OrderState>()(
           throw new Error('Cart is empty for this location');
         }
 
-        const cartItemsForInsert = locationCart.filter((item) => getEffectiveQuantity(item) > 0);
+        const cartItemsForInsert = locationCart.filter(isSubmittableCartItem);
         if (cartItemsForInsert.length === 0) {
           throw new Error('All cart items are zero quantity. Update at least one item before submit.');
         }
@@ -2008,7 +2026,7 @@ export const useOrderStore = create<OrderState>()(
           throw new Error('Cart is empty for this location');
         }
 
-        const cartItemsForInsert = locationCart.filter((item) => getEffectiveQuantity(item) > 0);
+        const cartItemsForInsert = locationCart.filter(isSubmittableCartItem);
         if (cartItemsForInsert.length === 0) {
           throw new Error('All cart items are zero quantity. Update at least one item before submit.');
         }
@@ -2611,7 +2629,7 @@ export const useOrderStore = create<OrderState>()(
         if (pastOrdersTableAvailable !== false) {
           const { data, error } = await (supabase as any)
             .from('past_orders')
-            .select('*')
+            .select('id,supplier_id,supplier_name,created_by,created_at,payload,message_text,share_method')
             .order('created_at', { ascending: false })
             .limit(500);
 
@@ -2738,6 +2756,7 @@ export const useOrderStore = create<OrderState>()(
       },
 
       loadFulfillmentData: async (managerId) => {
+        perfMark('loadFulfillmentData');
         const userId =
           typeof managerId === 'string' && managerId.trim().length > 0
             ? managerId
@@ -2816,18 +2835,17 @@ export const useOrderStore = create<OrderState>()(
           }
         } finally {
           set({ isFulfillmentLoading: false });
+          perfMeasure('loadFulfillmentData');
         }
       },
 
       fetchPendingFulfillmentOrders: async () => {
+        perfMark('fetchPendingFulfillmentOrders');
         set({ isFulfillmentLoading: true });
         try {
-          let currentPastOrders = get().pastOrders;
-          try {
-            currentPastOrders = await get().fetchPastOrders();
-          } catch {
-            // Use local snapshot when remote past-orders refresh fails.
-          }
+          // Use pastOrders already in state (loadFulfillmentData refreshes them
+          // before this runs). Avoids a redundant fetchPastOrders round-trip.
+          const currentPastOrders = get().pastOrders;
           const consumedOrderItemIds = extractConsumedOrderItemIds(currentPastOrders);
           if (__DEV__) {
             const consumedPreview = Array.from(consumedOrderItemIds.values()).slice(0, 10);
@@ -2844,6 +2862,7 @@ export const useOrderStore = create<OrderState>()(
           set({ orders: result.orders });
         } finally {
           set({ isFulfillmentLoading: false });
+          perfMeasure('fetchPendingFulfillmentOrders');
         }
       },
 

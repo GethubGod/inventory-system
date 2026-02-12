@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { InventoryItem, UnitType } from '@/types';
@@ -12,7 +12,8 @@ interface InventoryItemCardProps {
   locationId: string;
 }
 
-export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) {
+// Memoized to prevent re-renders in list virtualization
+function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
   const { addToCart, getCartItem, updateCartItem, removeFromCart } =
     useOrderStore();
   const ds = useScaledStyles();
@@ -410,3 +411,5 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
     </View>
   );
 }
+
+export const InventoryItemCard = React.memo(InventoryItemCardInner);

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { cachedFetch, invalidateCachePrefix } from '@/lib/queryCache';
 
 export interface SupplierLookupRow {
   id: string;
@@ -155,7 +156,12 @@ function normalizeSupplierRow(row: Record<string, unknown>): SupplierLookupRow |
   };
 }
 
-export async function loadSupplierLookup(): Promise<SupplierLookupMaps> {
+/** Invalidate the supplier lookup cache (call after supplier mutations). */
+export function invalidateSupplierCache(): void {
+  invalidateCachePrefix('supplier-lookup');
+}
+
+async function _loadSupplierLookupImpl(): Promise<SupplierLookupMaps> {
   const loadSuppliers = async (columns: string) =>
     (supabase as any)
       .from('suppliers')
@@ -202,6 +208,11 @@ export async function loadSupplierLookup(): Promise<SupplierLookupMaps> {
     supplierById,
     supplierByNameNormalized,
   };
+}
+
+/** Load supplier lookup maps (cached for 30s, deduped in-flight). */
+export async function loadSupplierLookup(): Promise<SupplierLookupMaps> {
+  return cachedFetch('supplier-lookup', _loadSupplierLookupImpl, 30_000);
 }
 
 function resolvePrimarySupplier(

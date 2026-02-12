@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Sparkles } from 'lucide-react-native';
 import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore, useInventoryStore, useOrderStore } from '@/store';
 import type { OrderInputMode } from '@/store';
 import { InventoryItem, UnitType, Location, ItemCategory, SupplierCategory } from '@/types';
@@ -79,9 +80,21 @@ const getLocationLabel = (location: Location | null): string => {
 
 export default function QuickOrderScreen() {
   const ds = useScaledStyles();
-  const { location: defaultLocation, locations, user } = useAuthStore();
-  const { items, fetchItems, addItem } = useInventoryStore();
-  const { addToCart, getTotalCartCount, getLocationCartTotal } = useOrderStore();
+  const { location: defaultLocation, locations, user } = useAuthStore(useShallow((state) => ({
+    location: state.location,
+    locations: state.locations,
+    user: state.user,
+  })));
+  const { items, fetchItems, addItem } = useInventoryStore(useShallow((state) => ({
+    items: state.items,
+    fetchItems: state.fetchItems,
+    addItem: state.addItem,
+  })));
+  const { addToCart, getTotalCartCount, getLocationCartTotal } = useOrderStore(useShallow((state) => ({
+    addToCart: state.addToCart,
+    getTotalCartCount: state.getTotalCartCount,
+    getLocationCartTotal: state.getLocationCartTotal,
+  })));
 
   // Selected location for ordering
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(defaultLocation);

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Platform,
@@ -16,12 +17,14 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore, useDisplayStore, useOrderStore } from '@/store';
 import { CATEGORY_LABELS, colors } from '@/constants';
 import { InventoryItem, ItemCategory, OrderWithDetails, SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
+import { loadSupplierLookup, invalidateSupplierCache } from '@/services/supplierResolver';
 
 interface AggregatedLocationBreakdown {
   locationId: string;
@@ -241,12 +244,15 @@ function normalizeSupplierNameKey(value: unknown): string {
 }
 
 export default function FulfillmentScreen() {
-  const { user, locations } = useAuthStore();
-  const { uiScale, buttonSize, textScale } = useDisplayStore((state) => ({
+  const { user, locations } = useAuthStore(useShallow((state) => ({
+    user: state.user,
+    locations: state.locations,
+  })));
+  const { uiScale, buttonSize, textScale } = useDisplayStore(useShallow((state) => ({
     uiScale: state.uiScale,
     buttonSize: state.buttonSize,
     textScale: state.textScale,
-  }));
+  })));
   const {
     orders,
     orderLaterQueue,
@@ -261,7 +267,21 @@ export default function FulfillmentScreen() {
     setSupplierOverride,
     clearSupplierOverride,
     createOrderLaterItem,
-  } = useOrderStore();
+  } = useOrderStore(useShallow((state) => ({
+    orders: state.orders,
+    orderLaterQueue: state.orderLaterQueue,
+    supplierDrafts: state.supplierDrafts,
+    getSupplierDraftItems: state.getSupplierDraftItems,
+    loadFulfillmentData: state.loadFulfillmentData,
+    fetchPendingFulfillmentOrders: state.fetchPendingFulfillmentOrders,
+    moveOrderLaterItemToSupplierDraft: state.moveOrderLaterItemToSupplierDraft,
+    removeOrderLaterItem: state.removeOrderLaterItem,
+    updateOrderLaterItemSchedule: state.updateOrderLaterItemSchedule,
+    markOrderItemsStatus: state.markOrderItemsStatus,
+    setSupplierOverride: state.setSupplierOverride,
+    clearSupplierOverride: state.clearSupplierOverride,
+    createOrderLaterItem: state.createOrderLaterItem,
+  })));
   const [refreshing, setRefreshing] = useState(false);
   const [dataReady, setDataReady] = useState(false);
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
@@ -290,48 +310,16 @@ export default function FulfillmentScreen() {
 
   const fetchSuppliers = useCallback(async () => {
     try {
-      const loadSuppliers = async (columns: string) =>
-        (supabase as any)
-          .from('suppliers')
-          .select(columns)
-          .order('name', { ascending: true });
-
-      let data: any[] | null = null;
-      let error: any = null;
-
-      ({ data, error } = await loadSuppliers('id,name,supplier_type,is_default,active'));
-
-      // Older supplier schemas may not have supplier_type / is_default / active yet.
-      if (error?.code === '42703') {
-        ({ data, error } = await loadSuppliers('id,name,is_default,active'));
-      }
-      if (error?.code === '42703') {
-        ({ data, error } = await loadSuppliers('id,name,active'));
-      }
-      if (error?.code === '42703') {
-        ({ data, error } = await loadSuppliers('id,name'));
-      }
-      if (error) throw error;
-
-      const normalized = (Array.isArray(data) ? data : [])
-        .map((row) => {
-          const id = toSupplierId(row?.id);
-          const name =
-            typeof row?.name === 'string' && row.name.trim().length > 0 ? row.name.trim() : null;
-          if (!id || !name) return null;
-          const rawSupplierType =
-            row?.supplier_type ?? row?.supplier_category ?? row?.category ?? row?.type;
-          const supplierType = isSupplierCategory(rawSupplierType) ? rawSupplierType : null;
-          return {
-            id,
-            name,
-            supplierType,
-            isDefault: row?.is_default === true,
-            active: row?.active !== false,
-          } satisfies SupplierOption;
-        })
-        .filter((row): row is SupplierOption => Boolean(row));
-
+      // Reuse the cached supplier lookup (same data loadPendingFulfillmentData uses)
+      // so we don't make a duplicate DB query.
+      const lookup = await loadSupplierLookup();
+      const normalized = lookup.suppliers.map((row) => ({
+        id: row.id,
+        name: row.name,
+        supplierType: isSupplierCategory(row.supplierType) ? row.supplierType : null,
+        isDefault: row.isDefault,
+        active: row.active,
+      } satisfies SupplierOption));
       setSupplierOptions(normalized);
     } catch (error) {
       console.error('Error fetching suppliers:', error);
@@ -340,11 +328,13 @@ export default function FulfillmentScreen() {
 
   const refreshAll = useCallback(async () => {
     try {
-      await Promise.all([
-        user?.id ? loadFulfillmentData(user.id) : Promise.resolve(),
-        fetchPendingOrders(),
-        fetchSuppliers(),
-      ]);
+      // loadFulfillmentData syncs past-order queue, then fetchPendingFulfillmentOrders
+      // re-fetches submitted orders and filters out consumed items.
+      // Run them sequentially so past orders are synced before the filter runs.
+      if (user?.id) {
+        await loadFulfillmentData(user.id);
+      }
+      await Promise.all([fetchPendingOrders(), fetchSuppliers()]);
     } catch (error) {
       console.error('Error refreshing fulfillment data:', error);
     } finally {
@@ -360,6 +350,8 @@ export default function FulfillmentScreen() {
     }, [refreshAll])
   );
 
+  // Realtime: when orders/order_items/suppliers change, do a full refresh
+  // (includes past-order sync so consumed items are correctly filtered out).
   useEffect(() => {
     if (realtimeChannelRef.current) {
       supabase.removeChannel(realtimeChannelRef.current);
@@ -371,8 +363,13 @@ export default function FulfillmentScreen() {
         clearTimeout(refreshTimeoutRef.current);
       }
       refreshTimeoutRef.current = setTimeout(() => {
-        void Promise.all([fetchPendingOrders(), fetchSuppliers()]);
-      }, 250);
+        void refreshAll();
+      }, 300);
+    };
+
+    const scheduleSupplierRefresh = () => {
+      invalidateSupplierCache();
+      scheduleRefresh();
     };
 
     const channel = supabase
@@ -390,7 +387,7 @@ export default function FulfillmentScreen() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'suppliers' },
-        scheduleRefresh
+        scheduleSupplierRefresh
       )
       .subscribe();
 
@@ -406,7 +403,7 @@ export default function FulfillmentScreen() {
         realtimeChannelRef.current = null;
       }
     };
-  }, [fetchPendingOrders, fetchSuppliers]);
+  }, [refreshAll]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -826,7 +823,9 @@ export default function FulfillmentScreen() {
       });
     });
 
-    return groups;
+    // Drop unknown/unresolved suppliers — these are items whose supplier
+    // couldn't be matched to a real suppliers row and can't be ordered.
+    return groups.filter((g) => !g.isUnknown);
   }, [
     getSupplierDraftItems,
     getOrderItemSupplierResolution,
@@ -2186,8 +2185,9 @@ export default function FulfillmentScreen() {
           </View>
 
           {!dataReady ? (
-            <View className="items-center py-12">
-              <Text className="text-gray-400 text-center text-sm">Loading orders...</Text>
+            <View className="items-center py-16">
+              <ActivityIndicator size="large" color={colors.primary[500]} />
+              <Text className="text-gray-400 text-center text-sm mt-4">Searching for orders...</Text>
             </View>
           ) : supplierGroups.length === 0 ? (
             <View className="items-center py-12">

@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useShallow } from 'zustand/react/shallow';
 import { useOrderStore, useInventoryStore, useAuthStore } from '@/store';
 import type { CartItem } from '@/store';
 import { colors } from '@/constants';
@@ -55,9 +56,28 @@ export default function CartScreen() {
     clearAllCarts,
     createAndSubmitOrder,
     setCartItemNote,
-  } = useOrderStore();
-  const { items, fetchItems } = useInventoryStore();
-  const { user, locations } = useAuthStore();
+  } = useOrderStore(useShallow((state) => ({
+    getCartItems: state.getCartItems,
+    getCartLocationIds: state.getCartLocationIds,
+    getTotalCartCount: state.getTotalCartCount,
+    addToCart: state.addToCart,
+    updateCartItem: state.updateCartItem,
+    removeFromCart: state.removeFromCart,
+    moveCartItem: state.moveCartItem,
+    moveLocationCartItems: state.moveLocationCartItems,
+    clearLocationCart: state.clearLocationCart,
+    clearAllCarts: state.clearAllCarts,
+    createAndSubmitOrder: state.createAndSubmitOrder,
+    setCartItemNote: state.setCartItemNote,
+  })));
+  const { items, fetchItems } = useInventoryStore(useShallow((state) => ({
+    items: state.items,
+    fetchItems: state.fetchItems,
+  })));
+  const { user, locations } = useAuthStore(useShallow((state) => ({
+    user: state.user,
+    locations: state.locations,
+  })));
 
   // Track expanded items
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());

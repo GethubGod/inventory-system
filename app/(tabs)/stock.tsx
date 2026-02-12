@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore, useStockStore, useDisplayStore } from '@/store';
 import { useNfcScanner, useStockNetworkStatus } from '@/hooks';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -70,7 +71,12 @@ function formatLastChecked(lastCheckedAt: string | null): string {
 
 
 export default function UpdateStockScreen() {
-  const { location, locations, setLocation, fetchLocations } = useAuthStore();
+  const { location, locations, setLocation, fetchLocations } = useAuthStore(useShallow((state) => ({
+    location: state.location,
+    locations: state.locations,
+    setLocation: state.setLocation,
+    fetchLocations: state.fetchLocations,
+  })));
   const {
     storageAreas,
     pendingUpdates,
@@ -81,8 +87,20 @@ export default function UpdateStockScreen() {
     syncPendingUpdates,
     pausedSession,
     discardPausedSession,
-  } = useStockStore();
-  const { reduceMotion } = useDisplayStore();
+  } = useStockStore(useShallow((state) => ({
+    storageAreas: state.storageAreas,
+    pendingUpdates: state.pendingUpdates,
+    isOnline: state.isOnline,
+    isLoading: state.isLoading,
+    fetchStorageAreas: state.fetchStorageAreas,
+    prefetchAreaItems: state.prefetchAreaItems,
+    syncPendingUpdates: state.syncPendingUpdates,
+    pausedSession: state.pausedSession,
+    discardPausedSession: state.discardPausedSession,
+  })));
+  const { reduceMotion } = useDisplayStore(useShallow((state) => ({
+    reduceMotion: state.reduceMotion,
+  })));
   const ds = useScaledStyles();
 
   const [isRefreshing, setIsRefreshing] = useState(false);

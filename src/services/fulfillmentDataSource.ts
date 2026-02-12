@@ -239,15 +239,24 @@ export async function loadPendingFulfillmentData(options?: {
     loadOrderLaterSourceOrderItemIds(),
   ]);
 
+  // Select only the columns actually consumed by fulfillment grouping and
+  // confirmation screens.  Reduces payload size significantly for locations
+  // with many submitted orders.
   const { data, error } = await supabase
     .from('orders')
     .select(`
-      *,
-      user:users!orders_user_id_fkey(*),
-      location:locations(*),
+      id,status,location_id,created_at,
+      user:users!orders_user_id_fkey(id,name),
+      location:locations(id,name,short_code),
       order_items(
-        *,
-        inventory_item:inventory_items(*)
+        id,order_id,quantity,unit_type,input_mode,
+        remaining_reported,decided_quantity,decided_by,decided_at,
+        note,supplier_override_id,status,inventory_item_id,
+        inventory_item:inventory_items(
+          id,name,category,base_unit,pack_unit,pack_size,
+          supplier_category,default_supplier,secondary_supplier,
+          supplier_id,active
+        )
       )
     `)
     .eq('status', 'submitted')
