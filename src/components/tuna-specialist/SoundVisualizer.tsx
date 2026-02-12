@@ -564,7 +564,23 @@ export function SoundVisualizer({ state }: SoundVisualizerProps) {
     return () => {
       stopAll();
     };
-  }, [state]);
+  }, [
+    state,
+    blueOpacity,
+    coreOpacity,
+    coreScale,
+    greenOpacity,
+    innerGlowOpacity,
+    innerGlowScale,
+    middleOpacity,
+    middleRotation,
+    middleScale,
+    orangeOpacity,
+    outerOpacity,
+    outerScale,
+    outermostOpacity,
+    outermostScale,
+  ]);
 
   const middleRotateInterp = middleRotation.interpolate({
     inputRange: [0, 1],

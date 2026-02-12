@@ -231,7 +231,7 @@ Deno.serve(async (req) => {
   let remindersSent = 0;
   let skippedByCondition = 0;
   let skippedByRateLimit = 0;
-  const errors: Array<{ ruleId: string; employeeId?: string; message: string }> = [];
+  const errors: { ruleId: string; employeeId?: string; message: string }[] = [];
 
   for (const rule of enabledRules) {
     evaluatedRules += 1;

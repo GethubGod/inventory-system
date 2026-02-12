@@ -11,6 +11,7 @@ import type { EventSubscription } from 'expo-modules-core';
 // when the native module isn't available (e.g. before dev client rebuild)
 let ExpoSpeechRecognitionModule: any = null;
 try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   ExpoSpeechRecognitionModule = require('expo-speech-recognition').ExpoSpeechRecognitionModule;
 } catch {
   // Native module not available — voice features will be disabled
@@ -90,14 +91,14 @@ interface TunaSpecialistState {
   removeCartItem: (index: number) => void;
   updateCartItemQuantity: (index: number, quantity: number) => void;
   clearCart: () => void;
-  getCartForOrder: () => Array<{
+  getCartForOrder: () => {
     area_item_id: string | null;
     inventory_item_id?: string;
     name: string;
     emoji: string;
     quantity: number;
     unit: string;
-  }>;
+  }[];
   setOnboardingSeen: () => void;
   reset: () => void;
 }

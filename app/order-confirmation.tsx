@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -36,12 +36,12 @@ export default function OrderConfirmationScreen() {
   const locationName = routeLocationName || currentOrder?.location?.name || 'Location';
   const itemCount = currentOrder?.order_items?.length || 0;
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     router.back();
-  };
+  }, []);
 
   useEffect(() => {
     // Play success haptic
@@ -103,7 +103,7 @@ export default function OrderConfirmationScreen() {
       clearInterval(countdownInterval);
       clearTimeout(dismissTimeout);
     };
-  }, []);
+  }, [checkmarkScale, handleClose, popupOpacity, popupScale, progressWidth]);
 
   return (
     <View className="flex-1 bg-black/50 items-center justify-center px-6">

@@ -322,7 +322,7 @@ export const useStockStore = create<StockState>()(
             set((state) => ({
               areaItemsById: { ...state.areaItemsById, [areaId]: withStock },
             }));
-          } catch (_) {
+          } catch {
             // Ignore prefetch failures
           }
         }
@@ -411,7 +411,7 @@ export const useStockStore = create<StockState>()(
                 updated_by: entry.updatedBy,
                 updated_at: entry.updatedAt,
               });
-            } catch (_) {
+            } catch {
               syncError = true;
               get().queueUpdate(payload);
             }
@@ -426,7 +426,7 @@ export const useStockStore = create<StockState>()(
                 items_skipped: skippedItems.length,
                 items_total: currentSession.items_total,
               });
-            } catch (_) {
+            } catch {
               syncError = true;
             }
 
@@ -436,7 +436,7 @@ export const useStockStore = create<StockState>()(
                   last_checked_at: completedAt,
                   last_checked_by: userId,
                 });
-              } catch (_) {
+              } catch {
                 syncError = true;
               }
             }
@@ -885,7 +885,7 @@ export const useStockStore = create<StockState>()(
               updated_by: update.updatedBy,
               updated_at: update.createdAt,
             });
-          } catch (error) {
+          } catch {
             remaining.push(update);
           }
         }

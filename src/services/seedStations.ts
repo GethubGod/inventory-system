@@ -101,7 +101,7 @@ export async function seedStations(): Promise<SeedStationsResult> {
     .select('id,name,short_code,active');
 
   if (locationsError) throw locationsError;
-  const activeLocations = (locations || []).filter((loc) => loc.active !== false) as LocationRow[];
+  const activeLocations = (locations || []).filter((loc: any) => loc.active !== false) as LocationRow[];
 
   const sushiLocation = activeLocations.find(isSushiLocation) ?? null;
   const pokiLocation = activeLocations.find(isPokiLocation) ?? null;
@@ -127,7 +127,7 @@ export async function seedStations(): Promise<SeedStationsResult> {
     return STATIONS.filter(
       (station) =>
         !(existingAreas || []).some(
-          (area) => area.location_id === location.id && area.name === station.name
+          (area: any) => area.location_id === location.id && area.name === station.name
         )
     ).map((station) => {
       const locationKey = slugify(location.short_code || location.name);
@@ -162,7 +162,7 @@ export async function seedStations(): Promise<SeedStationsResult> {
     .in('name', ALCOHOL_ITEMS);
 
   if (alcoholExistingError) throw alcoholExistingError;
-  const existingAlcoholNames = new Set((alcoholExisting || []).map((item) => item.name));
+  const existingAlcoholNames = new Set((alcoholExisting || []).map((item: any) => item.name));
 
   const alcoholToInsert = ALCOHOL_ITEMS.filter((name) => !existingAlcoholNames.has(name)).map(
     (name) => ({
@@ -209,7 +209,7 @@ export async function seedStations(): Promise<SeedStationsResult> {
 
   if (alcoholItemsError) throw alcoholItemsError;
 
-  const areaItemsToUpsert: Array<{
+  const areaItemsToUpsert: {
     area_id: string;
     inventory_item_id: string;
     min_quantity: number;
@@ -217,14 +217,14 @@ export async function seedStations(): Promise<SeedStationsResult> {
     par_level: number;
     current_quantity: number;
     unit_type: string;
-  }> = [];
+  }[] = [];
 
   for (const location of targetLocations) {
     const freezerArea = (allAreas || []).find(
-      (area) => area.location_id === location.id && area.name === 'Freezer Station'
+      (area: any) => area.location_id === location.id && area.name === 'Freezer Station'
     );
     const alcoholArea = (allAreas || []).find(
-      (area) => area.location_id === location.id && area.name === 'Alcohol Station'
+      (area: any) => area.location_id === location.id && area.name === 'Alcohol Station'
     );
 
     if (freezerArea && fishItems) {

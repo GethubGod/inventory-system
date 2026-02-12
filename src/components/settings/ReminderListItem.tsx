@@ -96,7 +96,9 @@ export function ReminderListItem({
             style={{ fontSize: ds.fontSize(13) }}
             numberOfLines={1}
           >
-            "{reminder.message}"
+            {'"'}
+            {reminder.message}
+            {'"'}
           </Text>
         </View>
 

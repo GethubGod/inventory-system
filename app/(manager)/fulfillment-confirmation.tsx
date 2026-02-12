@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
@@ -19,6 +19,8 @@ import { useAuthStore, useOrderStore, useSettingsStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
+import { buildSupplierConfirmationData } from '@/services/fulfillmentDataSource';
+import { loadSupplierLookup } from '@/services/supplierResolver';
 
 interface ConfirmationDetail {
   locationId?: string;
@@ -171,11 +173,14 @@ export default function FulfillmentConfirmationScreen() {
   const { user } = useAuthStore();
   const { exportFormat } = useSettingsStore();
   const {
-    addSupplierDraftItem,
     createOrderLaterItem,
+    fetchPendingFulfillmentOrders,
     finalizeSupplierOrder,
+    getSupplierDraftItems,
     getLastOrderedQuantities,
+    markOrderItemsStatus,
     removeSupplierDraftItems,
+    setSupplierOverride,
     updateSupplierDraftItemQuantity,
   } = useOrderStore();
 
@@ -338,14 +343,38 @@ export default function FulfillmentConfirmationScreen() {
     if (!supplierId) return 'Supplier';
     return SUPPLIER_CATEGORY_LABELS[supplierId as keyof typeof SUPPLIER_CATEGORY_LABELS] || supplierId;
   }, [supplierId, supplierLabelParam]);
-  const sourceParam = Array.isArray(params.from) ? params.from[0] : params.from;
+
+  const refreshFromSupplierSource = useCallback(async () => {
+    if (!supplierId) return;
+
+    try {
+      await fetchPendingFulfillmentOrders();
+      const supplierLookup = await loadSupplierLookup();
+      const stateOrders = (useOrderStore.getState().orders || []) as any;
+      const supplierDraftItems = getSupplierDraftItems(supplierId) as any;
+      const rebuilt = buildSupplierConfirmationData({
+        supplierId,
+        orders: stateOrders,
+        supplierLookup,
+        supplierDraftItems,
+      });
+
+      setItems(rebuilt.regularItems as any);
+      setRemainingItems(rebuilt.remainingItems as any);
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[Fulfillment:Confirm] Unable to refresh supplier payload from source.', error);
+      }
+    }
+  }, [fetchPendingFulfillmentOrders, getSupplierDraftItems, supplierId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshFromSupplierSource();
+    }, [refreshFromSupplierSource])
+  );
 
   const handleBackPress = useCallback(() => {
-    if (sourceParam === 'fulfillment') {
-      router.replace('/(manager)/fulfillment');
-      return;
-    }
-
     const canGoBack = (router as any)?.canGoBack?.();
     if (canGoBack) {
       router.back();
@@ -353,7 +382,7 @@ export default function FulfillmentConfirmationScreen() {
     }
 
     router.replace('/(manager)/fulfillment');
-  }, [sourceParam]);
+  }, []);
 
   const syncOrderStoreDecision = useCallback(
     (orderItemId: string, decidedQuantity: number, decidedBy: string, decidedAt: string) => {
@@ -654,99 +683,30 @@ export default function FulfillmentConfirmationScreen() {
     });
   }, []);
 
-  const syncOrderStoreRegularRemoval = useCallback((orderItemIds: string[]) => {
-    if (orderItemIds.length === 0) return;
-    const idSet = new Set(orderItemIds);
-
-    useOrderStore.setState((state: any) => {
-      const patchOrder = (orderLike: any) => {
-        if (!orderLike || !Array.isArray(orderLike.order_items)) return orderLike;
-
-        let changed = false;
-        const nextOrderItems = orderLike.order_items.map((orderItem: any) => {
-          if (!idSet.has(orderItem?.id)) return orderItem;
-          changed = true;
-          return {
-            ...orderItem,
-            quantity: 0,
-            quantity_requested: 0,
-          };
-        });
-
-        return changed ? { ...orderLike, order_items: nextOrderItems } : orderLike;
-      };
-
-      return {
-        orders: Array.isArray(state.orders) ? state.orders.map((order: any) => patchOrder(order)) : state.orders,
-        currentOrder: patchOrder(state.currentOrder),
-      };
-    });
-  }, []);
-
-  const syncOrderStoreOrderItemDeletion = useCallback((orderItemIds: string[]) => {
-    if (orderItemIds.length === 0) return;
-    const idSet = new Set(orderItemIds);
-
-    useOrderStore.setState((state: any) => {
-      const patchOrder = (orderLike: any) => {
-        if (!orderLike || !Array.isArray(orderLike.order_items)) return orderLike;
-        const nextOrderItems = orderLike.order_items.filter((orderItem: any) => !idSet.has(orderItem?.id));
-        if (nextOrderItems.length === orderLike.order_items.length) return orderLike;
-        return { ...orderLike, order_items: nextOrderItems };
-      };
-
-      return {
-        orders: Array.isArray(state.orders) ? state.orders.map((order: any) => patchOrder(order)) : state.orders,
-        currentOrder: patchOrder(state.currentOrder),
-      };
-    });
-  }, []);
-
   const persistRegularRemoval = useCallback(
-    async (orderItemIds: string[]) => {
+    async (orderItemIds: string[], status: 'order_later' | 'cancelled' = 'cancelled') => {
       if (orderItemIds.length === 0) return true;
-
-      try {
-        const { error } = await (supabase as any)
-          .from('order_items')
-          .update({
-            quantity: 0,
-            quantity_requested: 0,
-          })
-          .in('id', orderItemIds);
-
-        if (error) throw error;
-
-        syncOrderStoreRegularRemoval(orderItemIds);
-        return true;
-      } catch (error: any) {
-        Alert.alert('Unable to Remove Item', error?.message || 'Please try again.');
+      const success = await markOrderItemsStatus(orderItemIds, status);
+      if (!success) {
+        Alert.alert('Unable to Update Item', 'Please try again.');
         return false;
       }
+      return true;
     },
-    [syncOrderStoreRegularRemoval]
+    [markOrderItemsStatus]
   );
 
   const persistRemainingRemoval = useCallback(
-    async (orderItemId: string) => {
+    async (orderItemId: string, status: 'order_later' | 'cancelled' = 'cancelled') => {
       if (!orderItemId) return true;
-
-      try {
-        const { error } = await (supabase as any)
-          .from('order_items')
-          .delete()
-          .eq('id', orderItemId);
-
-        if (error) throw error;
-
-        syncOrderStoreOrderItemDeletion([orderItemId]);
-        return true;
-      } catch (error: any) {
-        Alert.alert('Unable to Move Item', error?.message || 'Please try again.');
+      const success = await markOrderItemsStatus([orderItemId], status);
+      if (!success) {
+        Alert.alert('Unable to Move Item', 'Please try again.');
         return false;
       }
+      return true;
     },
-    [syncOrderStoreOrderItemDeletion]
+    [markOrderItemsStatus]
   );
 
   const handleMoveToSecondarySupplier = useCallback(
@@ -757,33 +717,18 @@ export default function FulfillmentConfirmationScreen() {
 
       Alert.alert(
         `Move to ${targetName}?`,
-        `${item.name} will be removed from this order and added to ${targetName}.`,
+        `${item.name} will move back to ${targetName} on fulfillment.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Move',
             onPress: () => {
               void (async () => {
-                const removed = await persistRegularRemoval(item.sourceOrderItemIds);
-                if (!removed) return;
-
-                if (item.sourceDraftItemIds.length > 0) {
-                  removeSupplierDraftItems(item.sourceDraftItemIds);
+                const moved = await setSupplierOverride(item.sourceOrderItemIds, targetId);
+                if (!moved) {
+                  Alert.alert('Unable to Move Item', 'Please try again.');
+                  return;
                 }
-
-                addSupplierDraftItem({
-                  supplierId: targetId,
-                  inventoryItemId: item.inventoryItemId,
-                  name: item.name,
-                  category: item.category,
-                  quantity: item.quantity,
-                  unitType: item.unitType,
-                  unitLabel: item.unitLabel,
-                  locationGroup: item.locationGroup,
-                  locationId: null,
-                  locationName: null,
-                  note: null,
-                });
 
                 if (Platform.OS !== 'web') {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -795,7 +740,7 @@ export default function FulfillmentConfirmationScreen() {
         ]
       );
     },
-    [addSupplierDraftItem, persistRegularRemoval, removeSupplierDraftItems]
+    [setSupplierOverride]
   );
 
   const handleMoveRemainingToSecondarySupplier = useCallback(
@@ -806,29 +751,18 @@ export default function FulfillmentConfirmationScreen() {
 
       Alert.alert(
         `Move to ${targetName}?`,
-        `${item.name} will be removed from this order and added to ${targetName}.`,
+        `${item.name} will move back to ${targetName} on fulfillment.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Move',
             onPress: () => {
               void (async () => {
-                const removed = await persistRemainingRemoval(item.orderItemId);
-                if (!removed) return;
-
-                addSupplierDraftItem({
-                  supplierId: targetId,
-                  inventoryItemId: item.inventoryItemId,
-                  name: item.name,
-                  category: item.category,
-                  quantity: item.decidedQuantity ?? 1,
-                  unitType: item.unitType,
-                  unitLabel: item.unitLabel,
-                  locationGroup: item.locationGroup,
-                  locationId: item.locationId,
-                  locationName: item.locationName,
-                  note: item.note,
-                });
+                const moved = await setSupplierOverride([item.orderItemId], targetId);
+                if (!moved) {
+                  Alert.alert('Unable to Move Item', 'Please try again.');
+                  return;
+                }
 
                 if (Platform.OS !== 'web') {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -842,7 +776,7 @@ export default function FulfillmentConfirmationScreen() {
         ]
       );
     },
-    [addSupplierDraftItem, persistRemainingRemoval]
+    [setSupplierOverride]
   );
 
   const handleDelete = useCallback(
@@ -1155,7 +1089,58 @@ export default function FulfillmentConfirmationScreen() {
         return false;
       }
 
-      const payload = buildFinalizePayload();
+      let payload = buildFinalizePayload();
+
+      try {
+        // Reconcile with the latest supplier snapshot so consumed order_item ids are never stale/missing.
+        await fetchPendingFulfillmentOrders();
+        const supplierLookup = await loadSupplierLookup();
+        const state = useOrderStore.getState();
+        const rebuilt = buildSupplierConfirmationData({
+          supplierId,
+          orders: (state.orders || []) as any,
+          supplierLookup,
+          supplierDraftItems: (state.getSupplierDraftItems(supplierId) || []) as any,
+        });
+
+        const reconciledConsumedOrderItemIds = Array.from(
+          new Set([
+            ...payload.consumedOrderItemIds,
+            ...rebuilt.regularItems.flatMap((item) => item.sourceOrderItemIds),
+            ...rebuilt.remainingItems.map((item) => item.orderItemId),
+          ])
+        );
+        const reconciledSourceOrderIds = Array.from(
+          new Set([
+            ...payload.sourceOrderIds,
+            ...rebuilt.regularItems.flatMap((item) => item.sourceOrderIds),
+            ...rebuilt.remainingItems.map((item) => item.orderId),
+          ])
+        );
+
+        payload = {
+          ...payload,
+          consumedOrderItemIds: reconciledConsumedOrderItemIds,
+          sourceOrderIds: reconciledSourceOrderIds,
+        };
+      } catch {
+        // Continue with the current payload; finalize guard below still prevents empty source links.
+      }
+
+      if (payload.consumedOrderItemIds.length === 0) {
+        Alert.alert(
+          'Finalize Blocked',
+          'This supplier order is missing source order-item links. Pull to refresh and try again.'
+        );
+        return false;
+      }
+
+      if (__DEV__) {
+        console.log(
+          '[Fulfillment:Confirm] finalize consumed order_item ids:',
+          payload.consumedOrderItemIds
+        );
+      }
       setIsFinalizing(true);
       try {
         await finalizeSupplierOrder({
@@ -1178,6 +1163,16 @@ export default function FulfillmentConfirmationScreen() {
           lineItems: payload.historyLineItems,
         });
 
+        if (payload.consumedOrderItemIds.length > 0) {
+          const marked = await markOrderItemsStatus(payload.consumedOrderItemIds, 'sent');
+          if (!marked && __DEV__) {
+            console.warn(
+              '[Fulfillment:Confirm] markOrderItemsStatus failed during finalize; relying on past-order consumed IDs for filtering.'
+            );
+          }
+        }
+        await fetchPendingFulfillmentOrders();
+
         if (Platform.OS !== 'web') {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }
@@ -1190,7 +1185,16 @@ export default function FulfillmentConfirmationScreen() {
         setIsFinalizing(false);
       }
     },
-    [buildFinalizePayload, finalizeSupplierOrder, messageText, supplierId, supplierLabel, user?.id]
+    [
+      buildFinalizePayload,
+      fetchPendingFulfillmentOrders,
+      finalizeSupplierOrder,
+      markOrderItemsStatus,
+      messageText,
+      supplierId,
+      supplierLabel,
+      user?.id,
+    ]
   );
 
   const handleMoveTargetToOrderLater = useCallback(
@@ -1203,7 +1207,7 @@ export default function FulfillmentConfirmationScreen() {
       const preferredSupplierId = supplierId ?? undefined;
 
       if (orderLaterRegularItem) {
-        const removed = await persistRegularRemoval(orderLaterRegularItem.sourceOrderItemIds);
+        const removed = await persistRegularRemoval(orderLaterRegularItem.sourceOrderItemIds, 'order_later');
         if (!removed) return;
 
         if (orderLaterRegularItem.sourceDraftItemIds.length > 0) {
@@ -1219,18 +1223,21 @@ export default function FulfillmentConfirmationScreen() {
         await createOrderLaterItem({
           createdBy: user.id,
           scheduledAt: scheduledAtIso,
+          quantity: orderLaterRegularItem.quantity,
           itemId: orderLaterRegularItem.inventoryItemId,
           itemName: orderLaterRegularItem.name,
           unit: orderLaterRegularItem.unitLabel,
           locationId: firstDetail?.locationId,
           locationName: firstDetail?.locationName,
           notes: noteText.length > 0 ? noteText : null,
+          suggestedSupplierId: preferredSupplierId,
           preferredSupplierId,
           preferredLocationGroup: orderLaterRegularItem.locationGroup,
           sourceOrderItemId:
             orderLaterRegularItem.sourceOrderItemIds.length === 1
               ? orderLaterRegularItem.sourceOrderItemIds[0]
               : null,
+          sourceOrderItemIds: orderLaterRegularItem.sourceOrderItemIds,
           sourceOrderId:
             orderLaterRegularItem.sourceOrderIds.length === 1
               ? orderLaterRegularItem.sourceOrderIds[0]
@@ -1252,21 +1259,24 @@ export default function FulfillmentConfirmationScreen() {
           return next;
         });
       } else if (orderLaterRemainingItem) {
-        const removed = await persistRemainingRemoval(orderLaterRemainingItem.orderItemId);
+        const removed = await persistRemainingRemoval(orderLaterRemainingItem.orderItemId, 'order_later');
         if (!removed) return;
 
         await createOrderLaterItem({
           createdBy: user.id,
           scheduledAt: scheduledAtIso,
+          quantity: orderLaterRemainingItem.decidedQuantity ?? 0,
           itemId: orderLaterRemainingItem.inventoryItemId,
           itemName: orderLaterRemainingItem.name,
           unit: orderLaterRemainingItem.unitLabel,
           locationId: orderLaterRemainingItem.locationId,
           locationName: orderLaterRemainingItem.locationName,
           notes: orderLaterRemainingItem.note,
+          suggestedSupplierId: preferredSupplierId,
           preferredSupplierId,
           preferredLocationGroup: orderLaterRemainingItem.locationGroup,
           sourceOrderItemId: orderLaterRemainingItem.orderItemId,
+          sourceOrderItemIds: [orderLaterRemainingItem.orderItemId],
           sourceOrderId: orderLaterRemainingItem.orderId,
           payload: {
             quantity: orderLaterRemainingItem.decidedQuantity ?? 0,
@@ -1318,31 +1328,17 @@ export default function FulfillmentConfirmationScreen() {
         title: `${supplierLabel} Order`,
       });
 
-      const askForFinalizeConfirmation = () =>
-        Alert.alert('Did you send the order?', 'Only finalize if this order was actually sent.', [
-          { text: 'Not yet', style: 'cancel', onPress: () => setShowRetryActions(true) },
-          {
-            text: 'Yes, sent',
-            onPress: () => {
-              void finalizeOrder('share').then((finalized) => {
-                if (!finalized) setShowRetryActions(true);
-              });
-            },
-          },
-        ]);
+      const wasDismissed =
+        typeof (result as any)?.action === 'string' &&
+        (result as any).action === (Share as any).dismissedAction;
 
-      // iOS share callbacks are not always reliable for "sent" confirmation.
-      if (Platform.OS === 'ios') {
-        askForFinalizeConfirmation();
+      if (wasDismissed) {
+        setShowRetryActions(true);
         return;
       }
 
-      if (result.action === Share.sharedAction) {
-        const finalized = await finalizeOrder('share');
-        if (!finalized) {
-          setShowRetryActions(true);
-        }
-      } else {
+      const finalized = await finalizeOrder('share');
+      if (!finalized) {
         setShowRetryActions(true);
       }
     } catch (error: any) {

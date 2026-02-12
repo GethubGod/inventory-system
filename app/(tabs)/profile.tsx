@@ -20,7 +20,7 @@ export default function ProfileScreen() {
 
   useEffect(() => {
     fetchLocations();
-  }, []);
+  }, [fetchLocations]);
 
   const handleLocationChange = (selectedLocation: Location) => {
     setLocation(selectedLocation);

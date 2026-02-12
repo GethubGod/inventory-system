@@ -21,8 +21,6 @@ interface DebugPanelProps {
 }
 
 export function DebugPanel({ locationShortCode }: DebugPanelProps) {
-  if (!__DEV__) return null;
-
   const sendTextToGemini = useTunaSpecialistStore((s) => s.sendTextToGemini);
   const lastRawResponse = useTunaSpecialistStore((s) => s.lastRawResponse);
   const isProcessing = useTunaSpecialistStore((s) => s.isProcessing);
@@ -34,6 +32,8 @@ export function DebugPanel({ locationShortCode }: DebugPanelProps) {
 
   const [customText, setCustomText] = useState('');
   const [showRawResponse, setShowRawResponse] = useState(false);
+
+  if (!__DEV__) return null;
 
   const handleSendTest = (text: string) => {
     if (isProcessing || !text.trim()) return;

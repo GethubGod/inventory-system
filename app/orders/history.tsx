@@ -126,7 +126,7 @@ export default function OrdersScreen() {
       if (user) {
         fetchUserOrders(user.id);
       }
-    }, [user])
+    }, [fetchUserOrders, user])
   );
 
   useEffect(() => {

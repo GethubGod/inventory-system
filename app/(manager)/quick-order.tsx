@@ -125,7 +125,7 @@ export default function ManagerQuickOrderScreen() {
     if (defaultLocation && !selectedLocation) {
       setSelectedLocation(defaultLocation);
     }
-  }, [defaultLocation]);
+  }, [defaultLocation, selectedLocation, setSelectedLocation]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -137,7 +137,7 @@ export default function ManagerQuickOrderScreen() {
   // Fetch items on mount
   useEffect(() => {
     fetchItems();
-  }, []);
+  }, [fetchItems]);
 
   // Focus search input immediately on mount
   useEffect(() => {
@@ -237,7 +237,7 @@ export default function ManagerQuickOrderScreen() {
         useNativeDriver: true,
       }),
     ]).start(() => setShowToast(false));
-  }, []);
+  }, [toastOpacity]);
 
   const resetQuickCreateForm = useCallback(() => {
     const defaultName = searchQuery.trim();
@@ -732,7 +732,7 @@ export default function ManagerQuickOrderScreen() {
                   activeOpacity={0.8}
                 >
                   <Text style={{ fontSize: ds.buttonFont }} className="text-white font-semibold">
-                    Add "{searchQuery.trim()}" to Inventory?
+                    Add {searchQuery.trim()} to Inventory?
                   </Text>
                 </TouchableOpacity>
               </View>

@@ -22,7 +22,7 @@ interface SupplierLookupRow {
   active: boolean;
 }
 
-const DATE_FILTER_OPTIONS: Array<{ key: DateFilter; label: string }> = [
+const DATE_FILTER_OPTIONS: { key: DateFilter; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'today', label: 'Today' },
   { key: '7d', label: '7 Days' },

@@ -12,8 +12,7 @@ import {
   Linking,
   ActivityIndicator,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView , useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Sparkles, Mic, MessageSquare, WifiOff } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -81,6 +80,8 @@ export default function VoiceScreen() {
 
   // Timer ref
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasCartItems = cartItems.length > 0;
+  const hasLiveTranscript = Boolean(liveTranscript);
 
   // ━━━ VOICE-GATED EFFECTS ━━━
 
@@ -102,14 +103,14 @@ export default function VoiceScreen() {
         }
       };
     }
-  }, []);
+  }, [destroyVoice, fetchLocations, hasSeenOnboarding, initVoice]);
 
   // Process offline queue when online
   useEffect(() => {
     if (VOICE_FEATURE_ENABLED && isOnline && offlineQueue.length > 0 && location) {
       processOfflineQueue(location.short_code);
     }
-  }, [isOnline]);
+  }, [isOnline, location, offlineQueue.length, processOfflineQueue]);
 
   // Offline banner
   useEffect(() => {
@@ -119,7 +120,7 @@ export default function VoiceScreen() {
       duration: 300,
       useNativeDriver: true,
     }).start();
-  }, [isOnline]);
+  }, [isOnline, offlineBannerAnim]);
 
   // Auto-send to Gemini
   const finalTranscript = useTunaSpecialistStore((s) => s.finalTranscript);
@@ -127,19 +128,19 @@ export default function VoiceScreen() {
     if (VOICE_FEATURE_ENABLED && finalTranscript && !isProcessing && location) {
       sendToGemini(location.short_code);
     }
-  }, [finalTranscript]);
+  }, [finalTranscript, isProcessing, location, sendToGemini]);
 
   // Cart slide
   useEffect(() => {
     if (!VOICE_FEATURE_ENABLED) return;
     Animated.spring(cartSlideAnim, {
-      toValue: cartItems.length > 0 ? 1 : 0,
+      toValue: hasCartItems ? 1 : 0,
       useNativeDriver: true,
       damping: 18,
       stiffness: 90,
       mass: 1,
     }).start();
-  }, [cartItems.length > 0]);
+  }, [cartSlideAnim, hasCartItems]);
 
   // Mic pulse + recording timer
   useEffect(() => {
@@ -184,12 +185,12 @@ export default function VoiceScreen() {
         timerRef.current = null;
       }
     }
-  }, [isListening]);
+  }, [isListening, micPulseAnim, stopListening]);
 
   // Pulsing "Listening..." dot
   useEffect(() => {
     if (!VOICE_FEATURE_ENABLED) return;
-    if (isListening && !liveTranscript) {
+    if (isListening && !hasLiveTranscript) {
       const blink = Animated.loop(
         Animated.sequence([
           Animated.timing(listeningDotOpacity, {
@@ -209,7 +210,7 @@ export default function VoiceScreen() {
     } else {
       listeningDotOpacity.setValue(1);
     }
-  }, [isListening, !liveTranscript]);
+  }, [isListening, hasLiveTranscript, listeningDotOpacity]);
 
   // ━━━ HANDLERS (kept for when feature is re-enabled) ━━━
 
@@ -456,7 +457,7 @@ export default function VoiceScreen() {
 
           {/* 7. FOOTER */}
           <Text style={{ fontSize: ds.fontSize(12), color: '#9CA3AF', textAlign: 'center', marginTop: ds.spacing(16) }}>
-            We're working hard on this ✨
+            We{"'"}re working hard on this ✨
           </Text>
           </View>
         </ScrollView>
@@ -1042,7 +1043,7 @@ export default function VoiceScreen() {
             </Text>
             <Text style={{ fontSize: ds.fontSize(13), color: '#64748B', textAlign: 'center', marginTop: ds.spacing(8), lineHeight: ds.fontSize(13) * 1.5 }}>
               Speak naturally in English or Chinese.{'\n'}
-              I'll figure out the items and quantities.
+              I{"'"}ll figure out the items and quantities.
             </Text>
 
             <View style={{ marginTop: ds.spacing(32), gap: ds.spacing(16), width: '100%' }}>

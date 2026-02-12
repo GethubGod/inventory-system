@@ -57,33 +57,32 @@ async function getFunctionErrorMessage(error: unknown): Promise<string | null> {
 }
 
 export async function listManagedUsers(): Promise<ManagedUser[]> {
-  const { data, error } = await supabase.functions.invoke<ListUsersResponse>('list-users', {
+  const { data, error } = await supabase.functions.invoke('list-users', {
     body: {},
   });
+  const typedData = data as ListUsersResponse | null;
 
   if (error) {
     const message = (await getFunctionErrorMessage(error)) || 'Unable to load users.';
     throw new Error(message);
   }
 
-  return data?.users ?? [];
+  return typedData?.users ?? [];
 }
 
 export async function setManagedUserSuspended(params: {
   userId: string;
   isSuspended: boolean;
 }): Promise<void> {
-  const { data, error } = await supabase.functions.invoke<{ success?: boolean; error?: string }>(
-    'set-user-suspended',
-    {
-      body: params,
-    }
-  );
+  const { data, error } = await supabase.functions.invoke('set-user-suspended', {
+    body: params,
+  });
+  const typedData = data as { success?: boolean; error?: string } | null;
 
-  if (error || data?.success !== true) {
+  if (error || typedData?.success !== true) {
     const message =
       (await getFunctionErrorMessage(error)) ||
-      data?.error ||
+      typedData?.error ||
       'Unable to update suspension state.';
     throw new Error(message);
   }
@@ -94,16 +93,14 @@ export async function deleteManagedUserAccount(params: {
   managerPassword: string;
   confirmText: string;
 }): Promise<void> {
-  const { data, error } = await supabase.functions.invoke<{ success?: boolean; error?: string }>(
-    'delete-user',
-    {
-      body: params,
-    }
-  );
+  const { data, error } = await supabase.functions.invoke('delete-user', {
+    body: params,
+  });
+  const typedData = data as { success?: boolean; error?: string } | null;
 
-  if (error || data?.success !== true) {
+  if (error || typedData?.success !== true) {
     const message =
-      (await getFunctionErrorMessage(error)) || data?.error || 'Unable to delete account.';
+      (await getFunctionErrorMessage(error)) || typedData?.error || 'Unable to delete account.';
     throw new Error(message);
   }
 }

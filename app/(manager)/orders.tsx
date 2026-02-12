@@ -39,6 +39,7 @@ export default function ManagerOrdersScreen() {
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectedLocationId = selectedLocation?.id ?? null;
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -58,8 +59,8 @@ export default function ManagerOrdersScreen() {
         query = query.eq('status', selectedStatus);
       }
 
-      if (selectedLocation) {
-        query = query.eq('location_id', selectedLocation.id);
+      if (selectedLocationId) {
+        query = query.eq('location_id', selectedLocationId);
       }
 
       const { data, error } = await query;
@@ -69,13 +70,13 @@ export default function ManagerOrdersScreen() {
     } catch (error) {
       console.error('Error fetching orders:', error);
     }
-  }, [selectedStatus, selectedLocation?.id]);
+  }, [selectedStatus, selectedLocationId]);
 
   const fetchStatusCounts = useCallback(async () => {
     let query = supabase.from('orders').select('status').neq('status', 'draft');
 
-    if (selectedLocation) {
-      query = query.eq('location_id', selectedLocation.id);
+    if (selectedLocationId) {
+      query = query.eq('location_id', selectedLocationId);
     }
 
     const { data } = await query;
@@ -87,7 +88,7 @@ export default function ManagerOrdersScreen() {
       });
       setStatusCounts(counts);
     }
-  }, [selectedLocation?.id]);
+  }, [selectedLocationId]);
 
   useFocusEffect(
     useCallback(() => {

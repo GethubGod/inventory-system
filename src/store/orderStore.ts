@@ -12,6 +12,9 @@ import {
   UnitType,
 } from '@/types';
 import { supabase } from '@/lib/supabase';
+import {
+  loadPendingFulfillmentData,
+} from '@/services/fulfillmentDataSource';
 
 export type OrderInputMode = 'quantity' | 'remaining';
 
@@ -54,6 +57,7 @@ export type FulfillmentLocationGroup = 'sushi' | 'poki';
 export type OrderLaterItemStatus = 'queued' | 'added' | 'cancelled';
 export type PastOrderShareMethod = 'share' | 'copy';
 export type PastOrderSyncStatus = 'synced' | 'pending_sync';
+export type OrderItemFulfillmentStatus = 'pending' | 'order_later' | 'sent' | 'cancelled';
 
 export interface SupplierDraftItem {
   id: string;
@@ -92,15 +96,18 @@ export interface OrderLaterItem {
   createdBy: string;
   createdAt: string;
   scheduledAt: string;
+  quantity: number;
   itemId: string | null;
   itemName: string;
   unit: string;
   locationId: string | null;
   locationName: string | null;
   notes: string | null;
+  suggestedSupplierId: string | null;
   preferredSupplierId: string | null;
   preferredLocationGroup: FulfillmentLocationGroup | null;
   sourceOrderItemId: string | null;
+  sourceOrderItemIds: string[];
   sourceOrderId: string | null;
   notificationId: string | null;
   status: OrderLaterItemStatus;
@@ -110,15 +117,18 @@ export interface OrderLaterItem {
 export interface CreateOrderLaterItemInput {
   createdBy: string;
   scheduledAt: string;
+  quantity?: number;
   itemId?: string | null;
   itemName: string;
   unit: string;
   locationId?: string | null;
   locationName?: string | null;
   notes?: string | null;
+  suggestedSupplierId?: string | null;
   preferredSupplierId?: string | null;
   preferredLocationGroup?: FulfillmentLocationGroup | null;
   sourceOrderItemId?: string | null;
+  sourceOrderItemIds?: string[];
   sourceOrderId?: string | null;
   payload?: Record<string, unknown>;
 }
@@ -341,6 +351,12 @@ interface OrderState {
     forceRefresh?: boolean;
   }) => Promise<LastOrderedQuantitiesResponse>;
   finalizeSupplierOrder: (input: FinalizeSupplierOrderInput) => Promise<PastOrder>;
+  markOrderItemsStatus: (
+    orderItemIds: string[],
+    status: OrderItemFulfillmentStatus
+  ) => Promise<boolean>;
+  setSupplierOverride: (orderItemIds: string[], supplierId: string) => Promise<boolean>;
+  clearSupplierOverride: (orderItemIds: string[]) => Promise<boolean>;
 }
 
 const createCartItemId = () =>
@@ -350,6 +366,7 @@ let pastOrdersTableAvailable: boolean | null = null;
 let orderLaterItemsTableAvailable: boolean | null = null;
 let pastOrderItemsTableAvailable: boolean | null = null;
 let pastOrderItemsNoteColumnAvailable: boolean | null = null;
+let orderItemsStatusColumnAvailable: boolean | null = null;
 let pastOrderSyncListenerInitialized = false;
 
 const ORDER_ITEM_OPTIONAL_COLUMNS = [
@@ -690,7 +707,7 @@ function resolveLastOrderedFromCache(
   cache: Record<string, LastOrderedQuantityCacheValue>,
   input: LastOrderedQuantityLookupInput
 ): LastOrderedQuantityLookupResult | null {
-  const lookupOrder: Array<{ key: string; matchedBy: LastOrderedQuantityLookupResult['matchedBy'] }> = [];
+  const lookupOrder: { key: string; matchedBy: LastOrderedQuantityLookupResult['matchedBy'] }[] = [];
   if (input.locationId) {
     lookupOrder.push({
       key: createLastOrderedLocationIdKey(input.itemId, input.unit, input.locationId),
@@ -875,6 +892,10 @@ function normalizeOrderLaterItem(raw: unknown): OrderLaterItem | null {
     createdBy,
     createdAt: toIsoString(value.created_at ?? value.createdAt),
     scheduledAt: toIsoString(value.scheduled_at ?? value.scheduledAt),
+    quantity: Math.max(
+      0,
+      toValidNumber(value.qty ?? value.quantity ?? (toJsonObject(value.payload).quantity as unknown) ?? 1) ?? 1
+    ),
     itemId:
       typeof value.item_id === 'string' && value.item_id.trim().length > 0
         ? value.item_id
@@ -899,6 +920,9 @@ function normalizeOrderLaterItem(raw: unknown): OrderLaterItem | null {
           ? value.locationName.trim()
           : null,
     notes: normalizeNote(value.notes),
+    suggestedSupplierId: normalizeSupplierId(
+      value.suggested_supplier_id ?? value.suggestedSupplierId
+    ),
     preferredSupplierId: normalizeSupplierId(value.preferred_supplier_id ?? value.preferredSupplierId),
     preferredLocationGroup: normalizeLocationGroup(
       value.preferred_location_group ?? value.preferredLocationGroup
@@ -909,6 +933,21 @@ function normalizeOrderLaterItem(raw: unknown): OrderLaterItem | null {
         : typeof value.sourceOrderItemId === 'string' && value.sourceOrderItemId.trim().length > 0
           ? value.sourceOrderItemId
           : null,
+    sourceOrderItemIds: (() => {
+      const fromArray = Array.isArray(value.original_order_item_ids)
+        ? toStringArray(value.original_order_item_ids)
+        : Array.isArray(value.sourceOrderItemIds)
+          ? toStringArray(value.sourceOrderItemIds)
+          : [];
+      if (fromArray.length > 0) return fromArray;
+      const single =
+        typeof value.source_order_item_id === 'string' && value.source_order_item_id.trim().length > 0
+          ? value.source_order_item_id
+          : typeof value.sourceOrderItemId === 'string' && value.sourceOrderItemId.trim().length > 0
+            ? value.sourceOrderItemId
+            : null;
+      return single ? [single] : [];
+    })(),
     sourceOrderId:
       typeof value.source_order_id === 'string' && value.source_order_id.trim().length > 0
         ? value.source_order_id
@@ -2095,10 +2134,19 @@ export const useOrderStore = create<OrderState>()(
 
       createPastOrder: async (input) => {
         const now = new Date().toISOString();
+        const payloadFromInput = toJsonObject(input.payload);
+        const payloadSourceOrderItemIds = Array.from(
+          new Set([
+            ...toStringArray(payloadFromInput.sourceOrderItemIds),
+            ...toStringArray(payloadFromInput.source_order_item_ids),
+          ])
+        );
         const consumedOrderItemIds = Array.from(
           new Set(
-            (input.consumedOrderItemIds || [])
-              .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+            [
+              ...(input.consumedOrderItemIds || []),
+              ...payloadSourceOrderItemIds,
+            ].filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
           )
         );
         const consumedDraftItemIds = Array.from(
@@ -2148,7 +2196,7 @@ export const useOrderStore = create<OrderState>()(
           } => Boolean(line));
 
         const payload = {
-          ...toJsonObject(input.payload),
+          ...payloadFromInput,
           sourceOrderItemIds: consumedOrderItemIds,
           source_order_item_ids: consumedOrderItemIds,
           sourceDraftItemIds: consumedDraftItemIds,
@@ -2312,6 +2360,13 @@ export const useOrderStore = create<OrderState>()(
           queueForSync('Pending sync while offline.', null);
         }
 
+        if (consumedOrderItemIds.length > 0) {
+          const marked = await get().markOrderItemsStatus(consumedOrderItemIds, 'sent');
+          if (!marked && !queueJob) {
+            queueForSync('Unable to mark order items as sent. Pending sync.', persistedPastOrderId);
+          }
+        }
+
         set((state) => {
           const nextQueue = queueJob
             ? normalizePendingPastOrderSyncQueue([
@@ -2461,6 +2516,13 @@ export const useOrderStore = create<OrderState>()(
                 pastOrderItemsTableAvailable = true;
                 if (includeNote) {
                   pastOrderItemsNoteColumnAvailable = true;
+                }
+              }
+
+              if (job.consumedOrderItemIds.length > 0) {
+                const sentMarked = await get().markOrderItemsStatus(job.consumedOrderItemIds, 'sent');
+                if (!sentMarked) {
+                  throw new Error('Unable to mark order items as sent during sync.');
                 }
               }
 
@@ -2760,28 +2822,26 @@ export const useOrderStore = create<OrderState>()(
       fetchPendingFulfillmentOrders: async () => {
         set({ isFulfillmentLoading: true });
         try {
-          const { data, error } = await supabase
-            .from('orders')
-            .select(`
-              *,
-              user:users!orders_user_id_fkey(*),
-              location:locations(*),
-              order_items(
-                *,
-                inventory_item:inventory_items(*)
-              )
-            `)
-            .eq('status', 'submitted')
-            .order('created_at', { ascending: false });
-
-          if (error) throw error;
-
-          const consumedOrderItemIds = extractConsumedOrderItemIds(get().pastOrders);
-          const filtered = removeConsumedOrderItems(
-            ((data || []) as unknown) as Order[],
-            consumedOrderItemIds
-          );
-          set({ orders: filtered });
+          let currentPastOrders = get().pastOrders;
+          try {
+            currentPastOrders = await get().fetchPastOrders();
+          } catch {
+            // Use local snapshot when remote past-orders refresh fails.
+          }
+          const consumedOrderItemIds = extractConsumedOrderItemIds(currentPastOrders);
+          if (__DEV__) {
+            const consumedPreview = Array.from(consumedOrderItemIds.values()).slice(0, 10);
+            console.log(
+              '[FulfillmentStore] consumed order_item ids from past orders:',
+              consumedOrderItemIds.size,
+              consumedPreview
+            );
+          }
+          const result = await loadPendingFulfillmentData({
+            consumedOrderItemIds,
+            includeInventoryAudit: __DEV__,
+          });
+          set({ orders: result.orders });
         } finally {
           set({ isFulfillmentLoading: false });
         }
@@ -2943,8 +3003,13 @@ export const useOrderStore = create<OrderState>()(
       createOrderLaterItem: async (input) => {
         const createdAt = new Date().toISOString();
         const scheduledAt = toIsoString(input.scheduledAt);
+        const payload = toJsonObject(input.payload);
+        const payloadQuantity = toValidNumber(payload.quantity);
+        const inputQuantity = toValidNumber(input.quantity);
+        const normalizedQuantity = Math.max(0, inputQuantity ?? payloadQuantity ?? 1);
         const normalizedInput = {
           createdBy: input.createdBy,
+          quantity: normalizedQuantity,
           itemId:
             typeof input.itemId === 'string' && input.itemId.trim().length > 0
               ? input.itemId
@@ -2960,25 +3025,71 @@ export const useOrderStore = create<OrderState>()(
               ? input.locationName.trim()
               : null,
           notes: normalizeNote(input.notes),
+          suggestedSupplierId: normalizeSupplierId(input.suggestedSupplierId),
           preferredSupplierId: normalizeSupplierId(input.preferredSupplierId),
           preferredLocationGroup: normalizeLocationGroup(input.preferredLocationGroup),
           sourceOrderItemId:
             typeof input.sourceOrderItemId === 'string' && input.sourceOrderItemId.trim().length > 0
               ? input.sourceOrderItemId
               : null,
+          sourceOrderItemIds: Array.from(
+            new Set(
+              (input.sourceOrderItemIds || [])
+                .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+                .map((id) => id.trim())
+            )
+          ),
           sourceOrderId:
             typeof input.sourceOrderId === 'string' && input.sourceOrderId.trim().length > 0
               ? input.sourceOrderId
               : null,
-          payload: toJsonObject(input.payload),
+          payload: {
+            ...payload,
+            quantity: normalizedQuantity,
+          },
         };
 
         let orderLaterItem: OrderLaterItem | null = null;
 
         if (orderLaterItemsTableAvailable !== false) {
-          const { data, error } = await (supabase as any)
+          const insertPayloadWithExtended: Record<string, unknown> = {
+            created_by: normalizedInput.createdBy,
+            scheduled_at: scheduledAt,
+            qty: normalizedInput.quantity,
+            item_id: normalizedInput.itemId,
+            item_name: normalizedInput.itemName,
+            unit: normalizedInput.unit,
+            location_id: normalizedInput.locationId,
+            location_name: normalizedInput.locationName,
+            notes: normalizedInput.notes,
+            suggested_supplier_id: normalizedInput.suggestedSupplierId,
+            preferred_supplier_id: normalizedInput.preferredSupplierId,
+            preferred_location_group: normalizedInput.preferredLocationGroup,
+            source_order_item_id: normalizedInput.sourceOrderItemId,
+            original_order_item_ids:
+              normalizedInput.sourceOrderItemIds.length > 0
+                ? normalizedInput.sourceOrderItemIds
+                : normalizedInput.sourceOrderItemId
+                  ? [normalizedInput.sourceOrderItemId]
+                  : [],
+            source_order_id: normalizedInput.sourceOrderId,
+            status: 'queued',
+            payload: normalizedInput.payload,
+          };
+
+          let { data, error } = await (supabase as any)
             .from('order_later_items')
-            .insert({
+            .insert(insertPayloadWithExtended)
+            .select('*')
+            .single();
+
+          if (
+            error &&
+            (isMissingColumnError(error, 'qty') ||
+              isMissingColumnError(error, 'suggested_supplier_id') ||
+              isMissingColumnError(error, 'original_order_item_ids'))
+          ) {
+            const legacyPayload = {
               created_by: normalizedInput.createdBy,
               scheduled_at: scheduledAt,
               item_id: normalizedInput.itemId,
@@ -2993,9 +3104,14 @@ export const useOrderStore = create<OrderState>()(
               source_order_id: normalizedInput.sourceOrderId,
               status: 'queued',
               payload: normalizedInput.payload,
-            })
-            .select('*')
-            .single();
+            };
+
+            ({ data, error } = await (supabase as any)
+              .from('order_later_items')
+              .insert(legacyPayload)
+              .select('*')
+              .single());
+          }
 
           if (error) {
             if (isMissingTableError(error, 'order_later_items')) {
@@ -3015,15 +3131,23 @@ export const useOrderStore = create<OrderState>()(
             createdBy: normalizedInput.createdBy,
             createdAt,
             scheduledAt,
+            quantity: normalizedInput.quantity,
             itemId: normalizedInput.itemId,
             itemName: normalizedInput.itemName,
             unit: normalizedInput.unit,
             locationId: normalizedInput.locationId,
             locationName: normalizedInput.locationName,
             notes: normalizedInput.notes,
+            suggestedSupplierId: normalizedInput.suggestedSupplierId,
             preferredSupplierId: normalizedInput.preferredSupplierId,
             preferredLocationGroup: normalizedInput.preferredLocationGroup,
             sourceOrderItemId: normalizedInput.sourceOrderItemId,
+            sourceOrderItemIds:
+              normalizedInput.sourceOrderItemIds.length > 0
+                ? normalizedInput.sourceOrderItemIds
+                : normalizedInput.sourceOrderItemId
+                  ? [normalizedInput.sourceOrderItemId]
+                  : [],
             sourceOrderId: normalizedInput.sourceOrderId,
             notificationId: null,
             status: 'queued',
@@ -3157,7 +3281,10 @@ export const useOrderStore = create<OrderState>()(
         const payload = toJsonObject(queuedItem.payload);
         const quantityFromPayload = toValidNumber(payload.quantity);
         const quantityFromOption = toValidNumber(options?.quantity);
-        const quantity = Math.max(0, quantityFromOption ?? quantityFromPayload ?? 1);
+        const quantity = Math.max(
+          0,
+          quantityFromOption ?? queuedItem.quantity ?? quantityFromPayload ?? 1
+        );
 
         const draftItem = get().addSupplierDraftItem({
           supplierId,
@@ -3337,6 +3464,147 @@ export const useOrderStore = create<OrderState>()(
           fromCache: false,
           historyUnavailableOffline: false,
         };
+      },
+
+      markOrderItemsStatus: async (orderItemIds, status) => {
+        const normalizedIds = Array.from(
+          new Set(
+            orderItemIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+          )
+        );
+
+        if (normalizedIds.length === 0) return true;
+
+        try {
+          if (orderItemsStatusColumnAvailable !== false) {
+            const { error } = await supabase
+              .from('order_items')
+              .update({ status } as any)
+              .in('id', normalizedIds);
+
+            if (error) {
+              if (isMissingColumnError(error, 'status')) {
+                orderItemsStatusColumnAvailable = false;
+              } else {
+                throw error;
+              }
+            } else {
+              orderItemsStatusColumnAvailable = true;
+            }
+          }
+
+          if (orderItemsStatusColumnAvailable === false) {
+            if (__DEV__) {
+              console.warn(
+                '[OrderStore] markOrderItemsStatus skipped: order_items.status column is missing. Apply fulfillment status migration first.'
+              );
+            }
+            return false;
+          }
+
+          set((state) => {
+            const idSet = new Set(normalizedIds);
+            const patchOrder = (orderLike: any) => {
+              if (!orderLike || !Array.isArray(orderLike.order_items)) return orderLike;
+
+              if (status === 'pending') {
+                let changed = false;
+                const nextItems = orderLike.order_items.map((orderItem: any) => {
+                  if (!idSet.has(orderItem?.id)) return orderItem;
+                  changed = true;
+                  return { ...orderItem, status: 'pending' };
+                });
+                return changed ? { ...orderLike, order_items: nextItems } : orderLike;
+              }
+
+              const nextItems = orderLike.order_items.filter((orderItem: any) => !idSet.has(orderItem?.id));
+              if (nextItems.length === orderLike.order_items.length) return orderLike;
+              return { ...orderLike, order_items: nextItems };
+            };
+
+            return {
+              orders: Array.isArray(state.orders)
+                ? state.orders.map((order: any) => patchOrder(order))
+                : state.orders,
+              currentOrder: patchOrder(state.currentOrder),
+            };
+          });
+
+          return true;
+        } catch (error) {
+          console.error('markOrderItemsStatus failed:', error);
+          return false;
+        }
+      },
+
+      setSupplierOverride: async (orderItemIds, supplierId) => {
+        if (orderItemIds.length === 0) return true;
+        try {
+          const { error } = await supabase
+            .from('order_items')
+            .update({ supplier_override_id: supplierId } as any)
+            .in('id', orderItemIds);
+          if (error) throw error;
+
+          set((state) => {
+            const idSet = new Set(orderItemIds);
+            const patchOrder = (orderLike: any) => {
+              if (!orderLike || !Array.isArray(orderLike.order_items)) return orderLike;
+              let changed = false;
+              const nextItems = orderLike.order_items.map((oi: any) => {
+                if (!idSet.has(oi?.id)) return oi;
+                changed = true;
+                return { ...oi, supplier_override_id: supplierId };
+              });
+              return changed ? { ...orderLike, order_items: nextItems } : orderLike;
+            };
+            return {
+              orders: Array.isArray(state.orders)
+                ? state.orders.map((o: any) => patchOrder(o))
+                : state.orders,
+              currentOrder: patchOrder(state.currentOrder),
+            };
+          });
+          return true;
+        } catch (error) {
+          console.error('setSupplierOverride failed:', error);
+          return false;
+        }
+      },
+
+      clearSupplierOverride: async (orderItemIds) => {
+        if (orderItemIds.length === 0) return true;
+        try {
+          const { error } = await supabase
+            .from('order_items')
+            .update({ supplier_override_id: null } as any)
+            .in('id', orderItemIds);
+          if (error) throw error;
+
+          set((state) => {
+            const idSet = new Set(orderItemIds);
+            const patchOrder = (orderLike: any) => {
+              if (!orderLike || !Array.isArray(orderLike.order_items)) return orderLike;
+              let changed = false;
+              const nextItems = orderLike.order_items.map((oi: any) => {
+                if (!idSet.has(oi?.id)) return oi;
+                changed = true;
+                return { ...oi, supplier_override_id: null };
+              });
+              return changed ? { ...orderLike, order_items: nextItems } : orderLike;
+            };
+            return {
+              orders: Array.isArray(state.orders)
+                ? state.orders.map((o: any) => patchOrder(o))
+                : state.orders,
+              currentOrder: patchOrder(state.currentOrder),
+            };
+          });
+          return true;
+        } catch (error) {
+          console.error('clearSupplierOverride failed:', error);
+          return false;
+        }
       },
 
       finalizeSupplierOrder: async (input) => {

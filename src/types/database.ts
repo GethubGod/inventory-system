@@ -345,23 +345,30 @@ export interface OrderItemWithInventory extends OrderItem {
   inventory_item: InventoryItem;
 }
 
+type DatabaseTable<Row, Insert, Update> = {
+  Row: Row;
+  Insert: Insert;
+  Update: Update;
+  Relationships: [];
+};
+
 // Database schema type for Supabase
 export interface Database {
   public: {
     Tables: {
-      locations: {
-        Row: Location;
-        Insert: Omit<Location, 'id' | 'created_at'>;
-        Update: Partial<Omit<Location, 'id' | 'created_at'>>;
-      };
-      users: {
-        Row: User;
-        Insert: Omit<User, 'id' | 'created_at'>;
-        Update: Partial<Omit<User, 'id' | 'created_at'>>;
-      };
-      profiles: {
-        Row: Profile;
-        Insert: {
+      locations: DatabaseTable<
+        Location,
+        Omit<Location, 'id' | 'created_at'>,
+        Partial<Omit<Location, 'id' | 'created_at'>>
+      >;
+      users: DatabaseTable<
+        User,
+        Omit<User, 'id' | 'created_at'>,
+        Partial<Omit<User, 'id' | 'created_at'>>
+      >;
+      profiles: DatabaseTable<
+        Profile,
+        {
           id: string;
           full_name?: string | null;
           role?: UserRole | null;
@@ -371,8 +378,8 @@ export interface Database {
           last_order_at?: string | null;
           profile_completed?: boolean;
           provider?: AuthProvider | null;
-        };
-        Update: Partial<{
+        },
+        Partial<{
           full_name: string | null;
           role: UserRole | null;
           is_suspended: boolean;
@@ -381,104 +388,109 @@ export interface Database {
           last_order_at: string | null;
           profile_completed: boolean;
           provider: AuthProvider | null;
-        }>;
-      };
-      inventory_items: {
-        Row: InventoryItem;
-        Insert: Omit<InventoryItem, 'id' | 'created_at'>;
-        Update: Partial<Omit<InventoryItem, 'id' | 'created_at'>>;
-      };
-      orders: {
-        Row: Order;
-        Insert: Omit<Order, 'id' | 'order_number' | 'created_at'>;
-        Update: Partial<Omit<Order, 'id' | 'order_number' | 'created_at'>>;
-      };
-      order_items: {
-        Row: OrderItem;
-        Insert: Omit<OrderItem, 'id' | 'created_at'>;
-        Update: Partial<Omit<OrderItem, 'id' | 'created_at'>>;
-      };
-      suppliers: {
-        Row: Supplier;
-        Insert: Omit<Supplier, 'id' | 'created_at'>;
-        Update: Partial<Omit<Supplier, 'id' | 'created_at'>>;
-      };
-      storage_areas: {
-        Row: StorageArea;
-        Insert: Omit<StorageArea, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<StorageArea, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      area_items: {
-        Row: AreaItem;
-        Insert: Omit<AreaItem, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<AreaItem, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      stock_updates: {
-        Row: StockUpdate;
-        Insert: Omit<StockUpdate, 'id' | 'created_at'>;
-        Update: Partial<Omit<StockUpdate, 'id' | 'created_at'>>;
-      };
-      stock_check_sessions: {
-        Row: StockCheckSession;
-        Insert: Omit<StockCheckSession, 'id'>;
-        Update: Partial<Omit<StockCheckSession, 'id'>>;
-      };
-      reminder_system_settings: {
-        Row: ReminderSystemSetting;
-        Insert: Omit<ReminderSystemSetting, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<ReminderSystemSetting, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      reminders: {
-        Row: ReminderThread;
-        Insert: Omit<ReminderThread, 'id' | 'created_at'>;
-        Update: Partial<Omit<ReminderThread, 'id' | 'created_at'>>;
-      };
-      reminder_events: {
-        Row: ReminderEvent;
-        Insert: Omit<ReminderEvent, 'id' | 'sent_at'>;
-        Update: Partial<Omit<ReminderEvent, 'id' | 'sent_at'>>;
-      };
-      recurring_reminder_rules: {
-        Row: RecurringReminderRule;
-        Insert: Omit<RecurringReminderRule, 'id' | 'created_at' | 'updated_at' | 'last_triggered_at'>;
-        Update: Partial<Omit<RecurringReminderRule, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      notifications: {
-        Row: InAppNotification;
-        Insert: Omit<InAppNotification, 'id' | 'created_at' | 'read_at'> & {
+        }>
+      >;
+      inventory_items: DatabaseTable<
+        InventoryItem,
+        Omit<InventoryItem, 'id' | 'created_at'>,
+        Partial<Omit<InventoryItem, 'id' | 'created_at'>>
+      >;
+      orders: DatabaseTable<
+        Order,
+        Omit<Order, 'id' | 'order_number' | 'created_at'>,
+        Partial<Omit<Order, 'id' | 'order_number' | 'created_at'>>
+      >;
+      order_items: DatabaseTable<
+        OrderItem,
+        Omit<OrderItem, 'id' | 'created_at'>,
+        Partial<Omit<OrderItem, 'id' | 'created_at'>>
+      >;
+      suppliers: DatabaseTable<
+        Supplier,
+        Omit<Supplier, 'id' | 'created_at'>,
+        Partial<Omit<Supplier, 'id' | 'created_at'>>
+      >;
+      storage_areas: DatabaseTable<
+        StorageArea,
+        Omit<StorageArea, 'id' | 'created_at' | 'updated_at'>,
+        Partial<Omit<StorageArea, 'id' | 'created_at' | 'updated_at'>>
+      >;
+      area_items: DatabaseTable<
+        AreaItem,
+        Omit<AreaItem, 'id' | 'created_at' | 'updated_at'>,
+        Partial<Omit<AreaItem, 'id' | 'created_at' | 'updated_at'>>
+      >;
+      stock_updates: DatabaseTable<
+        StockUpdate,
+        Omit<StockUpdate, 'id' | 'created_at'>,
+        Partial<Omit<StockUpdate, 'id' | 'created_at'>>
+      >;
+      stock_check_sessions: DatabaseTable<
+        StockCheckSession,
+        Omit<StockCheckSession, 'id'>,
+        Partial<Omit<StockCheckSession, 'id'>>
+      >;
+      reminder_system_settings: DatabaseTable<
+        ReminderSystemSetting,
+        Omit<ReminderSystemSetting, 'id' | 'created_at' | 'updated_at'>,
+        Partial<Omit<ReminderSystemSetting, 'id' | 'created_at' | 'updated_at'>>
+      >;
+      reminders: DatabaseTable<
+        ReminderThread,
+        Omit<ReminderThread, 'id' | 'created_at'>,
+        Partial<Omit<ReminderThread, 'id' | 'created_at'>>
+      >;
+      reminder_events: DatabaseTable<
+        ReminderEvent,
+        Omit<ReminderEvent, 'id' | 'sent_at'>,
+        Partial<Omit<ReminderEvent, 'id' | 'sent_at'>>
+      >;
+      recurring_reminder_rules: DatabaseTable<
+        RecurringReminderRule,
+        Omit<
+          RecurringReminderRule,
+          'id' | 'created_at' | 'updated_at' | 'last_triggered_at'
+        >,
+        Partial<Omit<RecurringReminderRule, 'id' | 'created_at' | 'updated_at'>>
+      >;
+      notifications: DatabaseTable<
+        InAppNotification,
+        Omit<InAppNotification, 'id' | 'created_at' | 'read_at'> & {
           read_at?: string | null;
-        };
-        Update: Partial<Omit<InAppNotification, 'id' | 'created_at'>>;
-      };
-      device_push_tokens: {
-        Row: DevicePushToken;
-        Insert: Omit<DevicePushToken, 'id' | 'created_at' | 'updated_at'>;
-        Update: Partial<Omit<DevicePushToken, 'id' | 'created_at' | 'updated_at'>>;
-      };
-      past_orders: {
-        Row: PastOrderRow;
-        Insert: Omit<PastOrderRow, 'id' | 'created_at'> & {
+        },
+        Partial<Omit<InAppNotification, 'id' | 'created_at'>>
+      >;
+      device_push_tokens: DatabaseTable<
+        DevicePushToken,
+        Omit<DevicePushToken, 'id' | 'created_at' | 'updated_at'>,
+        Partial<Omit<DevicePushToken, 'id' | 'created_at' | 'updated_at'>>
+      >;
+      past_orders: DatabaseTable<
+        PastOrderRow,
+        Omit<PastOrderRow, 'id' | 'created_at'> & {
           created_at?: string;
-        };
-        Update: Partial<Omit<PastOrderRow, 'id' | 'created_at'>>;
-      };
-      past_order_items: {
-        Row: PastOrderItemRow;
-        Insert: Omit<PastOrderItemRow, 'id' | 'created_at' | 'ordered_at' | 'note'> & {
+        },
+        Partial<Omit<PastOrderRow, 'id' | 'created_at'>>
+      >;
+      past_order_items: DatabaseTable<
+        PastOrderItemRow,
+        Omit<PastOrderItemRow, 'id' | 'created_at' | 'ordered_at' | 'note'> & {
           created_at?: string;
           ordered_at?: string;
           note?: string | null;
-        };
-        Update: Partial<Omit<PastOrderItemRow, 'id' | 'created_at'>>;
-      };
-      order_later_items: {
-        Row: OrderLaterItemRow;
-        Insert: Omit<OrderLaterItemRow, 'id' | 'created_at' | 'updated_at'> & {
+        },
+        Partial<Omit<PastOrderItemRow, 'id' | 'created_at'>>
+      >;
+      order_later_items: DatabaseTable<
+        OrderLaterItemRow,
+        Omit<OrderLaterItemRow, 'id' | 'created_at' | 'updated_at'> & {
           created_at?: string;
           updated_at?: string;
-        };
-        Update: Partial<Omit<OrderLaterItemRow, 'id' | 'created_at' | 'updated_at'>>;
-      };
+        },
+        Partial<Omit<OrderLaterItemRow, 'id' | 'created_at' | 'updated_at'>>
+      >;
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
   };
 }

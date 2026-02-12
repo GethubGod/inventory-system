@@ -205,16 +205,14 @@ export async function listEmployeesWithReminderStatus(params?: {
   includeManagers?: boolean;
   overdueThresholdDays?: number;
 }): Promise<EmployeeReminderOverview> {
-  const { data, error } = await supabase.functions.invoke<EmployeeReminderOverview>(
-    'list-employees-with-status',
-    {
-      body: {
-        locationId: params?.locationId ?? null,
-        includeManagers: Boolean(params?.includeManagers),
-        overdueThresholdDays: params?.overdueThresholdDays,
-      },
-    }
-  );
+  const { data, error } = await supabase.functions.invoke('list-employees-with-status', {
+    body: {
+      locationId: params?.locationId ?? null,
+      includeManagers: Boolean(params?.includeManagers),
+      overdueThresholdDays: params?.overdueThresholdDays,
+    },
+  });
+  const typedData = data as EmployeeReminderOverview | null;
 
   if (error) {
     const parsed = await parseFunctionError(error);
@@ -225,18 +223,18 @@ export async function listEmployeesWithReminderStatus(params?: {
   }
 
   return {
-    employees: data?.employees ?? [],
-    stats: data?.stats ?? {
+    employees: typedData?.employees ?? [],
+    stats: typedData?.stats ?? {
       pendingReminders: 0,
       overdueEmployees: 0,
       notificationsOff: 0,
     },
-    settings: data?.settings ?? {
+    settings: typedData?.settings ?? {
       overdueThresholdDays: 7,
       reminderRateLimitMinutes: 15,
       recurringWindowMinutes: 15,
     },
-    generatedAt: data?.generatedAt ?? new Date().toISOString(),
+    generatedAt: typedData?.generatedAt ?? new Date().toISOString(),
   };
 }
 
@@ -251,7 +249,7 @@ export async function sendReminder(params: {
     in_app?: boolean;
   };
 }): Promise<SendReminderResult> {
-  const { data, error } = await supabase.functions.invoke<SendReminderResult>('send-reminder', {
+  const { data, error } = await supabase.functions.invoke('send-reminder', {
     body: {
       employeeId: params.employeeId,
       locationId: params.locationId ?? null,
@@ -261,6 +259,7 @@ export async function sendReminder(params: {
       channels: params.channels,
     },
   });
+  const typedData = data as SendReminderResult | null;
 
   if (error) {
     const parsed = await parseFunctionError(error);
@@ -270,20 +269,17 @@ export async function sendReminder(params: {
     );
   }
 
-  if (!data?.success) {
+  if (!typedData?.success) {
     throw new Error('Unable to send reminder.');
   }
 
-  return data;
+  return typedData;
 }
 
 export async function evaluateRecurringReminderRules(params?: { dryRun?: boolean }) {
-  const { data, error } = await supabase.functions.invoke<Record<string, unknown>>(
-    'evaluate-recurring-reminders',
-    {
-      body: { dryRun: Boolean(params?.dryRun) },
-    }
-  );
+  const { data, error } = await supabase.functions.invoke('evaluate-recurring-reminders', {
+    body: { dryRun: Boolean(params?.dryRun) },
+  });
 
   if (error) {
     const parsed = await parseFunctionError(error);
@@ -293,7 +289,7 @@ export async function evaluateRecurringReminderRules(params?: { dryRun?: boolean
     );
   }
 
-  return data ?? {};
+  return (data as Record<string, unknown> | null) ?? {};
 }
 
 export async function listRecurringReminderRules(): Promise<RecurringReminderRule[]> {

@@ -201,7 +201,7 @@ export default function DraftScreen() {
         </View>
       </View>
     );
-  }, [handleQuantityChange, handleRemoveItem]);
+  }, [ds, handleQuantityChange, handleRemoveItem]);
 
   // Render location section
   const renderLocationSection = useCallback((location: Location) => {
@@ -251,7 +251,7 @@ export default function DraftScreen() {
         </TouchableOpacity>
       </View>
     );
-  }, [getItems, renderDraftItem, handleClearLocation, handleSubmitLocationToCart]);
+  }, [ds, getItems, renderDraftItem, handleClearLocation, handleSubmitLocationToCart]);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>

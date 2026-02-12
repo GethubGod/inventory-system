@@ -278,7 +278,7 @@ export async function getReorderSuggestions(
 
   if (areaError) throw areaError;
 
-  const areaIds = (areas || []).map((area) => area.id);
+  const areaIds = (areas || []).map((area: any) => area.id);
   if (areaIds.length === 0) return [];
 
   const { data, error } = await supabase
@@ -294,8 +294,8 @@ export async function getReorderSuggestions(
   if (error) throw error;
 
   return (data || [])
-    .filter((item) => item.current_quantity < item.min_quantity)
-    .map((item) => item as AreaItemWithDetails);
+    .filter((item: any) => item.current_quantity < item.min_quantity)
+    .map((item: any) => item as AreaItemWithDetails);
 }
 
 export async function getStockHistory(

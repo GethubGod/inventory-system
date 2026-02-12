@@ -66,7 +66,7 @@ export function useOrderSubscription() {
           schema: 'public',
           table: 'orders',
         },
-        async (payload) => {
+        async (payload: any) => {
           const eventType = (payload as any).eventType as 'INSERT' | 'UPDATE' | 'DELETE';
           const newOrder =
             payload.new && Object.keys(payload.new as Record<string, unknown>).length > 0

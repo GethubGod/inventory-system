@@ -6,13 +6,13 @@ export function useStockNetworkStatus() {
     let unsubscribe: (() => void) | undefined;
     try {
       // Lazy require so the app can still boot if the dependency isn't installed yet.
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const NetInfo = require('@react-native-community/netinfo');
       unsubscribe = NetInfo.addEventListener((state: any) => {
         const isOnline = Boolean(state.isConnected && state.isInternetReachable !== false);
         useStockStore.getState().setOnlineStatus(isOnline);
       });
-    } catch (_) {
+    } catch {
       useStockStore.getState().setOnlineStatus(true);
     }
 

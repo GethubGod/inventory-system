@@ -37,7 +37,7 @@ export function InventoryItemCard({ item, locationId }: InventoryItemCardProps) 
     } else {
       setRemaining((cartItem.remainingReported ?? 0).toString());
     }
-  }, [cartItem?.id, cartItem?.inputMode, cartItem?.quantityRequested, cartItem?.remainingReported, cartItem?.unitType, cartItem?.quantity]);
+  }, [cartItem]);
 
   const categoryColor = categoryColors[item.category] || '#6B7280';
   const showControls = isExpanded || Boolean(cartItem);

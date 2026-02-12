@@ -254,7 +254,7 @@ export default function UpdateStockScreen() {
         params: { areaId, scanMethod: 'manual' },
       });
     },
-    [router]
+    []
   );
 
   const handleDetectedTag = useCallback(

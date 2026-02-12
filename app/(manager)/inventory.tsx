@@ -283,7 +283,7 @@ export default function ManagerInventoryScreen() {
 
   useEffect(() => {
     fetchItems();
-  }, []);
+  }, [fetchItems]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -549,7 +549,7 @@ export default function ManagerInventoryScreen() {
     }
 
     const conversion = editForm.conversion ? Number(editForm.conversion) : null;
-    if (editForm.conversion && (Number.isNaN(conversion) || conversion <= 0)) {
+    if (conversion !== null && (!Number.isFinite(conversion) || conversion <= 0)) {
       Alert.alert('Invalid Conversion', 'Conversion factor must be a positive number.');
       return;
     }
@@ -808,10 +808,13 @@ export default function ManagerInventoryScreen() {
           .select('inventory_item_id')
           .in('inventory_item_id', ids)
           .eq('active', true);
-        counts = (areaItems || []).reduce<Record<string, number>>((acc, row: any) => {
-          acc[row.inventory_item_id] = (acc[row.inventory_item_id] || 0) + 1;
-          return acc;
-        }, {});
+        counts = (areaItems || []).reduce(
+          (acc: Record<string, number>, row: any) => {
+            acc[row.inventory_item_id] = (acc[row.inventory_item_id] || 0) + 1;
+            return acc;
+          },
+          {} as Record<string, number>
+        );
       }
 
       setAddSearchResults(
@@ -820,7 +823,7 @@ export default function ManagerInventoryScreen() {
           areaCount: counts[item.id] || 0,
         }))
       );
-    } catch (err) {
+    } catch {
       setAddSearchResults([]);
     } finally {
       setIsAddSearching(false);
@@ -1593,7 +1596,6 @@ export default function ManagerInventoryScreen() {
           >
             {[null, ...categories].map((category) => {
               const isSelected = categoryFilter === category;
-              const color = category ? categoryColors[category] : colors.primary[500];
               return (
                 <TouchableOpacity
                   key={category || 'all'}

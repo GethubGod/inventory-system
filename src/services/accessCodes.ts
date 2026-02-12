@@ -56,12 +56,10 @@ export async function validateAccessCode(accessCode: string): Promise<UserRole> 
     throw new Error('Access code must be exactly 4 digits');
   }
 
-  const { data, error } = await supabase.functions.invoke<ValidateAccessCodeResponse>(
-    'validate-access-code',
-    {
-      body: { accessCode: normalizedCode },
-    }
-  );
+  const { data, error } = await supabase.functions.invoke('validate-access-code', {
+    body: { accessCode: normalizedCode },
+  });
+  const typedData = data as ValidateAccessCodeResponse | null;
 
   if (error) {
     const message = (await getFunctionErrorMessage(error)) ?? '';
@@ -71,11 +69,11 @@ export async function validateAccessCode(accessCode: string): Promise<UserRole> 
     throw new Error('Unable to validate access code. Please try again.');
   }
 
-  if (data?.role !== 'employee' && data?.role !== 'manager') {
+  if (typedData?.role !== 'employee' && typedData?.role !== 'manager') {
     throw new Error('Invalid access code.');
   }
 
-  return data.role;
+  return typedData.role;
 }
 
 export async function updateAccessCodes({
@@ -93,15 +91,13 @@ export async function updateAccessCodes({
     throw new Error('Employee and manager codes cannot be the same.');
   }
 
-  const { data, error } = await supabase.functions.invoke<{ success?: boolean }>(
-    'update-access-codes',
-    {
-      body: {
-        employeeAccessCode: employeeCode,
-        managerAccessCode: managerCode,
-      },
-    }
-  );
+  const { data, error } = await supabase.functions.invoke('update-access-codes', {
+    body: {
+      employeeAccessCode: employeeCode,
+      managerAccessCode: managerCode,
+    },
+  });
+  const typedData = data as { success?: boolean } | null;
 
   if (error) {
     const message = (await getFunctionErrorMessage(error)) ?? '';
@@ -121,7 +117,7 @@ export async function updateAccessCodes({
     throw new Error(message || 'Unable to update access codes.');
   }
 
-  if (data?.success !== true) {
+  if (typedData?.success !== true) {
     throw new Error('Unable to update access codes.');
   }
 }

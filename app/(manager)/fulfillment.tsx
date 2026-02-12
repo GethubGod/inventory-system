@@ -36,6 +36,7 @@ interface AggregatedLocationBreakdown {
 
 interface AggregatedItem {
   aggregateKey: string;
+  effectiveSupplierId: string;
   inventoryItem: InventoryItem;
   totalQuantity: number;
   unitType: 'base' | 'pack';
@@ -43,6 +44,12 @@ interface AggregatedItem {
   remainingReportedTotal: number;
   notes: string[];
   locationBreakdown: AggregatedLocationBreakdown[];
+  sourceOrderItemIds: string[];
+  sourceOrderIds: string[];
+  secondarySupplierName: string | null;
+  secondarySupplierId: string | null;
+  isOverridden: boolean;
+  primarySupplierId: string;
 }
 
 interface CategoryGroup {
@@ -65,6 +72,7 @@ type LocationGroup = 'sushi' | 'poki';
 interface LocationGroupedItem {
   key: string;
   aggregateKey: string;
+  effectiveSupplierId: string;
   locationGroup: LocationGroup;
   inventoryItem: InventoryItem;
   totalQuantity: number;
@@ -73,6 +81,12 @@ interface LocationGroupedItem {
   remainingReportedTotal: number;
   notes: string[];
   locationBreakdown: AggregatedLocationBreakdown[];
+  sourceOrderItemIds: string[];
+  sourceOrderIds: string[];
+  secondarySupplierName: string | null;
+  secondarySupplierId: string | null;
+  isOverridden: boolean;
+  primarySupplierId: string;
 }
 
 interface ConfirmationRegularItem {
@@ -88,25 +102,25 @@ interface ConfirmationRegularItem {
   sourceOrderItemIds: string[];
   sourceOrderIds: string[];
   sourceDraftItemIds: string[];
-  contributors: Array<{
+  contributors: {
     userId: string | null;
     name: string;
     quantity: number;
-  }>;
-  notes: Array<{
+  }[];
+  notes: {
     id: string;
     author: string;
     text: string;
     locationName: string;
     shortCode: string;
-  }>;
-  details: Array<{
+  }[];
+  details: {
     locationId: string;
     locationName: string;
     orderedBy: string;
     quantity: number;
     shortCode: string;
-  }>;
+  }[];
   secondarySupplierName: string | null;
   secondarySupplierId: string | null;
 }
@@ -243,6 +257,10 @@ export default function FulfillmentScreen() {
     moveOrderLaterItemToSupplierDraft,
     removeOrderLaterItem,
     updateOrderLaterItemSchedule,
+    markOrderItemsStatus,
+    setSupplierOverride,
+    clearSupplierOverride,
+    createOrderLaterItem,
   } = useOrderStore();
   const [refreshing, setRefreshing] = useState(false);
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
@@ -516,6 +534,9 @@ export default function FulfillmentScreen() {
     (supplierId: string) => {
       const optionName = getSupplierOption(supplierId)?.name;
       if (optionName) return optionName;
+      if (supplierId.startsWith('unresolved:')) {
+        return 'UNRESOLVED SUPPLIER';
+      }
       if (supplierId.startsWith('unknown:')) {
         return 'Unknown Supplier';
       }
@@ -534,8 +555,51 @@ export default function FulfillmentScreen() {
   );
 
   const isUnknownSupplier = useCallback(
-    (supplierId: string) => supplierId.startsWith('unknown:') || !getSupplierOption(supplierId),
+    (supplierId: string) =>
+      supplierId.startsWith('unknown:') ||
+      supplierId.startsWith('unresolved:') ||
+      !getSupplierOption(supplierId),
     [getSupplierOption]
+  );
+
+  const getOrderItemSupplierResolution = useCallback(
+    (orderItem: Record<string, unknown>, inventoryItem: InventoryItem) => {
+      const existing = (orderItem as any).__supplier_resolution;
+      if (existing && typeof existing.effectiveSupplierId === 'string') {
+        return {
+          primarySupplierId: toSupplierId(existing.primarySupplierId),
+          secondarySupplierId: toSupplierId(existing.secondarySupplierId),
+          secondarySupplierName:
+            typeof existing.secondarySupplierName === 'string' &&
+            existing.secondarySupplierName.trim().length > 0
+              ? existing.secondarySupplierName.trim()
+              : null,
+          effectiveSupplierId: existing.effectiveSupplierId,
+          effectiveSupplierName:
+            typeof existing.effectiveSupplierName === 'string' &&
+            existing.effectiveSupplierName.trim().length > 0
+              ? existing.effectiveSupplierName.trim()
+              : resolveSupplierName(existing.effectiveSupplierId),
+          isOverridden: existing.isOverridden === true,
+        };
+      }
+
+      const fallbackPrimary = resolveSupplierId(inventoryItem);
+      const secondary = resolveSecondarySupplier(inventoryItem);
+      const overrideId = toSupplierId((orderItem as any).supplier_override_id);
+      const hasOverride = Boolean(overrideId && getSupplierOption(overrideId));
+      const effectiveSupplierId = hasOverride ? (overrideId as string) : fallbackPrimary;
+
+      return {
+        primarySupplierId: fallbackPrimary,
+        secondarySupplierId: secondary?.id ?? null,
+        secondarySupplierName: secondary?.name ?? null,
+        effectiveSupplierId,
+        effectiveSupplierName: resolveSupplierName(effectiveSupplierId),
+        isOverridden: hasOverride,
+      };
+    },
+    [getSupplierOption, resolveSecondarySupplier, resolveSupplierId, resolveSupplierName]
   );
 
   const availableSuppliers = useMemo(() => {
@@ -604,7 +668,11 @@ export default function FulfillmentScreen() {
           : Math.max(0, toSafeNumber(orderItem.quantity, 0));
 
         const aggregateModeKey = isRemainingMode ? 'remaining' : 'quantity';
-        const supplierId = resolveSupplierId(item);
+        const resolution = getOrderItemSupplierResolution(
+          orderItem as unknown as Record<string, unknown>,
+          item
+        );
+        const supplierId = resolution.effectiveSupplierId;
         const aggregateKey = [
           item.id,
           item.name.trim().toLowerCase(),
@@ -621,6 +689,10 @@ export default function FulfillmentScreen() {
         if (existing) {
           existing.totalQuantity += lineQuantity;
           existing.remainingReportedTotal += remainingReported;
+          existing.sourceOrderItemIds.push(orderItem.id);
+          if (!existing.sourceOrderIds.includes(order.id)) {
+            existing.sourceOrderIds.push(order.id);
+          }
           if (lineNote && !existing.notes.includes(lineNote)) {
             existing.notes.push(lineNote);
           }
@@ -653,8 +725,11 @@ export default function FulfillmentScreen() {
           return;
         }
 
+        const primaryResolved = resolution.primarySupplierId ?? resolution.effectiveSupplierId;
+
         itemMap.set(aggregateKey, {
           aggregateKey,
+          effectiveSupplierId: resolution.effectiveSupplierId,
           inventoryItem: item,
           totalQuantity: lineQuantity,
           unitType: orderItem.unit_type,
@@ -673,6 +748,12 @@ export default function FulfillmentScreen() {
               orderedBy: [order.user?.name || 'Unknown'],
             },
           ],
+          sourceOrderItemIds: [orderItem.id],
+          sourceOrderIds: [order.id],
+          secondarySupplierName: resolution.secondarySupplierName,
+          secondarySupplierId: resolution.secondarySupplierId,
+          isOverridden: resolution.isOverridden,
+          primarySupplierId: primaryResolved,
         });
       });
     });
@@ -681,7 +762,7 @@ export default function FulfillmentScreen() {
     const supplierTypeById = new Map<string, SupplierCategory | null>();
 
     Array.from(itemMap.values()).forEach((aggregatedItem) => {
-      const supplierId = resolveSupplierId(aggregatedItem.inventoryItem);
+      const supplierId = aggregatedItem.effectiveSupplierId;
       const itemCategory = aggregatedItem.inventoryItem.category;
       const supplierType = resolveSupplierType(supplierId);
       supplierTypeById.set(supplierId, supplierType);
@@ -715,7 +796,7 @@ export default function FulfillmentScreen() {
       const draftCount = getSupplierDraftItems(supplierId).length;
       if ((!categoryMap || categoryMap.size === 0) && draftCount === 0) return;
 
-      const supplierType = supplierId.startsWith('unknown:')
+      const supplierType = supplierId.startsWith('unknown:') || supplierId.startsWith('unresolved:')
         ? null
         : supplierTypeById.get(supplierId) ?? resolveSupplierType(supplierId);
       const categoryGroups: CategoryGroup[] = [];
@@ -747,8 +828,8 @@ export default function FulfillmentScreen() {
     return groups;
   }, [
     getSupplierDraftItems,
+    getOrderItemSupplierResolution,
     pendingOrders,
-    resolveSupplierId,
     isSupplierInactive,
     isUnknownSupplier,
     resolveSupplierName,
@@ -790,6 +871,7 @@ export default function FulfillmentScreen() {
           groupedItems.push({
             key: `${item.aggregateKey}-${group}`,
             aggregateKey: item.aggregateKey,
+            effectiveSupplierId: item.effectiveSupplierId,
             locationGroup: group,
             inventoryItem: item.inventoryItem,
             totalQuantity: info.quantity,
@@ -798,6 +880,12 @@ export default function FulfillmentScreen() {
             remainingReportedTotal: info.remainingReportedTotal,
             notes: Array.from(info.notes),
             locationBreakdown: info.breakdown,
+            sourceOrderItemIds: item.sourceOrderItemIds,
+            sourceOrderIds: item.sourceOrderIds,
+            secondarySupplierName: item.secondarySupplierName,
+            secondarySupplierId: item.secondarySupplierId,
+            isOverridden: item.isOverridden,
+            primarySupplierId: item.primarySupplierId,
           });
         });
       });
@@ -814,6 +902,7 @@ export default function FulfillmentScreen() {
       groupedItems.push({
         key: `draft-${draftItem.id}`,
         aggregateKey: `draft-${draftItem.id}`,
+        effectiveSupplierId: supplierGroup.supplierId,
         locationGroup: draftItem.locationGroup,
         inventoryItem: {
           id: draftItem.inventoryItemId || `draft-${draftItem.id}`,
@@ -843,6 +932,12 @@ export default function FulfillmentScreen() {
             orderedBy: ['Order Later'],
           },
         ],
+        sourceOrderItemIds: [],
+        sourceOrderIds: [],
+        secondarySupplierName: null,
+        secondarySupplierId: null,
+        isOverridden: false,
+        primarySupplierId: supplierGroup.supplierId,
       });
     });
 
@@ -956,7 +1051,12 @@ export default function FulfillmentScreen() {
         order.order_items?.forEach((orderItem) => {
           const inventoryItem = orderItem.inventory_item;
           if (!inventoryItem) return;
-          if (resolveSupplierId(inventoryItem) !== supplierGroup.supplierId) return;
+          const resolution = getOrderItemSupplierResolution(
+            orderItem as unknown as Record<string, unknown>,
+            inventoryItem
+          );
+          const effectiveSupplierId = resolution.effectiveSupplierId;
+          if (effectiveSupplierId !== supplierGroup.supplierId) return;
           if (orderItem.input_mode === 'remaining') return;
 
           const locationGroup = getLocationGroup(order.location?.name, order.location?.short_code);
@@ -1265,7 +1365,14 @@ export default function FulfillmentScreen() {
           return a.name.localeCompare(b.name);
         });
     },
-    [buildLocationGroupedItems, getDisplayQuantity, getSupplierDraftItems, pendingOrders, resolveSecondarySupplier, resolveSupplierId]
+    [
+      buildLocationGroupedItems,
+      getDisplayQuantity,
+      getOrderItemSupplierResolution,
+      getSupplierDraftItems,
+      pendingOrders,
+      resolveSecondarySupplier,
+    ]
   );
 
   const buildRemainingConfirmationItems = useCallback(
@@ -1276,7 +1383,12 @@ export default function FulfillmentScreen() {
         order.order_items?.forEach((orderItem) => {
           const inventoryItem = orderItem.inventory_item;
           if (!inventoryItem) return;
-          if (resolveSupplierId(inventoryItem) !== supplierGroup.supplierId) return;
+          const resolution = getOrderItemSupplierResolution(
+            orderItem as unknown as Record<string, unknown>,
+            inventoryItem
+          );
+          const effectiveSupplierId = resolution.effectiveSupplierId;
+          if (effectiveSupplierId !== supplierGroup.supplierId) return;
           if (orderItem.input_mode !== 'remaining') return;
 
           const decidedQuantity =
@@ -1285,8 +1397,6 @@ export default function FulfillmentScreen() {
             typeof orderItem.note === 'string' && orderItem.note.trim().length > 0 ? orderItem.note.trim() : null;
           const unitType = orderItem.unit_type === 'base' ? 'base' : 'pack';
           const unitLabel = unitType === 'pack' ? inventoryItem.pack_unit : inventoryItem.base_unit;
-
-          const secondary = resolveSecondarySupplier(inventoryItem);
 
           rows.push({
             orderItemId: orderItem.id,
@@ -1304,8 +1414,8 @@ export default function FulfillmentScreen() {
             decidedQuantity,
             note,
             orderedBy: order.user?.name || 'Unknown',
-            secondarySupplierName: secondary?.name ?? null,
-            secondarySupplierId: secondary?.id ?? null,
+            secondarySupplierName: resolution.secondarySupplierName ?? null,
+            secondarySupplierId: resolution.secondarySupplierId ?? null,
           });
         });
       });
@@ -1319,7 +1429,7 @@ export default function FulfillmentScreen() {
 
       return rows;
     },
-    [pendingOrders, resolveSecondarySupplier, resolveSupplierId]
+    [getOrderItemSupplierResolution, pendingOrders]
   );
 
   const handleSend = useCallback(
@@ -1493,6 +1603,124 @@ export default function FulfillmentScreen() {
     });
   }, []);
 
+  const [orderLaterScheduleItem, setOrderLaterScheduleItem] = useState<LocationGroupedItem | null>(null);
+
+  const handleItemOverflowMenu = useCallback(
+    (item: LocationGroupedItem) => {
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+
+      const buttons: { text: string; onPress: () => void; style?: 'cancel' | 'destructive' }[] = [];
+
+      // Move to Order Later
+      if (item.sourceOrderItemIds.length > 0) {
+        buttons.push({
+          text: 'Move to Order Later',
+          onPress: () => setOrderLaterScheduleItem(item),
+        });
+      }
+
+      // Move to Secondary Supplier
+      if (item.secondarySupplierId && item.secondarySupplierName && !item.isOverridden) {
+        buttons.push({
+          text: `Move to ${item.secondarySupplierName}`,
+          onPress: () => {
+            void (async () => {
+              const success = await setSupplierOverride(
+                item.sourceOrderItemIds,
+                item.secondarySupplierId!
+              );
+              if (success) {
+                if (Platform.OS !== 'web') {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+                await fetchPendingFulfillmentOrders();
+              } else {
+                Alert.alert('Error', 'Failed to move item. Please try again.');
+              }
+            })();
+          },
+        });
+      }
+
+      // Move back to Primary Supplier
+      if (item.isOverridden && item.sourceOrderItemIds.length > 0) {
+        const primaryName = resolveSupplierName(item.primarySupplierId);
+        buttons.push({
+          text: `Move back to ${primaryName}`,
+          onPress: () => {
+            void (async () => {
+              const success = await clearSupplierOverride(item.sourceOrderItemIds);
+              if (success) {
+                if (Platform.OS !== 'web') {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+                await fetchPendingFulfillmentOrders();
+              } else {
+                Alert.alert('Error', 'Failed to move item back. Please try again.');
+              }
+            })();
+          },
+        });
+      }
+
+      buttons.push({ text: 'Cancel', style: 'cancel', onPress: () => {} });
+
+      Alert.alert(item.inventoryItem.name, undefined, buttons);
+    },
+    [clearSupplierOverride, fetchPendingFulfillmentOrders, resolveSupplierName, setSupplierOverride]
+  );
+
+  const handleOrderLaterFromFulfillment = useCallback(
+    async (scheduledAtIso: string) => {
+      const item = orderLaterScheduleItem;
+      if (!item || !user?.id) return;
+
+      const unitLabel = item.unitType === 'pack' ? item.inventoryItem.pack_unit : item.inventoryItem.base_unit;
+
+      await createOrderLaterItem({
+        createdBy: user.id,
+        scheduledAt: scheduledAtIso,
+        quantity: Math.max(0, getDisplayQuantity(item)),
+        itemId: item.inventoryItem.id,
+        itemName: item.inventoryItem.name,
+        unit: unitLabel,
+        locationId: item.locationBreakdown[0]?.locationId ?? null,
+        locationName: item.locationBreakdown[0]?.locationName ?? null,
+        notes: item.notes.join('; ') || null,
+        suggestedSupplierId: item.effectiveSupplierId,
+        preferredSupplierId: null,
+        preferredLocationGroup: item.locationGroup,
+        sourceOrderItemIds: item.sourceOrderItemIds,
+      });
+
+      if (item.sourceOrderItemIds.length > 0) {
+        const moved = await markOrderItemsStatus(item.sourceOrderItemIds, 'order_later');
+        if (!moved) {
+          Alert.alert('Error', 'Failed to move source order items to Order Later status.');
+          return;
+        }
+      }
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      setOrderLaterScheduleItem(null);
+      await fetchPendingFulfillmentOrders();
+      Alert.alert('Moved to Order Later', `${item.inventoryItem.name} moved to order later.`);
+    },
+    [
+      createOrderLaterItem,
+      fetchPendingFulfillmentOrders,
+      getDisplayQuantity,
+      markOrderItemsStatus,
+      orderLaterScheduleItem,
+      user?.id,
+    ]
+  );
+
   const renderItem = useCallback(
     (item: LocationGroupedItem, showLocationBreakdown: boolean) => {
       const unitLabel = item.unitType === 'pack' ? item.inventoryItem.pack_unit : item.inventoryItem.base_unit;
@@ -1506,13 +1734,29 @@ export default function FulfillmentScreen() {
       const itemNoteExpanded = expandedNotes.has(itemNoteKey);
       const itemNoteCanExpand = itemNotePreview.length > 120 || itemNotes.length > 1;
 
+      const hasMenuActions =
+        item.sourceOrderItemIds.length > 0 ||
+        (item.secondarySupplierId && !item.isOverridden) ||
+        item.isOverridden;
+
       return (
         <View key={item.key}>
           <View className="flex-row items-center py-3 px-4 border-b border-gray-100 bg-white">
             <View className="flex-1 pr-2">
-              <Text className="font-medium text-gray-900" numberOfLines={1}>
-                {item.inventoryItem.name}
-              </Text>
+              <View className="flex-row items-center">
+                <Text className="font-medium text-gray-900 flex-1" numberOfLines={1}>
+                  {item.inventoryItem.name}
+                </Text>
+                {hasMenuActions && (
+                  <TouchableOpacity
+                    onPress={() => handleItemOverflowMenu(item)}
+                    className="p-1.5 -mr-1"
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="ellipsis-horizontal" size={16} color={colors.gray[500]} />
+                  </TouchableOpacity>
+                )}
+              </View>
 
               {item.isRemainingMode && (
                 <View className="flex-row items-center mt-1">
@@ -1631,7 +1875,7 @@ export default function FulfillmentScreen() {
         </View>
       );
     },
-    [expandedNotes, getDisplayQuantity, handleQuantityChange, toggleNoteExpansion]
+    [expandedNotes, getDisplayQuantity, handleItemOverflowMenu, handleQuantityChange, toggleNoteExpansion]
   );
 
   const renderSupplierSection = useCallback(
@@ -1644,8 +1888,14 @@ export default function FulfillmentScreen() {
       const label = supplierGroup.supplierName;
       const statusLabel = supplierGroup.isInactive ? 'Inactive' : supplierGroup.isUnknown ? 'Unknown' : null;
       const locationItems = buildLocationGroupedItems(supplierGroup);
-      const supplierItemCount = locationItems.length;
-      const supplierRemainingCount = locationItems.filter((item) => item.isRemainingMode).length;
+      const supplierItemCount = new Set(
+        locationItems.map((item) => `${item.inventoryItem.id}|${item.unitType}`)
+      ).size;
+      const supplierRemainingCount = new Set(
+        locationItems
+          .filter((item) => item.isRemainingMode)
+          .map((item) => `${item.inventoryItem.id}|${item.unitType}`)
+      ).size;
       const sections = [
         { group: 'sushi' as LocationGroup, items: locationItems.filter((item) => item.locationGroup === 'sushi') },
         { group: 'poki' as LocationGroup, items: locationItems.filter((item) => item.locationGroup === 'poki') },
@@ -1838,9 +2088,17 @@ export default function FulfillmentScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       <ManagerScaleContainer>
         <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center">
-          <View className="flex-row items-center">
+          <View className="flex-row items-center flex-1">
             <Text className="text-xl font-bold text-gray-900">Fulfillment</Text>
           </View>
+          <TouchableOpacity
+            onPress={() => router.push('/(manager)/past-orders')}
+            className="flex-row items-center px-3 py-2 rounded-lg bg-gray-100"
+            activeOpacity={0.7}
+          >
+            <Ionicons name="time-outline" size={14} color={colors.gray[700]} />
+            <Text className="ml-1.5 text-xs font-semibold text-gray-700">Past Orders</Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView
@@ -2077,6 +2335,19 @@ export default function FulfillmentScreen() {
               `${scheduleEditItem.itemName} will remind on ${formatScheduleLabel(scheduledAtIso)}.`
             );
           }}
+        />
+
+        <OrderLaterScheduleModal
+          visible={Boolean(orderLaterScheduleItem)}
+          title="Move to Order Later"
+          subtitle={
+            orderLaterScheduleItem
+              ? `Schedule a reminder for ${orderLaterScheduleItem.inventoryItem.name}.`
+              : 'Schedule an order-later reminder.'
+          }
+          confirmLabel="Move to Order Later"
+          onClose={() => setOrderLaterScheduleItem(null)}
+          onConfirm={handleOrderLaterFromFulfillment}
         />
       </ManagerScaleContainer>
     </SafeAreaView>

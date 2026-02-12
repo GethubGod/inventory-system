@@ -27,11 +27,12 @@ export function useNfcScanner(): UseNfcScannerResult {
   const loadNfcModule = useCallback(() => {
     if (nfcRef.current) return nfcRef.current;
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const mod = require('react-native-nfc-manager') as NfcModule;
       const manager = mod?.default ?? mod;
       nfcRef.current = { manager, NfcTech: mod.NfcTech };
       return nfcRef.current;
-    } catch (err) {
+    } catch {
       return null;
     }
   }, []);

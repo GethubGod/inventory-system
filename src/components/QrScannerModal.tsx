@@ -25,7 +25,7 @@ function parseQrPayload(raw: string): string {
     if (parsed && parsed.type === 'babytuna_area' && typeof parsed.id === 'string') {
       return parsed.id;
     }
-  } catch (_) {
+  } catch {
     // ignore
   }
 

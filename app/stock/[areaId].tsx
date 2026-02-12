@@ -41,17 +41,6 @@ const CATEGORY_EMOJI: Record<ItemCategory, string> = {
   packaging: '📦',
 };
 
-function getRelativeTimeLabel(timestamp: string | null): string {
-  if (!timestamp) return 'Never';
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return 'Never';
-  const diffMs = Date.now() - date.getTime();
-  const days = Math.round(diffMs / (1000 * 60 * 60 * 24));
-  if (days <= 0) return 'Today';
-  if (days === 1) return '1 day ago';
-  return `${days} days ago`;
-}
-
 function parseScanMethod(value: string | string[] | undefined): 'nfc' | 'qr' | 'manual' {
   if (value === 'qr') return 'qr';
   if (value === 'nfc') return 'nfc';
@@ -180,7 +169,7 @@ export default function StockCountingScreen() {
     setNote('');
     setNoteDraft('');
     setPhotoUri(null);
-  }, [currentItem?.id]);
+  }, [currentItem]);
 
   const handleChangeQuantity = useCallback((value: string) => {
     setQuantityValue(value.replace(/[^0-9]/g, ''));
@@ -211,7 +200,7 @@ export default function StockCountingScreen() {
       handleQuantityFocus();
     }, 60);
     return () => clearTimeout(timer);
-  }, [currentItem?.id, handleQuantityFocus]);
+  }, [currentItem, handleQuantityFocus]);
 
   const showInlineToast = useCallback((message: string) => {
     setToastMessage(message);
@@ -320,7 +309,7 @@ export default function StockCountingScreen() {
           } else {
             try {
               photoUrl = await uploadPhoto(photoUri, currentItem.inventory_item_id);
-            } catch (err) {
+            } catch {
               Alert.alert('Photo Upload Failed', 'Unable to upload the photo. Try again later.');
             }
           }

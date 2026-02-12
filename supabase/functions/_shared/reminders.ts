@@ -403,7 +403,6 @@ export async function sendEmployeeReminder(
 
   const shouldAttemptInApp = input.channels?.in_app !== false;
   const pushChannelRequested = input.channels?.push !== false;
-  const shouldAttemptPush = pushChannelRequested && notificationsEnabled;
   const channelsAttempted: string[] = [];
 
   const reminderTitle = 'Order reminder';

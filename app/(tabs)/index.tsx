@@ -98,14 +98,14 @@ export default function OrderScreen() {
   useEffect(() => {
     fetchItems();
     fetchLocations();
-  }, []);
+  }, [fetchItems, fetchLocations]);
 
   // Auto-select first location if none selected
   useEffect(() => {
     if (locations.length > 0 && !location) {
       setLocation(locations[0]);
     }
-  }, [locations, location]);
+  }, [locations, location, setLocation]);
 
   const loadUnreadReminderNotifications = useCallback(async () => {
     if (!user?.id) {

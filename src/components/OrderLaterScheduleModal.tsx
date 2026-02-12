@@ -73,7 +73,7 @@ export function OrderLaterScheduleModal({
   onClose,
   onConfirm,
 }: OrderLaterScheduleModalProps) {
-  const now = useMemo(() => new Date(), [visible]);
+  const now = useMemo(() => new Date(), []);
   const parsedInitial = useMemo(() => {
     if (typeof initialScheduledAt === 'string') {
       const parsed = new Date(initialScheduledAt);
@@ -82,7 +82,7 @@ export function OrderLaterScheduleModal({
     const fallback = new Date();
     fallback.setMinutes(fallback.getMinutes() + 60);
     return fallback;
-  }, [initialScheduledAt, visible]);
+  }, [initialScheduledAt]);
 
   const [preset, setPreset] = useState<SchedulePreset>(() => resolvePreset(parsedInitial));
   const [laterTodayTime, setLaterTodayTime] = useState<Date>(parsedInitial);

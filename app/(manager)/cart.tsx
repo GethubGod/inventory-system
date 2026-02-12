@@ -194,14 +194,6 @@ export default function ManagerCartScreen() {
     });
   }, []);
 
-  // Handle quantity change
-  const handleQuantityChange = useCallback((locationId: string, itemId: string, newQuantity: number, unitType: 'base' | 'pack') => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    updateCartItem(locationId, itemId, newQuantity, unitType);
-  }, [updateCartItem]);
-
   const handleItemValueChange = useCallback(
     (locationId: string, item: CartItemWithDetails, nextValue: number, unitType: UnitType) => {
       if (Platform.OS !== 'web') {
@@ -799,7 +791,7 @@ export default function ManagerCartScreen() {
                 Move Item
               </Text>
               <Text className="text-gray-500 mb-4">
-                Move "{itemToMove?.itemName}" to another location
+                Move {itemToMove?.itemName} to another location
               </Text>
 
               {locations
