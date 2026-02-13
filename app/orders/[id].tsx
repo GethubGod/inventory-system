@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -17,8 +17,12 @@ import { statusColors, ORDER_STATUS_LABELS, CATEGORY_LABELS, categoryColors } fr
 import { supabase } from '@/lib/supabase';
 import { SpinningFish } from '@/components';
 import { completePendingRemindersForUser } from '@/services/notificationService';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
+
+const MANAGER_DASHBOARD_FALLBACK_ROUTE = '/(manager)';
 
 export default function OrderDetailScreen() {
+  const ds = useScaledStyles();
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const orderId = Array.isArray(params.id) ? params.id[0] : params.id;
   const { user, viewMode } = useAuthStore();
@@ -33,6 +37,20 @@ export default function OrderDetailScreen() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [fulfilledByUser, setFulfilledByUser] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  const handleBackPress = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
+
+    if (user?.role === 'manager') {
+      router.replace(MANAGER_DASHBOARD_FALLBACK_ROUTE);
+      return;
+    }
+
+    router.replace('/(tabs)');
+  }, [user?.role]);
 
   useEffect(() => {
     if (!orderId) {
@@ -209,7 +227,7 @@ export default function OrderDetailScreen() {
         <Text className="text-gray-900 font-semibold mt-3 text-center">Invalid order link</Text>
         <TouchableOpacity
           className="mt-5 bg-primary-500 rounded-lg px-4 py-2"
-          onPress={() => router.back()}
+          onPress={handleBackPress}
         >
           <Text className="text-white font-semibold">Go Back</Text>
         </TouchableOpacity>
@@ -225,7 +243,7 @@ export default function OrderDetailScreen() {
         <Text className="text-gray-500 mt-2 text-center">{loadError}</Text>
         <TouchableOpacity
           className="mt-5 bg-primary-500 rounded-lg px-4 py-2"
-          onPress={() => router.back()}
+          onPress={handleBackPress}
         >
           <Text className="text-white font-semibold">Go Back</Text>
         </TouchableOpacity>
@@ -322,11 +340,27 @@ export default function OrderDetailScreen() {
       <Stack.Screen
         options={{
           headerShown: true,
-          headerBackTitle: 'Back',
-          headerTintColor: '#F97316',
+          headerBackVisible: false,
+          headerTitleAlign: 'center',
+          headerTintColor: '#374151',
           headerStyle: { backgroundColor: '#FFFFFF' },
           title: `Order #${currentOrder.order_number}`,
-          headerTitleStyle: { color: '#111827', fontSize: 17, fontWeight: '600' },
+          headerTitleStyle: { color: '#111827', fontSize: 17, fontWeight: '700' },
+          headerLeft: () => (
+            <TouchableOpacity
+              onPress={handleBackPress}
+              style={{
+                padding: ds.spacing(8),
+                minWidth: 44,
+                minHeight: 44,
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="arrow-back" size={ds.icon(20)} color="#374151" />
+            </TouchableOpacity>
+          ),
         }}
       />
       <SafeAreaView className="flex-1 bg-gray-50" edges={['left', 'right', 'bottom']}>

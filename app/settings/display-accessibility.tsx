@@ -159,11 +159,17 @@ function DisplaySection() {
           options={[
             { value: 'compact', label: 'Compact' },
             { value: 'default', label: 'Default' },
-            { value: 'large', label: 'Large' },
+            { value: 'large', label: 'Large', disabled: true },
           ]}
           value={uiScale}
           onValueChange={setUIScale}
         />
+        <View className="flex-row items-center" style={{ marginTop: ds.spacing(8) }}>
+          <Ionicons name="information-circle-outline" size={ds.icon(14)} color={colors.gray[400]} />
+          <Text className="text-gray-400" style={{ fontSize: ds.fontSize(12), marginLeft: ds.spacing(6) }}>
+            Large UI scale is not available for current screen size.
+          </Text>
+        </View>
         <Text className="text-gray-400" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(8) }}>
           Affects button sizes, card padding, and spacing
         </Text>
@@ -177,11 +183,17 @@ function DisplaySection() {
           options={[
             { value: 'small', label: 'Small' },
             { value: 'medium', label: 'Medium' },
-            { value: 'large', label: 'Large' },
+            { value: 'large', label: 'Large', disabled: true },
           ]}
           value={buttonSize}
           onValueChange={setButtonSize}
         />
+        <View className="flex-row items-center" style={{ marginTop: ds.spacing(8) }}>
+          <Ionicons name="information-circle-outline" size={ds.icon(14)} color={colors.gray[400]} />
+          <Text className="text-gray-400" style={{ fontSize: ds.fontSize(12), marginLeft: ds.spacing(6) }}>
+            Large button size is not available for current screen size.
+          </Text>
+        </View>
         <View className="items-center" style={{ marginTop: ds.spacing(12) }}>
           <TouchableOpacity
             className="bg-primary-500 items-center justify-center"

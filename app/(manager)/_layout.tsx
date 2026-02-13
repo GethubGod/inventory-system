@@ -36,8 +36,8 @@ export default function ManagerLayout() {
         : null;
   const resolvedRole = user?.role ?? profile.role ?? metadataRole;
 
-  if (resolvedRole && resolvedRole !== 'manager') {
-    return <Redirect href="/(tabs)" />;
+  if (resolvedRole !== 'manager') {
+    return <Redirect href="/(tabs)/settings" />;
   }
 
   return (

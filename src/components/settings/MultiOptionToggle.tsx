@@ -8,6 +8,7 @@ interface Option<T> {
   value: T;
   label: string;
   preview?: React.ReactNode;
+  disabled?: boolean;
 }
 
 interface MultiOptionToggleProps<T> {
@@ -26,8 +27,8 @@ export function MultiOptionToggle<T extends string | number>({
   const ds = useScaledStyles();
   const { hapticFeedback } = useDisplayStore();
 
-  const handleSelect = (optionValue: T) => {
-    if (disabled) return;
+  const handleSelect = (optionValue: T, optionDisabled: boolean) => {
+    if (disabled || optionDisabled) return;
     if (hapticFeedback && Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -38,16 +39,17 @@ export function MultiOptionToggle<T extends string | number>({
     <View className={`flex-row ${disabled ? 'opacity-50' : ''}`}>
       {options.map((option, index) => {
         const isSelected = value === option.value;
+        const isOptionDisabled = disabled || Boolean(option.disabled);
         return (
           <TouchableOpacity
             key={String(option.value)}
-            onPress={() => handleSelect(option.value)}
-            disabled={disabled}
+            onPress={() => handleSelect(option.value, isOptionDisabled)}
+            disabled={isOptionDisabled}
             className={`flex-1 rounded-xl items-center justify-center border-2 ${
               isSelected
                 ? 'border-primary-500 bg-primary-50'
                 : 'border-gray-200 bg-gray-50'
-            }`}
+            } ${isOptionDisabled && !isSelected ? 'opacity-60' : ''}`}
             style={{
               marginRight: index < options.length - 1 ? ds.spacing(8) : 0,
               minHeight: Math.max(44, ds.buttonH),
@@ -63,7 +65,10 @@ export function MultiOptionToggle<T extends string | number>({
               className={`font-medium ${
                 isSelected ? 'text-primary-600' : 'text-gray-600'
               }`}
-              style={{ fontSize: ds.fontSize(14) }}
+              style={{
+                fontSize: ds.fontSize(14),
+                color: isOptionDisabled && !isSelected ? '#9CA3AF' : undefined,
+              }}
               numberOfLines={1}
             >
               {option.label}

@@ -49,9 +49,12 @@ export interface User {
 
 export interface Profile {
   id: string;
+  email: string | null;
   full_name: string | null;
   role: UserRole | null;
   is_suspended: boolean;
+  suspended_at: string | null;
+  suspended_by: string | null;
   notifications_enabled: boolean;
   last_active_at: string | null;
   last_order_at: string | null;

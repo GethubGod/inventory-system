@@ -100,6 +100,10 @@ const DEFAULT_STATE = {
   reduceMotion: false,
 };
 
+const sanitizeUIScale = (value: UIScale): UIScale => (value === 'large' ? 'default' : value);
+const sanitizeButtonSize = (value: ButtonSize): ButtonSize =>
+  value === 'large' ? 'medium' : value;
+
 export const useDisplayStore = create<DisplayState>()(
   persist(
     (set, get) => {
@@ -134,8 +138,8 @@ export const useDisplayStore = create<DisplayState>()(
 
         // Setters
         setTextScale: (textScale) => set({ textScale }),
-        setUIScale: (uiScale) => set({ uiScale }),
-        setButtonSize: (buttonSize) => set({ buttonSize }),
+        setUIScale: (uiScale) => set({ uiScale: sanitizeUIScale(uiScale) }),
+        setButtonSize: (buttonSize) => set({ buttonSize: sanitizeButtonSize(buttonSize) }),
         setTheme: (theme) => set({ theme }),
         setHapticFeedback: (hapticFeedback) => set({ hapticFeedback }),
         setReduceMotion: (reduceMotion) => set({ reduceMotion }),
@@ -158,6 +162,18 @@ export const useDisplayStore = create<DisplayState>()(
     {
       name: 'display-settings',
       storage: createJSONStorage(() => AsyncStorage),
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState as Partial<DisplayState> | undefined) ?? {};
+
+        return {
+          ...currentState,
+          ...persisted,
+          uiScale: sanitizeUIScale((persisted.uiScale as UIScale | undefined) ?? currentState.uiScale),
+          buttonSize: sanitizeButtonSize(
+            (persisted.buttonSize as ButtonSize | undefined) ?? currentState.buttonSize
+          ),
+        };
+      },
       partialize: (state) => ({
         textScale: state.textScale,
         uiScale: state.uiScale,

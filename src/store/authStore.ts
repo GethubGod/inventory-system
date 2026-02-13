@@ -20,7 +20,9 @@ const OAUTH_REDIRECT_URI = AuthSession.makeRedirectUri({
 
 let profileRealtimeChannel: RealtimeChannel | null = null;
 let warnedMissingLastActiveColumn = false;
+let warnedMissingEmailColumn = false;
 const warnedMissingProfileColumns = new Set<string>();
+const SUSPENDED_ACCOUNT_MESSAGE = 'Account suspended. Contact a manager.';
 
 function clearProfileSubscription() {
   if (!profileRealtimeChannel) return;
@@ -79,9 +81,40 @@ async function touchLastActive(userId: string) {
   }
 }
 
+async function syncProfileEmail(userId: string, email: string | null | undefined) {
+  const normalizedEmail = typeof email === 'string' ? email.trim() : '';
+  if (!normalizedEmail) return;
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ email: normalizedEmail })
+    .eq('id', userId);
+
+  if (error) {
+    if (isMissingColumnError(error, 'email')) {
+      if (!warnedMissingEmailColumn) {
+        warnedMissingEmailColumn = true;
+        console.warn(
+          "profiles.email is unavailable. Skipping profile email sync until migrations are applied."
+        );
+      }
+      return;
+    }
+
+    console.error('Failed to sync profiles.email', error);
+  }
+}
+
 async function upsertProfileResilient(payload: Record<string, unknown>) {
   const nextPayload = { ...payload } as Record<string, unknown>;
-  const fallbackColumns = ['is_suspended', 'last_active_at', 'last_order_at'] as const;
+  const fallbackColumns = [
+    'email',
+    'is_suspended',
+    'suspended_at',
+    'suspended_by',
+    'last_active_at',
+    'last_order_at',
+  ] as const;
 
   while (true) {
     const { error } = await supabase.from('profiles').upsert(nextPayload as any);
@@ -170,7 +203,58 @@ const USER_SCOPED_STORAGE_KEYS = [
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
+    (set, get) => {
+      const clearSessionState = () => {
+        set({
+          session: null,
+          user: null,
+          profile: null,
+          location: null,
+          viewMode: 'employee',
+        });
+      };
+
+      const forceSignOutSuspended = async (message = SUSPENDED_ACCOUNT_MESSAGE) => {
+        try {
+          const { error } = await supabase.auth.signOut();
+          if (error) {
+            console.warn('Failed to sign out suspended session cleanly', error);
+          }
+        } finally {
+          clearProfileSubscription();
+          clearSessionState();
+        }
+
+        throw new Error(message);
+      };
+
+      const refreshProfileAndHandleSuspension = async (params?: {
+        userId?: string;
+        shouldThrowOnSuspended?: boolean;
+      }) => {
+        const profile = await get().fetchProfile();
+        const userId = params?.userId;
+
+        if (profile?.is_suspended) {
+          if (params?.shouldThrowOnSuspended === false) {
+            await supabase.auth.signOut();
+            clearProfileSubscription();
+            clearSessionState();
+            return { profile, suspended: true };
+          }
+
+          await forceSignOutSuspended();
+        }
+
+        if (userId) {
+          await syncProfileEmail(userId, get().session?.user?.email ?? null);
+          await touchLastActive(userId);
+        }
+
+        return { profile, suspended: false };
+      };
+
+      return {
       session: null,
       user: null,
       profile: null,
@@ -271,12 +355,17 @@ export const useAuthStore = create<AuthState>()(
           set({ session });
 
           if (session?.user) {
-            const profile = await get().fetchProfile();
-            await get().fetchUser();
-            if (!profile?.is_suspended) {
-              await touchLastActive(session.user.id);
+            const { suspended } = await refreshProfileAndHandleSuspension({
+              userId: session.user.id,
+              shouldThrowOnSuspended: false,
+            });
+
+            if (!suspended) {
+              await get().fetchUser();
+              subscribeToProfileChanges(session.user.id, async () => {
+                await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
+              });
             }
-            subscribeToProfileChanges(session.user.id, get().fetchProfile);
           } else {
             set({ profile: null });
             clearProfileSubscription();
@@ -286,18 +375,29 @@ export const useAuthStore = create<AuthState>()(
           supabase.auth.onAuthStateChange(async (event: any, session: Session | null) => {
             set({ session });
 
-            if (event === 'SIGNED_IN' && session?.user) {
-              // Small delay to ensure the trigger has created the user profile
-              await new Promise((resolve) => setTimeout(resolve, 500));
-              const profile = await get().fetchProfile();
-              await get().fetchUser();
-              if (!profile?.is_suspended) {
-                await touchLastActive(session.user.id);
+            if (
+              (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') &&
+              session?.user
+            ) {
+              if (event === 'SIGNED_IN') {
+                // Small delay to ensure the trigger has created the user profile.
+                await new Promise((resolve) => setTimeout(resolve, 500));
               }
-              subscribeToProfileChanges(session.user.id, get().fetchProfile);
+
+              const { suspended } = await refreshProfileAndHandleSuspension({
+                userId: session.user.id,
+                shouldThrowOnSuspended: false,
+              });
+
+              if (suspended) return;
+
+              await get().fetchUser();
+              subscribeToProfileChanges(session.user.id, async () => {
+                await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
+              });
             } else if (event === 'SIGNED_OUT') {
-              set({ user: null, profile: null, location: null });
               clearProfileSubscription();
+              clearSessionState();
             }
           });
         } finally {
@@ -315,15 +415,18 @@ export const useAuthStore = create<AuthState>()(
           if (error) throw error;
 
           set({ session: data.session });
-          const profile = await get().fetchProfile();
-          const user = await get().fetchUser();
-          if (data.session?.user?.id && !profile?.is_suspended) {
-            await touchLastActive(data.session.user.id);
-            subscribeToProfileChanges(data.session.user.id, get().fetchProfile);
-          } else if (data.session?.user?.id) {
-            subscribeToProfileChanges(data.session.user.id, get().fetchProfile);
+
+          const sessionUserId = data.session?.user?.id ?? null;
+          if (sessionUserId) {
+            await refreshProfileAndHandleSuspension({
+              userId: sessionUserId,
+            });
+            subscribeToProfileChanges(sessionUserId, async () => {
+              await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
+            });
           }
-          return user;
+
+          return await get().fetchUser();
         } finally {
           set({ isLoading: false });
         }
@@ -384,16 +487,19 @@ export const useAuthStore = create<AuthState>()(
             }
           }
 
-          const profile = await get().fetchProfile();
-          await get().fetchUser();
           const {
-            data: { session },
+            data: { session: activeSession },
           } = await supabase.auth.getSession();
-          if (session?.user?.id && !profile?.is_suspended) {
-            await touchLastActive(session.user.id);
-            subscribeToProfileChanges(session.user.id, get().fetchProfile);
-          } else if (session?.user?.id) {
-            subscribeToProfileChanges(session.user.id, get().fetchProfile);
+          set({ session: activeSession });
+
+          if (activeSession?.user?.id) {
+            await refreshProfileAndHandleSuspension({
+              userId: activeSession.user.id,
+            });
+            await get().fetchUser();
+            subscribeToProfileChanges(activeSession.user.id, async () => {
+              await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
+            });
           }
         } finally {
           set({ isLoading: false });
@@ -437,9 +543,12 @@ export const useAuthStore = create<AuthState>()(
 
           await upsertProfileResilient({
             id: data.user.id,
+            email: email.trim(),
             full_name: normalizedName,
             role,
             is_suspended: false,
+            suspended_at: null,
+            suspended_by: null,
             last_active_at: new Date().toISOString(),
             profile_completed: true,
             provider: 'email',
@@ -447,7 +556,9 @@ export const useAuthStore = create<AuthState>()(
 
           set({ session: data.session });
           await get().fetchProfile();
-          subscribeToProfileChanges(data.user.id, get().fetchProfile);
+          subscribeToProfileChanges(data.user.id, async () => {
+            await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
+          });
 
           const user = await get().fetchUser();
           if (!user) throw new Error('User profile not found');
@@ -489,9 +600,12 @@ export const useAuthStore = create<AuthState>()(
 
           await upsertProfileResilient({
             id: session.user.id,
+            email: session.user.email ?? null,
             full_name: normalizedName,
             role,
             is_suspended: false,
+            suspended_at: null,
+            suspended_by: null,
             last_active_at: new Date().toISOString(),
             profile_completed: true,
             provider,
@@ -536,7 +650,9 @@ export const useAuthStore = create<AuthState>()(
 
           await get().fetchProfile();
           await touchLastActive(session.user.id);
-          subscribeToProfileChanges(session.user.id, get().fetchProfile);
+          subscribeToProfileChanges(session.user.id, async () => {
+            await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
+          });
           const user = await get().fetchUser();
           if (!user) throw new Error('User profile not found');
 
@@ -551,8 +667,8 @@ export const useAuthStore = create<AuthState>()(
         try {
           const { error } = await supabase.auth.signOut();
           if (error) throw error;
-          set({ session: null, user: null, profile: null, location: null, viewMode: 'employee' });
           clearProfileSubscription();
+          clearSessionState();
         } finally {
           set({ isLoading: false });
         }
@@ -696,7 +812,8 @@ export const useAuthStore = create<AuthState>()(
           set({ profile: { ...profile, role } });
         }
       },
-    }),
+    };
+    },
     {
       name: 'babytuna-auth',
       storage: createJSONStorage(() => AsyncStorage),
