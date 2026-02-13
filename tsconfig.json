@@ -1,6 +1,9 @@
 {
   "compilerOptions": {
     "allowJs": true,
+    "customConditions": [
+      "react-native"
+    ],
     "esModuleInterop": true,
     "jsx": "react-native",
     "lib": [
@@ -8,6 +11,7 @@
       "ESNext"
     ],
     "module": "esnext",
+    "moduleDetection": "force",
     "moduleResolution": "bundler",
     "noEmit": true,
     "resolveJsonModule": true,
@@ -36,6 +40,13 @@
       ]
     }
   },
+  "exclude": [
+    "node_modules",
+    "android",
+    "ios",
+    "babel.config.js",
+    "metro.config.js"
+  ],
   "include": [
     "**/*.ts",
     "**/*.tsx",

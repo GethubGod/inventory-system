@@ -22,12 +22,6 @@ import { BrandLogo } from '@/components';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
-interface DashboardStats {
-  pendingOrders: number;
-  todayOrders: number;
-  weekOrders: number;
-}
-
 interface EmployeeActivity {
   id: string;
   employeeName: string;
@@ -61,18 +55,20 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 export default function ManagerDashboard() {
   const ds = useScaledStyles();
-  const { locations, fetchLocations } = useAuthStore();
+  const { locations, fetchLocations, user, profile, session } = useAuthStore();
   const { hapticFeedback } = useDisplayStore();
   const { getTotalCartCount } = useOrderStore();
-  const cartCount = getTotalCartCount();
+  const cartCount = getTotalCartCount('manager');
   const headerIconButtonSize = Math.max(44, ds.icon(40));
   const badgeSize = Math.max(18, ds.icon(20));
-
-  const [stats, setStats] = useState<DashboardStats>({
-    pendingOrders: 0,
-    todayOrders: 0,
-    weekOrders: 0,
-  });
+  const headerLogoSize = Math.max(34, ds.icon(36));
+  const profileName = profile?.full_name?.trim() || '';
+  const userName = user?.name?.trim() || '';
+  const metadataName =
+    typeof session?.user?.user_metadata?.name === 'string'
+      ? session.user.user_metadata.name.trim()
+      : '';
+  const greetingName = profileName || userName || metadataName || 'there';
   const [reminderStats, setReminderStats] = useState<ReminderStats>({
     ...DEFAULT_REMINDER_STATS,
   });
@@ -85,30 +81,6 @@ export default function ManagerDashboard() {
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const weekAgo = new Date();
-      weekAgo.setDate(weekAgo.getDate() - 7);
-      weekAgo.setHours(0, 0, 0, 0);
-
-      let pendingQuery = supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .in('status', ['submitted', 'processing']);
-
-      let todayQuery = supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', today.toISOString())
-        .neq('status', 'draft');
-
-      let weekQuery = supabase
-        .from('orders')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', weekAgo.toISOString())
-        .eq('status', 'fulfilled');
-
       let recentQuery = supabase
         .from('orders')
         .select(`
@@ -126,24 +98,13 @@ export default function ManagerDashboard() {
         .limit(10);
 
       if (selectedLocation?.id) {
-        pendingQuery = pendingQuery.eq('location_id', selectedLocation.id);
-        todayQuery = todayQuery.eq('location_id', selectedLocation.id);
-        weekQuery = weekQuery.eq('location_id', selectedLocation.id);
         recentQuery = recentQuery.eq('location_id', selectedLocation.id);
       }
 
-      const [pendingResult, todayResult, weekResult, recentResult] = await Promise.all([
-        pendingQuery,
-        todayQuery,
-        weekQuery,
-        recentQuery,
-      ]);
-
-      setStats({
-        pendingOrders: pendingResult.count || 0,
-        todayOrders: todayResult.count || 0,
-        weekOrders: weekResult.count || 0,
-      });
+      const { data: recentOrders, error: recentError } = await recentQuery;
+      if (recentError) {
+        throw recentError;
+      }
 
       try {
         const reminderOverview = await listEmployeesWithReminderStatus({
@@ -160,8 +121,8 @@ export default function ManagerDashboard() {
         setReminderStats(DEFAULT_REMINDER_STATS);
       }
 
-      if (recentResult.data) {
-        const activities: EmployeeActivity[] = recentResult.data.map((order: any) => {
+      if (recentOrders) {
+        const activities: EmployeeActivity[] = recentOrders.map((order: any) => {
           const firstItem = order.order_items?.[0];
           const itemCount = order.order_items?.length || 0;
 
@@ -183,11 +144,6 @@ export default function ManagerDashboard() {
         setEmployeeActivity(activities);
       }
     } catch {
-      setStats({
-        pendingOrders: 0,
-        todayOrders: 0,
-        weekOrders: 0,
-      });
       setReminderStats(DEFAULT_REMINDER_STATS);
     }
   }, [selectedLocation?.id]);
@@ -278,43 +234,6 @@ export default function ManagerDashboard() {
     return `${diffDays}d ago`;
   };
 
-  const StatCard = ({
-    title,
-    value,
-    icon,
-    color,
-    onPress,
-  }: {
-    title: string;
-    value: number;
-    icon: keyof typeof Ionicons.glyphMap;
-    color: string;
-    onPress?: () => void;
-  }) => (
-    <TouchableOpacity
-      className="flex-1 bg-white rounded-2xl p-4 border border-gray-100"
-      style={{
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2,
-      }}
-      onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-      disabled={!onPress}
-    >
-      <Text className="text-3xl font-bold text-gray-900 mb-1">{value}</Text>
-      <Text className="text-gray-500 text-sm">{title}</Text>
-      <View
-        className="w-8 h-8 rounded-full items-center justify-center mt-2"
-        style={{ backgroundColor: color + '20' }}
-      >
-        <Ionicons name={icon} size={16} color={color} />
-      </View>
-    </TouchableOpacity>
-  );
-
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       <View className="bg-white border-b border-gray-100">
@@ -326,7 +245,7 @@ export default function ManagerDashboard() {
           }}
         >
           <View className="flex-row items-center">
-            <BrandLogo variant="header" size={28} />
+            <BrandLogo variant="header" size={headerLogoSize} />
           </View>
 
           <View className="flex-row items-center">
@@ -463,16 +382,22 @@ export default function ManagerDashboard() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />
           }
         >
-          <View className="flex-row gap-3 mb-6">
-            <StatCard
-              title="Pending"
-              value={stats.pendingOrders}
-              icon="alert-circle"
-              color="#F97316"
-              onPress={() => router.push('/(manager)/orders')}
-            />
-            <StatCard title="Today" value={stats.todayOrders} icon="today" color="#3B82F6" />
-            <StatCard title="This Week" value={stats.weekOrders} icon="checkmark-circle" color="#10B981" />
+          <View
+            className="bg-white rounded-2xl p-4 mb-6 border border-gray-100"
+            style={{
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+          >
+            <Text className="text-gray-900 font-bold" style={{ fontSize: ds.fontSize(28) }}>
+              Hi, {greetingName}
+            </Text>
+            <Text className="text-gray-500 mt-1" style={{ fontSize: ds.fontSize(14) }}>
+              Here&apos;s what&apos;s happening at your locations.
+            </Text>
           </View>
 
           <View

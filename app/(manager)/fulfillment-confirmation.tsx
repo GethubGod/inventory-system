@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
+  FlatList,
+  Modal,
   Platform,
-  ScrollView,
+  Pressable,
   Share,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -17,11 +20,18 @@ import { SUPPLIER_CATEGORY_LABELS, colors } from '@/constants';
 import { useAuthStore, useOrderStore, useSettingsStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { FulfillmentConfirmItemRow, ItemActionSheet } from '@/components';
 import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
 import { QuantityExportSelector } from '@/components/QuantityExportSelector';
-import { ReviewItemRow } from '@/components/ReviewItemRow';
+import type { ItemActionSheetSection } from '@/components';
 import { buildSupplierConfirmationData } from '@/services/fulfillmentDataSource';
 import { loadSupplierLookup } from '@/services/supplierResolver';
+import {
+  UnitConversionLookup,
+  applyUnitConversion,
+  loadUnitConversionLookup,
+  resolveUnitConversionMultiplier,
+} from '@/services/unitConversion';
 
 interface ConfirmationDetail {
   locationId?: string;
@@ -91,6 +101,18 @@ interface RemainingConfirmationItem {
   secondarySupplierName: string | null;
   secondarySupplierId: string | null;
 }
+
+type RegularListEntry =
+  | {
+      key: string;
+      type: 'group-header';
+      group: LocationGroup;
+    }
+  | {
+      key: string;
+      type: 'regular-item';
+      item: ConfirmationItem;
+    };
 
 function parseParamArray<T>(value: string | string[] | undefined): T[] {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -162,21 +184,73 @@ interface ItemExportSettings {
   exportUnitType: 'base' | 'pack';
 }
 
-function convertQuantity(
-  qty: number,
-  from: 'base' | 'pack',
-  to: 'base' | 'pack',
-  packSize: number
-): number {
-  if (from === to || packSize <= 0) return qty;
-  return from === 'base' ? qty / packSize : qty * packSize;
+interface UnitLabelAvailability {
+  baseLabel: string | null;
+  packLabel: string | null;
+  hasBase: boolean;
+  hasPack: boolean;
 }
 
-function canSwitchUnit(info: InventoryUnitInfo | undefined): boolean {
-  if (!info) return false;
-  if (info.base_unit === info.pack_unit) return false;
-  if (info.pack_size <= 1) return false;
-  return true;
+interface UnitSelectorProps {
+  baseUnitLabel: string;
+  packUnitLabel: string;
+  canSwitchUnit: boolean;
+}
+
+function normalizeUnitLabel(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function unitLabelsMatch(left: string | null | undefined, right: string | null | undefined): boolean {
+  const normalizedLeft = normalizeUnitLabel(left)?.toLowerCase();
+  const normalizedRight = normalizeUnitLabel(right)?.toLowerCase();
+  if (!normalizedLeft || !normalizedRight) return false;
+  return normalizedLeft === normalizedRight;
+}
+
+function resolveUnitSelectorProps({
+  unitInfo,
+  availability,
+  currentUnitType,
+  currentUnitLabel,
+}: {
+  unitInfo: InventoryUnitInfo | undefined;
+  availability: UnitLabelAvailability | undefined;
+  currentUnitType: 'base' | 'pack';
+  currentUnitLabel: string;
+}): UnitSelectorProps {
+  const currentLabel = normalizeUnitLabel(currentUnitLabel) ?? (currentUnitType === 'pack' ? 'pack' : 'unit');
+  const infoBaseLabel = normalizeUnitLabel(unitInfo?.base_unit);
+  const infoPackLabel = normalizeUnitLabel(unitInfo?.pack_unit);
+
+  let baseUnitLabel = infoBaseLabel ?? availability?.baseLabel ?? (currentUnitType === 'base' ? currentLabel : 'base');
+  let packUnitLabel = infoPackLabel ?? availability?.packLabel ?? (currentUnitType === 'pack' ? currentLabel : 'pack');
+
+  const hasAlternateUnitType = Boolean(availability?.hasBase && availability?.hasPack);
+  const hasDistinctUnitLabelsFromInventory =
+    Boolean(infoBaseLabel && infoPackLabel) && !unitLabelsMatch(infoBaseLabel, infoPackLabel);
+  const knownOppositeLabel =
+    currentUnitType === 'base'
+      ? infoPackLabel ?? availability?.packLabel ?? null
+      : infoBaseLabel ?? availability?.baseLabel ?? null;
+  const hasDistinctKnownOppositeLabel =
+    Boolean(knownOppositeLabel) && !unitLabelsMatch(knownOppositeLabel, currentLabel);
+
+  // If both unit types are known but labels collapsed to one value, keep toggle enabled with a safe generic fallback.
+  if (hasAlternateUnitType && unitLabelsMatch(baseUnitLabel, packUnitLabel)) {
+    if (currentUnitType === 'base') {
+      packUnitLabel = availability?.packLabel ?? infoPackLabel ?? 'pack';
+    } else {
+      baseUnitLabel = availability?.baseLabel ?? infoBaseLabel ?? 'base';
+    }
+  }
+
+  const canSwitchUnit =
+    hasAlternateUnitType || hasDistinctUnitLabelsFromInventory || hasDistinctKnownOppositeLabel;
+
+  return { baseUnitLabel, packUnitLabel, canSwitchUnit };
 }
 
 interface RemainingContributorSummary {
@@ -189,7 +263,7 @@ interface RemainingItemRowProps {
   item: RemainingConfirmationItem;
   suggested: number | null;
   isSaving: boolean;
-  unitInfo: InventoryUnitInfo | undefined;
+  unitSelectorProps: UnitSelectorProps;
   exportUnitType: 'base' | 'pack';
   contributorBreakdown: RemainingContributorSummary[];
   onUnitChange: (unit: 'base' | 'pack') => void;
@@ -201,7 +275,7 @@ const RemainingItemRow = React.memo(function RemainingItemRow({
   item,
   suggested,
   isSaving,
-  unitInfo,
+  unitSelectorProps,
   exportUnitType,
   contributorBreakdown,
   onUnitChange,
@@ -212,7 +286,7 @@ const RemainingItemRow = React.memo(function RemainingItemRow({
   const hasContributorBreakdown = contributorBreakdown.length > 1;
 
   return (
-    <ReviewItemRow
+    <FulfillmentConfirmItemRow
       title={item.name}
       headerActions={(
         <>
@@ -278,9 +352,9 @@ const RemainingItemRow = React.memo(function RemainingItemRow({
       unitSelector={(
         <QuantityExportSelector
           exportUnitType={exportUnitType}
-          baseUnitLabel={unitInfo?.base_unit ?? item.unitLabel}
-          packUnitLabel={unitInfo?.pack_unit ?? item.unitLabel}
-          canSwitchUnit={canSwitchUnit(unitInfo)}
+          baseUnitLabel={unitSelectorProps.baseUnitLabel}
+          packUnitLabel={unitSelectorProps.packUnitLabel}
+          canSwitchUnit={unitSelectorProps.canSwitchUnit}
           onUnitChange={onUnitChange}
         />
       )}
@@ -345,7 +419,7 @@ export default function FulfillmentConfirmationScreen() {
     from?: string;
     remaining?: string;
   }>();
-  const { user } = useAuthStore();
+  const { user, locations } = useAuthStore();
   const { exportFormat } = useSettingsStore();
   const {
     createOrderLaterItem,
@@ -501,7 +575,20 @@ export default function FulfillmentConfirmationScreen() {
     | { kind: 'remaining'; id: string }
     | null
   >(null);
+  const [overflowTarget, setOverflowTarget] = useState<
+    | { kind: 'regular'; id: string }
+    | { kind: 'remaining'; id: string }
+    | null
+  >(null);
+  const [noteEditorTarget, setNoteEditorTarget] = useState<
+    | { kind: 'regular'; id: string }
+    | { kind: 'remaining'; id: string }
+    | null
+  >(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const [unitInfoMap, setUnitInfoMap] = useState<Record<string, InventoryUnitInfo>>({});
+  const [unitConversionLookup, setUnitConversionLookup] = useState<UnitConversionLookup>({});
   const [exportSettings, setExportSettings] = useState<Record<string, ItemExportSettings>>({});
 
   const getExportSettings = useCallback(
@@ -539,6 +626,13 @@ export default function FulfillmentConfirmationScreen() {
     if (!supplierId) return 'Supplier';
     return SUPPLIER_CATEGORY_LABELS[supplierId as keyof typeof SUPPLIER_CATEGORY_LABELS] || supplierId;
   }, [supplierId, supplierLabelParam]);
+  const managerLocationIds = useMemo(
+    () =>
+      locations
+        .map((location) => (typeof location.id === 'string' ? location.id.trim() : ''))
+        .filter((id) => id.length > 0),
+    [locations]
+  );
 
   // Reset local state when the supplier param changes (prevents stale flash from previous supplier)
   useEffect(() => {
@@ -549,6 +643,9 @@ export default function FulfillmentConfirmationScreen() {
     setShowRetryActions(false);
     setIsFinalizing(false);
     setOrderLaterTarget(null);
+    setOverflowTarget(null);
+    setNoteEditorTarget(null);
+    setNoteDraft('');
     setExportSettings({});
   }, [supplierId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -581,11 +678,45 @@ export default function FulfillmentConfirmationScreen() {
     };
   }, [items, remainingItems]);
 
+  useEffect(() => {
+    const ids = [
+      ...new Set([
+        ...items.map((item) => item.inventoryItemId),
+        ...remainingItems.map((item) => item.inventoryItemId),
+      ]),
+    ].filter((id) => typeof id === 'string' && id.trim().length > 0);
+
+    if (ids.length === 0) {
+      setUnitConversionLookup({});
+      return;
+    }
+
+    let active = true;
+    (async () => {
+      try {
+        const lookup = await loadUnitConversionLookup(ids);
+        if (!active) return;
+        setUnitConversionLookup(lookup);
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('[Fulfillment:Confirm] Unable to load unit conversions.', error);
+        }
+        if (active) {
+          setUnitConversionLookup({});
+        }
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [items, remainingItems]);
+
   const refreshFromSupplierSource = useCallback(async () => {
     if (!supplierId) return;
 
     try {
-      await fetchPendingFulfillmentOrders();
+      await fetchPendingFulfillmentOrders(managerLocationIds);
       const supplierLookup = await loadSupplierLookup();
       const stateOrders = (useOrderStore.getState().orders || []) as any;
       const supplierDraftItems = getSupplierDraftItems(supplierId) as any;
@@ -603,7 +734,7 @@ export default function FulfillmentConfirmationScreen() {
         console.warn('[Fulfillment:Confirm] Unable to refresh supplier payload from source.', error);
       }
     }
-  }, [fetchPendingFulfillmentOrders, getSupplierDraftItems, supplierId]);
+  }, [fetchPendingFulfillmentOrders, getSupplierDraftItems, managerLocationIds, supplierId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -839,6 +970,73 @@ export default function FulfillmentConfirmationScreen() {
     );
   }, [items]);
 
+  const groupedRegularItems = useMemo(() => {
+    const groupOrder: LocationGroup[] = ['sushi', 'poki'];
+    const output: Record<LocationGroup, ConfirmationItem[]> = {
+      sushi: [...(groupedItems.sushi || [])],
+      poki: [...(groupedItems.poki || [])],
+    };
+
+    groupOrder.forEach((group) => {
+      output[group].sort((a, b) => {
+        const byName = a.name.localeCompare(b.name);
+        if (byName !== 0) return byName;
+        const byInventoryId = a.inventoryItemId.localeCompare(b.inventoryItemId);
+        if (byInventoryId !== 0) return byInventoryId;
+        if (a.unitType !== b.unitType) return a.unitType.localeCompare(b.unitType);
+        return a.unitLabel.localeCompare(b.unitLabel);
+      });
+    });
+
+    return output;
+  }, [groupedItems]);
+
+  const unitLabelAvailabilityByInventoryItemId = useMemo(() => {
+    const output: Record<string, UnitLabelAvailability> = {};
+    const register = (inventoryItemId: string, unitType: 'base' | 'pack', unitLabel: string) => {
+      const id = typeof inventoryItemId === 'string' ? inventoryItemId.trim() : '';
+      if (!id) return;
+
+      if (!output[id]) {
+        output[id] = {
+          baseLabel: null,
+          packLabel: null,
+          hasBase: false,
+          hasPack: false,
+        };
+      }
+
+      const normalizedLabel = normalizeUnitLabel(unitLabel);
+      if (unitType === 'base') {
+        output[id].hasBase = true;
+        if (normalizedLabel && !output[id].baseLabel) {
+          output[id].baseLabel = normalizedLabel;
+        }
+        return;
+      }
+
+      output[id].hasPack = true;
+      if (normalizedLabel && !output[id].packLabel) {
+        output[id].packLabel = normalizedLabel;
+      }
+    };
+
+    items.forEach((item) => register(item.inventoryItemId, item.unitType, item.unitLabel));
+    remainingItems.forEach((item) => register(item.inventoryItemId, item.unitType, item.unitLabel));
+    return output;
+  }, [items, remainingItems]);
+
+  const getUnitSelectorPropsByInventoryItemId = useCallback(
+    (inventoryItemId: string, unitType: 'base' | 'pack', unitLabel: string): UnitSelectorProps =>
+      resolveUnitSelectorProps({
+        unitInfo: unitInfoMap[inventoryItemId],
+        availability: unitLabelAvailabilityByInventoryItemId[inventoryItemId],
+        currentUnitType: unitType,
+        currentUnitLabel: unitLabel,
+      }),
+    [unitInfoMap, unitLabelAvailabilityByInventoryItemId]
+  );
+
   const groupedRemainingItems = useMemo(() => {
     return remainingItems.reduce(
       (acc, item) => {
@@ -849,6 +1047,29 @@ export default function FulfillmentConfirmationScreen() {
       { sushi: [] as RemainingConfirmationItem[], poki: [] as RemainingConfirmationItem[] }
     );
   }, [remainingItems]);
+
+  const regularListEntries = useMemo<RegularListEntry[]>(() => {
+    const entries: RegularListEntry[] = [];
+    (['sushi', 'poki'] as LocationGroup[]).forEach((group) => {
+      const rows = groupedRegularItems[group];
+      if (!rows || rows.length === 0) return;
+      entries.push({
+        key: `group-header-${group}`,
+        type: 'group-header',
+        group,
+      });
+      rows.forEach((item) => {
+        entries.push({
+          key: `regular-${item.id}`,
+          type: 'regular-item',
+          item,
+        });
+      });
+    });
+    return entries;
+  }, [groupedRegularItems]);
+
+  const regularItemCount = groupedRegularItems.sushi.length + groupedRegularItems.poki.length;
 
   const remainingContributorBreakdownByOrderItemId = useMemo(() => {
     const groupedByItem = new Map<string, RemainingConfirmationItem[]>();
@@ -904,38 +1125,38 @@ export default function FulfillmentConfirmationScreen() {
 
         regularItems.forEach((item) => {
           const settings = getExportSettings(item.id, item.unitType);
-          const info = unitInfoMap[item.inventoryItemId];
           const targetUnit = settings.exportUnitType;
-          const displayQty = info
-            ? convertQuantity(item.quantity, item.unitType, targetUnit, info.pack_size)
-            : item.quantity;
-          const displayLabel = info
-            ? targetUnit === 'pack'
-              ? info.pack_unit
-              : info.base_unit
-            : item.unitLabel;
+          const unitSelectorProps = getUnitSelectorPropsByInventoryItemId(
+            item.inventoryItemId,
+            item.unitType,
+            item.unitLabel
+          );
+          const displayQty = item.quantity;
+          const displayLabel =
+            targetUnit === 'pack'
+              ? unitSelectorProps.packUnitLabel
+              : unitSelectorProps.baseUnitLabel;
           lines.push(`- ${item.name}: ${formatQuantity(displayQty)} ${displayLabel}`);
         });
 
         remainingRows.forEach((item) => {
           const settings = getExportSettings(item.orderItemId, item.unitType);
-          const info = unitInfoMap[item.inventoryItemId];
           const targetUnit = settings.exportUnitType;
+          const unitSelectorProps = getUnitSelectorPropsByInventoryItemId(
+            item.inventoryItemId,
+            item.unitType,
+            item.unitLabel
+          );
           const sourceQty = item.decidedQuantity;
           const isValid =
             sourceQty != null && Number.isFinite(sourceQty) && sourceQty > 0;
           const displayQty = isValid
-            ? formatQuantity(
-                info
-                  ? convertQuantity(sourceQty!, item.unitType, targetUnit, info.pack_size)
-                  : sourceQty!
-              )
+            ? formatQuantity(sourceQty!)
             : '[set qty]';
-          const displayLabel = info
-            ? targetUnit === 'pack'
-              ? info.pack_unit
-              : info.base_unit
-            : item.unitLabel;
+          const displayLabel =
+            targetUnit === 'pack'
+              ? unitSelectorProps.packUnitLabel
+              : unitSelectorProps.baseUnitLabel;
           lines.push(`- ${item.name}: ${displayQty} ${displayLabel}`);
         });
 
@@ -946,7 +1167,7 @@ export default function FulfillmentConfirmationScreen() {
       .join('\n\n');
 
     return output.length > 0 ? output : 'No items to order.';
-  }, [groupedItems, groupedRemainingItems, unitInfoMap, getExportSettings]);
+  }, [groupedItems, groupedRemainingItems, getExportSettings, getUnitSelectorPropsByInventoryItemId]);
 
   const messageText = useMemo(() => {
     const today = new Date().toLocaleDateString('en-US', {
@@ -1113,65 +1334,541 @@ export default function FulfillmentConfirmationScreen() {
     [persistRegularRemoval, removeSupplierDraftItems]
   );
 
-  const handleRegularItemOverflow = useCallback(
-    (item: ConfirmationItem) => {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
-
-      const buttons: { text: string; onPress: () => void; style?: 'cancel' | 'destructive' }[] = [];
-
-      buttons.push({
-        text: 'Set to Order Later',
-        onPress: () => setOrderLaterTarget({ kind: 'regular', id: item.id }),
-      });
-
-      if (item.secondarySupplierId && item.secondarySupplierName) {
-        buttons.push({
-          text: `Move to ${item.secondarySupplierName}`,
-          onPress: () => handleMoveToSecondarySupplier(item),
-        });
-      }
-
-      buttons.push({
-        text: 'Remove',
-        style: 'destructive',
-        onPress: () => handleDelete(item),
-      });
-
-      buttons.push({ text: 'Cancel', style: 'cancel', onPress: () => {} });
-
-      Alert.alert(item.name, undefined, buttons);
-    },
-    [handleDelete, handleMoveToSecondarySupplier]
-  );
-
-  const handleRemainingItemOverflow = useCallback(
+  const handleDeleteRemaining = useCallback(
     (item: RemainingConfirmationItem) => {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Alert.alert('Remove Item', `Remove ${item.name} from this supplier order?`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            void (async () => {
+              const removed = await persistRemainingRemoval(item.orderItemId);
+              if (!removed) return;
+
+              if (Platform.OS !== 'web') {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              }
+              setRemainingItems((prev) =>
+                prev.filter((row) => row.orderItemId !== item.orderItemId)
+              );
+            })();
+          },
+        },
+      ]);
+    },
+    [persistRemainingRemoval]
+  );
+
+  const orderLaterRegularItem = useMemo(() => {
+    if (!orderLaterTarget || orderLaterTarget.kind !== 'regular') return null;
+    return items.find((row) => row.id === orderLaterTarget.id) ?? null;
+  }, [items, orderLaterTarget]);
+
+  const orderLaterRemainingItem = useMemo(() => {
+    if (!orderLaterTarget || orderLaterTarget.kind !== 'remaining') return null;
+    return remainingItems.find((row) => row.orderItemId === orderLaterTarget.id) ?? null;
+  }, [orderLaterTarget, remainingItems]);
+
+  const overflowRegularItem = useMemo(() => {
+    if (!overflowTarget || overflowTarget.kind !== 'regular') return null;
+    return items.find((row) => row.id === overflowTarget.id) ?? null;
+  }, [items, overflowTarget]);
+
+  const overflowRemainingItem = useMemo(() => {
+    if (!overflowTarget || overflowTarget.kind !== 'remaining') return null;
+    return remainingItems.find((row) => row.orderItemId === overflowTarget.id) ?? null;
+  }, [overflowTarget, remainingItems]);
+
+  const noteRegularItem = useMemo(() => {
+    if (!noteEditorTarget || noteEditorTarget.kind !== 'regular') return null;
+    return items.find((row) => row.id === noteEditorTarget.id) ?? null;
+  }, [items, noteEditorTarget]);
+
+  const noteRemainingItem = useMemo(() => {
+    if (!noteEditorTarget || noteEditorTarget.kind !== 'remaining') return null;
+    return remainingItems.find((row) => row.orderItemId === noteEditorTarget.id) ?? null;
+  }, [noteEditorTarget, remainingItems]);
+
+  const closeNoteEditor = useCallback(() => {
+    setNoteEditorTarget(null);
+    setNoteDraft('');
+  }, []);
+
+  const handleOpenRegularNoteEditor = useCallback((item: ConfirmationItem) => {
+    setOverflowTarget(null);
+    setNoteEditorTarget({ kind: 'regular', id: item.id });
+    setNoteDraft(item.notes.map((note) => note.text.trim()).filter((note) => note.length > 0).join(' • '));
+  }, []);
+
+  const handleOpenRemainingNoteEditor = useCallback((item: RemainingConfirmationItem) => {
+    setOverflowTarget(null);
+    setNoteEditorTarget({ kind: 'remaining', id: item.orderItemId });
+    setNoteDraft(item.note ?? '');
+  }, []);
+
+  const handleSaveNote = useCallback(async () => {
+    const regularTarget = noteRegularItem;
+    const remainingTarget = noteRemainingItem;
+    if (!regularTarget && !remainingTarget) return;
+
+    const normalized = noteDraft.trim();
+    setIsSavingNote(true);
+    try {
+      if (regularTarget && regularTarget.sourceOrderItemIds.length > 0) {
+        const { error } = await (supabase as any)
+          .from('order_items')
+          .update({ note: normalized.length > 0 ? normalized : null })
+          .in('id', regularTarget.sourceOrderItemIds);
+        if (error) throw error;
       }
 
-      const buttons: { text: string; onPress: () => void; style?: 'cancel' | 'destructive' }[] = [];
+      if (remainingTarget) {
+        const { error } = await (supabase as any)
+          .from('order_items')
+          .update({ note: normalized.length > 0 ? normalized : null })
+          .eq('id', remainingTarget.orderItemId);
+        if (error) throw error;
+      }
 
-      buttons.push({
-        text: 'Set to Order Later',
-        onPress: () => setOrderLaterTarget({ kind: 'remaining', id: item.orderItemId }),
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      closeNoteEditor();
+      await refreshFromSupplierSource();
+    } catch (error: any) {
+      Alert.alert('Unable to Save Note', error?.message || 'Please try again.');
+    } finally {
+      setIsSavingNote(false);
+    }
+  }, [
+    closeNoteEditor,
+    noteDraft,
+    noteRegularItem,
+    noteRemainingItem,
+    refreshFromSupplierSource,
+  ]);
+
+  const showRemainingBreakdown = useCallback(
+    (item: RemainingConfirmationItem) => {
+      const rows = remainingContributorBreakdownByOrderItemId[item.orderItemId] ?? [];
+      if (rows.length <= 1) {
+        Alert.alert('Breakdown', 'Only one employee contributed to this line.');
+        return;
+      }
+
+      const message = rows
+        .map((entry) => {
+          const unit = item.unitLabel;
+          const entryCount = entry.rowCount > 1 ? ` • ${entry.rowCount} entries` : '';
+          return `${entry.name}: ${formatQuantity(entry.reportedTotal)} ${unit}${entryCount}`;
+        })
+        .join('\n');
+      Alert.alert('Per-Employee Breakdown', message);
+    },
+    [remainingContributorBreakdownByOrderItemId]
+  );
+
+  const getRegularUnitSiblings = useCallback(
+    (item: ConfirmationItem) =>
+      items.filter(
+        (row) =>
+          row.id !== item.id &&
+          row.inventoryItemId === item.inventoryItemId &&
+          row.locationGroup === item.locationGroup
+      ),
+    [items]
+  );
+
+  const getRegularConversionMultiplier = useCallback(
+    (source: ConfirmationItem, target: ConfirmationItem) => {
+      const unitInfo = unitInfoMap[source.inventoryItemId];
+      return resolveUnitConversionMultiplier({
+        inventoryItemId: source.inventoryItemId,
+        fromUnitLabel: source.unitLabel,
+        toUnitLabel: target.unitLabel,
+        fromUnitType: source.unitType,
+        toUnitType: target.unitType,
+        packSize: unitInfo?.pack_size ?? null,
+        lookup: unitConversionLookup,
+      });
+    },
+    [unitConversionLookup, unitInfoMap]
+  );
+
+  const combineRegularItemIntoTarget = useCallback(
+    (sourceItemId: string, targetItemId: string) => {
+      setItems((prev) => {
+        const source = prev.find((row) => row.id === sourceItemId);
+        const target = prev.find((row) => row.id === targetItemId);
+        if (!source || !target) return prev;
+
+        const conversionMultiplier = getRegularConversionMultiplier(source, target);
+        if (!conversionMultiplier) return prev;
+
+        const convertedQuantity = applyUnitConversion(source.quantity, conversionMultiplier);
+        const convertedContributorTotal = applyUnitConversion(
+          source.sumOfContributorQuantities,
+          conversionMultiplier
+        );
+
+        if (!Number.isFinite(convertedQuantity) || convertedQuantity <= 0) return prev;
+
+        const contributorMap = new Map<string, ConfirmationContributor>();
+        target.contributors.forEach((entry) => {
+          contributorMap.set(`${entry.userId || entry.name}:${entry.name}`, { ...entry });
+        });
+        source.contributors.forEach((entry) => {
+          const converted = applyUnitConversion(entry.quantity, conversionMultiplier);
+          if (!Number.isFinite(converted) || converted <= 0) return;
+
+          const contributorKey = `${entry.userId || entry.name}:${entry.name}`;
+          const existing = contributorMap.get(contributorKey);
+          if (existing) {
+            existing.quantity += converted;
+          } else {
+            contributorMap.set(contributorKey, {
+              ...entry,
+              quantity: converted,
+            });
+          }
+        });
+
+        const detailMap = new Map<string, ConfirmationDetail>();
+        target.details.forEach((entry) => {
+          detailMap.set(`${entry.locationId || entry.locationName}:${entry.orderedBy}`, { ...entry });
+        });
+        source.details.forEach((entry) => {
+          const converted = applyUnitConversion(entry.quantity, conversionMultiplier);
+          if (!Number.isFinite(converted) || converted <= 0) return;
+
+          const key = `${entry.locationId || entry.locationName}:${entry.orderedBy}`;
+          const existing = detailMap.get(key);
+          if (existing) {
+            existing.quantity += converted;
+          } else {
+            detailMap.set(key, {
+              ...entry,
+              quantity: converted,
+            });
+          }
+        });
+
+        const notes = [...target.notes];
+        source.notes.forEach((note) => {
+          if (!notes.some((existing) => existing.id === note.id || existing.text === note.text)) {
+            notes.push({ ...note });
+          }
+        });
+
+        const mergedTarget: ConfirmationItem = {
+          ...target,
+          quantity: target.quantity + convertedQuantity,
+          sumOfContributorQuantities:
+            target.sumOfContributorQuantities + convertedContributorTotal,
+          sourceOrderItemIds: Array.from(
+            new Set([...target.sourceOrderItemIds, ...source.sourceOrderItemIds])
+          ),
+          sourceOrderIds: Array.from(new Set([...target.sourceOrderIds, ...source.sourceOrderIds])),
+          sourceDraftItemIds: Array.from(
+            new Set([...target.sourceDraftItemIds, ...source.sourceDraftItemIds])
+          ),
+          contributors: Array.from(contributorMap.values()).sort((a, b) =>
+            a.name.localeCompare(b.name)
+          ),
+          details: Array.from(detailMap.values()).sort((a, b) =>
+            a.locationName.localeCompare(b.locationName)
+          ),
+          notes: notes.sort((a, b) => a.text.localeCompare(b.text)),
+        };
+
+        return prev
+          .filter((row) => row.id !== source.id)
+          .map((row) => (row.id === target.id ? mergedTarget : row));
       });
 
-      if (item.secondarySupplierId && item.secondarySupplierName) {
-        buttons.push({
-          text: `Move to ${item.secondarySupplierName}`,
-          onPress: () => handleMoveRemainingToSecondarySupplier(item),
+      setExpandedItems((prev) => {
+        const next = new Set(prev);
+        next.delete(sourceItemId);
+        next.add(targetItemId);
+        return next;
+      });
+    },
+    [getRegularConversionMultiplier]
+  );
+
+  const handleResolveUnitCombine = useCallback(
+    (item: ConfirmationItem) => {
+      const siblings = getRegularUnitSiblings(item).filter(
+        (row) => row.unitType !== item.unitType
+      );
+
+      if (siblings.length === 0) {
+        Alert.alert(
+          'No Unit Conflict',
+          'This line has no alternate unit line to combine with.'
+        );
+        return;
+      }
+
+      const convertibleTargets = siblings.filter((target) => {
+        const multiplier = getRegularConversionMultiplier(item, target);
+        return Number.isFinite(multiplier) && (multiplier as number) > 0;
+      });
+
+      if (convertibleTargets.length === 0) {
+        Alert.alert(
+          'No Conversion Available',
+          'No conversion rule is defined for this item yet. It will stay as separate lines.'
+        );
+        return;
+      }
+
+      const options = convertibleTargets.map((target) => ({
+        text: `Convert into ${target.unitLabel}`,
+        onPress: () => combineRegularItemIntoTarget(item.id, target.id),
+      }));
+
+      Alert.alert(
+        'Resolve Units',
+        `Choose how to resolve ${item.name}.`,
+        [
+          {
+            text: 'Send as separate lines',
+            style: 'cancel',
+            onPress: () => {},
+          },
+          ...options,
+        ]
+      );
+    },
+    [combineRegularItemIntoTarget, getRegularConversionMultiplier, getRegularUnitSiblings]
+  );
+
+  const overflowActionSections = useMemo<ItemActionSheetSection[]>(() => {
+    if (!overflowRegularItem && !overflowRemainingItem) return [];
+
+    if (overflowRegularItem) {
+      const sections: ItemActionSheetSection[] = [];
+      sections.push({
+        id: 'regular-logistics',
+        title: 'Logistics',
+        items: [
+          {
+            id: 'regular-order-later',
+            label: 'Move to Order Later',
+            icon: 'time-outline',
+            onPress: () => {
+              setOverflowTarget(null);
+              setOrderLaterTarget({ kind: 'regular', id: overflowRegularItem.id });
+            },
+          },
+          ...(overflowRegularItem.contributors.length > 1
+            ? [
+                {
+                  id: 'regular-breakdown',
+                  label: 'View breakdown',
+                  icon: 'list-outline' as const,
+                  onPress: () => {
+                    setOverflowTarget(null);
+                    setExpandedItems((prev) => {
+                      const next = new Set(prev);
+                      next.add(overflowRegularItem.id);
+                      return next;
+                    });
+                  },
+                },
+              ]
+            : []),
+          ...(getRegularUnitSiblings(overflowRegularItem).some(
+            (row) =>
+              row.unitType !== overflowRegularItem.unitType &&
+              Number.isFinite(getRegularConversionMultiplier(overflowRegularItem, row)) &&
+              (getRegularConversionMultiplier(overflowRegularItem, row) as number) > 0
+          )
+            ? [
+                {
+                  id: 'regular-resolve-units',
+                  label: 'Resolve units / Combine',
+                  icon: 'git-merge-outline' as const,
+                  onPress: () => {
+                    setOverflowTarget(null);
+                    handleResolveUnitCombine(overflowRegularItem);
+                  },
+                },
+              ]
+            : []),
+        ],
+      });
+
+      const supplierItems = [];
+      if (overflowRegularItem.secondarySupplierId && overflowRegularItem.secondarySupplierName) {
+        supplierItems.push({
+          id: 'regular-secondary',
+          label: `Move to ${overflowRegularItem.secondarySupplierName}`,
+          icon: 'swap-horizontal',
+          onPress: () => {
+            setOverflowTarget(null);
+            handleMoveToSecondarySupplier(overflowRegularItem);
+          },
+        });
+      }
+      if (supplierItems.length > 0) {
+        sections.push({
+          id: 'regular-supplier',
+          title: 'Supplier',
+          items: supplierItems,
         });
       }
 
-      buttons.push({ text: 'Cancel', style: 'cancel', onPress: () => {} });
+      sections.push({
+        id: 'regular-item',
+        title: 'Item',
+        items: [
+          {
+            id: 'regular-note',
+            label: overflowRegularItem.notes.length > 0 ? 'Edit Note' : 'Add Note',
+            icon: 'create-outline',
+            onPress: () => handleOpenRegularNoteEditor(overflowRegularItem),
+          },
+        ],
+      });
 
-      Alert.alert(item.name, undefined, buttons);
-    },
-    [handleMoveRemainingToSecondarySupplier]
-  );
+      sections.push({
+        id: 'regular-danger',
+        title: 'Danger Zone',
+        items: [
+          {
+            id: 'regular-remove',
+            label: 'Remove item from this supplier order',
+            icon: 'trash-outline',
+            destructive: true,
+            onPress: () => {
+              setOverflowTarget(null);
+              handleDelete(overflowRegularItem);
+            },
+          },
+        ],
+      });
+
+      return sections;
+    }
+
+    if (overflowRemainingItem) {
+      const sections: ItemActionSheetSection[] = [];
+      const breakdown = remainingContributorBreakdownByOrderItemId[overflowRemainingItem.orderItemId] ?? [];
+      const logisticsItems = [
+        {
+          id: 'remaining-order-later',
+          label: 'Move to Order Later',
+          icon: 'time-outline' as const,
+          onPress: () => {
+            setOverflowTarget(null);
+            setOrderLaterTarget({ kind: 'remaining', id: overflowRemainingItem.orderItemId });
+          },
+        },
+        ...(breakdown.length > 1
+          ? [
+              {
+                id: 'remaining-breakdown',
+                label: 'View breakdown',
+                icon: 'list-outline' as const,
+                onPress: () => {
+                  setOverflowTarget(null);
+                  showRemainingBreakdown(overflowRemainingItem);
+                },
+              },
+            ]
+          : []),
+      ];
+      sections.push({
+        id: 'remaining-logistics',
+        title: 'Logistics',
+        items: logisticsItems,
+      });
+
+      if (overflowRemainingItem.secondarySupplierId && overflowRemainingItem.secondarySupplierName) {
+        sections.push({
+          id: 'remaining-supplier',
+          title: 'Supplier',
+          items: [
+            {
+              id: 'remaining-secondary',
+              label: `Move to ${overflowRemainingItem.secondarySupplierName}`,
+              icon: 'swap-horizontal',
+              onPress: () => {
+                setOverflowTarget(null);
+                handleMoveRemainingToSecondarySupplier(overflowRemainingItem);
+              },
+            },
+          ],
+        });
+      }
+
+      sections.push({
+        id: 'remaining-item',
+        title: 'Item',
+        items: [
+          {
+            id: 'remaining-note',
+            label: overflowRemainingItem.note ? 'Edit Note' : 'Add Note',
+            icon: 'create-outline',
+            onPress: () => handleOpenRemainingNoteEditor(overflowRemainingItem),
+          },
+        ],
+      });
+
+      sections.push({
+        id: 'remaining-danger',
+        title: 'Danger Zone',
+        items: [
+          {
+            id: 'remaining-remove',
+            label: 'Remove item from this supplier order',
+            icon: 'trash-outline',
+            destructive: true,
+            onPress: () => {
+              setOverflowTarget(null);
+              handleDeleteRemaining(overflowRemainingItem);
+            },
+          },
+        ],
+      });
+
+      return sections;
+    }
+
+    return [];
+  }, [
+    handleDelete,
+    handleDeleteRemaining,
+    handleMoveRemainingToSecondarySupplier,
+    handleMoveToSecondarySupplier,
+    handleOpenRegularNoteEditor,
+    handleOpenRemainingNoteEditor,
+    handleResolveUnitCombine,
+    overflowRegularItem,
+    overflowRemainingItem,
+    remainingContributorBreakdownByOrderItemId,
+    getRegularConversionMultiplier,
+    getRegularUnitSiblings,
+    showRemainingBreakdown,
+  ]);
+
+  const handleRegularItemOverflow = useCallback((item: ConfirmationItem) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setOverflowTarget({ kind: 'regular', id: item.id });
+  }, []);
+
+  const handleRemainingItemOverflow = useCallback((item: RemainingConfirmationItem) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setOverflowTarget({ kind: 'remaining', id: item.orderItemId });
+  }, []);
 
   const handleQuantityChange = useCallback(
     (item: ConfirmationItem, newQuantity: number) => {
@@ -1325,16 +2022,6 @@ export default function FulfillmentConfirmationScreen() {
     remainingItems,
     setRemainingDecisionLocal,
   ]);
-
-  const orderLaterRegularItem = useMemo(() => {
-    if (!orderLaterTarget || orderLaterTarget.kind !== 'regular') return null;
-    return items.find((row) => row.id === orderLaterTarget.id) ?? null;
-  }, [items, orderLaterTarget]);
-
-  const orderLaterRemainingItem = useMemo(() => {
-    if (!orderLaterTarget || orderLaterTarget.kind !== 'remaining') return null;
-    return remainingItems.find((row) => row.orderItemId === orderLaterTarget.id) ?? null;
-  }, [orderLaterTarget, remainingItems]);
 
   const buildFinalizePayload = useCallback(() => {
     const regularPayload = items.map((item) => ({
@@ -1498,7 +2185,7 @@ export default function FulfillmentConfirmationScreen() {
 
         // Refresh fulfillment data so the cleared items don't reappear
         try {
-          await fetchPendingFulfillmentOrders();
+          await fetchPendingFulfillmentOrders(managerLocationIds);
         } catch {
           // Non-critical: local state was already updated by createPastOrder
         }
@@ -1520,6 +2207,7 @@ export default function FulfillmentConfirmationScreen() {
       buildFinalizePayload,
       fetchPendingFulfillmentOrders,
       finalizeSupplierOrder,
+      managerLocationIds,
       messageText,
       supplierId,
       supplierLabel,
@@ -1724,300 +2412,386 @@ export default function FulfillmentConfirmationScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView className="flex-1" contentContainerStyle={{ padding: 16, paddingBottom: 24 }}>
-          {remainingItems.length > 0 && (
-            <View className="bg-white rounded-2xl border border-amber-200 p-4 mb-4">
-              <View className="flex-row items-start justify-between">
-                <View className="flex-1 pr-2">
-                  <View className="flex-row items-center">
-                    <Text className="text-lg font-bold text-amber-900">Remaining Items</Text>
+        <FlatList
+          className="flex-1"
+          data={regularListEntries}
+          keyExtractor={(entry) => entry.key}
+          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
+          ListHeaderComponent={(
+            <View>
+              {remainingItems.length > 0 && (
+                <View className="bg-white rounded-2xl border border-amber-200 px-3 py-3 mb-3">
+                  <View className="flex-row items-start justify-between">
+                    <View className="flex-1 pr-2">
+                      <View className="flex-row items-center">
+                        <Text className="text-base font-bold text-amber-900">Remaining Items</Text>
+                        <TouchableOpacity
+                          onPress={handleRemainingInstructionsPress}
+                          className="ml-1.5 p-1"
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="information-circle-outline" size={16} color="#B45309" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
                     <TouchableOpacity
-                      onPress={handleRemainingInstructionsPress}
-                      className="ml-1.5 p-1"
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      onPress={handleAutoFillSuggestions}
+                      disabled={suggestionCount === 0 || loadingLastOrdered || savingRemainingIds.size > 0}
+                      className={`px-2.5 py-1.5 rounded-lg ${
+                        suggestionCount === 0 || loadingLastOrdered || savingRemainingIds.size > 0
+                          ? 'bg-amber-100'
+                          : 'bg-amber-200'
+                      }`}
                     >
-                      <Ionicons name="information-circle-outline" size={16} color="#B45309" />
+                      <Text className="text-xs font-semibold text-amber-900">Auto-fill</Text>
                     </TouchableOpacity>
                   </View>
+
+                  {hasMissingRemaining && (
+                    <View className="mt-2 rounded-lg bg-red-50 border border-red-200 px-2.5 py-2">
+                      <Text className="text-xs font-medium text-red-700">
+                        {unresolvedRemainingItemIds.length} remaining item
+                        {unresolvedRemainingItemIds.length === 1 ? '' : 's'} still need a final quantity.
+                      </Text>
+                    </View>
+                  )}
+
+                  <View className="mt-2">
+                    {(['sushi', 'poki'] as LocationGroup[]).map((group) => {
+                      const rows = groupedRemainingItems[group];
+                      if (!rows || rows.length === 0) return null;
+
+                      return (
+                        <View key={`remaining-${group}`} className="mb-3 last:mb-0">
+                          <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
+                            {LOCATION_GROUP_LABELS[group]}
+                          </Text>
+
+                          {rows.map((item, index) => {
+                            const suggested = getSuggestion(item);
+                            const isSaving = savingRemainingIds.has(item.orderItemId);
+                            const settings = getExportSettings(item.orderItemId, item.unitType);
+                            const contributorBreakdown =
+                              remainingContributorBreakdownByOrderItemId[item.orderItemId] ?? [];
+                            const unitSelectorProps = getUnitSelectorPropsByInventoryItemId(
+                              item.inventoryItemId,
+                              item.unitType,
+                              item.unitLabel
+                            );
+
+                            return (
+                              <View
+                                key={item.orderItemId}
+                                className={index < rows.length - 1 ? 'mb-2' : ''}
+                              >
+                                <RemainingItemRow
+                                  item={item}
+                                  suggested={suggested}
+                                  isSaving={isSaving}
+                                  unitSelectorProps={unitSelectorProps}
+                                  exportUnitType={settings.exportUnitType}
+                                  contributorBreakdown={contributorBreakdown}
+                                  onUnitChange={(unit) =>
+                                    updateExportSettings(item.orderItemId, { exportUnitType: unit })
+                                  }
+                                  onQuantityChange={handleRemainingQuantityChange}
+                                  onOverflowPress={handleRemainingItemOverflow}
+                                />
+                              </View>
+                            );
+                          })}
+                        </View>
+                      );
+                    })}
+                  </View>
                 </View>
-                <TouchableOpacity
-                  onPress={handleAutoFillSuggestions}
-                  disabled={suggestionCount === 0 || loadingLastOrdered || savingRemainingIds.size > 0}
-                  className={`px-3 py-2 rounded-lg ${
-                    suggestionCount === 0 || loadingLastOrdered || savingRemainingIds.size > 0
-                      ? 'bg-amber-100'
-                      : 'bg-amber-200'
-                  }`}
-                >
-                  <Text className="text-xs font-semibold text-amber-900">Auto-fill</Text>
+              )}
+
+              <View className="bg-white rounded-2xl border border-gray-100 p-3 mb-3">
+                <View className="flex-row items-center justify-between mb-2">
+                  <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Message Preview</Text>
+                  <TouchableOpacity
+                    onPress={() => router.push('/(manager)/settings/export-format')}
+                    className="flex-row items-center"
+                  >
+                    <Ionicons name="create-outline" size={14} color={colors.primary[500]} />
+                    <Text className="text-xs text-primary-600 font-semibold ml-1">Edit Format</Text>
+                  </TouchableOpacity>
+                </View>
+                <View className="bg-gray-50 rounded-xl p-2.5">
+                  <Text className="text-sm text-gray-800 leading-5">{messageText}</Text>
+                </View>
+              </View>
+
+              {hasAnyItems ? (
+                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2.5">
+                  Regular Items ({regularItemCount})
+                </Text>
+              ) : null}
+            </View>
+          )}
+          ListEmptyComponent={(
+            hasAnyItems ? (
+              <View className="items-center justify-center py-8 bg-white border border-gray-200 rounded-xl">
+                <Text className="text-gray-500 text-sm">No regular items in this supplier section</Text>
+              </View>
+            ) : (
+              <View className="items-center justify-center py-12">
+                <Ionicons name="list-outline" size={48} color={colors.gray[300]} />
+                <Text className="text-gray-500 text-base mt-3">No items to confirm</Text>
+                <Text className="text-gray-400 text-sm mt-1">Return to fulfillment to select items</Text>
+              </View>
+            )
+          )}
+          renderItem={({ item: entry }) => {
+            if (entry.type === 'group-header') {
+              const label = LOCATION_GROUP_LABELS[entry.group].toUpperCase();
+              return (
+                <View className="mb-2">
+                  <View className="flex-row items-center">
+                    <View className="flex-1 h-px bg-gray-200" />
+                    <Text className="text-xs font-semibold text-gray-500 uppercase tracking-widest mx-3">
+                      {label}
+                    </Text>
+                    <View className="flex-1 h-px bg-gray-200" />
+                  </View>
+                </View>
+              );
+            }
+
+            const item = entry.item;
+            const isExpanded = expandedItems.has(item.id);
+            const contributorCount = item.contributors.length;
+            const hasMultipleContributors = contributorCount > 1;
+            const singleContributorName =
+              item.contributors[0]?.name ||
+              item.details[0]?.orderedBy ||
+              'Unknown';
+            const finalTotalText = `${formatQuantity(item.quantity)} ${item.unitLabel}`;
+            const contributorTotalText = `${formatQuantity(item.sumOfContributorQuantities)} ${item.unitLabel}`;
+            const canResetToSum =
+              hasMultipleContributors &&
+              Math.abs(item.quantity - item.sumOfContributorQuantities) > 0.000001;
+            const settings = getExportSettings(item.id, item.unitType);
+            const unitSelectorProps = getUnitSelectorPropsByInventoryItemId(
+              item.inventoryItemId,
+              item.unitType,
+              item.unitLabel
+            );
+
+            return (
+              <View className="mb-2.5">
+                <FulfillmentConfirmItemRow
+                  title={item.name}
+                  headerActions={(
+                    <>
+                      <TouchableOpacity
+                        onPress={() => handleRegularItemOverflow(item)}
+                        className="p-1.5 mr-1"
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="ellipsis-horizontal" size={16} color={colors.gray[500]} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => toggleExpand(item.id)}
+                        className="p-1.5"
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons
+                          name={isExpanded ? 'information-circle' : 'information-circle-outline'}
+                          size={18}
+                          color={isExpanded ? colors.primary[500] : colors.gray[500]}
+                        />
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  quantityValue={formatQuantity(item.quantity)}
+                  onQuantityChangeText={(text) => {
+                    const sanitized = text.replace(/[^0-9.]/g, '');
+                    if (sanitized.length === 0) return;
+                    const parsed = Number(sanitized);
+                    if (!Number.isFinite(parsed)) return;
+                    handleQuantityChange(item, parsed);
+                  }}
+                  onDecrement={() => handleQuantityChange(item, item.quantity - 1)}
+                  onIncrement={() => handleQuantityChange(item, item.quantity + 1)}
+                  unitSelector={(
+                    <QuantityExportSelector
+                      exportUnitType={settings.exportUnitType}
+                      baseUnitLabel={unitSelectorProps.baseUnitLabel}
+                      packUnitLabel={unitSelectorProps.packUnitLabel}
+                      canSwitchUnit={unitSelectorProps.canSwitchUnit}
+                      onUnitChange={(unit) =>
+                        updateExportSettings(item.id, { exportUnitType: unit })
+                      }
+                    />
+                  )}
+                  detailsVisible={isExpanded}
+                  details={(
+                    <View className="rounded-xl border border-gray-200 bg-white px-3 py-3">
+                      <Text className="text-sm font-semibold text-gray-900">
+                        Ordered by: {hasMultipleContributors ? `${contributorCount} people` : singleContributorName}
+                      </Text>
+                      <Text className="text-xs text-gray-500 mt-1">
+                        Final total: {finalTotalText}
+                      </Text>
+
+                      {hasMultipleContributors && (
+                        <View className="mt-3">
+                          <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            Per-person breakdown
+                          </Text>
+                          {item.contributors.map((contributor, contributorIndex) => (
+                            <View
+                              key={`${item.id}-contributor-${contributor.userId || contributor.name}-${contributorIndex}`}
+                              className={`flex-row items-center justify-between py-1.5 ${
+                                contributorIndex < item.contributors.length - 1 ? 'border-b border-gray-200' : ''
+                              }`}
+                            >
+                              <Text className="text-sm text-gray-700">{contributor.name}</Text>
+                              <Text className="text-sm font-medium text-gray-700">
+                                {formatQuantity(contributor.quantity)} {item.unitLabel}
+                              </Text>
+                            </View>
+                          ))}
+                          <Text className="text-xs text-gray-500 mt-2">
+                            Contributors total: {contributorTotalText}
+                          </Text>
+
+                          {canResetToSum && (
+                            <TouchableOpacity
+                              onPress={() => handleResetToSum(item)}
+                              className="self-start mt-2 px-2.5 py-1.5 rounded-md bg-gray-200"
+                            >
+                              <Text className="text-[11px] font-semibold text-gray-700">Reset to sum</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      )}
+
+                      {item.details.length > 0 && (
+                        <View className="mt-3">
+                          <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            Location breakdown
+                          </Text>
+                          {item.details.map((detail, detailIndex) => (
+                            <View
+                              key={`${item.id}-detail-${detail.locationId || detail.locationName}-${detailIndex}`}
+                              className={`py-1.5 ${
+                                detailIndex < item.details.length - 1 ? 'border-b border-gray-200' : ''
+                              }`}
+                            >
+                              <View className="flex-row items-center justify-between">
+                                <Text className="text-sm text-gray-700">
+                                  {detail.locationName}
+                                  {detail.shortCode ? ` (${detail.shortCode})` : ''}
+                                </Text>
+                                <Text className="text-sm font-medium text-gray-700">
+                                  {formatQuantity(detail.quantity)} {item.unitLabel}
+                                </Text>
+                              </View>
+                              <Text className="text-xs text-gray-500 mt-1">Ordered by {detail.orderedBy}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {item.notes.length > 0 && (
+                        <View className="mt-3">
+                          <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                            Notes
+                          </Text>
+                          {item.notes.map((note, noteIndex) => (
+                            <View
+                              key={note.id}
+                              className={`rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2 ${
+                                noteIndex < item.notes.length - 1 ? 'mb-2' : ''
+                              }`}
+                            >
+                              <Text className="text-[11px] font-semibold text-blue-700">
+                                {note.author} • {note.locationName} ({note.shortCode})
+                              </Text>
+                              <Text className="text-xs text-blue-900 mt-1">{note.text}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  )}
+                />
+              </View>
+            );
+          }}
+        />
+
+        <ItemActionSheet
+          visible={Boolean(overflowRegularItem || overflowRemainingItem)}
+          title="Item Actions"
+          subtitle={overflowRegularItem?.name || overflowRemainingItem?.name}
+          sections={overflowActionSections}
+          onClose={() => setOverflowTarget(null)}
+        />
+
+        <Modal
+          visible={Boolean(noteRegularItem || noteRemainingItem)}
+          transparent
+          animationType="fade"
+          onRequestClose={closeNoteEditor}
+        >
+          <Pressable className="flex-1 bg-black/35 justify-end" onPress={closeNoteEditor}>
+            <Pressable
+              className="bg-white rounded-t-3xl px-4 pt-4 pb-5"
+              onPress={(event) => event.stopPropagation()}
+            >
+              <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-1 pr-2">
+                  <Text className="text-lg font-bold text-gray-900">
+                    {(noteRegularItem?.notes.length || noteRemainingItem?.note) ? 'Edit Note' : 'Add Note'}
+                  </Text>
+                  <Text className="text-xs text-gray-500 mt-0.5">
+                    {noteRegularItem?.name || noteRemainingItem?.name || ''}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={closeNoteEditor} className="p-2">
+                  <Ionicons name="close" size={20} color={colors.gray[500]} />
                 </TouchableOpacity>
               </View>
 
-              {hasMissingRemaining && (
-                <View className="mt-3 rounded-lg bg-red-50 border border-red-200 px-3 py-2">
-                  <Text className="text-xs font-medium text-red-700">
-                    {unresolvedRemainingItemIds.length} remaining item
-                    {unresolvedRemainingItemIds.length === 1 ? '' : 's'} still need a final quantity.
+              <TextInput
+                value={noteDraft}
+                onChangeText={setNoteDraft}
+                placeholder="Add supplier note..."
+                placeholderTextColor={colors.gray[400]}
+                multiline
+                maxLength={240}
+                textAlignVertical="top"
+                className="min-h-[110px] rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-900"
+              />
+              <Text className="text-xs text-gray-400 mt-2">{noteDraft.length}/240</Text>
+
+              <View className="flex-row mt-4">
+                <TouchableOpacity
+                  onPress={closeNoteEditor}
+                  className="flex-1 py-3 rounded-xl bg-gray-100 items-center justify-center mr-2"
+                >
+                  <Text className="text-sm font-semibold text-gray-700">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveNote}
+                  disabled={isSavingNote}
+                  className={`flex-1 py-3 rounded-xl items-center justify-center ${
+                    isSavingNote ? 'bg-primary-300' : 'bg-primary-500'
+                  }`}
+                >
+                  <Text className="text-sm font-semibold text-white">
+                    {isSavingNote ? 'Saving...' : 'Save Note'}
                   </Text>
-                </View>
-              )}
-
-              <View className="mt-3">
-                {(['sushi', 'poki'] as LocationGroup[]).map((group) => {
-                  const rows = groupedRemainingItems[group];
-                  if (!rows || rows.length === 0) return null;
-
-                  return (
-                    <View key={`remaining-${group}`} className="mb-4 last:mb-0">
-                      <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                        {LOCATION_GROUP_LABELS[group]}
-                      </Text>
-
-                      {rows.map((item) => {
-                        const suggested = getSuggestion(item);
-                        const isSaving = savingRemainingIds.has(item.orderItemId);
-                        const settings = getExportSettings(item.orderItemId, item.unitType);
-                        const unitInfo = unitInfoMap[item.inventoryItemId];
-                        const contributorBreakdown =
-                          remainingContributorBreakdownByOrderItemId[item.orderItemId] ?? [];
-
-                        return (
-                          <RemainingItemRow
-                            key={item.orderItemId}
-                            item={item}
-                            suggested={suggested}
-                            isSaving={isSaving}
-                            unitInfo={unitInfo}
-                            exportUnitType={settings.exportUnitType}
-                            contributorBreakdown={contributorBreakdown}
-                            onUnitChange={(unit) =>
-                              updateExportSettings(item.orderItemId, { exportUnitType: unit })
-                            }
-                            onQuantityChange={handleRemainingQuantityChange}
-                            onOverflowPress={handleRemainingItemOverflow}
-                          />
-                        );
-                      })}
-                    </View>
-                  );
-                })}
+                </TouchableOpacity>
               </View>
-            </View>
-          )}
-
-          <View className="bg-white rounded-2xl border border-gray-100 p-4 mb-4">
-            <View className="flex-row items-center justify-between mb-3">
-              <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Message Preview</Text>
-              <TouchableOpacity
-                onPress={() => router.push('/(manager)/settings/export-format')}
-                className="flex-row items-center"
-              >
-                <Ionicons name="create-outline" size={14} color={colors.primary[500]} />
-                <Text className="text-xs text-primary-600 font-semibold ml-1">Edit Format</Text>
-              </TouchableOpacity>
-            </View>
-            <View className="bg-gray-50 rounded-xl p-3">
-              <Text className="text-sm text-gray-800 leading-5">{messageText}</Text>
-            </View>
-          </View>
-
-          {hasAnyItems ? (
-            <>
-              <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Regular Items ({items.length})
-              </Text>
-
-              {items.length === 0 ? (
-                <View className="items-center justify-center py-8 bg-white border border-gray-200 rounded-xl">
-                  <Text className="text-gray-500 text-sm">No regular items in this supplier section</Text>
-                </View>
-              ) : (
-                (['sushi', 'poki'] as LocationGroup[]).map((group) => {
-                  const groupItems = groupedItems[group];
-                  if (!groupItems || groupItems.length === 0) return null;
-                  const label = LOCATION_GROUP_LABELS[group].toUpperCase();
-
-                  return (
-                    <View key={group} className="mb-6">
-                      <View className="flex-row items-center mb-3">
-                        <View className="flex-1 h-px bg-gray-200" />
-                        <Text className="text-xs font-semibold text-gray-500 uppercase tracking-widest mx-3">
-                          {label}
-                        </Text>
-                        <View className="flex-1 h-px bg-gray-200" />
-                      </View>
-
-                      {groupItems.map((item) => {
-                        const isExpanded = expandedItems.has(item.id);
-                        const contributorCount = item.contributors.length;
-                        const hasMultipleContributors = contributorCount > 1;
-                        const singleContributorName =
-                          item.contributors[0]?.name ||
-                          item.details[0]?.orderedBy ||
-                          'Unknown';
-                        const finalTotalText = `${formatQuantity(item.quantity)} ${item.unitLabel}`;
-                        const contributorTotalText = `${formatQuantity(item.sumOfContributorQuantities)} ${item.unitLabel}`;
-                        const canResetToSum =
-                          hasMultipleContributors &&
-                          Math.abs(item.quantity - item.sumOfContributorQuantities) > 0.000001;
-                        const settings = getExportSettings(item.id, item.unitType);
-                        const unitInfo = unitInfoMap[item.inventoryItemId];
-
-                        return (
-                          <ReviewItemRow
-                            key={item.id}
-                            title={item.name}
-                            headerActions={(
-                              <>
-                                <TouchableOpacity
-                                  onPress={() => handleRegularItemOverflow(item)}
-                                  className="p-1.5 mr-1"
-                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                >
-                                  <Ionicons name="ellipsis-horizontal" size={16} color={colors.gray[500]} />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  onPress={() => toggleExpand(item.id)}
-                                  className="p-1.5"
-                                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                >
-                                  <Ionicons
-                                    name={isExpanded ? 'information-circle' : 'information-circle-outline'}
-                                    size={18}
-                                    color={isExpanded ? colors.primary[500] : colors.gray[500]}
-                                  />
-                                </TouchableOpacity>
-                              </>
-                            )}
-                            quantityValue={formatQuantity(item.quantity)}
-                            onQuantityChangeText={(text) => {
-                              const sanitized = text.replace(/[^0-9.]/g, '');
-                              if (sanitized.length === 0) return;
-                              const parsed = Number(sanitized);
-                              if (!Number.isFinite(parsed)) return;
-                              handleQuantityChange(item, parsed);
-                            }}
-                            onDecrement={() => handleQuantityChange(item, item.quantity - 1)}
-                            onIncrement={() => handleQuantityChange(item, item.quantity + 1)}
-                            unitSelector={(
-                              <QuantityExportSelector
-                                exportUnitType={settings.exportUnitType}
-                                baseUnitLabel={unitInfo?.base_unit ?? item.unitLabel}
-                                packUnitLabel={unitInfo?.pack_unit ?? item.unitLabel}
-                                canSwitchUnit={canSwitchUnit(unitInfo)}
-                                onUnitChange={(unit) =>
-                                  updateExportSettings(item.id, { exportUnitType: unit })
-                                }
-                              />
-                            )}
-                            detailsVisible={isExpanded}
-                            details={(
-                              <View className="rounded-xl border border-gray-200 bg-white px-3 py-3">
-                                <Text className="text-sm font-semibold text-gray-900">
-                                  Ordered by: {hasMultipleContributors ? `${contributorCount} people` : singleContributorName}
-                                </Text>
-                                <Text className="text-xs text-gray-500 mt-1">
-                                  Final total: {finalTotalText}
-                                </Text>
-
-                                {hasMultipleContributors && (
-                                  <View className="mt-3">
-                                    <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                                      Per-person breakdown
-                                    </Text>
-                                    {item.contributors.map((contributor, contributorIndex) => (
-                                      <View
-                                        key={`${item.id}-contributor-${contributor.userId || contributor.name}-${contributorIndex}`}
-                                        className={`flex-row items-center justify-between py-1.5 ${
-                                          contributorIndex < item.contributors.length - 1 ? 'border-b border-gray-200' : ''
-                                        }`}
-                                      >
-                                        <Text className="text-sm text-gray-700">{contributor.name}</Text>
-                                        <Text className="text-sm font-medium text-gray-700">
-                                          {formatQuantity(contributor.quantity)} {item.unitLabel}
-                                        </Text>
-                                      </View>
-                                    ))}
-                                    <Text className="text-xs text-gray-500 mt-2">
-                                      Contributors total: {contributorTotalText}
-                                    </Text>
-
-                                    {canResetToSum && (
-                                      <TouchableOpacity
-                                        onPress={() => handleResetToSum(item)}
-                                        className="self-start mt-2 px-2.5 py-1.5 rounded-md bg-gray-200"
-                                      >
-                                        <Text className="text-[11px] font-semibold text-gray-700">Reset to sum</Text>
-                                      </TouchableOpacity>
-                                    )}
-                                  </View>
-                                )}
-
-                                {item.details.length > 0 && (
-                                  <View className="mt-3">
-                                    <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                                      Location breakdown
-                                    </Text>
-                                    {item.details.map((detail, detailIndex) => (
-                                      <View
-                                        key={`${item.id}-detail-${detail.locationId || detail.locationName}-${detailIndex}`}
-                                        className={`py-1.5 ${
-                                          detailIndex < item.details.length - 1 ? 'border-b border-gray-200' : ''
-                                        }`}
-                                      >
-                                        <View className="flex-row items-center justify-between">
-                                          <Text className="text-sm text-gray-700">
-                                            {detail.locationName}
-                                            {detail.shortCode ? ` (${detail.shortCode})` : ''}
-                                          </Text>
-                                          <Text className="text-sm font-medium text-gray-700">
-                                            {formatQuantity(detail.quantity)} {item.unitLabel}
-                                          </Text>
-                                        </View>
-                                        <Text className="text-xs text-gray-500 mt-1">Ordered by {detail.orderedBy}</Text>
-                                      </View>
-                                    ))}
-                                  </View>
-                                )}
-
-                                {item.notes.length > 0 && (
-                                  <View className="mt-3">
-                                    <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                                      Notes
-                                    </Text>
-                                    {item.notes.map((note, noteIndex) => (
-                                      <View
-                                        key={note.id}
-                                        className={`rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2 ${
-                                          noteIndex < item.notes.length - 1 ? 'mb-2' : ''
-                                        }`}
-                                      >
-                                        <Text className="text-[11px] font-semibold text-blue-700">
-                                          {note.author} • {note.locationName} ({note.shortCode})
-                                        </Text>
-                                        <Text className="text-xs text-blue-900 mt-1">{note.text}</Text>
-                                      </View>
-                                    ))}
-                                  </View>
-                                )}
-                              </View>
-                            )}
-                          />
-                        );
-                      })}
-                    </View>
-                  );
-                })
-              )}
-            </>
-          ) : (
-            <View className="items-center justify-center py-12">
-              <Ionicons name="list-outline" size={48} color={colors.gray[300]} />
-              <Text className="text-gray-500 text-base mt-3">No items to confirm</Text>
-              <Text className="text-gray-400 text-sm mt-1">Return to fulfillment to select items</Text>
-            </View>
-          )}
-        </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         <View className="bg-white border-t border-gray-200 px-4 py-4">
           {showRetryActions ? (

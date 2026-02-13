@@ -48,7 +48,7 @@ export default function FulfillmentHistoryDetailScreen() {
   );
 
   const pastOrder = detail?.order ?? null;
-  const items = detail?.items ?? [];
+  const items = useMemo(() => detail?.items ?? [], [detail?.items]);
   const supplierLabel = useMemo(() => {
     if (!pastOrder) return 'Past Order';
     if (pastOrder.supplierName && pastOrder.supplierName.trim().length > 0) return pastOrder.supplierName;
@@ -135,7 +135,10 @@ export default function FulfillmentHistoryDetailScreen() {
       if (itemsError) throw itemsError;
 
       // Refresh fulfillment data
-      await fetchPendingFulfillmentOrders();
+      const scopedLocationIds = locations
+        .map((location) => (typeof location.id === 'string' ? location.id.trim() : ''))
+        .filter((id) => id.length > 0);
+      await fetchPendingFulfillmentOrders(scopedLocationIds);
 
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

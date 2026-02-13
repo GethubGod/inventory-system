@@ -144,7 +144,7 @@ export default function ManagerInventoryScreen() {
   const { addToCart, getTotalCartCount } = useOrderStore();
   const { inventoryView, setInventoryView } = useSettingsStore();
   useStockNetworkStatus();
-  const cartCount = getTotalCartCount();
+  const cartCount = getTotalCartCount('manager');
 
   const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -374,7 +374,9 @@ export default function ManagerInventoryScreen() {
     const quantity = Math.max(item.max_quantity - item.current_quantity, 0);
     if (quantity <= 0) return;
 
-    addToCart(item.location.id, item.inventory_item.id, quantity, 'base');
+    addToCart(item.location.id, item.inventory_item.id, quantity, 'base', {
+      context: 'manager',
+    });
 
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -396,7 +398,9 @@ export default function ManagerInventoryScreen() {
     reorderItems.forEach((item) => {
       const quantity = Math.max(item.max_quantity - item.current_quantity, 0);
       if (quantity > 0) {
-        addToCart(item.location.id, item.inventory_item.id, quantity, 'base');
+        addToCart(item.location.id, item.inventory_item.id, quantity, 'base', {
+          context: 'manager',
+        });
       }
     });
 

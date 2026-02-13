@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import {
+  Animated,
   View,
   Text,
   ScrollView,
@@ -18,9 +19,17 @@ import * as Haptics from 'expo-haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useOrderStore, useInventoryStore, useAuthStore } from '@/store';
 import type { CartItem } from '@/store';
+import type { CartContext } from '@/store/orderStore';
 import { colors } from '@/constants';
 import { Location, InventoryItem, UnitType } from '@/types';
-import { BrandLogo, OrderConfirmationPopup, SpinningFish } from '@/components';
+import {
+  BrandLogo,
+  ConfirmLocationBottomSheet,
+  ItemActionSheet,
+  OrderConfirmationPopup,
+  SpinningFish,
+} from '@/components';
+import type { ItemActionSheetSection } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { completePendingRemindersForUser } from '@/services/notificationService';
 
@@ -41,12 +50,23 @@ interface CartItemWithDetails extends CartItem {
   inventoryItem?: InventoryItem;
 }
 
-export default function CartScreen() {
+interface CartScreenViewProps {
+  context?: CartContext;
+  quickOrderRoute?: string;
+  browseRoute?: string;
+}
+
+export function CartScreenView({
+  context = 'employee',
+  quickOrderRoute = '/quick-order',
+  browseRoute = '/(tabs)',
+}: CartScreenViewProps) {
   const ds = useScaledStyles();
 
   const {
-    cartByLocation,
     getCartItems,
+    getCartLocationIds,
+    getTotalCartCount,
     addToCart,
     updateCartItem,
     removeFromCart,
@@ -57,8 +77,9 @@ export default function CartScreen() {
     createAndSubmitOrder,
     setCartItemNote,
   } = useOrderStore(useShallow((state) => ({
-    cartByLocation: state.cartByLocation,
     getCartItems: state.getCartItems,
+    getCartLocationIds: state.getCartLocationIds,
+    getTotalCartCount: state.getTotalCartCount,
     addToCart: state.addToCart,
     updateCartItem: state.updateCartItem,
     removeFromCart: state.removeFromCart,
@@ -95,22 +116,14 @@ export default function CartScreen() {
     locationId: string;
     item: CartItemWithDetails;
   } | null>(null);
+  const [showConfirmLocationSheet, setShowConfirmLocationSheet] = useState(false);
+  const [confirmLocationId, setConfirmLocationId] = useState<string | null>(null);
+  const [statusToast, setStatusToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const toastOpacity = useRef(new Animated.Value(0)).current;
 
-  const cartLocationIds = useMemo(
-    () =>
-      Object.entries(cartByLocation)
-        .filter(([, rawItems]) => Array.isArray(rawItems) && rawItems.length > 0)
-        .map(([locationId]) => locationId),
-    [cartByLocation]
-  );
-  const totalCartCount = useMemo(
-    () =>
-      Object.values(cartByLocation).reduce(
-        (total, rawItems) => total + (Array.isArray(rawItems) ? rawItems.length : 0),
-        0
-      ),
-    [cartByLocation]
-  );
+  const cartLocationIds = getCartLocationIds(context);
+  const totalCartCount = getTotalCartCount(context);
+  const toastBottomOffset = context === 'employee' ? ds.spacing(88) : ds.spacing(24);
 
   useEffect(() => {
     void fetchItems();
@@ -136,14 +149,34 @@ export default function CartScreen() {
     return locations.some((loc) => loc.id !== menuItem.locationId);
   }, [locations, menuItem]);
 
+  const showStatusToast = useCallback((message: string, type: 'success' | 'error') => {
+    setStatusToast({ message, type });
+    toastOpacity.setValue(0);
+    Animated.sequence([
+      Animated.timing(toastOpacity, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+      Animated.delay(1700),
+      Animated.timing(toastOpacity, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setStatusToast(null);
+    });
+  }, [toastOpacity]);
+
   // Get cart items with inventory details for a location
   const getCartWithDetails = useCallback((locationId: string): CartItemWithDetails[] => {
-    const cartItems = getCartItems(locationId);
+    const cartItems = getCartItems(locationId, context);
     return cartItems.map((cartItem) => ({
       ...cartItem,
       inventoryItem: items.find((item) => item.id === cartItem.inventoryItemId),
     }));
-  }, [getCartItems, items]);
+  }, [context, getCartItems, items]);
 
   // Toggle item expansion
   const toggleExpand = useCallback((locationId: string, itemId: string) => {
@@ -170,6 +203,7 @@ export default function CartScreen() {
           cartItemId: item.id,
           inputMode: 'quantity',
           quantityRequested: nextValue,
+          context,
         });
         return;
       }
@@ -178,9 +212,10 @@ export default function CartScreen() {
         cartItemId: item.id,
         inputMode: 'remaining',
         remainingReported: Math.max(0, nextValue),
+        context,
       });
     },
-    [updateCartItem]
+    [context, updateCartItem]
   );
 
   // Handle remove item
@@ -197,12 +232,12 @@ export default function CartScreen() {
             if (Platform.OS !== 'web') {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             }
-            removeFromCart(locationId, itemId, cartItemId);
+            removeFromCart(locationId, itemId, cartItemId, context);
           },
         },
       ]
     );
-  }, [removeFromCart]);
+  }, [context, removeFromCart]);
 
   const handleOpenCartLocationModal = useCallback((location: Location) => {
     if (Platform.OS !== 'web') {
@@ -230,14 +265,14 @@ export default function CartScreen() {
             if (Platform.OS !== 'web') {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             }
-            moveLocationCartItems(cartLocationToMove.id, toLocationId);
+            moveLocationCartItems(cartLocationToMove.id, toLocationId, context);
             setShowCartLocationModal(false);
             setCartLocationToMove(null);
           },
         },
       ]
     );
-  }, [cartLocationToMove, moveLocationCartItems]);
+  }, [cartLocationToMove, context, moveLocationCartItems]);
 
   const handleOpenItemMenu = useCallback((locationId: string, item: CartItemWithDetails) => {
     if (Platform.OS !== 'web') {
@@ -264,10 +299,11 @@ export default function CartScreen() {
       cartItemId: item.id,
       inputMode: 'quantity',
       quantityRequested: baseQuantity + baseQuantity,
+      context,
     });
     setShowItemMenu(false);
     setMenuItem(null);
-  }, [menuItem, updateCartItem]);
+  }, [context, menuItem, updateCartItem]);
 
   const handleToggleItemMode = useCallback(() => {
     if (!menuItem) return;
@@ -283,6 +319,7 @@ export default function CartScreen() {
         cartItemId: item.id,
         inputMode: 'remaining',
         remainingReported: Math.max(0, currentValue),
+        context,
       });
     } else {
       const nextQuantity = Math.max(1, item.decidedQuantity ?? currentValue ?? 1);
@@ -291,6 +328,7 @@ export default function CartScreen() {
         inputMode: 'quantity',
         quantityRequested: nextQuantity,
         clearDecision: true,
+        context,
       });
     }
 
@@ -299,7 +337,7 @@ export default function CartScreen() {
     }
     setShowItemMenu(false);
     setMenuItem(null);
-  }, [menuItem, updateCartItem]);
+  }, [context, menuItem, updateCartItem]);
 
   const handleOpenItemNoteModal = useCallback(() => {
     if (!menuItem) return;
@@ -310,14 +348,14 @@ export default function CartScreen() {
 
   const handleSaveItemNote = useCallback(() => {
     if (!menuItem) return;
-    setCartItemNote(menuItem.locationId, menuItem.item.id, itemNoteDraft);
+    setCartItemNote(menuItem.locationId, menuItem.item.id, itemNoteDraft, context);
     if (Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
     setShowItemNoteModal(false);
     setItemNoteDraft('');
     setMenuItem(null);
-  }, [menuItem, itemNoteDraft, setCartItemNote]);
+  }, [context, menuItem, itemNoteDraft, setCartItemNote]);
 
   const handleOpenItemLocationModal = useCallback((action: 'add' | 'move') => {
     setItemLocationAction(action);
@@ -343,6 +381,7 @@ export default function CartScreen() {
           inputMode: 'quantity',
           quantityRequested: qty,
           note: menuItem.item.note,
+          context,
         });
       } else {
         const remaining = menuItem.item.remainingReported ?? 0;
@@ -353,6 +392,7 @@ export default function CartScreen() {
           decidedBy: menuItem.item.decidedBy,
           decidedAt: menuItem.item.decidedAt,
           note: menuItem.item.note,
+          context,
         });
       }
     } else {
@@ -361,14 +401,70 @@ export default function CartScreen() {
         toLocationId,
         menuItem.item.inventoryItemId,
         menuItem.item.unitType,
-        menuItem.item.id
+        menuItem.item.id,
+        context
       );
     }
 
     setShowItemLocationModal(false);
     setItemLocationAction(null);
     setMenuItem(null);
-  }, [menuItem, itemLocationAction, addToCart, moveCartItem]);
+  }, [context, menuItem, itemLocationAction, addToCart, moveCartItem]);
+
+  const itemActionSections = useMemo<ItemActionSheetSection[]>(() => [
+    {
+      id: 'item-basics',
+      items: [
+        {
+          id: 'duplicate',
+          label: 'Duplicate item',
+          icon: 'copy-outline',
+          onPress: handleDuplicateItem,
+          disabled: menuItem?.item.inputMode === 'remaining',
+        },
+        {
+          id: 'toggle-mode',
+          label: menuItem?.item.inputMode === 'remaining' ? 'Change to Order' : 'Change to Remaining',
+          icon: menuItem?.item.inputMode === 'remaining' ? 'list-outline' : 'albums-outline',
+          onPress: handleToggleItemMode,
+        },
+        {
+          id: 'note',
+          label: menuItem?.item.note ? 'Edit Note' : 'Add Note',
+          icon: 'create-outline',
+          onPress: handleOpenItemNoteModal,
+        },
+      ],
+    },
+    {
+      id: 'cart-move',
+      title: 'Carts',
+      items: [
+        {
+          id: 'add-to-other',
+          label: 'Add to other cart',
+          icon: 'add-circle-outline',
+          onPress: () => handleOpenItemLocationModal('add'),
+          disabled: !hasOtherLocations,
+        },
+        {
+          id: 'move-to-other',
+          label: 'Move to other cart',
+          icon: 'swap-horizontal',
+          onPress: () => handleOpenItemLocationModal('move'),
+          disabled: !hasOtherLocations,
+        },
+      ],
+    },
+  ], [
+    handleDuplicateItem,
+    handleOpenItemLocationModal,
+    handleOpenItemNoteModal,
+    handleToggleItemMode,
+    hasOtherLocations,
+    menuItem?.item.inputMode,
+    menuItem?.item.note,
+  ]);
 
   // Handle clear location cart
   const handleClearLocationCart = useCallback((locationId: string, locationName: string) => {
@@ -384,12 +480,12 @@ export default function CartScreen() {
             if (Platform.OS !== 'web') {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             }
-            clearLocationCart(locationId);
+            clearLocationCart(locationId, context);
           },
         },
       ]
     );
-  }, [clearLocationCart]);
+  }, [clearLocationCart, context]);
 
   // Handle clear all carts
   const handleClearAll = useCallback(() => {
@@ -405,12 +501,12 @@ export default function CartScreen() {
             if (Platform.OS !== 'web') {
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             }
-            clearAllCarts();
+            clearAllCarts(context);
           },
         },
       ]
     );
-  }, [clearAllCarts]);
+  }, [clearAllCarts, context]);
 
   // Track which location is currently submitting
   const [submittingLocation, setSubmittingLocation] = useState<string | null>(null);
@@ -424,25 +520,24 @@ export default function CartScreen() {
     setConfirmation(null);
   }, []);
 
-  // Handle submit order for location
-  const handleSubmitOrder = useCallback(async (locationId: string, locationName: string) => {
+  const submitOrderForLocation = useCallback(async (locationId: string, locationName: string) => {
     if (submitInFlightRef.current) return;
 
     if (!user) {
-      Alert.alert('Error', 'Please log in first');
+      showStatusToast('Please log in first', 'error');
       return;
     }
 
-    const cartItems = getCartItems(locationId);
+    const cartItems = getCartItems(locationId, context);
     if (cartItems.length === 0) {
-      Alert.alert('Error', 'Cart is empty for this location');
+      showStatusToast('Cart is empty for this location', 'error');
       return;
     }
 
     submitInFlightRef.current = true;
     setSubmittingLocation(locationId);
     try {
-      const order = await createAndSubmitOrder(locationId, user.id);
+      const order = await createAndSubmitOrder(locationId, user.id, context);
       const normalizedOrderNumber =
         typeof order.order_number === 'number' || typeof order.order_number === 'string'
           ? String(order.order_number)
@@ -452,15 +547,53 @@ export default function CartScreen() {
         locationName,
         itemCount: order.order_items?.length ?? cartItems.length,
       });
+      showStatusToast(`Order submitted for ${locationName}`, 'success');
       // Mark pending reminders as completed client-side (DB trigger is primary)
       completePendingRemindersForUser(user.id).catch(() => {});
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to submit order');
+      showStatusToast(error.message || 'Failed to submit order', 'error');
     } finally {
       submitInFlightRef.current = false;
       setSubmittingLocation(null);
     }
-  }, [user, getCartItems, createAndSubmitOrder]);
+  }, [context, user, getCartItems, createAndSubmitOrder, showStatusToast]);
+
+  const handleRequestSubmitOrder = useCallback(async (locationId: string) => {
+    if (submitInFlightRef.current || submittingLocation !== null) return;
+
+    const cartItems = getCartItems(locationId, context);
+    if (cartItems.length === 0) return;
+
+    const locationMatch = locationsWithCart.find((location) => location.id === locationId);
+    const locationName = locationMatch?.name ?? 'Selected location';
+
+    if (context !== 'employee') {
+      await submitOrderForLocation(locationId, locationName);
+      return;
+    }
+
+    setConfirmLocationId(locationId);
+    setShowConfirmLocationSheet(true);
+  }, [context, getCartItems, locationsWithCart, submittingLocation, submitOrderForLocation]);
+
+  const handleSelectSubmitLocation = useCallback((locationId: string) => {
+    setConfirmLocationId(locationId);
+  }, []);
+
+  const handleConfirmSubmitOrder = useCallback(async () => {
+    if (!confirmLocationId) return;
+
+    const selectedLocation = locationsWithCart.find((location) => location.id === confirmLocationId);
+    if (!selectedLocation) return;
+
+    setShowConfirmLocationSheet(false);
+
+    await submitOrderForLocation(selectedLocation.id, selectedLocation.name);
+  }, [
+    confirmLocationId,
+    locationsWithCart,
+    submitOrderForLocation,
+  ]);
 
   // Render a compact cart item
   const renderCartItem = useCallback((locationId: string, item: CartItemWithDetails) => {
@@ -657,6 +790,8 @@ export default function CartScreen() {
   const renderLocationSection = useCallback((location: Location) => {
     const cartWithDetails = getCartWithDetails(location.id);
     const itemCount = cartWithDetails.length;
+    const canSubmit = submittingLocation === null && itemCount > 0;
+    const isSubmittingThisLocation = submittingLocation === location.id;
 
     return (
       <View key={location.id} className="mb-4">
@@ -709,16 +844,16 @@ export default function CartScreen() {
 
         {/* Submit Order Button */}
         <TouchableOpacity
-          onPress={() => handleSubmitOrder(location.id, location.name)}
-          disabled={submittingLocation !== null}
+          onPress={() => { void handleRequestSubmitOrder(location.id); }}
+          disabled={!canSubmit}
           style={{ height: ds.buttonH + 4, borderBottomLeftRadius: ds.radius(12), borderBottomRightRadius: ds.radius(12) }}
           className={`items-center flex-row justify-center ${
-            submittingLocation !== null
+            !canSubmit
               ? 'bg-primary-300'
               : 'bg-primary-500'
           }`}
         >
-          {submittingLocation === location.id ? (
+          {isSubmittingThisLocation ? (
             <>
               <SpinningFish size="small" />
               <Text style={{ fontSize: ds.buttonFont + 1 }} className="text-white font-semibold ml-2">Submitting...</Text>
@@ -732,7 +867,7 @@ export default function CartScreen() {
         </TouchableOpacity>
       </View>
     );
-  }, [ds, getCartWithDetails, renderCartItem, handleClearLocationCart, handleSubmitOrder, submittingLocation, handleOpenCartLocationModal]);
+  }, [ds, getCartWithDetails, renderCartItem, handleClearLocationCart, submittingLocation, handleOpenCartLocationModal, handleRequestSubmitOrder]);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
@@ -775,7 +910,7 @@ export default function CartScreen() {
             <TouchableOpacity
               style={{ borderRadius: ds.radius(12), paddingHorizontal: ds.spacing(20), height: ds.buttonH }}
               className="bg-primary-500 mr-3 flex-row items-center justify-center"
-              onPress={() => router.push('/quick-order' as any)}
+              onPress={() => router.push(quickOrderRoute as any)}
             >
               <Ionicons name="flash" size={ds.icon(18)} color="white" />
               <Text style={{ fontSize: ds.buttonFont }} className="text-white font-semibold ml-2">Quick Order</Text>
@@ -783,7 +918,7 @@ export default function CartScreen() {
             <TouchableOpacity
               style={{ borderRadius: ds.radius(12), paddingHorizontal: ds.spacing(20), height: ds.buttonH }}
               className="bg-gray-200 items-center justify-center"
-              onPress={() => router.push('/(tabs)' as any)}
+              onPress={() => router.push(browseRoute as any)}
             >
               <Text style={{ fontSize: ds.buttonFont }} className="text-gray-700 font-semibold">Browse</Text>
             </TouchableOpacity>
@@ -841,12 +976,11 @@ export default function CartScreen() {
                       onPress={() => handleMoveCartLocation(loc.id, loc.name)}
                       activeOpacity={0.7}
                     >
-                      <View style={{ width: ds.icon(44), height: ds.icon(44), borderRadius: ds.icon(22) }} className={`items-center justify-center ${
-                        isSelected ? 'bg-primary-500' : 'bg-gray-100'
-                      }`}>
-                        <Text style={{ fontSize: ds.fontSize(13) }} className={`font-bold ${isSelected ? 'text-white' : 'text-gray-600'}`}>
-                          {loc.short_code}
-                        </Text>
+                      <View
+                        style={{ width: ds.icon(44), height: ds.icon(44), borderRadius: ds.icon(22) }}
+                        className="bg-gray-100 items-center justify-center"
+                      >
+                        <BrandLogo variant="inline" size={18} colorMode="light" />
                       </View>
                       <View className="flex-1 ml-4">
                         <Text style={{ fontSize: ds.fontSize(16) }} className="font-semibold text-gray-900">
@@ -886,99 +1020,34 @@ export default function CartScreen() {
         onClose={handleCloseConfirmation}
       />
 
-      {/* Item Actions Menu */}
-      <Modal
+      <ConfirmLocationBottomSheet
+        visible={context === 'employee' && showConfirmLocationSheet}
+        selectedLocationId={confirmLocationId}
+        locationsInCart={locationsWithCart.map((location) => ({
+          id: location.id,
+          name: location.name,
+          shortCode: location.short_code,
+        }))}
+        isSubmitting={submittingLocation !== null}
+        onLocationChange={handleSelectSubmitLocation}
+        onConfirm={() => { void handleConfirmSubmitOrder(); }}
+        onClose={() => {
+          setShowConfirmLocationSheet(false);
+          setConfirmLocationId(null);
+        }}
+      />
+
+      <ItemActionSheet
         visible={showItemMenu}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
+        title="Item Actions"
+        subtitle={menuItem?.item.inventoryItem?.name || 'Item'}
+        sections={itemActionSections}
+        showCancelAction={false}
+        onClose={() => {
           setShowItemMenu(false);
           setMenuItem(null);
         }}
-      >
-        <Pressable
-          className="flex-1 bg-black/40 justify-end"
-          onPress={() => {
-            setShowItemMenu(false);
-            setMenuItem(null);
-          }}
-        >
-          <Pressable
-            style={{ paddingHorizontal: ds.spacing(24) }}
-            className="bg-white rounded-t-3xl pt-4 pb-6"
-            onPress={(e) => e.stopPropagation()}
-          >
-            <View className="items-center pb-3">
-              <View className="w-10 h-1 bg-gray-300 rounded-full" />
-            </View>
-            <Text style={{ fontSize: ds.fontSize(18) }} className="font-bold text-gray-900 mb-1">Item Actions</Text>
-            <Text style={{ fontSize: ds.fontSize(13) }} className="text-gray-500 mb-4">
-              {menuItem?.item.inventoryItem?.name || 'Item'}
-            </Text>
-
-            <TouchableOpacity
-              onPress={handleDuplicateItem}
-              className={`flex-row items-center py-3 ${menuItem?.item.inputMode === 'remaining' ? 'opacity-50' : ''}`}
-              disabled={menuItem?.item.inputMode === 'remaining'}
-            >
-              <Ionicons name="copy-outline" size={ds.icon(20)} color={colors.gray[600]} />
-              <Text style={{ fontSize: ds.fontSize(16) }} className="text-gray-800 ml-3">Duplicate item</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleToggleItemMode}
-              className="flex-row items-center py-3"
-            >
-              <Ionicons
-                name={menuItem?.item.inputMode === 'remaining' ? 'list-outline' : 'albums-outline'}
-                size={ds.icon(20)}
-                color={colors.gray[600]}
-              />
-              <Text style={{ fontSize: ds.fontSize(16) }} className="text-gray-800 ml-3">
-                {menuItem?.item.inputMode === 'remaining' ? 'Change to Order' : 'Change to Remaining'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={handleOpenItemNoteModal}
-              className="flex-row items-center py-3"
-            >
-              <Ionicons name="create-outline" size={ds.icon(20)} color={colors.gray[600]} />
-              <Text style={{ fontSize: ds.fontSize(16) }} className="text-gray-800 ml-3">
-                {menuItem?.item.note ? 'Edit Note' : 'Add Note'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => handleOpenItemLocationModal('add')}
-              className={`flex-row items-center py-3 ${hasOtherLocations ? '' : 'opacity-50'}`}
-              disabled={!hasOtherLocations}
-            >
-              <Ionicons name="add-circle-outline" size={ds.icon(20)} color={colors.gray[600]} />
-              <Text style={{ fontSize: ds.fontSize(16) }} className="text-gray-800 ml-3">Add to other cart</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => handleOpenItemLocationModal('move')}
-              className={`flex-row items-center py-3 ${hasOtherLocations ? '' : 'opacity-50'}`}
-              disabled={!hasOtherLocations}
-            >
-              <Ionicons name="swap-horizontal" size={ds.icon(20)} color={colors.gray[600]} />
-              <Text style={{ fontSize: ds.fontSize(16) }} className="text-gray-800 ml-3">Move to other cart</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                setShowItemMenu(false);
-                setMenuItem(null);
-              }}
-              className="py-4"
-            >
-              <Text style={{ fontSize: ds.fontSize(14) }} className="text-gray-500 font-medium text-center">Cancel</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      />
 
       {/* Item Note Modal */}
       <Modal
@@ -1100,7 +1169,7 @@ export default function CartScreen() {
                 {locations
                   .filter((loc) => loc.id !== menuItem?.locationId)
                   .map((loc) => {
-                    const cartCount = getCartItems(loc.id).length;
+                    const cartCount = getCartItems(loc.id, context).length;
                     return (
                       <TouchableOpacity
                         key={loc.id}
@@ -1143,6 +1212,36 @@ export default function CartScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {statusToast && (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            opacity: toastOpacity,
+            position: 'absolute',
+            left: ds.spacing(20),
+            right: ds.spacing(20),
+            bottom: toastBottomOffset,
+          }}
+        >
+          <View
+            className={statusToast.type === 'error' ? 'bg-red-600' : 'bg-gray-900'}
+            style={{
+              borderRadius: ds.radius(12),
+              paddingHorizontal: ds.spacing(16),
+              paddingVertical: ds.spacing(12),
+            }}
+          >
+            <Text style={{ fontSize: ds.fontSize(13) }} className="text-white text-center font-medium">
+              {statusToast.message}
+            </Text>
+          </View>
+        </Animated.View>
+      )}
     </SafeAreaView>
   );
+}
+
+export default function CartScreen() {
+  return <CartScreenView />;
 }

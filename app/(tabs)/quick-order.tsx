@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   FlatList,
   Keyboard,
-  Animated,
   Platform,
   InputAccessoryView,
   LayoutAnimation,
@@ -108,8 +107,6 @@ export default function QuickOrderScreen() {
   const [remainingAmount, setRemainingAmount] = useState('0');
   const [inputMode, setInputMode] = useState<OrderInputMode>('quantity');
   const [selectedUnit, setSelectedUnit] = useState<UnitType>('pack');
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
 
   // Quick create state
   const [showQuickCreate, setShowQuickCreate] = useState(false);
@@ -128,7 +125,6 @@ export default function QuickOrderScreen() {
   // Refs
   const searchInputRef = useRef<TextInput>(null);
   const quantityInputRef = useRef<TextInput>(null);
-  const toastOpacity = useRef(new Animated.Value(0)).current;
 
   // Debounced search
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -198,6 +194,14 @@ export default function QuickOrderScreen() {
     inputMode === 'quantity'
       ? `Add Order Qty (${locationLabel})`
       : `Add Remaining (${locationLabel})`;
+  const iosKeyboardOverlayInset =
+    Platform.OS === 'ios' && isKeyboardVisible ? keyboardHeight : 0;
+  const searchHelperBottomInset = Math.max(
+    ds.spacing(24),
+    iosKeyboardOverlayInset +
+      (totalCartCount > 0 ? Math.max(ds.rowH - ds.spacing(12), 44) : 0) +
+      ds.spacing(16)
+  );
 
   // Filter items based on search query
   const filteredItems = useMemo(() => {
@@ -232,25 +236,6 @@ export default function QuickOrderScreen() {
     }
     return '';
   }, [autocompleteSuggestion, searchQuery]);
-
-  // Show toast notification
-  const showSuccessToast = useCallback((message: string) => {
-    setToastMessage(message);
-    setShowToast(true);
-    Animated.sequence([
-      Animated.timing(toastOpacity, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.delay(1200),
-      Animated.timing(toastOpacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => setShowToast(false));
-  }, [toastOpacity]);
 
   const resetQuickCreateForm = useCallback(() => {
     const defaultName = searchQuery.trim();
@@ -300,7 +285,6 @@ export default function QuickOrderScreen() {
 
       setShowQuickCreate(false);
       setSearchQuery(newItemName.trim());
-      showSuccessToast(`Added ${newItemName.trim()} to inventory`);
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to add item');
     } finally {
@@ -315,7 +299,6 @@ export default function QuickOrderScreen() {
     newItemPackSize,
     addItem,
     user,
-    showSuccessToast,
     setSearchQuery,
   ]);
 
@@ -375,9 +358,6 @@ export default function QuickOrderScreen() {
         inputMode: 'quantity',
         quantityRequested: qty,
       });
-
-      const unitLabel = selectedUnit === 'pack' ? selectedItem.pack_unit : selectedItem.base_unit;
-      showSuccessToast(`✓ ${selectedItem.name} (Order ${qty} ${unitLabel})`);
     } else {
       const remaining = parseFloat(remainingAmount);
       if (!Number.isFinite(remaining) || remaining < 0) return;
@@ -390,9 +370,6 @@ export default function QuickOrderScreen() {
         inputMode: 'remaining',
         remainingReported: remaining,
       });
-
-      const unitLabel = selectedUnit === 'pack' ? selectedItem.pack_unit : selectedItem.base_unit;
-      showSuccessToast(`✓ ${selectedItem.name} (Remaining ${remaining} ${unitLabel})`);
     }
 
     // Reset to search state
@@ -405,7 +382,7 @@ export default function QuickOrderScreen() {
     setTimeout(() => {
       searchInputRef.current?.focus();
     }, 100);
-  }, [selectedItem, selectedLocation, inputMode, quantity, remainingAmount, selectedUnit, addToCart, showSuccessToast]);
+  }, [selectedItem, selectedLocation, inputMode, quantity, remainingAmount, selectedUnit, addToCart]);
 
   // Handle back from quantity state
   const handleBackToSearch = useCallback(() => {
@@ -720,7 +697,7 @@ export default function QuickOrderScreen() {
 
             {/* Empty State */}
             {!searchQuery.trim() && (
-              <View className="flex-1 items-center justify-center" style={{ marginTop: -ds.spacing(64) }}>
+              <View className="flex-1 items-center justify-center" style={{ paddingBottom: searchHelperBottomInset }}>
                 <Ionicons name="search-outline" size={ds.icon(56)} color={colors.gray[300]} />
                 <Text style={{ fontSize: ds.fontSize(16), marginTop: ds.spacing(12) }} className="font-medium text-gray-500">Start typing to search</Text>
                 <Text style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(4) }} className="text-gray-400">salmon, avocado, nori...</Text>
@@ -729,7 +706,7 @@ export default function QuickOrderScreen() {
 
             {/* No results state */}
             {searchQuery.trim() && filteredItems.length === 0 && debouncedQuery === searchQuery && (
-              <View className="flex-1 items-center justify-center" style={{ marginTop: -ds.spacing(64) }}>
+              <View className="flex-1 items-center justify-center" style={{ paddingBottom: searchHelperBottomInset }}>
                 <Ionicons name="alert-circle-outline" size={ds.icon(56)} color={colors.gray[300]} />
                 <Text style={{ fontSize: ds.fontSize(16), marginTop: ds.spacing(12) }} className="font-medium text-gray-500">No items found</Text>
                 <Text style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(4) }} className="text-gray-400">Try a different search term</Text>
@@ -1138,30 +1115,6 @@ export default function QuickOrderScreen() {
 
       {/* iOS Input Accessory View */}
       {renderInputAccessory()}
-
-      {/* Success Toast */}
-      {showToast && (
-        <Animated.View
-          style={{
-            opacity: toastOpacity,
-            position: 'absolute',
-            top: ds.spacing(80),
-            left: ds.spacing(20),
-            right: ds.spacing(20),
-          }}
-        >
-          <View
-            className="bg-gray-900 shadow-lg"
-            style={{
-              borderRadius: ds.radius(12),
-              paddingHorizontal: ds.spacing(16),
-              paddingVertical: ds.spacing(12),
-            }}
-          >
-            <Text style={{ fontSize: ds.fontSize(13) }} className="text-white text-center font-medium">{toastMessage}</Text>
-          </View>
-        </Animated.View>
-      )}
     </SafeAreaView>
   );
 }

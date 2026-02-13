@@ -23,6 +23,8 @@ let warnedMissingLastActiveColumn = false;
 let warnedMissingEmailColumn = false;
 const warnedMissingProfileColumns = new Set<string>();
 const SUSPENDED_ACCOUNT_MESSAGE = 'Account suspended. Contact a manager.';
+let activeSessionUserId: string | null = null;
+let userScopedResetPromise: Promise<void> | null = null;
 
 function clearProfileSubscription() {
   if (!profileRealtimeChannel) return;
@@ -201,6 +203,77 @@ const USER_SCOPED_STORAGE_KEYS = [
   'tuna-specialist-storage',
 ] as const;
 
+type PersistedStoreApi = {
+  getInitialState: () => Record<string, unknown>;
+  setState: (state: Record<string, unknown>, replace?: boolean) => void;
+  persist?: {
+    clearStorage?: () => Promise<void> | void;
+  };
+};
+
+async function resetPersistedStore(label: string, store: PersistedStoreApi) {
+  try {
+    await store.persist?.clearStorage?.();
+  } catch (error) {
+    console.warn(`Failed to clear persisted storage for ${label}.`, error);
+  }
+
+  try {
+    store.setState(store.getInitialState(), true);
+  } catch (error) {
+    console.warn(`Failed to reset in-memory state for ${label}.`, error);
+  }
+}
+
+async function clearUserScopedClientState() {
+  if (userScopedResetPromise) {
+    return userScopedResetPromise;
+  }
+
+  userScopedResetPromise = (async () => {
+  try {
+    await AsyncStorage.multiRemove([...USER_SCOPED_STORAGE_KEYS]);
+  } catch (error) {
+    console.warn('Failed to remove user-scoped storage keys.', error);
+  }
+
+  try {
+    const [
+      { useOrderStore },
+      { useDraftStore },
+      { useInventoryStore },
+      { useStockStore },
+      { useFulfillmentStore },
+      { useTunaSpecialistStore },
+    ] = await Promise.all([
+      import('./orderStore'),
+      import('./draftStore'),
+      import('./inventoryStore'),
+      import('./stock.store'),
+      import('./fulfillmentStore'),
+      import('./tunaSpecialistStore'),
+    ]);
+
+    await Promise.all([
+      resetPersistedStore('order-storage', useOrderStore as unknown as PersistedStoreApi),
+      resetPersistedStore('draft-storage', useDraftStore as unknown as PersistedStoreApi),
+      resetPersistedStore('inventory-storage', useInventoryStore as unknown as PersistedStoreApi),
+      resetPersistedStore('stock-storage', useStockStore as unknown as PersistedStoreApi),
+      resetPersistedStore('babytuna-fulfillment', useFulfillmentStore as unknown as PersistedStoreApi),
+      resetPersistedStore('tuna-specialist-storage', useTunaSpecialistStore as unknown as PersistedStoreApi),
+    ]);
+  } catch (error) {
+    console.warn('Failed to reset one or more user-scoped stores.', error);
+  }
+  })();
+
+  try {
+    await userScopedResetPromise;
+  } finally {
+    userScopedResetPromise = null;
+  }
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => {
@@ -223,6 +296,8 @@ export const useAuthStore = create<AuthState>()(
         } finally {
           clearProfileSubscription();
           clearSessionState();
+          activeSessionUserId = null;
+          await clearUserScopedClientState();
         }
 
         throw new Error(message);
@@ -240,6 +315,8 @@ export const useAuthStore = create<AuthState>()(
             await supabase.auth.signOut();
             clearProfileSubscription();
             clearSessionState();
+            activeSessionUserId = null;
+            await clearUserScopedClientState();
             return { profile, suspended: true };
           }
 
@@ -344,6 +421,7 @@ export const useAuthStore = create<AuthState>()(
       initialize: async () => {
         try {
           set({ isLoading: true });
+          const persistedUserId = get().user?.id ?? null;
 
           // Fetch locations
           await get().fetchLocations();
@@ -353,6 +431,12 @@ export const useAuthStore = create<AuthState>()(
             data: { session },
           } = await supabase.auth.getSession();
           set({ session });
+          const sessionUserId = session?.user?.id ?? null;
+
+          if (persistedUserId && persistedUserId !== sessionUserId) {
+            await clearUserScopedClientState();
+          }
+          activeSessionUserId = sessionUserId;
 
           if (session?.user) {
             const { suspended } = await refreshProfileAndHandleSuspension({
@@ -367,18 +451,31 @@ export const useAuthStore = create<AuthState>()(
               });
             }
           } else {
-            set({ profile: null });
             clearProfileSubscription();
+            clearSessionState();
+            activeSessionUserId = null;
+            await clearUserScopedClientState();
           }
 
           // Listen for auth changes
           supabase.auth.onAuthStateChange(async (event: any, session: Session | null) => {
+            const nextUserId = session?.user?.id ?? null;
+            const persistedStoreUserId = get().user?.id ?? null;
+            const trackedUserId = activeSessionUserId;
             set({ session });
 
             if (
               (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') &&
               session?.user
             ) {
+              if (
+                (trackedUserId && trackedUserId !== nextUserId) ||
+                (persistedStoreUserId && persistedStoreUserId !== nextUserId)
+              ) {
+                await clearUserScopedClientState();
+              }
+              activeSessionUserId = nextUserId;
+
               if (event === 'SIGNED_IN') {
                 // Small delay to ensure the trigger has created the user profile.
                 await new Promise((resolve) => setTimeout(resolve, 500));
@@ -398,6 +495,13 @@ export const useAuthStore = create<AuthState>()(
             } else if (event === 'SIGNED_OUT') {
               clearProfileSubscription();
               clearSessionState();
+              activeSessionUserId = null;
+              await clearUserScopedClientState();
+            } else if (!session) {
+              clearProfileSubscription();
+              clearSessionState();
+              activeSessionUserId = null;
+              await clearUserScopedClientState();
             }
           });
         } finally {
@@ -418,6 +522,12 @@ export const useAuthStore = create<AuthState>()(
 
           const sessionUserId = data.session?.user?.id ?? null;
           if (sessionUserId) {
+            const previousUserId = activeSessionUserId ?? get().user?.id ?? null;
+            if (previousUserId && previousUserId !== sessionUserId) {
+              await clearUserScopedClientState();
+            }
+            activeSessionUserId = sessionUserId;
+
             await refreshProfileAndHandleSuspension({
               userId: sessionUserId,
             });
@@ -493,6 +603,12 @@ export const useAuthStore = create<AuthState>()(
           set({ session: activeSession });
 
           if (activeSession?.user?.id) {
+            const previousUserId = activeSessionUserId ?? get().user?.id ?? null;
+            if (previousUserId && previousUserId !== activeSession.user.id) {
+              await clearUserScopedClientState();
+            }
+            activeSessionUserId = activeSession.user.id;
+
             await refreshProfileAndHandleSuspension({
               userId: activeSession.user.id,
             });
@@ -555,6 +671,12 @@ export const useAuthStore = create<AuthState>()(
           });
 
           set({ session: data.session });
+          const previousUserId = activeSessionUserId ?? get().user?.id ?? null;
+          if (previousUserId && previousUserId !== data.user.id) {
+            await clearUserScopedClientState();
+          }
+          activeSessionUserId = data.user.id;
+
           await get().fetchProfile();
           subscribeToProfileChanges(data.user.id, async () => {
             await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
@@ -650,6 +772,7 @@ export const useAuthStore = create<AuthState>()(
 
           await get().fetchProfile();
           await touchLastActive(session.user.id);
+          activeSessionUserId = session.user.id;
           subscribeToProfileChanges(session.user.id, async () => {
             await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
           });
@@ -669,6 +792,8 @@ export const useAuthStore = create<AuthState>()(
           if (error) throw error;
           clearProfileSubscription();
           clearSessionState();
+          activeSessionUserId = null;
+          await clearUserScopedClientState();
         } finally {
           set({ isLoading: false });
         }
@@ -758,7 +883,9 @@ export const useAuthStore = create<AuthState>()(
           }
 
           clearProfileSubscription();
-          await AsyncStorage.multiRemove([...USER_SCOPED_STORAGE_KEYS, 'babytuna-auth']);
+          await clearUserScopedClientState();
+          await AsyncStorage.removeItem('babytuna-auth');
+          activeSessionUserId = null;
           set({
             session: null,
             user: null,

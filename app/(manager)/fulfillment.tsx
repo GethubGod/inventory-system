@@ -24,6 +24,8 @@ import { InventoryItem, ItemCategory, OrderWithDetails, SupplierCategory } from 
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
+import { ItemActionSheet } from '@/components';
+import type { ItemActionSheetSection } from '@/components';
 import { loadSupplierLookup, invalidateSupplierCache } from '@/services/supplierResolver';
 
 interface AggregatedLocationBreakdown {
@@ -90,6 +92,13 @@ interface LocationGroupedItem {
   secondarySupplierId: string | null;
   isOverridden: boolean;
   primarySupplierId: string;
+}
+
+interface LocationItemCard {
+  key: string;
+  inventoryItemId: string;
+  name: string;
+  rows: LocationGroupedItem[];
 }
 
 interface ConfirmationRegularItem {
@@ -295,18 +304,30 @@ export default function FulfillmentScreen() {
   const [addToLocationGroup, setAddToLocationGroup] = useState<LocationGroup>('sushi');
   const [addToLocationId, setAddToLocationId] = useState<string | null>(null);
   const [scheduleEditItemId, setScheduleEditItemId] = useState<string | null>(null);
+  const [overflowItem, setOverflowItem] = useState<LocationGroupedItem | null>(null);
+  const [breakdownItem, setBreakdownItem] = useState<LocationGroupedItem | null>(null);
+  const [noteEditorItem, setNoteEditorItem] = useState<LocationGroupedItem | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [isSavingNote, setIsSavingNote] = useState(false);
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const useStackedSupplierActions =
     uiScale === 'large' || buttonSize === 'large' || textScale >= 1.1;
+  const managerLocationIds = useMemo(
+    () =>
+      locations
+        .map((location) => (typeof location.id === 'string' ? location.id.trim() : ''))
+        .filter((id) => id.length > 0),
+    [locations]
+  );
 
   const fetchPendingOrders = useCallback(async () => {
     try {
-      await fetchPendingFulfillmentOrders();
+      await fetchPendingFulfillmentOrders(managerLocationIds);
     } catch (error) {
       console.error('Error fetching orders:', error);
     }
-  }, [fetchPendingFulfillmentOrders]);
+  }, [fetchPendingFulfillmentOrders, managerLocationIds]);
 
   const fetchSuppliers = useCallback(async () => {
     try {
@@ -372,11 +393,20 @@ export default function FulfillmentScreen() {
       scheduleRefresh();
     };
 
+    const locationIds = managerLocationIds;
+    const orderScopeFilter =
+      locationIds.length > 0 ? `location_id=in.(${locationIds.join(',')})` : undefined;
+
     const channel = supabase
-      .channel('manager-fulfillment-sync')
+      .channel(`manager-fulfillment-sync-${locationIds.length > 0 ? locationIds.join(',') : 'all'}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'orders' },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          ...(orderScopeFilter ? { filter: orderScopeFilter } : {}),
+        },
         scheduleRefresh
       )
       .on(
@@ -403,7 +433,7 @@ export default function FulfillmentScreen() {
         realtimeChannelRef.current = null;
       }
     };
-  }, [refreshAll]);
+  }, [managerLocationIds, refreshAll]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -943,6 +973,37 @@ export default function FulfillmentScreen() {
 
     return groupedItems;
   }, [getSupplierDraftItems]);
+
+  const groupLocationItemsIntoCards = useCallback((rows: LocationGroupedItem[]) => {
+    const cardMap = new Map<string, LocationItemCard>();
+
+    rows.forEach((row) => {
+      const key = row.inventoryItem.id;
+      const existing = cardMap.get(key);
+      if (existing) {
+        existing.rows.push(row);
+        return;
+      }
+
+      cardMap.set(key, {
+        key: `${row.locationGroup}-${key}`,
+        inventoryItemId: key,
+        name: row.inventoryItem.name,
+        rows: [row],
+      });
+    });
+
+    return Array.from(cardMap.values())
+      .map((card) => ({
+        ...card,
+        rows: [...card.rows].sort((a, b) => {
+          if (a.isRemainingMode !== b.isRemainingMode) return a.isRemainingMode ? -1 : 1;
+          if (a.unitType !== b.unitType) return a.unitType.localeCompare(b.unitType);
+          return a.inventoryItem.name.localeCompare(b.inventoryItem.name);
+        }),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, []);
 
   const toggleSupplier = useCallback((supplierId: string) => {
     if (Platform.OS !== 'web') {
@@ -1605,72 +1666,366 @@ export default function FulfillmentScreen() {
 
   const [orderLaterScheduleItem, setOrderLaterScheduleItem] = useState<LocationGroupedItem | null>(null);
 
-  const handleItemOverflowMenu = useCallback(
+  const getHasMultiEmployeeBreakdown = useCallback((item: LocationGroupedItem) => {
+    const names = new Set<string>();
+    item.locationBreakdown.forEach((row) => {
+      row.orderedBy.forEach((name) => {
+        const normalized = name.trim();
+        if (normalized.length > 0) {
+          names.add(normalized.toLowerCase());
+        }
+      });
+    });
+    return names.size > 1;
+  }, []);
+
+  const handleMoveToSecondarySupplier = useCallback(
     (item: LocationGroupedItem) => {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (!item.secondarySupplierId || !item.secondarySupplierName || item.sourceOrderItemIds.length === 0) {
+        return;
       }
 
-      const buttons: { text: string; onPress: () => void; style?: 'cancel' | 'destructive' }[] = [];
+      Alert.alert(
+        `Move to ${item.secondarySupplierName}?`,
+        `${item.inventoryItem.name} will be reassigned to the secondary supplier.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Move',
+            onPress: () => {
+              void (async () => {
+                const success = await setSupplierOverride(item.sourceOrderItemIds, item.secondarySupplierId!);
+                if (!success) {
+                  Alert.alert('Error', 'Failed to move item. Please try again.');
+                  return;
+                }
 
-      // Move to Order Later
-      if (item.sourceOrderItemIds.length > 0) {
-        buttons.push({
-          text: 'Move to Order Later',
-          onPress: () => setOrderLaterScheduleItem(item),
-        });
-      }
-
-      // Move to Secondary Supplier
-      if (item.secondarySupplierId && item.secondarySupplierName && !item.isOverridden) {
-        buttons.push({
-          text: `Move to ${item.secondarySupplierName}`,
-          onPress: () => {
-            void (async () => {
-              const success = await setSupplierOverride(
-                item.sourceOrderItemIds,
-                item.secondarySupplierId!
-              );
-              if (success) {
                 if (Platform.OS !== 'web') {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 }
-                await fetchPendingFulfillmentOrders();
-              } else {
-                Alert.alert('Error', 'Failed to move item. Please try again.');
-              }
-            })();
+                await fetchPendingFulfillmentOrders(managerLocationIds);
+              })();
+            },
           },
-        });
-      }
-
-      // Move back to Primary Supplier
-      if (item.isOverridden && item.sourceOrderItemIds.length > 0) {
-        const primaryName = resolveSupplierName(item.primarySupplierId);
-        buttons.push({
-          text: `Move back to ${primaryName}`,
-          onPress: () => {
-            void (async () => {
-              const success = await clearSupplierOverride(item.sourceOrderItemIds);
-              if (success) {
-                if (Platform.OS !== 'web') {
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                }
-                await fetchPendingFulfillmentOrders();
-              } else {
-                Alert.alert('Error', 'Failed to move item back. Please try again.');
-              }
-            })();
-          },
-        });
-      }
-
-      buttons.push({ text: 'Cancel', style: 'cancel', onPress: () => {} });
-
-      Alert.alert(item.inventoryItem.name, undefined, buttons);
+        ]
+      );
     },
-    [clearSupplierOverride, fetchPendingFulfillmentOrders, resolveSupplierName, setSupplierOverride]
+    [fetchPendingFulfillmentOrders, managerLocationIds, setSupplierOverride]
   );
+
+  const handleMoveBackToPrimarySupplier = useCallback(
+    (item: LocationGroupedItem) => {
+      if (!item.isOverridden || item.sourceOrderItemIds.length === 0) return;
+      const primaryName = resolveSupplierName(item.primarySupplierId);
+
+      Alert.alert(
+        `Move back to ${primaryName}?`,
+        `${item.inventoryItem.name} will return to its primary supplier.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Move Back',
+            onPress: () => {
+              void (async () => {
+                const success = await clearSupplierOverride(item.sourceOrderItemIds);
+                if (!success) {
+                  Alert.alert('Error', 'Failed to move item back. Please try again.');
+                  return;
+                }
+
+                if (Platform.OS !== 'web') {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                }
+                await fetchPendingFulfillmentOrders(managerLocationIds);
+              })();
+            },
+          },
+        ]
+      );
+    },
+    [clearSupplierOverride, fetchPendingFulfillmentOrders, managerLocationIds, resolveSupplierName]
+  );
+
+  const handleRemoveSupplierItem = useCallback(
+    (item: LocationGroupedItem) => {
+      if (item.sourceOrderItemIds.length === 0) return;
+
+      Alert.alert(
+        'Remove Item',
+        `Remove ${item.inventoryItem.name} from this supplier order?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: () => {
+              void (async () => {
+                const removed = await markOrderItemsStatus(item.sourceOrderItemIds, 'cancelled');
+                if (!removed) {
+                  Alert.alert('Error', 'Failed to remove item. Please try again.');
+                  return;
+                }
+
+                if (Platform.OS !== 'web') {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+                }
+                await fetchPendingFulfillmentOrders(managerLocationIds);
+              })();
+            },
+          },
+        ]
+      );
+    },
+    [fetchPendingFulfillmentOrders, managerLocationIds, markOrderItemsStatus]
+  );
+
+  const handleOpenItemNoteEditor = useCallback((item: LocationGroupedItem) => {
+    setOverflowItem(null);
+    setNoteEditorItem(item);
+    setNoteDraft(item.notes.map((note) => note.trim()).filter((note) => note.length > 0).join(' • '));
+  }, []);
+
+  const handleSaveItemNote = useCallback(async () => {
+    if (!noteEditorItem) return;
+    if (noteEditorItem.sourceOrderItemIds.length === 0) {
+      setNoteEditorItem(null);
+      setNoteDraft('');
+      return;
+    }
+
+    const normalized = noteDraft.trim();
+    setIsSavingNote(true);
+    try {
+      const { error } = await supabase
+        .from('order_items')
+        .update({ note: normalized.length > 0 ? normalized : null } as any)
+        .in('id', noteEditorItem.sourceOrderItemIds);
+
+      if (error) throw error;
+
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+
+      setNoteEditorItem(null);
+      setNoteDraft('');
+      await fetchPendingFulfillmentOrders(managerLocationIds);
+    } catch (error: any) {
+      Alert.alert('Unable to Save Note', error?.message || 'Please try again.');
+    } finally {
+      setIsSavingNote(false);
+    }
+  }, [fetchPendingFulfillmentOrders, managerLocationIds, noteDraft, noteEditorItem]);
+
+  const breakdownRows = useMemo(() => {
+    if (!breakdownItem) return [] as { name: string; quantity: number; locations: string[] }[];
+    const sourceIds = new Set(breakdownItem.sourceOrderItemIds);
+    const rowsByName = new Map<string, { name: string; quantity: number; locations: Set<string> }>();
+
+    pendingOrders.forEach((order) => {
+      order.order_items?.forEach((orderItem) => {
+        if (!sourceIds.has(orderItem.id)) return;
+
+        const orderedBy = order.user?.name?.trim() || 'Unknown';
+        const locationName = order.location?.name || 'Unknown';
+        const quantity =
+          orderItem.input_mode === 'remaining'
+            ? Math.max(
+                0,
+                toSafeNumber(
+                  orderItem.decided_quantity == null
+                    ? orderItem.remaining_reported
+                    : orderItem.decided_quantity,
+                  0
+                )
+              )
+            : Math.max(0, toSafeNumber(orderItem.quantity, 0));
+        if (quantity <= 0) return;
+
+        const existing = rowsByName.get(orderedBy);
+        if (existing) {
+          existing.quantity += quantity;
+          existing.locations.add(locationName);
+        } else {
+          rowsByName.set(orderedBy, {
+            name: orderedBy,
+            quantity,
+            locations: new Set([locationName]),
+          });
+        }
+      });
+    });
+
+    return Array.from(rowsByName.values())
+      .map((entry) => ({
+        name: entry.name,
+        quantity: entry.quantity,
+        locations: Array.from(entry.locations).sort((a, b) => a.localeCompare(b)),
+      }))
+      .sort((a, b) => {
+        if (b.quantity !== a.quantity) return b.quantity - a.quantity;
+        return a.name.localeCompare(b.name);
+      });
+  }, [breakdownItem, pendingOrders]);
+
+  const getUnitConflictRows = useCallback(
+    (item: LocationGroupedItem) => {
+      const supplierGroup = supplierGroups.find((group) => group.supplierId === item.effectiveSupplierId);
+      if (!supplierGroup) return [] as LocationGroupedItem[];
+
+      return buildLocationGroupedItems(supplierGroup).filter((row) => {
+        if (row.key === item.key) return false;
+        if (row.locationGroup !== item.locationGroup) return false;
+        if (row.inventoryItem.id !== item.inventoryItem.id) return false;
+        return row.unitType !== item.unitType;
+      });
+    },
+    [buildLocationGroupedItems, supplierGroups]
+  );
+
+  const overflowActionSections = useMemo<ItemActionSheetSection[]>(() => {
+    if (!overflowItem) return [];
+
+    const hasSourceOrderItems = overflowItem.sourceOrderItemIds.length > 0;
+    const sections: ItemActionSheetSection[] = [];
+    const logisticsItems = [];
+
+    if (hasSourceOrderItems) {
+      logisticsItems.push({
+        id: 'move-to-order-later',
+        label: 'Move to Order Later',
+        icon: 'time-outline',
+        detail: 'Schedule this line for later and remove it from active fulfillment.',
+        onPress: () => {
+          setOverflowItem(null);
+          setOrderLaterScheduleItem(overflowItem);
+        },
+      });
+    }
+
+    if (getHasMultiEmployeeBreakdown(overflowItem)) {
+      logisticsItems.push({
+        id: 'view-breakdown',
+        label: 'View breakdown',
+        icon: 'list-outline',
+        detail: 'See quantity by employee for this item line.',
+        onPress: () => {
+          setOverflowItem(null);
+          setBreakdownItem(overflowItem);
+        },
+      });
+    }
+
+    if (getUnitConflictRows(overflowItem).length > 0) {
+      logisticsItems.push({
+        id: 'resolve-units',
+        label: 'Resolve units / Combine',
+        icon: 'git-merge-outline',
+        detail: 'Convert units in Review before sending, when a conversion exists.',
+        onPress: () => {
+          setOverflowItem(null);
+          Alert.alert(
+            'Resolve in Review',
+            'Open this supplier\'s Review screen and use "Resolve units / Combine" to convert unit lines when a conversion rule exists.'
+          );
+        },
+      });
+    }
+
+    if (logisticsItems.length > 0) {
+      sections.push({
+        id: 'logistics',
+        title: 'Logistics',
+        items: logisticsItems,
+      });
+    }
+
+    const supplierItems = [];
+    if (
+      overflowItem.secondarySupplierId &&
+      overflowItem.secondarySupplierName &&
+      !overflowItem.isOverridden &&
+      hasSourceOrderItems
+    ) {
+      supplierItems.push({
+        id: 'move-secondary',
+        label: `Move to ${overflowItem.secondarySupplierName}`,
+        icon: 'swap-horizontal',
+        onPress: () => {
+          setOverflowItem(null);
+          handleMoveToSecondarySupplier(overflowItem);
+        },
+      });
+    }
+    if (overflowItem.isOverridden && hasSourceOrderItems) {
+      supplierItems.push({
+        id: 'move-primary',
+        label: `Move back to ${resolveSupplierName(overflowItem.primarySupplierId)}`,
+        icon: 'arrow-undo-outline',
+        onPress: () => {
+          setOverflowItem(null);
+          handleMoveBackToPrimarySupplier(overflowItem);
+        },
+      });
+    }
+    if (supplierItems.length > 0) {
+      sections.push({
+        id: 'supplier',
+        title: 'Supplier',
+        items: supplierItems,
+      });
+    }
+
+    if (hasSourceOrderItems) {
+      sections.push({
+        id: 'notes',
+        title: 'Item',
+        items: [
+          {
+            id: 'note',
+            label: overflowItem.notes.length > 0 ? 'Edit Note' : 'Add Note',
+            icon: 'create-outline',
+            onPress: () => handleOpenItemNoteEditor(overflowItem),
+          },
+        ],
+      });
+
+      sections.push({
+        id: 'danger',
+        title: 'Danger Zone',
+        items: [
+          {
+            id: 'remove',
+            label: 'Remove item from this supplier order',
+            icon: 'trash-outline',
+            destructive: true,
+            onPress: () => {
+              setOverflowItem(null);
+              handleRemoveSupplierItem(overflowItem);
+            },
+          },
+        ],
+      });
+    }
+
+    return sections;
+  }, [
+    getHasMultiEmployeeBreakdown,
+    getUnitConflictRows,
+    handleMoveBackToPrimarySupplier,
+    handleMoveToSecondarySupplier,
+    handleOpenItemNoteEditor,
+    handleRemoveSupplierItem,
+    overflowItem,
+    resolveSupplierName,
+  ]);
+
+  const handleItemOverflowMenu = useCallback((item: LocationGroupedItem) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setOverflowItem(item);
+  }, []);
 
   const handleOrderLaterFromFulfillment = useCallback(
     async (scheduledAtIso: string) => {
@@ -1708,7 +2063,7 @@ export default function FulfillmentScreen() {
       }
 
       setOrderLaterScheduleItem(null);
-      await fetchPendingFulfillmentOrders();
+      await fetchPendingFulfillmentOrders(managerLocationIds);
       Alert.alert('Moved to Order Later', `${item.inventoryItem.name} moved to order later.`);
     },
     [
@@ -1716,6 +2071,7 @@ export default function FulfillmentScreen() {
       fetchPendingFulfillmentOrders,
       getDisplayQuantity,
       markOrderItemsStatus,
+      managerLocationIds,
       orderLaterScheduleItem,
       user?.id,
     ]
@@ -1889,12 +2245,12 @@ export default function FulfillmentScreen() {
       const statusLabel = supplierGroup.isInactive ? 'Inactive' : supplierGroup.isUnknown ? 'Unknown' : null;
       const locationItems = buildLocationGroupedItems(supplierGroup);
       const supplierItemCount = new Set(
-        locationItems.map((item) => `${item.inventoryItem.id}|${item.unitType}`)
+        locationItems.map((item) => item.inventoryItem.id)
       ).size;
       const supplierRemainingCount = new Set(
         locationItems
           .filter((item) => item.isRemainingMode)
-          .map((item) => `${item.inventoryItem.id}|${item.unitType}`)
+          .map((item) => item.inventoryItem.id)
       ).size;
       const sections = [
         { group: 'sushi' as LocationGroup, items: locationItems.filter((item) => item.locationGroup === 'sushi') },
@@ -2004,6 +2360,9 @@ export default function FulfillmentScreen() {
                 );
                 const remainingItems = sortedItems.filter((item) => item.isRemainingMode);
                 const regularItems = sortedItems.filter((item) => !item.isRemainingMode);
+                const remainingCards = groupLocationItemsIntoCards(remainingItems);
+                const regularCards = groupLocationItemsIntoCards(regularItems);
+                const sectionItemCount = remainingCards.length + regularCards.length;
 
                 return (
                   <View key={sectionKey} className="mb-3">
@@ -2022,7 +2381,7 @@ export default function FulfillmentScreen() {
                           <View>
                             <Text className="text-base font-semibold text-gray-900">{locationLabel}</Text>
                             <Text className="text-sm text-gray-500">
-                              {sortedItems.length} item{sortedItems.length !== 1 ? 's' : ''} • {remainingItems.length} remaining
+                              {sectionItemCount} item{sectionItemCount !== 1 ? 's' : ''} • {remainingCards.length} remaining
                             </Text>
                           </View>
                         </View>
@@ -2036,29 +2395,67 @@ export default function FulfillmentScreen() {
 
                     {sectionExpanded && (
                       <View className="bg-white px-4 border border-gray-200 border-t-0 rounded-b-xl overflow-hidden">
-                        {remainingItems.length > 0 && (
+                        {remainingCards.length > 0 && (
                           <View className="pt-3">
                             <View className="mx-2 mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex-row items-center justify-between">
                               <View className="flex-row items-center">
                                 <Ionicons name="alert-circle-outline" size={14} color="#B45309" />
                                 <Text className="ml-2 text-xs font-semibold text-amber-800">Remaining Items</Text>
                               </View>
-                              <Text className="text-xs font-semibold text-amber-800">{remainingItems.length}</Text>
+                              <Text className="text-xs font-semibold text-amber-800">{remainingCards.length}</Text>
                             </View>
                             <View className="rounded-lg overflow-hidden border border-amber-100">
-                              {remainingItems.map((item) => renderItem(item, true))}
+                              {remainingCards.map((card, cardIndex) => (
+                                <View
+                                  key={`remaining-card-${card.key}`}
+                                  className={cardIndex < remainingCards.length - 1 ? 'border-b border-amber-100' : ''}
+                                >
+                                  <View className="px-3 py-2 bg-amber-50 border-b border-amber-100 flex-row items-center justify-between">
+                                    <Text className="text-xs font-semibold text-amber-900 flex-1 pr-2" numberOfLines={1}>
+                                      {card.name}
+                                    </Text>
+                                    {card.rows.length > 1 && (
+                                      <View className="rounded-full bg-amber-100 px-2 py-1 border border-amber-200">
+                                        <Text className="text-[10px] font-semibold text-amber-800">
+                                          {card.rows.length} units
+                                        </Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                  {card.rows.map((item) => renderItem(item, true))}
+                                </View>
+                              ))}
                             </View>
                           </View>
                         )}
 
-                        {regularItems.length > 0 && (
+                        {regularCards.length > 0 && (
                           <View className="pt-3 pb-3">
                             <View className="mx-2 mb-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 flex-row items-center justify-between">
                               <Text className="text-xs font-semibold text-gray-700">Regular Items</Text>
-                              <Text className="text-xs font-semibold text-gray-700">{regularItems.length}</Text>
+                              <Text className="text-xs font-semibold text-gray-700">{regularCards.length}</Text>
                             </View>
                             <View className="rounded-lg overflow-hidden border border-gray-100">
-                              {regularItems.map((item) => renderItem(item, true))}
+                              {regularCards.map((card, cardIndex) => (
+                                <View
+                                  key={`regular-card-${card.key}`}
+                                  className={cardIndex < regularCards.length - 1 ? 'border-b border-gray-100' : ''}
+                                >
+                                  <View className="px-3 py-2 bg-gray-50 border-b border-gray-100 flex-row items-center justify-between">
+                                    <Text className="text-xs font-semibold text-gray-800 flex-1 pr-2" numberOfLines={1}>
+                                      {card.name}
+                                    </Text>
+                                    {card.rows.length > 1 && (
+                                      <View className="rounded-full bg-primary-100 px-2 py-1 border border-primary-200">
+                                        <Text className="text-[10px] font-semibold text-primary-700">
+                                          {card.rows.length} units
+                                        </Text>
+                                      </View>
+                                    )}
+                                  </View>
+                                  {card.rows.map((item) => renderItem(item, true))}
+                                </View>
+                              ))}
                             </View>
                           </View>
                         )}
@@ -2076,6 +2473,7 @@ export default function FulfillmentScreen() {
       buildLocationGroupedItems,
       expandedLocationSections,
       expandedSuppliers,
+      groupLocationItemsIntoCards,
       handleSend,
       renderItem,
       toggleLocationSection,
@@ -2089,15 +2487,16 @@ export default function FulfillmentScreen() {
       <ManagerScaleContainer>
         <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center">
           <View className="flex-row items-center flex-1">
-            <Text className="text-xl font-bold text-gray-900">Fulfillment</Text>
+            <Text className="text-[22px] font-bold text-gray-900">Fulfillment</Text>
           </View>
           <TouchableOpacity
             onPress={() => router.push('/(manager)/past-orders')}
-            className="flex-row items-center px-3 py-2 rounded-lg bg-gray-100"
+            className="flex-row items-center bg-gray-100 rounded-full px-4"
+            style={{ minHeight: 44 }}
             activeOpacity={0.7}
           >
-            <Ionicons name="time-outline" size={14} color={colors.gray[700]} />
-            <Text className="ml-1.5 text-xs font-semibold text-gray-700">Past Orders</Text>
+            <Ionicons name="time-outline" size={16} color={colors.gray[700]} />
+            <Text className="ml-2 text-sm font-semibold text-gray-700">Past Orders</Text>
           </TouchableOpacity>
         </View>
 
@@ -2191,7 +2590,7 @@ export default function FulfillmentScreen() {
             </View>
           ) : supplierGroups.length === 0 ? (
             <View className="flex-1 items-center justify-center" style={{ minHeight: 400, paddingVertical: 60 }}>
-              <Text className="text-gray-700 text-center text-lg font-semibold">All orders fulfilled</Text>
+              <Text className="text-gray-700 text-center text-lg font-semibold">No orders to fulfill</Text>
               <Text className="text-gray-400 text-center text-sm mt-2">
                 No pending supplier orders right now.
               </Text>
@@ -2209,6 +2608,155 @@ export default function FulfillmentScreen() {
             supplierGroups.map((group) => renderSupplierSection(group))
           )}
         </ScrollView>
+
+        <ItemActionSheet
+          visible={Boolean(overflowItem)}
+          title="Item Actions"
+          subtitle={overflowItem ? overflowItem.inventoryItem.name : undefined}
+          sections={overflowActionSections}
+          onClose={() => setOverflowItem(null)}
+        />
+
+        <Modal
+          visible={Boolean(breakdownItem)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setBreakdownItem(null)}
+        >
+          <Pressable className="flex-1 bg-black/35 justify-end" onPress={() => setBreakdownItem(null)}>
+            <Pressable
+              className="bg-white rounded-t-3xl px-4 pt-4 pb-5"
+              onPress={(event) => event.stopPropagation()}
+            >
+              <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-1 pr-2">
+                  <Text className="text-lg font-bold text-gray-900">Employee Breakdown</Text>
+                  <Text className="text-xs text-gray-500 mt-0.5">
+                    {breakdownItem?.inventoryItem.name || ''}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setBreakdownItem(null)} className="p-2">
+                  <Ionicons name="close" size={20} color={colors.gray[500]} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
+                {breakdownRows.length === 0 ? (
+                  <View className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-5 items-center">
+                    <Text className="text-sm text-gray-500 text-center">
+                      No per-employee details are available for this line.
+                    </Text>
+                  </View>
+                ) : (
+                  breakdownRows.map((row, index) => (
+                    <View
+                      key={`${row.name}-${index}`}
+                      className={`py-3 ${
+                        index < breakdownRows.length - 1 ? 'border-b border-gray-100' : ''
+                      }`}
+                    >
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-sm font-semibold text-gray-900">{row.name}</Text>
+                        <Text className="text-sm font-semibold text-gray-700">
+                          {row.quantity} {breakdownItem?.unitType === 'pack'
+                            ? breakdownItem?.inventoryItem.pack_unit
+                            : breakdownItem?.inventoryItem.base_unit}
+                        </Text>
+                      </View>
+                      {row.locations.length > 0 && (
+                        <Text className="text-xs text-gray-500 mt-1">
+                          {row.locations.join(' • ')}
+                        </Text>
+                      )}
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+
+              <TouchableOpacity
+                onPress={() => setBreakdownItem(null)}
+                className="mt-3 py-3 rounded-xl bg-gray-100 items-center"
+              >
+                <Text className="text-sm font-semibold text-gray-700">Close</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        <Modal
+          visible={Boolean(noteEditorItem)}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setNoteEditorItem(null);
+            setNoteDraft('');
+          }}
+        >
+          <Pressable
+            className="flex-1 bg-black/35 justify-end"
+            onPress={() => {
+              setNoteEditorItem(null);
+              setNoteDraft('');
+            }}
+          >
+            <Pressable className="bg-white rounded-t-3xl px-4 pt-4 pb-5" onPress={(event) => event.stopPropagation()}>
+              <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-1 pr-2">
+                  <Text className="text-lg font-bold text-gray-900">
+                    {noteEditorItem?.notes.length ? 'Edit Note' : 'Add Note'}
+                  </Text>
+                  <Text className="text-xs text-gray-500 mt-0.5">
+                    {noteEditorItem?.inventoryItem.name || ''}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    setNoteEditorItem(null);
+                    setNoteDraft('');
+                  }}
+                  className="p-2"
+                >
+                  <Ionicons name="close" size={20} color={colors.gray[500]} />
+                </TouchableOpacity>
+              </View>
+
+              <TextInput
+                value={noteDraft}
+                onChangeText={setNoteDraft}
+                placeholder="Add supplier note..."
+                placeholderTextColor={colors.gray[400]}
+                multiline
+                maxLength={240}
+                textAlignVertical="top"
+                className="min-h-[110px] rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-900"
+              />
+              <Text className="text-xs text-gray-400 mt-2">{noteDraft.length}/240</Text>
+
+              <View className="flex-row mt-4">
+                <TouchableOpacity
+                  onPress={() => {
+                    setNoteEditorItem(null);
+                    setNoteDraft('');
+                  }}
+                  className="flex-1 py-3 rounded-xl bg-gray-100 items-center justify-center mr-2"
+                >
+                  <Text className="text-sm font-semibold text-gray-700">Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleSaveItemNote}
+                  disabled={isSavingNote}
+                  className={`flex-1 py-3 rounded-xl items-center justify-center ${
+                    isSavingNote ? 'bg-primary-300' : 'bg-primary-500'
+                  }`}
+                >
+                  <Text className="text-sm font-semibold text-white">
+                    {isSavingNote ? 'Saving...' : 'Save Note'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
 
         <Modal
           visible={Boolean(addToTargetItem)}

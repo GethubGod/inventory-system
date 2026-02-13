@@ -230,9 +230,18 @@ function buildDebugLogs(orders: OrderWithDetails[]) {
 export async function loadPendingFulfillmentData(options?: {
   consumedOrderItemIds?: Set<string>;
   includeInventoryAudit?: boolean;
+  locationIds?: string[];
 }): Promise<PendingFulfillmentDataResult> {
   const consumedOrderItemIds = options?.consumedOrderItemIds ?? new Set<string>();
   const includeInventoryAudit = options?.includeInventoryAudit !== false;
+  const locationIds = Array.from(
+    new Set(
+      (options?.locationIds || [])
+        .filter((id): id is string => typeof id === 'string')
+        .map((id) => id.trim())
+        .filter((id) => id.length > 0)
+    )
+  );
 
   const [supplierLookup, orderLaterSourceOrderItemIds] = await Promise.all([
     loadSupplierLookup(),
@@ -242,7 +251,7 @@ export async function loadPendingFulfillmentData(options?: {
   // Select only the columns actually consumed by fulfillment grouping and
   // confirmation screens.  Reduces payload size significantly for locations
   // with many submitted orders.
-  const { data, error } = await supabase
+  let query = supabase
     .from('orders')
     .select(`
       id,status,location_id,created_at,
@@ -259,8 +268,13 @@ export async function loadPendingFulfillmentData(options?: {
         )
       )
     `)
-    .eq('status', 'submitted')
-    .order('created_at', { ascending: false });
+    .eq('status', 'submitted');
+
+  if (locationIds.length > 0) {
+    query = query.in('location_id', locationIds);
+  }
+
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) {
     throw error;

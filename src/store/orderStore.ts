@@ -18,6 +18,7 @@ import {
 } from '@/services/fulfillmentDataSource';
 
 export type OrderInputMode = 'quantity' | 'remaining';
+export type CartContext = 'employee' | 'manager';
 
 export interface CartItem {
   id: string;
@@ -41,6 +42,7 @@ export interface AddToCartOptions {
   decidedBy?: string | null;
   decidedAt?: string | null;
   note?: string | null;
+  context?: CartContext;
 }
 
 interface UpdateCartItemOptions {
@@ -49,6 +51,7 @@ interface UpdateCartItemOptions {
   quantityRequested?: number | null;
   remainingReported?: number | null;
   clearDecision?: boolean;
+  context?: CartContext;
 }
 
 // Cart items organized by location
@@ -245,6 +248,7 @@ interface LastOrderedQuantityCacheValue {
 
 interface OrderState {
   cartByLocation: CartByLocation;
+  managerCartByLocation: CartByLocation;
   orders: Order[];
   currentOrder: OrderWithDetails | null;
   isLoading: boolean;
@@ -271,34 +275,46 @@ interface OrderState {
     unitType: UnitType,
     options?: UpdateCartItemOptions
   ) => void;
-  removeFromCart: (locationId: string, inventoryItemId: string, cartItemId?: string) => void;
+  removeFromCart: (
+    locationId: string,
+    inventoryItemId: string,
+    cartItemId?: string,
+    context?: CartContext
+  ) => void;
   moveCartItem: (
     fromLocationId: string,
     toLocationId: string,
     inventoryItemId: string,
     unitType: UnitType,
-    cartItemId?: string
+    cartItemId?: string,
+    context?: CartContext
   ) => void;
-  moveLocationCartItems: (fromLocationId: string, toLocationId: string) => void;
-  moveAllCartItemsToLocation: (toLocationId: string) => void;
-  clearLocationCart: (locationId: string) => void;
-  clearAllCarts: () => void;
+  moveLocationCartItems: (fromLocationId: string, toLocationId: string, context?: CartContext) => void;
+  moveAllCartItemsToLocation: (toLocationId: string, context?: CartContext) => void;
+  clearLocationCart: (locationId: string, context?: CartContext) => void;
+  clearAllCarts: (context?: CartContext) => void;
   setCartItemDecision: (
     locationId: string,
     cartItemId: string,
     decidedQuantity: number,
-    decidedBy: string
+    decidedBy: string,
+    context?: CartContext
   ) => void;
-  setCartItemNote: (locationId: string, cartItemId: string, note: string | null) => void;
+  setCartItemNote: (
+    locationId: string,
+    cartItemId: string,
+    note: string | null,
+    context?: CartContext
+  ) => void;
 
   // Cart getters
-  getCartItems: (locationId: string) => CartItem[];
-  getCartItem: (locationId: string, inventoryItemId: string) => CartItem | undefined;
-  getLocationCartTotal: (locationId: string) => number;
-  getTotalCartCount: () => number;
-  getCartLocationIds: () => string[];
-  hasUndecidedRemaining: (locationId: string) => boolean;
-  getUndecidedRemainingItems: (locationId: string) => CartItem[];
+  getCartItems: (locationId: string, context?: CartContext) => CartItem[];
+  getCartItem: (locationId: string, inventoryItemId: string, context?: CartContext) => CartItem | undefined;
+  getLocationCartTotal: (locationId: string, context?: CartContext) => number;
+  getTotalCartCount: (context?: CartContext) => number;
+  getCartLocationIds: (context?: CartContext) => string[];
+  hasUndecidedRemaining: (locationId: string, context?: CartContext) => boolean;
+  getUndecidedRemainingItems: (locationId: string, context?: CartContext) => CartItem[];
 
   // Legacy support - for backward compatibility
   cart: CartItem[];
@@ -310,8 +326,12 @@ interface OrderState {
   fetchUserOrders: (userId: string) => Promise<void>;
   fetchManagerOrders: (locationId?: string | null, status?: OrderStatus | null) => Promise<void>;
   fetchOrder: (orderId: string) => Promise<void>;
-  createOrder: (locationId: string, userId: string) => Promise<Order>;
-  createAndSubmitOrder: (locationId: string, userId: string) => Promise<OrderWithDetails>;
+  createOrder: (locationId: string, userId: string, context?: CartContext) => Promise<Order>;
+  createAndSubmitOrder: (
+    locationId: string,
+    userId: string,
+    context?: CartContext
+  ) => Promise<OrderWithDetails>;
   submitOrder: (orderId: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: OrderStatus, fulfilledBy?: string) => Promise<void>;
   fulfillOrder: (orderId: string, fulfilledBy: string) => Promise<void>;
@@ -326,7 +346,7 @@ interface OrderState {
   ) => Promise<PastOrderDetail | null>;
   flushPendingPastOrderSync: (managerId?: string | null) => Promise<void>;
   createPastOrder: (input: FinalizeSupplierOrderInput) => Promise<PastOrder>;
-  fetchPendingFulfillmentOrders: () => Promise<void>;
+  fetchPendingFulfillmentOrders: (locationIds?: string[]) => Promise<void>;
   addSupplierDraftItem: (input: SupplierDraftItemInput) => SupplierDraftItem;
   updateSupplierDraftItemQuantity: (draftItemId: string, quantity: number) => void;
   removeSupplierDraftItem: (draftItemId: string) => void;
@@ -480,6 +500,18 @@ function normalizeLocationCart(rawCart: unknown): CartItem[] {
 
 function getLocationCart(cartByLocation: CartByLocation, locationId: string): CartItem[] {
   return normalizeLocationCart(cartByLocation[locationId] || []);
+}
+
+function normalizeCartContext(context?: CartContext): CartContext {
+  return context === 'manager' ? 'manager' : 'employee';
+}
+
+function getCartByContext(
+  state: Pick<OrderState, 'cartByLocation' | 'managerCartByLocation'>,
+  context?: CartContext
+): CartByLocation {
+  const resolved = normalizeCartContext(context);
+  return resolved === 'manager' ? state.managerCartByLocation : state.cartByLocation;
 }
 
 function mergeCartItem(
@@ -1481,6 +1513,7 @@ export const useOrderStore = create<OrderState>()(
   persist(
     (set, get) => ({
       cartByLocation: {},
+      managerCartByLocation: {},
       orders: [],
       currentOrder: null,
       isLoading: false,
@@ -1499,7 +1532,9 @@ export const useOrderStore = create<OrderState>()(
       },
 
       addToCart: (locationId, inventoryItemId, quantity, unitType, options) => {
-        const { cartByLocation } = get();
+        const resolvedContext = normalizeCartContext(options?.context);
+        const state = get();
+        const cartByLocation = getCartByContext(state, resolvedContext);
         const locationCart = getLocationCart(cartByLocation, locationId);
 
         const inputMode: OrderInputMode = options?.inputMode ?? 'quantity';
@@ -1528,12 +1563,15 @@ export const useOrderStore = create<OrderState>()(
           };
 
           const mergedCart = mergeCartItem(locationCart, nextItem);
-          set({
-            cartByLocation: {
-              ...cartByLocation,
-              [locationId]: mergedCart,
-            },
-          });
+          const nextCartByLocation = {
+            ...cartByLocation,
+            [locationId]: mergedCart,
+          };
+          if (resolvedContext === 'manager') {
+            set({ managerCartByLocation: nextCartByLocation });
+          } else {
+            set({ cartByLocation: nextCartByLocation });
+          }
           return;
         }
 
@@ -1559,17 +1597,21 @@ export const useOrderStore = create<OrderState>()(
         };
 
         const mergedCart = mergeCartItem(locationCart, nextItem);
-
-        set({
-          cartByLocation: {
-            ...cartByLocation,
-            [locationId]: mergedCart,
-          },
-        });
+        const nextCartByLocation = {
+          ...cartByLocation,
+          [locationId]: mergedCart,
+        };
+        if (resolvedContext === 'manager') {
+          set({ managerCartByLocation: nextCartByLocation });
+        } else {
+          set({ cartByLocation: nextCartByLocation });
+        }
       },
 
       updateCartItem: (locationId, inventoryItemId, quantity, unitType, options) => {
-        const { cartByLocation } = get();
+        const resolvedContext = normalizeCartContext(options?.context);
+        const state = get();
+        const cartByLocation = getCartByContext(state, resolvedContext);
         const locationCart = getLocationCart(cartByLocation, locationId);
 
         const index = findCartItemIndex(
@@ -1589,12 +1631,15 @@ export const useOrderStore = create<OrderState>()(
 
           if (nextQuantity === null || nextQuantity <= 0) {
             const nextCart = locationCart.filter((_, idx) => idx !== index);
-            set({
-              cartByLocation: {
-                ...cartByLocation,
-                [locationId]: nextCart,
-              },
-            });
+            const nextCartByLocation = {
+              ...cartByLocation,
+              [locationId]: nextCart,
+            };
+            if (resolvedContext === 'manager') {
+              set({ managerCartByLocation: nextCartByLocation });
+            } else {
+              set({ cartByLocation: nextCartByLocation });
+            }
             return;
           }
 
@@ -1611,24 +1656,30 @@ export const useOrderStore = create<OrderState>()(
           };
 
           const nextCart = locationCart.map((item, idx) => (idx === index ? updated : item));
-          set({
-            cartByLocation: {
-              ...cartByLocation,
-              [locationId]: nextCart,
-            },
-          });
+          const nextCartByLocation = {
+            ...cartByLocation,
+            [locationId]: nextCart,
+          };
+          if (resolvedContext === 'manager') {
+            set({ managerCartByLocation: nextCartByLocation });
+          } else {
+            set({ cartByLocation: nextCartByLocation });
+          }
           return;
         }
 
         const nextRemaining = toValidNumber(options?.remainingReported ?? quantity);
         if (nextRemaining === null || nextRemaining < 0) {
           const nextCart = locationCart.filter((_, idx) => idx !== index);
-          set({
-            cartByLocation: {
-              ...cartByLocation,
-              [locationId]: nextCart,
-            },
-          });
+          const nextCartByLocation = {
+            ...cartByLocation,
+            [locationId]: nextCart,
+          };
+          if (resolvedContext === 'manager') {
+            set({ managerCartByLocation: nextCartByLocation });
+          } else {
+            set({ cartByLocation: nextCartByLocation });
+          }
           return;
         }
 
@@ -1645,34 +1696,44 @@ export const useOrderStore = create<OrderState>()(
         };
 
         const nextCart = locationCart.map((item, idx) => (idx === index ? updated : item));
-        set({
-          cartByLocation: {
-            ...cartByLocation,
-            [locationId]: nextCart,
-          },
-        });
+        const nextCartByLocation = {
+          ...cartByLocation,
+          [locationId]: nextCart,
+        };
+        if (resolvedContext === 'manager') {
+          set({ managerCartByLocation: nextCartByLocation });
+        } else {
+          set({ cartByLocation: nextCartByLocation });
+        }
       },
 
-      removeFromCart: (locationId, inventoryItemId, cartItemId) => {
-        const { cartByLocation } = get();
+      removeFromCart: (locationId, inventoryItemId, cartItemId, context) => {
+        const resolvedContext = normalizeCartContext(context);
+        const state = get();
+        const cartByLocation = getCartByContext(state, resolvedContext);
         const locationCart = getLocationCart(cartByLocation, locationId);
 
         const nextCart = cartItemId
           ? locationCart.filter((item) => item.id !== cartItemId)
           : locationCart.filter((item) => item.inventoryItemId !== inventoryItemId);
 
-        set({
-          cartByLocation: {
-            ...cartByLocation,
-            [locationId]: nextCart,
-          },
-        });
+        const nextCartByLocation = {
+          ...cartByLocation,
+          [locationId]: nextCart,
+        };
+        if (resolvedContext === 'manager') {
+          set({ managerCartByLocation: nextCartByLocation });
+        } else {
+          set({ cartByLocation: nextCartByLocation });
+        }
       },
 
-      moveCartItem: (fromLocationId, toLocationId, inventoryItemId, unitType, cartItemId) => {
+      moveCartItem: (fromLocationId, toLocationId, inventoryItemId, unitType, cartItemId, context) => {
         if (fromLocationId === toLocationId) return;
 
-        const { cartByLocation } = get();
+        const resolvedContext = normalizeCartContext(context);
+        const state = get();
+        const cartByLocation = getCartByContext(state, resolvedContext);
         const fromCart = getLocationCart(cartByLocation, fromLocationId);
         const toCart = getLocationCart(cartByLocation, toLocationId);
 
@@ -1683,19 +1744,24 @@ export const useOrderStore = create<OrderState>()(
         const newFromCart = fromCart.filter((_, idx) => idx !== index);
         const newToCart = mergeCartItem(toCart, { ...itemToMove });
 
-        set({
-          cartByLocation: {
-            ...cartByLocation,
-            [fromLocationId]: newFromCart,
-            [toLocationId]: newToCart,
-          },
-        });
+        const nextCartByLocation = {
+          ...cartByLocation,
+          [fromLocationId]: newFromCart,
+          [toLocationId]: newToCart,
+        };
+        if (resolvedContext === 'manager') {
+          set({ managerCartByLocation: nextCartByLocation });
+        } else {
+          set({ cartByLocation: nextCartByLocation });
+        }
       },
 
-      moveLocationCartItems: (fromLocationId, toLocationId) => {
+      moveLocationCartItems: (fromLocationId, toLocationId, context) => {
         if (fromLocationId === toLocationId) return;
 
-        const { cartByLocation } = get();
+        const resolvedContext = normalizeCartContext(context);
+        const state = get();
+        const cartByLocation = getCartByContext(state, resolvedContext);
         const fromCart = getLocationCart(cartByLocation, fromLocationId);
         const toCart = getLocationCart(cartByLocation, toLocationId);
 
@@ -1710,11 +1776,17 @@ export const useOrderStore = create<OrderState>()(
         delete nextCartByLocation[fromLocationId];
         nextCartByLocation[toLocationId] = merged;
 
-        set({ cartByLocation: nextCartByLocation });
+        if (resolvedContext === 'manager') {
+          set({ managerCartByLocation: nextCartByLocation });
+        } else {
+          set({ cartByLocation: nextCartByLocation });
+        }
       },
 
-      moveAllCartItemsToLocation: (toLocationId) => {
-        const { cartByLocation } = get();
+      moveAllCartItemsToLocation: (toLocationId, context) => {
+        const resolvedContext = normalizeCartContext(context);
+        const state = get();
+        const cartByLocation = getCartByContext(state, resolvedContext);
         const allItems = Object.values(cartByLocation).flatMap((items) => normalizeLocationCart(items));
 
         if (allItems.length === 0) {
@@ -1726,26 +1798,49 @@ export const useOrderStore = create<OrderState>()(
           merged = mergeCartItem(merged, { ...item });
         });
 
-        set({
-          cartByLocation: {
-            [toLocationId]: merged,
-          },
-        });
+        if (resolvedContext === 'manager') {
+          set({
+            managerCartByLocation: {
+              [toLocationId]: merged,
+            },
+          });
+        } else {
+          set({
+            cartByLocation: {
+              [toLocationId]: merged,
+            },
+          });
+        }
       },
 
-      clearLocationCart: (locationId) => {
-        const { cartByLocation } = get();
+      clearLocationCart: (locationId, context) => {
+        const resolvedContext = normalizeCartContext(context);
+        const state = get();
+        const cartByLocation = getCartByContext(state, resolvedContext);
         const { [locationId]: _, ...rest } = cartByLocation;
-        set({ cartByLocation: rest });
+        if (resolvedContext === 'manager') {
+          set({ managerCartByLocation: rest });
+        } else {
+          set({ cartByLocation: rest });
+        }
       },
 
-      clearAllCarts: () => set({ cartByLocation: {} }),
+      clearAllCarts: (context) => {
+        const resolvedContext = normalizeCartContext(context);
+        if (resolvedContext === 'manager') {
+          set({ managerCartByLocation: {} });
+        } else {
+          set({ cartByLocation: {} });
+        }
+      },
 
       // Legacy clearCart - clears all carts
       clearCart: () => set({ cartByLocation: {} }),
 
-      setCartItemDecision: (locationId, cartItemId, decidedQuantity, decidedBy) => {
-        const { cartByLocation } = get();
+      setCartItemDecision: (locationId, cartItemId, decidedQuantity, decidedBy, context) => {
+        const resolvedContext = normalizeCartContext(context);
+        const state = get();
+        const cartByLocation = getCartByContext(state, resolvedContext);
         const locationCart = getLocationCart(cartByLocation, locationId);
 
         const normalizedQuantity = Math.max(0, decidedQuantity);
@@ -1763,16 +1858,21 @@ export const useOrderStore = create<OrderState>()(
           };
         });
 
-        set({
-          cartByLocation: {
-            ...cartByLocation,
-            [locationId]: nextCart,
-          },
-        });
+        const nextCartByLocation = {
+          ...cartByLocation,
+          [locationId]: nextCart,
+        };
+        if (resolvedContext === 'manager') {
+          set({ managerCartByLocation: nextCartByLocation });
+        } else {
+          set({ cartByLocation: nextCartByLocation });
+        }
       },
 
-      setCartItemNote: (locationId, cartItemId, note) => {
-        const { cartByLocation } = get();
+      setCartItemNote: (locationId, cartItemId, note, context) => {
+        const resolvedContext = normalizeCartContext(context);
+        const state = get();
+        const cartByLocation = getCartByContext(state, resolvedContext);
         const locationCart = getLocationCart(cartByLocation, locationId);
         const normalized = normalizeNote(note);
 
@@ -1784,21 +1884,26 @@ export const useOrderStore = create<OrderState>()(
           };
         });
 
-        set({
-          cartByLocation: {
-            ...cartByLocation,
-            [locationId]: nextCart,
-          },
-        });
+        const nextCartByLocation = {
+          ...cartByLocation,
+          [locationId]: nextCart,
+        };
+        if (resolvedContext === 'manager') {
+          set({ managerCartByLocation: nextCartByLocation });
+        } else {
+          set({ cartByLocation: nextCartByLocation });
+        }
       },
 
-      getCartItems: (locationId) => {
-        const { cartByLocation } = get();
+      getCartItems: (locationId, context) => {
+        const state = get();
+        const cartByLocation = getCartByContext(state, context);
         return getLocationCart(cartByLocation, locationId);
       },
 
-      getCartItem: (locationId, inventoryItemId) => {
-        const { cartByLocation } = get();
+      getCartItem: (locationId, inventoryItemId, context) => {
+        const state = get();
+        const cartByLocation = getCartByContext(state, context);
         const locationCart = getLocationCart(cartByLocation, locationId);
 
         const quantityMode = locationCart.find(
@@ -1809,8 +1914,9 @@ export const useOrderStore = create<OrderState>()(
         return locationCart.find((item) => item.inventoryItemId === inventoryItemId);
       },
 
-      getLocationCartTotal: (locationId) => {
-        const { cartByLocation } = get();
+      getLocationCartTotal: (locationId, context) => {
+        const state = get();
+        const cartByLocation = getCartByContext(state, context);
         const locationCart = getLocationCart(cartByLocation, locationId);
 
         return locationCart.reduce((total, item) => {
@@ -1821,32 +1927,36 @@ export const useOrderStore = create<OrderState>()(
         }, 0);
       },
 
-      getTotalCartCount: () => {
-        const { cartByLocation } = get();
+      getTotalCartCount: (context) => {
+        const state = get();
+        const cartByLocation = getCartByContext(state, context);
         return Object.values(cartByLocation).reduce((total, rawItems) => {
           const items = normalizeLocationCart(rawItems);
           return total + items.length;
         }, 0);
       },
 
-      getCartLocationIds: () => {
-        const { cartByLocation } = get();
+      getCartLocationIds: (context) => {
+        const state = get();
+        const cartByLocation = getCartByContext(state, context);
         return Object.keys(cartByLocation).filter((locId) => {
           const items = normalizeLocationCart(cartByLocation[locId]);
           return items.length > 0;
         });
       },
 
-      hasUndecidedRemaining: (locationId) => {
-        const { cartByLocation } = get();
+      hasUndecidedRemaining: (locationId, context) => {
+        const state = get();
+        const cartByLocation = getCartByContext(state, context);
         const locationCart = getLocationCart(cartByLocation, locationId);
         return locationCart.some(
           (item) => item.inputMode === 'remaining' && (item.decidedQuantity === null || item.decidedQuantity < 0)
         );
       },
 
-      getUndecidedRemainingItems: (locationId) => {
-        const { cartByLocation } = get();
+      getUndecidedRemainingItems: (locationId, context) => {
+        const state = get();
+        const cartByLocation = getCartByContext(state, context);
         const locationCart = getLocationCart(cartByLocation, locationId);
         return locationCart.filter(
           (item) => item.inputMode === 'remaining' && (item.decidedQuantity === null || item.decidedQuantity < 0)
@@ -1972,8 +2082,10 @@ export const useOrderStore = create<OrderState>()(
         }
       },
 
-      createOrder: async (locationId, userId) => {
-        const { cartByLocation, clearLocationCart } = get();
+      createOrder: async (locationId, userId, context) => {
+        const resolvedContext = normalizeCartContext(context);
+        const { clearLocationCart } = get();
+        const cartByLocation = getCartByContext(get(), resolvedContext);
         const locationCart = getLocationCart(cartByLocation, locationId);
 
         if (locationCart.length === 0) {
@@ -2011,15 +2123,17 @@ export const useOrderStore = create<OrderState>()(
 
           await insertOrderItemsWithFallback(orderItems);
 
-          clearLocationCart(locationId);
+          clearLocationCart(locationId, resolvedContext);
           return order;
         } finally {
           set({ isLoading: false });
         }
       },
 
-      createAndSubmitOrder: async (locationId, userId) => {
-        const { cartByLocation, clearLocationCart } = get();
+      createAndSubmitOrder: async (locationId, userId, context) => {
+        const resolvedContext = normalizeCartContext(context);
+        const { clearLocationCart } = get();
+        const cartByLocation = getCartByContext(get(), resolvedContext);
         const locationCart = getLocationCart(cartByLocation, locationId);
 
         if (locationCart.length === 0) {
@@ -2069,7 +2183,7 @@ export const useOrderStore = create<OrderState>()(
             order_items: createdItems || [],
           };
 
-          clearLocationCart(locationId);
+          clearLocationCart(locationId, resolvedContext);
           set({ currentOrder: orderWithDetails });
           return orderWithDetails;
         } finally {
@@ -2839,7 +2953,7 @@ export const useOrderStore = create<OrderState>()(
         }
       },
 
-      fetchPendingFulfillmentOrders: async () => {
+      fetchPendingFulfillmentOrders: async (locationIds) => {
         perfMark('fetchPendingFulfillmentOrders');
         set({ isFulfillmentLoading: true });
         try {
@@ -2858,6 +2972,7 @@ export const useOrderStore = create<OrderState>()(
           const result = await loadPendingFulfillmentData({
             consumedOrderItemIds,
             includeInventoryAudit: __DEV__,
+            locationIds,
           });
           set({ orders: result.orders });
         } finally {
@@ -3661,6 +3776,7 @@ export const useOrderStore = create<OrderState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         cartByLocation: state.cartByLocation,
+        managerCartByLocation: state.managerCartByLocation,
         supplierDrafts: state.supplierDrafts,
         orderLaterQueue: state.orderLaterQueue,
         pastOrders: state.pastOrders,
@@ -3675,6 +3791,10 @@ export const useOrderStore = create<OrderState>()(
             persisted.cartByLocation && typeof persisted.cartByLocation === 'object'
               ? (persisted.cartByLocation as CartByLocation)
               : currentState.cartByLocation,
+          managerCartByLocation:
+            persisted.managerCartByLocation && typeof persisted.managerCartByLocation === 'object'
+              ? (persisted.managerCartByLocation as CartByLocation)
+              : currentState.managerCartByLocation,
           supplierDrafts: normalizeSupplierDrafts((persistedState as any)?.supplierDrafts),
           orderLaterQueue: normalizeOrderLaterQueue((persistedState as any)?.orderLaterQueue),
           pastOrders: normalizePastOrders((persistedState as any)?.pastOrders),
