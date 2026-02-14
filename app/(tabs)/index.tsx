@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Sparkles } from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useShallow } from 'zustand/react/shallow';
@@ -56,6 +57,18 @@ const CATEGORY_ICONS: Record<ItemCategory, keyof typeof Ionicons.glyphMap> = {
   sauces: 'water-outline',
   alcohol: 'wine-outline',
   packaging: 'archive-outline',
+};
+
+const CATEGORY_ICON_THEMES: Record<ItemCategory, { background: string; icon: string }> = {
+  fish: { background: '#DBEAFE', icon: '#2563EB' },
+  protein: { background: '#FEE2E2', icon: '#DC2626' },
+  produce: { background: '#DCFCE7', icon: '#16A34A' },
+  dry: { background: '#FEF3C7', icon: '#D97706' },
+  dairy_cold: { background: '#EDE9FE', icon: '#7C3AED' },
+  frozen: { background: '#CFFAFE', icon: '#0891B2' },
+  sauces: { background: '#FCE7F3', icon: '#DB2777' },
+  alcohol: { background: '#E0E7FF', icon: '#4F46E5' },
+  packaging: { background: '#E5E7EB', icon: '#4B5563' },
 };
 
 const SUPPLIER_CATEGORIES: { value: SupplierCategory; label: string }[] = [
@@ -363,9 +376,9 @@ export default function OrderScreen() {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+    <SafeAreaView className="flex-1 bg-[#FAFAFA]" edges={['top', 'left', 'right']}>
       {/* Header */}
-      <View className="bg-white border-b border-gray-100">
+      <View className="bg-[#FAFAFA]/90 border-b border-gray-100">
         <View
           className="flex-row items-center justify-between"
           style={{
@@ -380,9 +393,8 @@ export default function OrderScreen() {
           <View className="flex-row items-center flex-1 justify-end" style={{ marginLeft: ds.spacing(8) }}>
             <TouchableOpacity
               onPress={toggleLocationDropdown}
-              className="bg-gray-100 flex-row items-center"
+              className="bg-gray-100 flex-row items-center rounded-full"
               style={{
-                borderRadius: headerIconButtonSize / 2,
                 minHeight: headerIconButtonSize,
                 paddingHorizontal: ds.spacing(12),
                 marginRight: ds.spacing(8),
@@ -392,12 +404,12 @@ export default function OrderScreen() {
             >
               <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
               <Text
-                className="text-gray-900 font-medium"
+                className="text-gray-800 font-bold"
                 style={{
                   fontSize: ds.fontSize(15),
                   marginLeft: ds.spacing(8),
                   marginRight: ds.spacing(6),
-                  maxWidth: ds.spacing(140),
+                  maxWidth: ds.spacing(170),
                 }}
                 numberOfLines={1}
                 ellipsizeMode="tail"
@@ -414,7 +426,10 @@ export default function OrderScreen() {
             <TouchableOpacity
               onPress={() => router.push('/cart' as any)}
               className="bg-gray-100 rounded-full items-center justify-center relative"
-              style={{ width: headerIconButtonSize, height: headerIconButtonSize }}
+              style={{
+                width: headerIconButtonSize,
+                height: headerIconButtonSize,
+              }}
               activeOpacity={0.8}
             >
               <Ionicons name="cart-outline" size={ds.icon(20)} color={colors.gray[700]} />
@@ -441,7 +456,16 @@ export default function OrderScreen() {
         {/* Location Dropdown Menu */}
         {showLocationDropdown && (
           <View className="border-t border-gray-100" style={{ paddingHorizontal: ds.spacing(12), paddingBottom: ds.spacing(8) }}>
-            <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+            <View
+              className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
+              style={{
+                shadowColor: '#111827',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.06,
+                shadowRadius: 10,
+                elevation: 3,
+              }}
+            >
               {locations.map((loc, index) => {
                 const isSelected = location?.id === loc.id;
                 const cartCount = getLocationCartTotal(loc.id);
@@ -528,8 +552,23 @@ export default function OrderScreen() {
       )}
 
       {/* Search Bar */}
-      <View className="bg-white border-b border-gray-100" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}>
-        <View className="flex-row items-center bg-gray-100" style={{ borderRadius: ds.radius(12), paddingHorizontal: ds.spacing(16), height: ds.buttonH }}>
+      <View
+        className="bg-[#FAFAFA]/90 border-b border-gray-100"
+        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
+      >
+        <View
+          className="flex-row items-center bg-white border border-gray-100 rounded-2xl"
+          style={{
+            borderRadius: ds.radius(16),
+            paddingHorizontal: ds.spacing(14),
+            height: ds.buttonH,
+            shadowColor: '#111827',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.06,
+            shadowRadius: 10,
+            elevation: 3,
+          }}
+        >
           <Ionicons name="search-outline" size={ds.icon(20)} color="#9CA3AF" />
           <TextInput
             className="flex-1 ml-2 text-gray-900"
@@ -551,21 +590,26 @@ export default function OrderScreen() {
             accessibilityLabel="Voice order"
             accessibilityRole="button"
             style={{
-              width: Math.max(44, ds.icon(32)),
-              height: Math.max(44, ds.icon(32)),
-              borderRadius: ds.icon(16),
-              backgroundColor: '#F97316',
-              alignItems: 'center',
-              justifyContent: 'center',
+              width: Math.max(44, ds.icon(34)),
+              height: Math.max(44, ds.icon(34)),
+              borderRadius: ds.radius(12),
               marginLeft: ds.spacing(8),
+              overflow: 'hidden',
               shadowColor: '#F97316',
               shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.3,
+              shadowOpacity: 0.24,
               shadowRadius: 8,
               elevation: 4,
             }}
           >
-            <Sparkles size={ds.icon(16)} color="#FFFFFF" />
+            <LinearGradient
+              colors={['#FB923C', '#F97316']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Sparkles size={ds.icon(16)} color="#FFFFFF" />
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </View>
@@ -585,35 +629,47 @@ export default function OrderScreen() {
           <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(12), marginBottom: ds.spacing(12) }}>
             Browse by Category
           </Text>
-          <View className="flex-row flex-wrap justify-between" style={{ gap: ds.spacing(10) }}>
+          <View className="flex-row flex-wrap justify-between" style={{ gap: ds.spacing(12) }}>
             {categories.map((cat) => {
-              const catColor = categoryColors[cat] || '#6B7280';
+              const iconTheme = CATEGORY_ICON_THEMES[cat] || {
+                background: '#E5E7EB',
+                icon: '#4B5563',
+              };
               return (
                 <TouchableOpacity
                   key={cat}
                   onPress={() => handleSelectCategory(cat)}
-                  className="bg-white border border-gray-100"
+                  className="bg-white border border-gray-100 rounded-3xl"
                   style={{
                     width: '48%',
-                    padding: ds.cardPad,
-                    borderRadius: ds.radius(14),
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 1 },
-                    shadowOpacity: 0.05,
-                    shadowRadius: 4,
-                    elevation: 2,
+                    paddingHorizontal: ds.spacing(14),
+                    paddingVertical: ds.spacing(16),
+                    borderRadius: Math.max(ds.radius(18), 24),
+                    shadowColor: '#111827',
+                    shadowOffset: { width: 0, height: 6 },
+                    shadowOpacity: 0.06,
+                    shadowRadius: 12,
+                    elevation: 3,
                   }}
+                  activeOpacity={0.85}
                 >
                   <View
                     className="rounded-xl items-center justify-center"
-                    style={{ width: ds.icon(40), height: ds.icon(40), backgroundColor: catColor + '20', marginBottom: ds.spacing(12) }}
+                    style={{
+                      width: ds.icon(42),
+                      height: ds.icon(42),
+                      backgroundColor: iconTheme.background,
+                      marginBottom: ds.spacing(12),
+                    }}
                   >
-                    <Ionicons name={CATEGORY_ICONS[cat]} size={ds.icon(20)} color={catColor} />
+                    <Ionicons name={CATEGORY_ICONS[cat]} size={ds.icon(20)} color={iconTheme.icon} />
                   </View>
-                  <Text className="font-semibold text-gray-900" numberOfLines={1} style={{ fontSize: ds.fontSize(13) }}>
+                  <Text className="font-bold text-gray-800" numberOfLines={1} style={{ fontSize: ds.fontSize(14) }}>
                     {CATEGORY_LABELS[cat]}
                   </Text>
-                  <Text className="text-gray-400" style={{ fontSize: ds.fontSize(11), marginTop: ds.spacing(4) }}>View items</Text>
+                  <Text className="text-gray-500" style={{ fontSize: ds.fontSize(11), marginTop: ds.spacing(5) }}>
+                    View Items
+                  </Text>
                 </TouchableOpacity>
               );
             })}
