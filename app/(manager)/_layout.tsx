@@ -9,16 +9,16 @@ import { supabase } from '@/lib/supabase';
 
 export default function ManagerLayout() {
   const { session, profile, user } = useAuthStore();
-  const { getTotalCartCount } = useOrderStore();
+  const cartCount = useOrderStore((state) => state.getTotalCartCount('manager'));
   const voiceCartCount = useTunaSpecialistStore((state) => state.cartItems.length);
+  const uiScale = useDisplayStore((state) => state.uiScale);
+  const scaledFontSize = useDisplayStore((state) => state.scaledFontSize);
   const [pendingFulfillmentCount, setPendingFulfillmentCount] = useState(0);
   const badgeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const badgeChannelRef = useRef<RealtimeChannel | null>(null);
   const badgePollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const ds = useDisplayStore();
-  const cartCount = getTotalCartCount('manager');
-  const isLarge = ds.uiScale === 'large';
-  const isCompact = ds.uiScale === 'compact';
+  const isLarge = uiScale === 'large';
+  const isCompact = uiScale === 'compact';
   const metadataRole =
     typeof session?.user?.user_metadata?.role === 'string'
       ? session.user.user_metadata.role
@@ -154,7 +154,7 @@ export default function ManagerLayout() {
           height: Math.round(90 * tabBarScale),
         },
         tabBarLabelStyle: {
-          fontSize: Math.max(10, ds.scaledFontSize(10)),
+          fontSize: Math.max(10, scaledFontSize(10)),
           fontWeight: '600',
           marginTop: Math.round(4 * tabBarScale),
         },
@@ -198,7 +198,7 @@ export default function ManagerLayout() {
                     paddingHorizontal: Math.round(4 * tabBarScale),
                   }}
                 >
-                  <Text style={{ color: 'white', fontSize: Math.max(9, ds.scaledFontSize(9)), fontWeight: 'bold' }}>
+                  <Text style={{ color: 'white', fontSize: Math.max(9, scaledFontSize(9)), fontWeight: 'bold' }}>
                     {cartCount > 99 ? '99+' : cartCount}
                   </Text>
                 </View>
@@ -231,7 +231,7 @@ export default function ManagerLayout() {
                     paddingHorizontal: Math.round(4 * tabBarScale),
                   }}
                 >
-                  <Text style={{ color: 'white', fontSize: Math.max(9, ds.scaledFontSize(9)), fontWeight: 'bold' }}>
+                  <Text style={{ color: 'white', fontSize: Math.max(9, scaledFontSize(9)), fontWeight: 'bold' }}>
                     {pendingFulfillmentCount > 99 ? '99+' : pendingFulfillmentCount}
                   </Text>
                 </View>
@@ -253,7 +253,7 @@ export default function ManagerLayout() {
           tabBarBadgeStyle: {
             backgroundColor: '#F97316',
             color: '#FFFFFF',
-            fontSize: Math.max(9, ds.scaledFontSize(9)),
+            fontSize: Math.max(9, scaledFontSize(9)),
           },
         }}
       />

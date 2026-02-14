@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -103,9 +103,9 @@ export default function OrderScreen() {
     setSearchQuery: state.setSearchQuery,
     addItem: state.addItem,
   })));
-  const { getLocationCartTotal, getTotalCartCount } = useOrderStore(useShallow((state) => ({
+  const { getLocationCartTotal, totalCartCount } = useOrderStore(useShallow((state) => ({
     getLocationCartTotal: state.getLocationCartTotal,
-    getTotalCartCount: state.getTotalCartCount,
+    totalCartCount: state.getTotalCartCount('employee'),
   })));
 
   const [refreshing, setRefreshing] = useState(false);
@@ -122,7 +122,7 @@ export default function OrderScreen() {
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
   const [unreadReminderCount, setUnreadReminderCount] = useState(0);
   const [latestReminderMessage, setLatestReminderMessage] = useState<string | null>(null);
-  const totalCartCount = getTotalCartCount();
+  const lastNotifiedReminderIdRef = useRef<string | null>(null);
   const headerIconButtonSize = Math.max(44, ds.icon(40));
   const badgeSize = Math.max(18, ds.icon(20));
   const headerLogoSize = Math.max(34, ds.icon(36));
@@ -164,12 +164,21 @@ export default function OrderScreen() {
     }
 
     const rows = data ?? [];
+    const latestReminderId =
+      typeof rows[0]?.id === 'string' && rows[0].id.trim().length > 0 ? rows[0].id : null;
     setUnreadReminderCount(rows.length);
     setLatestReminderMessage(rows[0]?.body ?? null);
 
     // Trigger a local notification so employees see it even if they backgrounded the app
-    if (rows.length > 0) {
+    if (
+      rows.length > 0 &&
+      latestReminderId &&
+      latestReminderId !== lastNotifiedReminderIdRef.current
+    ) {
+      lastNotifiedReminderIdRef.current = latestReminderId;
       triggerPendingReminderLocalNotification(rows[0]?.body).catch(() => {});
+    } else if (rows.length === 0) {
+      lastNotifiedReminderIdRef.current = null;
     }
   }, [user?.id]);
 
@@ -225,6 +234,7 @@ export default function OrderScreen() {
 
     setUnreadReminderCount(0);
     setLatestReminderMessage(null);
+    lastNotifiedReminderIdRef.current = null;
   }, [unreadReminderCount, user?.id]);
 
   const toggleLocationDropdown = useCallback(() => {

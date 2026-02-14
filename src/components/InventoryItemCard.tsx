@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { InventoryItem, UnitType } from '@/types';
@@ -14,10 +14,13 @@ interface InventoryItemCardProps {
 
 // Memoized to prevent re-renders in list virtualization
 function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
-  const { addToCart, getCartItem, updateCartItem, removeFromCart } =
-    useOrderStore();
+  const addToCart = useOrderStore((state) => state.addToCart);
+  const updateCartItem = useOrderStore((state) => state.updateCartItem);
+  const removeFromCart = useOrderStore((state) => state.removeFromCart);
+  const cartItem = useOrderStore(
+    useCallback((state) => state.getCartItem(locationId, item.id), [locationId, item.id])
+  );
   const ds = useScaledStyles();
-  const cartItem = getCartItem(locationId, item.id);
   const [isExpanded, setIsExpanded] = useState(false);
   const [inputMode, setInputMode] = useState<OrderInputMode>(cartItem?.inputMode ?? 'quantity');
   const [quantity, setQuantity] = useState(

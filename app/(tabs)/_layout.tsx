@@ -5,10 +5,11 @@ import { useAuthStore, useOrderStore, useDraftStore, useTunaSpecialistStore, use
 
 export default function TabsLayout() {
   const { session, profile } = useAuthStore();
-  const cartTotal = useOrderStore((state) => state.getCartTotal());
+  const cartTotal = useOrderStore((state) => state.getTotalCartCount('employee'));
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
   const voiceCartCount = useTunaSpecialistStore((state) => state.cartItems.length);
-  const ds = useDisplayStore();
+  const uiScale = useDisplayStore((state) => state.uiScale);
+  const scaledFontSize = useDisplayStore((state) => state.scaledFontSize);
 
   if (!session) {
     return <Redirect href="/(auth)/login" />;
@@ -35,12 +36,12 @@ export default function TabsLayout() {
           height: 90,
         },
         tabBarLabelStyle: {
-          fontSize: Math.max(10, ds.scaledFontSize(10)),
+          fontSize: Math.max(10, scaledFontSize(10)),
           fontWeight: '600',
           marginTop: 4,
         },
         tabBarIconStyle: {
-          transform: [{ scale: ds.uiScale === 'large' ? 1.15 : ds.uiScale === 'compact' ? 0.95 : 1 }],
+          transform: [{ scale: uiScale === 'large' ? 1.15 : uiScale === 'compact' ? 0.95 : 1 }],
         },
         headerShown: false,
       }}

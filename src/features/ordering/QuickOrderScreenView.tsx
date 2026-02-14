@@ -93,10 +93,10 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
     fetchItems: state.fetchItems,
     addItem: state.addItem,
   })));
-  const { addToCart, getTotalCartCount, getLocationCartTotal } = useOrderStore(useShallow((state) => ({
+  const { addToCart, getLocationCartTotal, totalCartCount } = useOrderStore(useShallow((state) => ({
     addToCart: state.addToCart,
-    getTotalCartCount: state.getTotalCartCount,
     getLocationCartTotal: state.getLocationCartTotal,
+    totalCartCount: state.getTotalCartCount(scope),
   })));
 
   // Selected location for ordering
@@ -184,7 +184,6 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   }, []);
 
   // Total cart count
-  const totalCartCount = getTotalCartCount(scope);
   const locationLabel = getLocationLabel(selectedLocation);
   const headerIconButtonSize = Math.max(44, ds.icon(40));
   const badgeSize = Math.max(18, ds.icon(20));

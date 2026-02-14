@@ -2681,6 +2681,7 @@ export const useOrderStore = create<OrderState>()(
       flushPendingPastOrderSync: async (managerId) => {
         const queueSnapshot = [...get().pendingPastOrderSyncQueue];
         if (queueSnapshot.length === 0) return;
+        if (get().isPastOrderSyncing) return;
 
         set({ isPastOrderSyncing: true });
         try {

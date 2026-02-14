@@ -19,6 +19,7 @@ const OAUTH_REDIRECT_URI = AuthSession.makeRedirectUri({
 });
 
 let profileRealtimeChannel: RealtimeChannel | null = null;
+let authStateSubscription: { unsubscribe: () => void } | null = null;
 let warnedMissingLastActiveColumn = false;
 let warnedMissingEmailColumn = false;
 const warnedMissingProfileColumns = new Set<string>();
@@ -30,6 +31,12 @@ function clearProfileSubscription() {
   if (!profileRealtimeChannel) return;
   supabase.removeChannel(profileRealtimeChannel);
   profileRealtimeChannel = null;
+}
+
+function clearAuthStateSubscription() {
+  if (!authStateSubscription) return;
+  authStateSubscription.unsubscribe();
+  authStateSubscription = null;
 }
 
 function subscribeToProfileChanges(userId: string, onChange: () => Promise<unknown>) {
@@ -457,53 +464,59 @@ export const useAuthStore = create<AuthState>()(
             await clearUserScopedClientState();
           }
 
-          // Listen for auth changes
-          supabase.auth.onAuthStateChange(async (event: any, session: Session | null) => {
-            const nextUserId = session?.user?.id ?? null;
-            const persistedStoreUserId = get().user?.id ?? null;
-            const trackedUserId = activeSessionUserId;
-            set({ session });
+          // Listen for auth changes (ensure exactly one active listener).
+          clearAuthStateSubscription();
+          const authListener = supabase.auth.onAuthStateChange(async (event: any, session: Session | null) => {
+            try {
+              const nextUserId = session?.user?.id ?? null;
+              const persistedStoreUserId = get().user?.id ?? null;
+              const trackedUserId = activeSessionUserId;
+              set({ session });
 
-            if (
-              (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') &&
-              session?.user
-            ) {
               if (
-                (trackedUserId && trackedUserId !== nextUserId) ||
-                (persistedStoreUserId && persistedStoreUserId !== nextUserId)
+                (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') &&
+                session?.user
               ) {
+                if (
+                  (trackedUserId && trackedUserId !== nextUserId) ||
+                  (persistedStoreUserId && persistedStoreUserId !== nextUserId)
+                ) {
+                  await clearUserScopedClientState();
+                }
+                activeSessionUserId = nextUserId;
+
+                if (event === 'SIGNED_IN') {
+                  // Small delay to ensure the trigger has created the user profile.
+                  await new Promise((resolve) => setTimeout(resolve, 500));
+                }
+
+                const { suspended } = await refreshProfileAndHandleSuspension({
+                  userId: session.user.id,
+                  shouldThrowOnSuspended: false,
+                });
+
+                if (suspended) return;
+
+                await get().fetchUser();
+                subscribeToProfileChanges(session.user.id, async () => {
+                  await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
+                });
+              } else if (event === 'SIGNED_OUT') {
+                clearProfileSubscription();
+                clearSessionState();
+                activeSessionUserId = null;
+                await clearUserScopedClientState();
+              } else if (!session) {
+                clearProfileSubscription();
+                clearSessionState();
+                activeSessionUserId = null;
                 await clearUserScopedClientState();
               }
-              activeSessionUserId = nextUserId;
-
-              if (event === 'SIGNED_IN') {
-                // Small delay to ensure the trigger has created the user profile.
-                await new Promise((resolve) => setTimeout(resolve, 500));
-              }
-
-              const { suspended } = await refreshProfileAndHandleSuspension({
-                userId: session.user.id,
-                shouldThrowOnSuspended: false,
-              });
-
-              if (suspended) return;
-
-              await get().fetchUser();
-              subscribeToProfileChanges(session.user.id, async () => {
-                await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
-              });
-            } else if (event === 'SIGNED_OUT') {
-              clearProfileSubscription();
-              clearSessionState();
-              activeSessionUserId = null;
-              await clearUserScopedClientState();
-            } else if (!session) {
-              clearProfileSubscription();
-              clearSessionState();
-              activeSessionUserId = null;
-              await clearUserScopedClientState();
+            } catch (error) {
+              console.error('Failed to handle auth state change:', error);
             }
           });
+          authStateSubscription = authListener.data.subscription;
         } finally {
           set({ isLoading: false, isInitialized: true });
         }

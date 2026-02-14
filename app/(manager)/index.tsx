@@ -57,8 +57,7 @@ export default function ManagerDashboard() {
   const ds = useScaledStyles();
   const { locations, fetchLocations, user, profile, session } = useAuthStore();
   const { hapticFeedback } = useDisplayStore();
-  const { getTotalCartCount } = useOrderStore();
-  const cartCount = getTotalCartCount('manager');
+  const cartCount = useOrderStore((state) => state.getTotalCartCount('manager'));
   const headerIconButtonSize = Math.max(44, ds.icon(40));
   const badgeSize = Math.max(18, ds.icon(20));
   const headerLogoSize = Math.max(34, ds.icon(36));

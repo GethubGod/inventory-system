@@ -755,14 +755,27 @@ export default function FulfillmentConfirmationScreen() {
     setExportSettings({});
   }, [supplierId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const inventoryItemLookupSignature = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [...items, ...remainingItems]
+            .map((entry) =>
+              typeof entry.inventoryItemId === 'string' ? entry.inventoryItemId.trim() : ''
+            )
+            .filter((id) => id.length > 0)
+        )
+      )
+        .sort()
+        .join('|'),
+    [items, remainingItems]
+  );
+
   // Batch-load inventory item unit info for unit switching
   useEffect(() => {
-    const ids = [
-      ...new Set([
-        ...items.map((i) => i.inventoryItemId),
-        ...remainingItems.map((i) => i.inventoryItemId),
-      ]),
-    ].filter((id) => id && id.length > 0);
+    const ids = inventoryItemLookupSignature
+      ? inventoryItemLookupSignature.split('|').filter((id) => id.length > 0)
+      : [];
     if (ids.length === 0) return;
 
     let active = true;
@@ -782,15 +795,12 @@ export default function FulfillmentConfirmationScreen() {
     return () => {
       active = false;
     };
-  }, [items, remainingItems]);
+  }, [inventoryItemLookupSignature]);
 
   useEffect(() => {
-    const ids = [
-      ...new Set([
-        ...items.map((item) => item.inventoryItemId),
-        ...remainingItems.map((item) => item.inventoryItemId),
-      ]),
-    ].filter((id) => typeof id === 'string' && id.trim().length > 0);
+    const ids = inventoryItemLookupSignature
+      ? inventoryItemLookupSignature.split('|').filter((id) => id.length > 0)
+      : [];
 
     if (ids.length === 0) {
       setUnitConversionLookup({});
@@ -816,7 +826,7 @@ export default function FulfillmentConfirmationScreen() {
     return () => {
       active = false;
     };
-  }, [items, remainingItems]);
+  }, [inventoryItemLookupSignature]);
 
   const refreshFromSupplierSource = useCallback(async () => {
     if (!supplierId) return null;
