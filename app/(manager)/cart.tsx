@@ -1,12 +1,7 @@
 import React from 'react';
-import { CartScreenView } from '../(tabs)/cart';
+import { CartScreenView } from '@/features/cart/CartScreenView';
+import { MANAGER_ORDERING_MODE } from '@/features/ordering/modes';
 
 export default function ManagerCartScreen() {
-  return (
-    <CartScreenView
-      context="manager"
-      quickOrderRoute="/(manager)/quick-order"
-      browseRoute="/(manager)"
-    />
-  );
+  return <CartScreenView mode={MANAGER_ORDERING_MODE} />;
 }

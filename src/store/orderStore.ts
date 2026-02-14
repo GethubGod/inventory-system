@@ -18,7 +18,8 @@ import {
 } from '@/services/fulfillmentDataSource';
 
 export type OrderInputMode = 'quantity' | 'remaining';
-export type CartContext = 'employee' | 'manager';
+export type CartScope = 'employee' | 'manager';
+export type CartContext = CartScope;
 
 export interface CartItem {
   id: string;
@@ -332,13 +333,19 @@ interface OrderState {
     userId: string,
     context?: CartContext
   ) => Promise<OrderWithDetails>;
+  createAndSubmitOrderFromSourceLocation: (
+    sourceLocationId: string,
+    submitLocationId: string,
+    userId: string,
+    context?: CartContext
+  ) => Promise<OrderWithDetails>;
   submitOrder: (orderId: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: OrderStatus, fulfilledBy?: string) => Promise<void>;
   fulfillOrder: (orderId: string, fulfilledBy: string) => Promise<void>;
   cancelOrder: (orderId: string) => Promise<void>;
 
   // Fulfillment actions/state
-  loadFulfillmentData: (managerId?: string | null) => Promise<void>;
+  loadFulfillmentData: (managerId?: string | null, locationIds?: string[]) => Promise<void>;
   fetchPastOrders: (managerId?: string | null) => Promise<PastOrder[]>;
   fetchPastOrderById: (
     pastOrderId: string,
@@ -389,6 +396,7 @@ let pastOrderItemsTableAvailable: boolean | null = null;
 let pastOrderItemsNoteColumnAvailable: boolean | null = null;
 let orderItemsStatusColumnAvailable: boolean | null = null;
 let pastOrderSyncListenerInitialized = false;
+const orderLaterMoveInFlightIds = new Set<string>();
 
 const ORDER_ITEM_OPTIONAL_COLUMNS = [
   'input_mode',
@@ -436,14 +444,41 @@ function isSubmittableCartItem(item: CartItem): boolean {
   return getEffectiveQuantity(item) > 0;
 }
 
-function normalizeCartItem(raw: any): CartItem | null {
+function createLegacyCartItemId(
+  locationId: string,
+  inventoryItemId: string,
+  inputMode: OrderInputMode,
+  unitType: UnitType,
+  index: number
+): string {
+  return `legacy_cart_${locationId}_${inventoryItemId}_${inputMode}_${unitType}_${index}`;
+}
+
+function normalizeCartItem(
+  raw: any,
+  options?: {
+    locationId?: string;
+    index?: number;
+  }
+): CartItem | null {
   const inputMode: OrderInputMode = raw?.inputMode === 'remaining' ? 'remaining' : 'quantity';
   const unitType: UnitType = raw?.unitType === 'base' ? 'base' : 'pack';
-  const id = typeof raw?.id === 'string' && raw.id ? raw.id : createCartItemId();
   const inventoryItemId =
     typeof raw?.inventoryItemId === 'string' && raw.inventoryItemId ? raw.inventoryItemId : null;
 
   if (!inventoryItemId) return null;
+
+  const rawId = typeof raw?.id === 'string' ? raw.id.trim() : '';
+  const id =
+    rawId.length > 0
+      ? rawId
+      : createLegacyCartItemId(
+        options?.locationId ?? 'unknown',
+        inventoryItemId,
+        inputMode,
+        unitType,
+        options?.index ?? 0
+      );
 
   if (inputMode === 'quantity') {
     const legacyQuantity = toValidNumber(raw?.quantity);
@@ -491,15 +526,31 @@ function normalizeCartItem(raw: any): CartItem | null {
   return item;
 }
 
-function normalizeLocationCart(rawCart: unknown): CartItem[] {
+function normalizeLocationCart(rawCart: unknown, locationId = 'unknown'): CartItem[] {
   if (!Array.isArray(rawCart)) return [];
   return rawCart
-    .map((item) => normalizeCartItem(item))
+    .map((item, index) => normalizeCartItem(item, { locationId, index }))
     .filter((item): item is CartItem => Boolean(item));
 }
 
 function getLocationCart(cartByLocation: CartByLocation, locationId: string): CartItem[] {
-  return normalizeLocationCart(cartByLocation[locationId] || []);
+  return normalizeLocationCart(cartByLocation[locationId] || [], locationId);
+}
+
+function normalizeCartByLocation(rawCartByLocation: unknown): CartByLocation {
+  if (!rawCartByLocation || typeof rawCartByLocation !== 'object') return {};
+
+  const source = rawCartByLocation as Record<string, unknown>;
+  const next: CartByLocation = {};
+
+  Object.entries(source).forEach(([locationId, rawCart]) => {
+    const normalized = normalizeLocationCart(rawCart, locationId);
+    if (normalized.length > 0) {
+      next[locationId] = normalized;
+    }
+  });
+
+  return next;
 }
 
 function normalizeCartContext(context?: CartContext): CartContext {
@@ -1528,7 +1579,9 @@ export const useOrderStore = create<OrderState>()(
       // Legacy cart property - returns flattened cart for backward compatibility
       get cart() {
         const { cartByLocation } = get();
-        return Object.values(cartByLocation).flatMap((items) => normalizeLocationCart(items));
+        return Object.entries(cartByLocation).flatMap(([locationId, items]) =>
+          normalizeLocationCart(items, locationId)
+        );
       },
 
       addToCart: (locationId, inventoryItemId, quantity, unitType, options) => {
@@ -1787,7 +1840,9 @@ export const useOrderStore = create<OrderState>()(
         const resolvedContext = normalizeCartContext(context);
         const state = get();
         const cartByLocation = getCartByContext(state, resolvedContext);
-        const allItems = Object.values(cartByLocation).flatMap((items) => normalizeLocationCart(items));
+        const allItems = Object.entries(cartByLocation).flatMap(([locationId, items]) =>
+          normalizeLocationCart(items, locationId)
+        );
 
         if (allItems.length === 0) {
           return;
@@ -1930,8 +1985,8 @@ export const useOrderStore = create<OrderState>()(
       getTotalCartCount: (context) => {
         const state = get();
         const cartByLocation = getCartByContext(state, context);
-        return Object.values(cartByLocation).reduce((total, rawItems) => {
-          const items = normalizeLocationCart(rawItems);
+        return Object.entries(cartByLocation).reduce((total, [locationId, rawItems]) => {
+          const items = normalizeLocationCart(rawItems, locationId);
           return total + items.length;
         }, 0);
       },
@@ -1940,7 +1995,7 @@ export const useOrderStore = create<OrderState>()(
         const state = get();
         const cartByLocation = getCartByContext(state, context);
         return Object.keys(cartByLocation).filter((locId) => {
-          const items = normalizeLocationCart(cartByLocation[locId]);
+          const items = normalizeLocationCart(cartByLocation[locId], locId);
           return items.length > 0;
         });
       },
@@ -1966,8 +2021,8 @@ export const useOrderStore = create<OrderState>()(
       // Legacy getCartTotal - returns total across all locations
       getCartTotal: () => {
         const { cartByLocation } = get();
-        return Object.values(cartByLocation).reduce((total, rawItems) => {
-          const items = normalizeLocationCart(rawItems);
+        return Object.entries(cartByLocation).reduce((total, [locationId, rawItems]) => {
+          const items = normalizeLocationCart(rawItems, locationId);
           return total + items.length;
         }, 0);
       },
@@ -2184,6 +2239,71 @@ export const useOrderStore = create<OrderState>()(
           };
 
           clearLocationCart(locationId, resolvedContext);
+          set({ currentOrder: orderWithDetails });
+          return orderWithDetails;
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      createAndSubmitOrderFromSourceLocation: async (
+        sourceLocationId,
+        submitLocationId,
+        userId,
+        context
+      ) => {
+        const resolvedContext = normalizeCartContext(context);
+        const { clearLocationCart } = get();
+        const cartByLocation = getCartByContext(get(), resolvedContext);
+        const sourceLocationCart = getLocationCart(cartByLocation, sourceLocationId);
+
+        if (sourceLocationCart.length === 0) {
+          throw new Error('Cart is empty for this location');
+        }
+
+        const cartItemsForInsert = sourceLocationCart.filter(isSubmittableCartItem);
+        if (cartItemsForInsert.length === 0) {
+          throw new Error('All cart items are zero quantity. Update at least one item before submit.');
+        }
+
+        set({ isLoading: true });
+        try {
+          // Submit to the selected location, but only with source-cart items.
+          const orderResponse = await (supabase as any)
+            .from('orders')
+            .insert({
+              location_id: submitLocationId,
+              user_id: userId,
+              status: 'submitted',
+            })
+            .select(`
+              *,
+              location:locations(*)
+            `)
+            .single();
+
+          const order = orderResponse.data as any;
+          const orderError = orderResponse.error;
+
+          if (orderError) throw orderError;
+          if (!order?.id) throw new Error('Failed to create order');
+
+          const orderItemsToInsert: Omit<OrderItem, 'id' | 'created_at'>[] = cartItemsForInsert.map((item) =>
+            toOrderItemInsert(order.id, item)
+          );
+
+          const { data: createdItems } = await insertOrderItemsWithFallback(orderItemsToInsert, {
+            includeInventorySelect: true,
+          });
+
+          const orderWithDetails: OrderWithDetails = {
+            ...order,
+            user: { id: userId } as any,
+            order_items: createdItems || [],
+          };
+
+          // Clear only the source cart that was submitted.
+          clearLocationCart(sourceLocationId, resolvedContext);
           set({ currentOrder: orderWithDetails });
           return orderWithDetails;
         } finally {
@@ -2869,12 +2989,20 @@ export const useOrderStore = create<OrderState>()(
         return { order, items };
       },
 
-      loadFulfillmentData: async (managerId) => {
+      loadFulfillmentData: async (managerId, locationIds) => {
         perfMark('loadFulfillmentData');
         const userId =
           typeof managerId === 'string' && managerId.trim().length > 0
             ? managerId
             : null;
+        const normalizedLocationIds = Array.from(
+          new Set(
+            (locationIds || [])
+              .filter((id): id is string => typeof id === 'string')
+              .map((id) => id.trim())
+              .filter((id) => id.length > 0)
+          )
+        );
 
         set({ isFulfillmentLoading: true });
         try {
@@ -2883,24 +3011,81 @@ export const useOrderStore = create<OrderState>()(
           const nextPastOrders = await get().fetchPastOrders(userId);
           let nextOrderLaterQueue = get().orderLaterQueue;
 
-          if (userId && orderLaterItemsTableAvailable !== false) {
-            const { data, error } = await (supabase as any)
-              .from('order_later_items')
-              .select('*')
-              .eq('created_by', userId)
-              .eq('status', 'queued')
-              .order('scheduled_at', { ascending: true })
-              .limit(600);
+          if (orderLaterItemsTableAvailable !== false) {
+            const baseQuery = () =>
+              (supabase as any)
+                .from('order_later_items')
+                .select('*')
+                .eq('status', 'queued')
+                .order('scheduled_at', { ascending: true });
+            const rowsById = new Map<string, unknown>();
+            let hadSuccess = false;
+            let hadError = false;
 
-            if (error) {
-              if (isMissingTableError(error, 'order_later_items')) {
-                orderLaterItemsTableAvailable = false;
+            const mergeRows = (rows: unknown) => {
+              if (!Array.isArray(rows)) return;
+              rows.forEach((row) => {
+                const id = typeof (row as any)?.id === 'string' ? (row as any).id : '';
+                if (!id) return;
+                rowsById.set(id, row);
+              });
+            };
+
+            if (normalizedLocationIds.length > 0) {
+              const { data, error } = await baseQuery()
+                .in('location_id', normalizedLocationIds)
+                .limit(800);
+              if (error) {
+                hadError = true;
+                if (isMissingTableError(error, 'order_later_items')) {
+                  orderLaterItemsTableAvailable = false;
+                } else {
+                  console.warn('Unable to load shared order_later_items rows.', error);
+                }
               } else {
-                console.warn('Unable to load order_later_items, using local fallback.', error);
+                hadSuccess = true;
+                orderLaterItemsTableAvailable = true;
+                mergeRows(data);
               }
-            } else {
-              orderLaterItemsTableAvailable = true;
-              nextOrderLaterQueue = normalizeOrderLaterQueue(data || []);
+
+              if (userId) {
+                const { data: unassignedRows, error: unassignedError } = await baseQuery()
+                  .eq('created_by', userId)
+                  .is('location_id', null)
+                  .limit(200);
+                if (unassignedError) {
+                  hadError = true;
+                  if (!isMissingTableError(unassignedError, 'order_later_items')) {
+                    console.warn('Unable to load unassigned order_later_items rows.', unassignedError);
+                  }
+                } else {
+                  hadSuccess = true;
+                  orderLaterItemsTableAvailable = true;
+                  mergeRows(unassignedRows);
+                }
+              }
+            } else if (userId) {
+              const { data, error } = await baseQuery()
+                .eq('created_by', userId)
+                .limit(600);
+              if (error) {
+                hadError = true;
+                if (isMissingTableError(error, 'order_later_items')) {
+                  orderLaterItemsTableAvailable = false;
+                } else {
+                  console.warn('Unable to load order_later_items, using local fallback.', error);
+                }
+              } else {
+                hadSuccess = true;
+                orderLaterItemsTableAvailable = true;
+                mergeRows(data);
+              }
+            }
+
+            if (hadSuccess) {
+              nextOrderLaterQueue = normalizeOrderLaterQueue(Array.from(rowsById.values()));
+            } else if (hadError && orderLaterItemsTableAvailable !== false) {
+              console.warn('Falling back to local order-later queue.');
             }
           }
 
@@ -3182,6 +3367,81 @@ export const useOrderStore = create<OrderState>()(
             quantity: normalizedQuantity,
           },
         };
+        const normalizedSourceOrderItemIds =
+          normalizedInput.sourceOrderItemIds.length > 0
+            ? normalizedInput.sourceOrderItemIds
+            : normalizedInput.sourceOrderItemId
+              ? [normalizedInput.sourceOrderItemId]
+              : [];
+
+        if (normalizedSourceOrderItemIds.length > 0) {
+          const sourceIdSet = new Set(normalizedSourceOrderItemIds);
+          const hasSourceOverlap = (item: OrderLaterItem) => {
+            if (item.status !== 'queued') return false;
+            if (item.sourceOrderItemId && sourceIdSet.has(item.sourceOrderItemId)) return true;
+            return item.sourceOrderItemIds.some((id) => sourceIdSet.has(id));
+          };
+
+          const localExisting = get().orderLaterQueue.find(hasSourceOverlap);
+          if (localExisting) {
+            return localExisting;
+          }
+
+          if (orderLaterItemsTableAvailable !== false) {
+            let remoteRows: any[] = [];
+
+            const { data: sourceOrderItemRows, error: sourceOrderItemError } = await (supabase as any)
+              .from('order_later_items')
+              .select('*')
+              .in('status', ['queued', 'added'])
+              .in('source_order_item_id', normalizedSourceOrderItemIds)
+              .order('created_at', { ascending: false })
+              .limit(1);
+
+            if (sourceOrderItemError) {
+              if (isMissingTableError(sourceOrderItemError, 'order_later_items')) {
+                orderLaterItemsTableAvailable = false;
+              } else {
+                console.warn('Unable to check order_later_items duplicates (source_order_item_id).', sourceOrderItemError);
+              }
+            } else {
+              orderLaterItemsTableAvailable = true;
+              remoteRows = Array.isArray(sourceOrderItemRows) ? sourceOrderItemRows : [];
+            }
+
+            if (remoteRows.length === 0 && orderLaterItemsTableAvailable !== false) {
+              const { data: overlapRows, error: overlapError } = await (supabase as any)
+                .from('order_later_items')
+                .select('*')
+                .in('status', ['queued', 'added'])
+                .overlaps('original_order_item_ids', normalizedSourceOrderItemIds)
+                .order('created_at', { ascending: false })
+                .limit(1);
+
+              if (overlapError) {
+                if (isMissingTableError(overlapError, 'order_later_items')) {
+                  orderLaterItemsTableAvailable = false;
+                } else if (!isMissingColumnError(overlapError, 'original_order_item_ids')) {
+                  console.warn('Unable to check order_later_items duplicates (original_order_item_ids).', overlapError);
+                }
+              } else {
+                orderLaterItemsTableAvailable = true;
+                remoteRows = Array.isArray(overlapRows) ? overlapRows : [];
+              }
+            }
+
+            const remoteExisting = normalizeOrderLaterItem(remoteRows[0]);
+            if (remoteExisting && hasSourceOverlap(remoteExisting)) {
+              set((state) => ({
+                orderLaterQueue: normalizeOrderLaterQueue([
+                  remoteExisting,
+                  ...state.orderLaterQueue.filter((row) => row.id !== remoteExisting.id),
+                ]),
+              }));
+              return remoteExisting;
+            }
+          }
+        }
 
         let orderLaterItem: OrderLaterItem | null = null;
 
@@ -3409,68 +3669,130 @@ export const useOrderStore = create<OrderState>()(
       },
 
       moveOrderLaterItemToSupplierDraft: async (itemId, supplierId, locationGroup, options) => {
-        const queuedItem = get().orderLaterQueue.find((item) => item.id === itemId);
-        if (!queuedItem) return null;
-
-        const payload = toJsonObject(queuedItem.payload);
-        const quantityFromPayload = toValidNumber(payload.quantity);
-        const quantityFromOption = toValidNumber(options?.quantity);
-        const quantity = Math.max(
-          0,
-          quantityFromOption ?? queuedItem.quantity ?? quantityFromPayload ?? 1
-        );
-
-        const draftItem = get().addSupplierDraftItem({
-          supplierId,
-          inventoryItemId: queuedItem.itemId,
-          name: queuedItem.itemName,
-          category:
-            typeof payload.category === 'string' && payload.category.trim().length > 0
-              ? payload.category
-              : 'dry',
-          quantity,
-          unitType: payload.unitType === 'pack' ? 'pack' : 'base',
-          unitLabel:
-            typeof payload.unitLabel === 'string' && payload.unitLabel.trim().length > 0
-              ? payload.unitLabel
-              : queuedItem.unit,
-          locationGroup,
-          locationId: options?.locationId ?? queuedItem.locationId,
-          locationName: options?.locationName ?? queuedItem.locationName,
-          note: queuedItem.notes,
-          sourceOrderLaterItemId: queuedItem.id,
-        });
-
-        await cancelOrderLaterNotification(queuedItem.notificationId);
-
-        set((state) => ({
-          orderLaterQueue: state.orderLaterQueue.filter((item) => item.id !== itemId),
-        }));
-
-        if (orderLaterItemsTableAvailable !== false) {
-          const { error } = await (supabase as any)
-            .from('order_later_items')
-            .update({
-              status: 'added',
-              added_at: new Date().toISOString(),
-              preferred_supplier_id: supplierId,
-              preferred_location_group: locationGroup,
-              notification_id: null,
-            })
-            .eq('id', itemId);
-
-          if (error) {
-            if (isMissingTableError(error, 'order_later_items')) {
-              orderLaterItemsTableAvailable = false;
-            } else {
-              console.warn('Unable to mark order_later_items row as added.', error);
-            }
-          } else {
-            orderLaterItemsTableAvailable = true;
-          }
+        const normalizedItemId =
+          typeof itemId === 'string' && itemId.trim().length > 0 ? itemId.trim() : '';
+        if (!normalizedItemId) {
+          throw new Error('Order-later item id is required.');
+        }
+        if (orderLaterMoveInFlightIds.has(normalizedItemId)) {
+          throw new Error('This order-later item is already being added.');
         }
 
-        return draftItem;
+        orderLaterMoveInFlightIds.add(normalizedItemId);
+        try {
+          const queuedItem = get().orderLaterQueue.find((item) => item.id === normalizedItemId);
+          if (!queuedItem) {
+            throw new Error('This order-later item was already updated. Pull to refresh and try again.');
+          }
+
+          const payload = toJsonObject(queuedItem.payload);
+          const normalizedSourceOrderItemIds =
+            queuedItem.sourceOrderItemIds.length > 0
+              ? queuedItem.sourceOrderItemIds
+              : queuedItem.sourceOrderItemId
+                ? [queuedItem.sourceOrderItemId]
+                : [];
+          const shouldRestoreSourceOrderItems = normalizedSourceOrderItemIds.length > 0;
+          const nextOrderLaterStatus: OrderLaterItemStatus = shouldRestoreSourceOrderItems
+            ? 'cancelled'
+            : 'added';
+          const statusTimestamp = new Date().toISOString();
+
+          let draftItem: SupplierDraftItem | null = null;
+
+          if (shouldRestoreSourceOrderItems) {
+            const restored = await get().markOrderItemsStatus(normalizedSourceOrderItemIds, 'pending');
+            if (!restored) {
+              throw new Error(
+                'This item was already updated on another device. Pull to refresh and try again.'
+              );
+            }
+
+            const normalizedSupplierId = normalizeSupplierId(supplierId);
+            if (normalizedSupplierId) {
+              const overrideUpdated = await get().setSupplierOverride(
+                normalizedSourceOrderItemIds,
+                normalizedSupplierId
+              );
+              if (!overrideUpdated && __DEV__) {
+                console.warn(
+                  '[OrderStore] moveOrderLaterItemToSupplierDraft: unable to set supplier override for restored source order items.'
+                );
+              }
+            }
+          } else {
+            const quantityFromPayload = toValidNumber(payload.quantity);
+            const decidedQuantityFromPayload = toValidNumber(payload.decidedQuantity);
+            const reportedRemainingFromPayload = toValidNumber(payload.reportedRemaining);
+            const quantityFromOption = toValidNumber(options?.quantity);
+            const quantityCandidates = [
+              quantityFromOption,
+              toValidNumber(queuedItem.quantity),
+              quantityFromPayload,
+              decidedQuantityFromPayload,
+              reportedRemainingFromPayload,
+            ];
+            const firstPositiveQuantity = quantityCandidates.find(
+              (value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0
+            );
+            const quantity = firstPositiveQuantity ?? 1;
+
+            draftItem = get().addSupplierDraftItem({
+              supplierId,
+              inventoryItemId: queuedItem.itemId,
+              name: queuedItem.itemName,
+              category:
+                typeof payload.category === 'string' && payload.category.trim().length > 0
+                  ? payload.category
+                  : 'dry',
+              quantity,
+              unitType: payload.unitType === 'pack' ? 'pack' : 'base',
+              unitLabel:
+                typeof payload.unitLabel === 'string' && payload.unitLabel.trim().length > 0
+                  ? payload.unitLabel
+                  : queuedItem.unit,
+              locationGroup,
+              locationId: options?.locationId ?? queuedItem.locationId,
+              locationName: options?.locationName ?? queuedItem.locationName,
+              note: queuedItem.notes,
+              sourceOrderLaterItemId: queuedItem.id,
+            });
+          }
+
+          await cancelOrderLaterNotification(queuedItem.notificationId);
+
+          set((state) => ({
+            orderLaterQueue: state.orderLaterQueue.filter((item) => item.id !== normalizedItemId),
+          }));
+
+          if (orderLaterItemsTableAvailable !== false) {
+            const { error } = await (supabase as any)
+              .from('order_later_items')
+              .update({
+                status: nextOrderLaterStatus,
+                added_at: nextOrderLaterStatus === 'added' ? statusTimestamp : null,
+                cancelled_at: nextOrderLaterStatus === 'cancelled' ? statusTimestamp : null,
+                preferred_supplier_id: supplierId,
+                preferred_location_group: locationGroup,
+                notification_id: null,
+              })
+              .eq('id', normalizedItemId);
+
+            if (error) {
+              if (isMissingTableError(error, 'order_later_items')) {
+                orderLaterItemsTableAvailable = false;
+              } else {
+                console.warn('Unable to update order_later_items add-back status.', error);
+              }
+            } else {
+              orderLaterItemsTableAvailable = true;
+            }
+          }
+
+          return draftItem;
+        } finally {
+          orderLaterMoveInFlightIds.delete(normalizedItemId);
+        }
       },
 
       getLastOrderedQuantities: async ({ supplierId, managerId, items, forceRefresh }) => {
@@ -3608,13 +3930,21 @@ export const useOrderStore = create<OrderState>()(
         );
 
         if (normalizedIds.length === 0) return true;
+        const requiresPendingGuard = status !== 'pending';
+        let updatedIds = normalizedIds;
+        let conflictDetected = false;
 
         try {
           if (orderItemsStatusColumnAvailable !== false) {
-            const { error } = await supabase
+            let updateQuery = supabase
               .from('order_items')
               .update({ status } as any)
               .in('id', normalizedIds);
+            if (requiresPendingGuard) {
+              updateQuery = updateQuery.eq('status', 'pending');
+            }
+
+            const { data, error } = await updateQuery.select('id');
 
             if (error) {
               if (isMissingColumnError(error, 'status')) {
@@ -3624,6 +3954,14 @@ export const useOrderStore = create<OrderState>()(
               }
             } else {
               orderItemsStatusColumnAvailable = true;
+              if (Array.isArray(data)) {
+                updatedIds = data
+                  .map((row: any) => (typeof row?.id === 'string' ? row.id.trim() : ''))
+                  .filter((id) => id.length > 0);
+                if (requiresPendingGuard && updatedIds.length !== normalizedIds.length) {
+                  conflictDetected = true;
+                }
+              }
             }
           }
 
@@ -3636,8 +3974,19 @@ export const useOrderStore = create<OrderState>()(
             return false;
           }
 
+          if (conflictDetected) {
+            if (__DEV__) {
+              const missingIds = normalizedIds.filter((id) => !updatedIds.includes(id));
+              console.warn(
+                '[OrderStore] markOrderItemsStatus conflict: some rows were already updated on another device.',
+                { requested: normalizedIds.length, updated: updatedIds.length, missingIds: missingIds.slice(0, 8) }
+              );
+            }
+            return false;
+          }
+
           set((state) => {
-            const idSet = new Set(normalizedIds);
+            const idSet = new Set(updatedIds);
             const patchOrder = (orderLike: any) => {
               if (!orderLike || !Array.isArray(orderLike.order_items)) return orderLike;
 
@@ -3787,14 +4136,8 @@ export const useOrderStore = create<OrderState>()(
         return {
           ...currentState,
           ...persisted,
-          cartByLocation:
-            persisted.cartByLocation && typeof persisted.cartByLocation === 'object'
-              ? (persisted.cartByLocation as CartByLocation)
-              : currentState.cartByLocation,
-          managerCartByLocation:
-            persisted.managerCartByLocation && typeof persisted.managerCartByLocation === 'object'
-              ? (persisted.managerCartByLocation as CartByLocation)
-              : currentState.managerCartByLocation,
+          cartByLocation: normalizeCartByLocation(persisted.cartByLocation),
+          managerCartByLocation: normalizeCartByLocation(persisted.managerCartByLocation),
           supplierDrafts: normalizeSupplierDrafts((persistedState as any)?.supplierDrafts),
           orderLaterQueue: normalizeOrderLaterQueue((persistedState as any)?.orderLaterQueue),
           pastOrders: normalizePastOrders((persistedState as any)?.pastOrders),

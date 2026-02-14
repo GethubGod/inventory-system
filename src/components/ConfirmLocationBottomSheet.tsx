@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -11,6 +11,7 @@ import { colors } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { BrandLogo } from './BrandLogo';
 import { BottomSheetShell } from './BottomSheetShell';
+import { resolveLocationSwitchTarget } from '@/features/cart/locationSwitch';
 
 export interface ConfirmLocationOption {
   id: string;
@@ -21,9 +22,10 @@ export interface ConfirmLocationOption {
 interface ConfirmLocationBottomSheetProps {
   visible: boolean;
   selectedLocationId: string | null;
-  locationsInCart: ConfirmLocationOption[];
+  locationOptions: ConfirmLocationOption[];
   isSubmitting?: boolean;
   onLocationChange: (locationId: string) => void;
+  onNoLocationAvailable?: () => void;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -31,9 +33,10 @@ interface ConfirmLocationBottomSheetProps {
 export function ConfirmLocationBottomSheet({
   visible,
   selectedLocationId,
-  locationsInCart,
+  locationOptions,
   isSubmitting = false,
   onLocationChange,
+  onNoLocationAvailable,
   onConfirm,
   onClose,
 }: ConfirmLocationBottomSheetProps) {
@@ -47,19 +50,41 @@ export function ConfirmLocationBottomSheet({
   }, [visible, selectedLocationId]);
 
   const selectedLocation = useMemo(() => {
-    if (!selectedLocationId) return locationsInCart[0] ?? null;
-    return locationsInCart.find((location) => location.id === selectedLocationId) ?? locationsInCart[0] ?? null;
-  }, [locationsInCart, selectedLocationId]);
+    if (!selectedLocationId) return locationOptions[0] ?? null;
+    return locationOptions.find((location) => location.id === selectedLocationId) ?? locationOptions[0] ?? null;
+  }, [locationOptions, selectedLocationId]);
 
   const otherLocations = useMemo(
     () =>
-      locationsInCart.filter((location) =>
+      locationOptions.filter((location) =>
         selectedLocation ? location.id !== selectedLocation.id : true
       ),
-    [locationsInCart, selectedLocation]
+    [locationOptions, selectedLocation]
   );
 
-  const canChangeLocation = otherLocations.length > 0;
+  const changeResolution = useMemo(
+    () =>
+      resolveLocationSwitchTarget({
+        currentLocationId: selectedLocationId,
+        availableLocationIds: locationOptions.map((location) => location.id),
+      }),
+    [locationOptions, selectedLocationId]
+  );
+
+  const handlePressChangeLocation = useCallback(() => {
+    if (changeResolution.mode === 'toggle' && changeResolution.targetLocationId) {
+      onLocationChange(changeResolution.targetLocationId);
+      return;
+    }
+
+    if (changeResolution.mode === 'selector') {
+      setViewMode('change');
+      return;
+    }
+
+    onNoLocationAvailable?.();
+  }, [changeResolution, onLocationChange, onNoLocationAvailable]);
+
   const submitLabel = selectedLocation
     ? `Submitting for ${selectedLocation.name}`
     : 'Submitting for selected location';
@@ -73,7 +98,7 @@ export function ConfirmLocationBottomSheet({
               Change Location
             </Text>
             <Text style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(4) }} className="text-gray-500">
-              Select another location currently in this cart.
+              Select another location.
             </Text>
           </View>
 
@@ -82,7 +107,7 @@ export function ConfirmLocationBottomSheet({
             contentContainerStyle={{ paddingHorizontal: ds.spacing(6), paddingBottom: ds.spacing(8) }}
             showsVerticalScrollIndicator={false}
           >
-            {canChangeLocation ? (
+            {otherLocations.length > 0 ? (
               <View className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
                 {otherLocations.map((location, index) => (
                   <TouchableOpacity
@@ -192,15 +217,15 @@ export function ConfirmLocationBottomSheet({
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => setViewMode('change')}
+              onPress={handlePressChangeLocation}
               activeOpacity={0.8}
-              disabled={isSubmitting || !canChangeLocation}
+              disabled={isSubmitting}
               className={`rounded-xl border items-center justify-center ${
-                isSubmitting || !canChangeLocation ? 'border-gray-200 bg-gray-100' : 'border-gray-200 bg-white'
+                isSubmitting ? 'border-gray-200 bg-gray-100' : 'border-gray-200 bg-white'
               }`}
               style={{ minHeight: ds.buttonH, marginTop: ds.spacing(10) }}
             >
-              <Text style={{ fontSize: ds.buttonFont }} className={`font-semibold ${canChangeLocation ? 'text-gray-700' : 'text-gray-400'}`}>
+              <Text style={{ fontSize: ds.buttonFont }} className="font-semibold text-gray-700">
                 Change Location
               </Text>
             </TouchableOpacity>

@@ -1,15 +1,18 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Modal,
+  ActivityIndicator,
   Platform,
-  Pressable,
+  ScrollView,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '@/constants';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { BottomSheetShell } from './BottomSheetShell';
 
 type SchedulePreset = 'later_today' | 'tomorrow' | 'pick_datetime';
 type PickerMode = 'later_today_time' | 'tomorrow_time' | 'custom_date' | 'custom_time' | null;
@@ -73,6 +76,8 @@ export function OrderLaterScheduleModal({
   onClose,
   onConfirm,
 }: OrderLaterScheduleModalProps) {
+  const ds = useScaledStyles();
+  const insets = useSafeAreaInsets();
   const now = useMemo(() => new Date(), []);
   const parsedInitial = useMemo(() => {
     if (typeof initialScheduledAt === 'string') {
@@ -198,13 +203,19 @@ export function OrderLaterScheduleModal({
     }
 
     return (
-      <View className="mt-3 rounded-xl border border-gray-200 bg-white">
-        <View className="flex-row items-center justify-between px-3 py-2 border-b border-gray-100">
-          <Text className="text-sm font-semibold text-gray-900">
+      <View
+        className="rounded-2xl border border-gray-200 bg-white overflow-hidden"
+        style={{ marginTop: ds.spacing(10) }}
+      >
+        <View
+          className="flex-row items-center justify-between border-b border-gray-100"
+          style={{ paddingHorizontal: ds.spacing(14), paddingVertical: ds.spacing(8) }}
+        >
+          <Text style={{ fontSize: ds.fontSize(14) }} className="font-semibold text-gray-900">
             {mode === 'date' ? 'Select date' : 'Select time'}
           </Text>
           <TouchableOpacity onPress={() => setPickerMode(null)}>
-            <Text className="text-sm font-semibold text-primary-600">Done</Text>
+            <Text style={{ fontSize: ds.fontSize(13) }} className="font-semibold text-primary-600">Done</Text>
           </TouchableOpacity>
         </View>
         <DateTimePicker
@@ -228,21 +239,32 @@ export function OrderLaterScheduleModal({
     return (
       <TouchableOpacity
         onPress={() => setPreset(value)}
-        className={`rounded-xl border px-3 py-3 mb-2 ${selected ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white'}`}
+        className={`rounded-2xl border overflow-hidden ${selected ? 'border-primary-300 bg-primary-50' : 'border-gray-200 bg-white'}`}
+        style={{
+          paddingHorizontal: ds.spacing(14),
+          paddingVertical: ds.spacing(12),
+          marginBottom: ds.spacing(8),
+        }}
         activeOpacity={0.8}
       >
         <View className="flex-row items-start">
           <Ionicons
             name={selected ? 'radio-button-on' : 'radio-button-off'}
-            size={18}
+            size={ds.icon(19)}
             color={selected ? colors.primary[600] : colors.gray[400]}
             style={{ marginTop: 1 }}
           />
-          <View className="ml-2 flex-1">
-            <Text className={`text-sm font-semibold ${selected ? 'text-primary-700' : 'text-gray-900'}`}>
+          <View className="flex-1" style={{ marginLeft: ds.spacing(10) }}>
+            <Text
+              style={{ fontSize: ds.fontSize(16) }}
+              className={`font-semibold ${selected ? 'text-primary-700' : 'text-gray-900'}`}
+            >
               {label}
             </Text>
-            <Text className={`text-xs mt-0.5 ${selected ? 'text-primary-700' : 'text-gray-500'}`}>
+            <Text
+              style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(2) }}
+              className={selected ? 'text-primary-700' : 'text-gray-500'}
+            >
               {description}
             </Text>
             {extra}
@@ -253,90 +275,131 @@ export function OrderLaterScheduleModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable className="flex-1 bg-black/35 justify-end" onPress={onClose}>
-        <Pressable className="bg-gray-50 rounded-t-3xl px-4 pt-4 pb-5" onPress={(e) => e.stopPropagation()}>
-          <View className="flex-row items-center justify-between mb-3">
-            <View className="flex-1 pr-2">
-              <Text className="text-lg font-bold text-gray-900">{title}</Text>
-              <Text className="text-xs text-gray-500 mt-0.5">{subtitle}</Text>
+    <BottomSheetShell
+      visible={visible}
+      onClose={onClose}
+      bottomPadding={Math.max(ds.spacing(10), insets.bottom + ds.spacing(8))}
+    >
+      <View style={{ paddingHorizontal: ds.spacing(6), paddingBottom: ds.spacing(10) }}>
+        <Text style={{ fontSize: ds.fontSize(18) }} className="font-bold text-gray-900">
+          {title}
+        </Text>
+        <Text style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(4) }} className="text-gray-500">
+          {subtitle}
+        </Text>
+      </View>
+
+      <ScrollView
+        style={{ maxHeight: ds.spacing(420) }}
+        contentContainerStyle={{ paddingHorizontal: ds.spacing(6), paddingBottom: ds.spacing(4) }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Text
+          style={{
+            fontSize: ds.fontSize(11),
+            marginBottom: ds.spacing(6),
+            marginLeft: ds.spacing(6),
+          }}
+          className="font-semibold uppercase tracking-wide text-gray-500"
+        >
+          Schedule
+        </Text>
+
+        {optionCard(
+          'later_today',
+          'Later today',
+          `Time: ${formatTimeLabel(laterTodayTime)}`,
+          preset === 'later_today' ? (
+            <TouchableOpacity
+              onPress={() => setPickerMode('later_today_time')}
+              className="self-start border border-gray-200 bg-white rounded-lg"
+              style={{ marginTop: ds.spacing(8), paddingHorizontal: ds.spacing(10), paddingVertical: ds.spacing(6) }}
+            >
+              <Text style={{ fontSize: ds.fontSize(12) }} className="font-semibold text-gray-700">Choose time</Text>
+            </TouchableOpacity>
+          ) : null
+        )}
+
+        {optionCard(
+          'tomorrow',
+          'Tomorrow',
+          `Time: ${formatTimeLabel(tomorrowTime)}`,
+          preset === 'tomorrow' ? (
+            <TouchableOpacity
+              onPress={() => setPickerMode('tomorrow_time')}
+              className="self-start border border-gray-200 bg-white rounded-lg"
+              style={{ marginTop: ds.spacing(8), paddingHorizontal: ds.spacing(10), paddingVertical: ds.spacing(6) }}
+            >
+              <Text style={{ fontSize: ds.fontSize(12) }} className="font-semibold text-gray-700">Choose time</Text>
+            </TouchableOpacity>
+          ) : null
+        )}
+
+        {optionCard(
+          'pick_datetime',
+          'Pick date & time',
+          `${formatDateLabel(customDate)} at ${formatTimeLabel(customTime)}`,
+          preset === 'pick_datetime' ? (
+            <View className="flex-row" style={{ marginTop: ds.spacing(8) }}>
+              <TouchableOpacity
+                onPress={() => setPickerMode('custom_date')}
+                className="border border-gray-200 bg-white rounded-lg"
+                style={{ paddingHorizontal: ds.spacing(10), paddingVertical: ds.spacing(6), marginRight: ds.spacing(8) }}
+              >
+                <Text style={{ fontSize: ds.fontSize(12) }} className="font-semibold text-gray-700">Pick date</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setPickerMode('custom_time')}
+                className="border border-gray-200 bg-white rounded-lg"
+                style={{ paddingHorizontal: ds.spacing(10), paddingVertical: ds.spacing(6) }}
+              >
+                <Text style={{ fontSize: ds.fontSize(12) }} className="font-semibold text-gray-700">Pick time</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={onClose} className="p-2">
-              <Ionicons name="close" size={20} color={colors.gray[500]} />
-            </TouchableOpacity>
-          </View>
+          ) : null
+        )}
 
-          {optionCard(
-            'later_today',
-            'Later today',
-            `Time: ${formatTimeLabel(laterTodayTime)}`,
-            preset === 'later_today' ? (
-              <TouchableOpacity
-                onPress={() => setPickerMode('later_today_time')}
-                className="self-start mt-2 px-2.5 py-1.5 rounded-md bg-white border border-gray-200"
-              >
-                <Text className="text-[11px] font-semibold text-gray-700">Choose time</Text>
-              </TouchableOpacity>
-            ) : null
-          )}
+        {renderPicker()}
+      </ScrollView>
 
-          {optionCard(
-            'tomorrow',
-            'Tomorrow',
-            `Time: ${formatTimeLabel(tomorrowTime)}`,
-            preset === 'tomorrow' ? (
-              <TouchableOpacity
-                onPress={() => setPickerMode('tomorrow_time')}
-                className="self-start mt-2 px-2.5 py-1.5 rounded-md bg-white border border-gray-200"
-              >
-                <Text className="text-[11px] font-semibold text-gray-700">Choose time</Text>
-              </TouchableOpacity>
-            ) : null
-          )}
-
-          {optionCard(
-            'pick_datetime',
-            'Pick date & time',
-            `${formatDateLabel(customDate)} at ${formatTimeLabel(customTime)}`,
-            preset === 'pick_datetime' ? (
-              <View className="flex-row mt-2">
-                <TouchableOpacity
-                  onPress={() => setPickerMode('custom_date')}
-                  className="px-2.5 py-1.5 rounded-md bg-white border border-gray-200 mr-2"
+      <View style={{ paddingHorizontal: ds.spacing(6), paddingTop: ds.spacing(10) }}>
+        <View className="flex-row">
+          <TouchableOpacity
+            onPress={onClose}
+            disabled={submitting}
+            className="flex-1 rounded-xl border border-gray-200 bg-white items-center justify-center mr-2"
+            style={{ minHeight: ds.buttonH }}
+            activeOpacity={0.8}
+          >
+            <Text style={{ fontSize: ds.buttonFont }} className="font-semibold text-gray-700">
+              Cancel
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={submit}
+            disabled={submitting}
+            className={`flex-1 rounded-xl items-center justify-center ${submitting ? 'bg-primary-300' : 'bg-primary-500'}`}
+            style={{ minHeight: ds.buttonH }}
+            activeOpacity={0.8}
+          >
+            {submitting ? (
+              <View className="flex-row items-center">
+                <ActivityIndicator color="#FFFFFF" size="small" />
+                <Text
+                  style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}
+                  className="font-semibold text-white"
                 >
-                  <Text className="text-[11px] font-semibold text-gray-700">Pick date</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setPickerMode('custom_time')}
-                  className="px-2.5 py-1.5 rounded-md bg-white border border-gray-200"
-                >
-                  <Text className="text-[11px] font-semibold text-gray-700">Pick time</Text>
-                </TouchableOpacity>
+                  Saving...
+                </Text>
               </View>
-            ) : null
-          )}
-
-          {renderPicker()}
-
-          <View className="flex-row mt-4">
-            <TouchableOpacity
-              onPress={onClose}
-              className="flex-1 py-3 rounded-xl bg-gray-100 items-center justify-center mr-2"
-            >
-              <Text className="font-semibold text-gray-700">Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={submit}
-              disabled={submitting}
-              className={`flex-1 py-3 rounded-xl items-center justify-center ${submitting ? 'bg-gray-300' : 'bg-primary-500'}`}
-            >
-              <Text className={`font-semibold ${submitting ? 'text-gray-500' : 'text-white'}`}>
+            ) : (
+              <Text style={{ fontSize: ds.buttonFont }} className="font-semibold text-white">
                 {confirmLabel}
               </Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    </BottomSheetShell>
   );
 }

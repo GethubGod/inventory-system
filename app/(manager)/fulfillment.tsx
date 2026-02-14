@@ -24,8 +24,8 @@ import { InventoryItem, ItemCategory, OrderWithDetails, SupplierCategory } from 
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
-import { ItemActionSheet } from '@/components';
-import type { ItemActionSheetSection } from '@/components';
+import { ItemActionSheet, OrderLaterAddToSheet } from '@/components';
+import type { ItemActionSheetSection, OrderLaterSupplierOption } from '@/components';
 import { loadSupplierLookup, invalidateSupplierCache } from '@/services/supplierResolver';
 
 interface AggregatedLocationBreakdown {
@@ -137,12 +137,6 @@ interface ConfirmationRegularItem {
   secondarySupplierId: string | null;
 }
 
-interface AddLocationOption {
-  id: string | null;
-  name: string;
-  shortCode: string;
-}
-
 interface SupplierOption {
   id: string;
   name: string;
@@ -213,6 +207,11 @@ const getLocationGroup = (locationName?: string, shortCode?: string): LocationGr
 
   return 'sushi';
 };
+
+function toLocationGroup(value: unknown): LocationGroup | null {
+  if (value === 'sushi' || value === 'poki') return value;
+  return null;
+}
 
 function toSafeNumber(value: unknown, fallback = 0) {
   const parsed = Number(value);
@@ -301,8 +300,8 @@ export default function FulfillmentScreen() {
   const [orderLaterExpanded, setOrderLaterExpanded] = useState(false);
   const [addToTargetItemId, setAddToTargetItemId] = useState<string | null>(null);
   const [addToSupplier, setAddToSupplier] = useState<string>('');
-  const [addToLocationGroup, setAddToLocationGroup] = useState<LocationGroup>('sushi');
-  const [addToLocationId, setAddToLocationId] = useState<string | null>(null);
+  const [addToSupplierError, setAddToSupplierError] = useState<string | null>(null);
+  const [isAddingToSupplierDraft, setIsAddingToSupplierDraft] = useState(false);
   const [scheduleEditItemId, setScheduleEditItemId] = useState<string | null>(null);
   const [overflowItem, setOverflowItem] = useState<LocationGroupedItem | null>(null);
   const [breakdownItem, setBreakdownItem] = useState<LocationGroupedItem | null>(null);
@@ -311,6 +310,10 @@ export default function FulfillmentScreen() {
   const [isSavingNote, setIsSavingNote] = useState(false);
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshPromiseRef = useRef<Promise<void> | null>(null);
+  const refreshQueuedRef = useRef(false);
+  const sendTapLockUntilRef = useRef(0);
+  const actionLocksRef = useRef<Set<string>>(new Set());
   const useStackedSupplierActions =
     uiScale === 'large' || buttonSize === 'large' || textScale >= 1.1;
   const managerLocationIds = useMemo(
@@ -320,6 +323,19 @@ export default function FulfillmentScreen() {
         .filter((id) => id.length > 0),
     [locations]
   );
+  const runLockedAction = useCallback(async (lockKey: string, action: () => Promise<void>) => {
+    if (actionLocksRef.current.has(lockKey)) {
+      return false;
+    }
+
+    actionLocksRef.current.add(lockKey);
+    try {
+      await action();
+      return true;
+    } finally {
+      actionLocksRef.current.delete(lockKey);
+    }
+  }, []);
 
   const fetchPendingOrders = useCallback(async () => {
     try {
@@ -347,13 +363,13 @@ export default function FulfillmentScreen() {
     }
   }, []);
 
-  const refreshAll = useCallback(async () => {
+  const runRefreshCycle = useCallback(async () => {
     try {
       // loadFulfillmentData syncs past-order queue, then fetchPendingFulfillmentOrders
       // re-fetches submitted orders and filters out consumed items.
       // Run them sequentially so past orders are synced before the filter runs.
       if (user?.id) {
-        await loadFulfillmentData(user.id);
+        await loadFulfillmentData(user.id, managerLocationIds);
       }
       await Promise.all([fetchPendingOrders(), fetchSuppliers()]);
     } catch (error) {
@@ -361,7 +377,28 @@ export default function FulfillmentScreen() {
     } finally {
       setDataReady(true);
     }
-  }, [fetchPendingOrders, fetchSuppliers, loadFulfillmentData, user?.id]);
+  }, [fetchPendingOrders, fetchSuppliers, loadFulfillmentData, managerLocationIds, user?.id]);
+  const refreshAll = useCallback(async () => {
+    if (refreshPromiseRef.current) {
+      refreshQueuedRef.current = true;
+      await refreshPromiseRef.current;
+      return;
+    }
+
+    const run = async () => {
+      do {
+        refreshQueuedRef.current = false;
+        await runRefreshCycle();
+      } while (refreshQueuedRef.current);
+    };
+
+    const refreshPromise = run().finally(() => {
+      refreshPromiseRef.current = null;
+    });
+
+    refreshPromiseRef.current = refreshPromise;
+    await refreshPromise;
+  }, [runRefreshCycle]);
 
   useFocusEffect(
     useCallback(() => {
@@ -371,8 +408,8 @@ export default function FulfillmentScreen() {
     }, [refreshAll])
   );
 
-  // Realtime: when orders/order_items/suppliers change, do a full refresh
-  // (includes past-order sync so consumed items are correctly filtered out).
+  // Realtime: when fulfillment-related tables change, do a full refresh
+  // so order state/order-later state stays in sync across manager devices.
   useEffect(() => {
     if (realtimeChannelRef.current) {
       supabase.removeChannel(realtimeChannelRef.current);
@@ -419,6 +456,21 @@ export default function FulfillmentScreen() {
         { event: '*', schema: 'public', table: 'suppliers' },
         scheduleSupplierRefresh
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'order_later_items' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'past_orders' },
+        scheduleRefresh
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'past_order_items' },
+        scheduleRefresh
+      )
       .subscribe();
 
     realtimeChannelRef.current = channel;
@@ -437,8 +489,11 @@ export default function FulfillmentScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refreshAll();
-    setRefreshing(false);
+    try {
+      await refreshAll();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refreshAll]);
 
   const pendingOrders = useMemo(() => {
@@ -1495,6 +1550,12 @@ export default function FulfillmentScreen() {
 
   const handleSend = useCallback(
     (supplierGroup: SupplierGroup) => {
+      const nowMs = Date.now();
+      if (nowMs < sendTapLockUntilRef.current) {
+        return;
+      }
+      sendTapLockUntilRef.current = nowMs + 700;
+
       if (Platform.OS !== 'web') {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       }
@@ -1521,32 +1582,32 @@ export default function FulfillmentScreen() {
     [buildRegularConfirmationItems, buildRemainingConfirmationItems]
   );
 
-  const locationOptionsByGroup = useMemo<Record<LocationGroup, AddLocationOption[]>>(() => {
-    const options: Record<LocationGroup, AddLocationOption[]> = {
-      sushi: [],
-      poki: [],
-    };
-
-    locations.forEach((location) => {
-      const group = getLocationGroup(location.name, location.short_code);
-      options[group].push({
-        id: location.id,
-        name: location.name,
-        shortCode: location.short_code,
-      });
-    });
-
-    return options;
-  }, [locations]);
-
   const addToTargetItem = useMemo(
     () => orderLaterQueue.find((item) => item.id === addToTargetItemId) ?? null,
     [addToTargetItemId, orderLaterQueue]
+  );
+  const addToSupplierOptions = useMemo<OrderLaterSupplierOption[]>(
+    () =>
+      availableSuppliers.map((supplier) => ({
+        id: supplier.id,
+        name: supplier.active ? supplier.name : `${supplier.name} (Inactive)`,
+      })),
+    [availableSuppliers]
   );
   const scheduleEditItem = useMemo(
     () => orderLaterQueue.find((item) => item.id === scheduleEditItemId) ?? null,
     [orderLaterQueue, scheduleEditItemId]
   );
+  const resolveAddToLocationGroup = useCallback((item: (typeof orderLaterQueue)[number]): LocationGroup => {
+    const preferred = toLocationGroup(item.preferredLocationGroup);
+    if (preferred) return preferred;
+
+    const payload = item.payload as Record<string, unknown> | null | undefined;
+    const payloadGroup = payload ? toLocationGroup(payload.locationGroup) : null;
+    if (payloadGroup) return payloadGroup;
+
+    return getLocationGroup(item.locationName ?? undefined);
+  }, []);
 
   useEffect(() => {
     if (availableSuppliers.length === 0) return;
@@ -1559,83 +1620,94 @@ export default function FulfillmentScreen() {
   useEffect(() => {
     if (!addToTargetItem) return;
 
+    const defaultSupplierId = toSupplierId(addToTargetItem.preferredSupplierId)
+      ?? toSupplierId(addToTargetItem.suggestedSupplierId);
     if (
-      addToTargetItem.preferredSupplierId &&
-      availableSuppliers.some((supplier) => supplier.id === addToTargetItem.preferredSupplierId)
+      defaultSupplierId &&
+      availableSuppliers.some((supplier) => supplier.id === defaultSupplierId)
     ) {
-      setAddToSupplier(addToTargetItem.preferredSupplierId);
-    } else if (!addToSupplier && availableSuppliers.length > 0) {
+      setAddToSupplier(defaultSupplierId);
+    } else if (availableSuppliers.length > 0) {
       setAddToSupplier(availableSuppliers[0].id);
+    } else {
+      setAddToSupplier('');
     }
-
-    const preferredGroup = addToTargetItem.preferredLocationGroup || 'sushi';
-    setAddToLocationGroup(preferredGroup);
-  }, [addToSupplier, addToTargetItem, availableSuppliers]);
-
-  useEffect(() => {
-    if (!addToTargetItemId) return;
-
-    const options = locationOptionsByGroup[addToLocationGroup];
-    if (options.length === 0) {
-      setAddToLocationId(null);
-      return;
-    }
-
-    const exists = options.some((option) => option.id === addToLocationId);
-    if (!exists) {
-      setAddToLocationId(options[0].id);
-    }
-  }, [addToLocationGroup, addToLocationId, addToTargetItemId, locationOptionsByGroup]);
+    setAddToSupplierError(null);
+  }, [addToTargetItem, availableSuppliers]);
 
   const openAddToModal = useCallback((itemId: string) => {
     setAddToTargetItemId(itemId);
-    setAddToLocationId(null);
+    setAddToSupplierError(null);
+    setIsAddingToSupplierDraft(false);
   }, []);
 
   const closeAddToModal = useCallback(() => {
     setAddToTargetItemId(null);
+    setAddToSupplierError(null);
+    setIsAddingToSupplierDraft(false);
+  }, []);
+
+  const handleAddToSupplierChange = useCallback((supplierId: string) => {
+    setAddToSupplier(supplierId);
+    setAddToSupplierError(null);
   }, []);
 
   const handleConfirmAddTo = useCallback(async () => {
-    if (!addToTargetItem) return;
+    if (!addToTargetItem || isAddingToSupplierDraft) return;
     if (!addToSupplier) {
-      Alert.alert('Missing Supplier', 'Select a supplier before adding this item.');
+      setAddToSupplierError('Supplier is required.');
       return;
     }
 
-    const selectedLocation = locationOptionsByGroup[addToLocationGroup].find(
-      (option) => option.id === addToLocationId
-    );
+    setAddToSupplierError(null);
+    setIsAddingToSupplierDraft(true);
 
-    const draftItem = await moveOrderLaterItemToSupplierDraft(
-      addToTargetItem.id,
-      addToSupplier,
-      addToLocationGroup,
-      {
-        locationId: selectedLocation?.id ?? null,
-        locationName: selectedLocation?.name ?? null,
+    try {
+      const locationGroup = resolveAddToLocationGroup(addToTargetItem);
+
+      await moveOrderLaterItemToSupplierDraft(
+        addToTargetItem.id,
+        addToSupplier,
+        locationGroup,
+        {
+          locationId: addToTargetItem.locationId ?? null,
+          locationName: addToTargetItem.locationName ?? null,
+        }
+      );
+
+      closeAddToModal();
+      try {
+        await fetchPendingFulfillmentOrders(managerLocationIds);
+      } catch {
+        // Best effort refresh; realtime sync also updates this screen.
       }
-    );
 
-    if (draftItem) {
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       Alert.alert(
         'Added',
-        `${addToTargetItem.itemName} was added to ${resolveSupplierName(addToSupplier)}.`
+        `${addToTargetItem.itemName} was added back to ${resolveSupplierName(addToSupplier)}.`
       );
+    } catch (error) {
+      console.error('Failed to add order-later item to supplier draft.', error);
+      const message =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : 'Unable to add this item right now. Please try again.';
+      setAddToSupplierError(message);
+    } finally {
+      setIsAddingToSupplierDraft(false);
     }
-
-    closeAddToModal();
   }, [
-    addToLocationGroup,
-    addToLocationId,
+    fetchPendingFulfillmentOrders,
     addToSupplier,
     addToTargetItem,
     closeAddToModal,
-    locationOptionsByGroup,
+    isAddingToSupplierDraft,
+    managerLocationIds,
     moveOrderLaterItemToSupplierDraft,
+    resolveAddToLocationGroup,
     resolveSupplierName,
   ]);
 
@@ -1693,7 +1765,8 @@ export default function FulfillmentScreen() {
           {
             text: 'Move',
             onPress: () => {
-              void (async () => {
+              const lockIds = [...item.sourceOrderItemIds].sort().join(',');
+              void runLockedAction(`move-secondary:${lockIds}`, async () => {
                 const success = await setSupplierOverride(item.sourceOrderItemIds, item.secondarySupplierId!);
                 if (!success) {
                   Alert.alert('Error', 'Failed to move item. Please try again.');
@@ -1704,13 +1777,13 @@ export default function FulfillmentScreen() {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 }
                 await fetchPendingFulfillmentOrders(managerLocationIds);
-              })();
+              });
             },
           },
         ]
       );
     },
-    [fetchPendingFulfillmentOrders, managerLocationIds, setSupplierOverride]
+    [fetchPendingFulfillmentOrders, managerLocationIds, runLockedAction, setSupplierOverride]
   );
 
   const handleMoveBackToPrimarySupplier = useCallback(
@@ -1726,7 +1799,8 @@ export default function FulfillmentScreen() {
           {
             text: 'Move Back',
             onPress: () => {
-              void (async () => {
+              const lockIds = [...item.sourceOrderItemIds].sort().join(',');
+              void runLockedAction(`move-primary:${lockIds}`, async () => {
                 const success = await clearSupplierOverride(item.sourceOrderItemIds);
                 if (!success) {
                   Alert.alert('Error', 'Failed to move item back. Please try again.');
@@ -1737,13 +1811,13 @@ export default function FulfillmentScreen() {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 }
                 await fetchPendingFulfillmentOrders(managerLocationIds);
-              })();
+              });
             },
           },
         ]
       );
     },
-    [clearSupplierOverride, fetchPendingFulfillmentOrders, managerLocationIds, resolveSupplierName]
+    [clearSupplierOverride, fetchPendingFulfillmentOrders, managerLocationIds, resolveSupplierName, runLockedAction]
   );
 
   const handleRemoveSupplierItem = useCallback(
@@ -1759,7 +1833,8 @@ export default function FulfillmentScreen() {
             text: 'Remove',
             style: 'destructive',
             onPress: () => {
-              void (async () => {
+              const lockIds = [...item.sourceOrderItemIds].sort().join(',');
+              void runLockedAction(`remove-item:${lockIds}`, async () => {
                 const removed = await markOrderItemsStatus(item.sourceOrderItemIds, 'cancelled');
                 if (!removed) {
                   Alert.alert('Error', 'Failed to remove item. Please try again.');
@@ -1770,13 +1845,13 @@ export default function FulfillmentScreen() {
                   Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
                 }
                 await fetchPendingFulfillmentOrders(managerLocationIds);
-              })();
+              });
             },
           },
         ]
       );
     },
-    [fetchPendingFulfillmentOrders, managerLocationIds, markOrderItemsStatus]
+    [fetchPendingFulfillmentOrders, managerLocationIds, markOrderItemsStatus, runLockedAction]
   );
 
   const handleOpenItemNoteEditor = useCallback((item: LocationGroupedItem) => {
@@ -2034,7 +2109,7 @@ export default function FulfillmentScreen() {
 
       const unitLabel = item.unitType === 'pack' ? item.inventoryItem.pack_unit : item.inventoryItem.base_unit;
 
-      await createOrderLaterItem({
+      const createdOrderLaterItem = await createOrderLaterItem({
         createdBy: user.id,
         scheduledAt: scheduledAtIso,
         quantity: Math.max(0, getDisplayQuantity(item)),
@@ -2053,7 +2128,14 @@ export default function FulfillmentScreen() {
       if (item.sourceOrderItemIds.length > 0) {
         const moved = await markOrderItemsStatus(item.sourceOrderItemIds, 'order_later');
         if (!moved) {
-          Alert.alert('Error', 'Failed to move source order items to Order Later status.');
+          if (createdOrderLaterItem?.id) {
+            await removeOrderLaterItem(createdOrderLaterItem.id);
+          }
+          await fetchPendingFulfillmentOrders(managerLocationIds);
+          Alert.alert(
+            'Already Updated',
+            'These items were already changed on another device. The list has been refreshed.'
+          );
           return;
         }
       }
@@ -2073,6 +2155,7 @@ export default function FulfillmentScreen() {
       markOrderItemsStatus,
       managerLocationIds,
       orderLaterScheduleItem,
+      removeOrderLaterItem,
       user?.id,
     ]
   );
@@ -2758,114 +2841,17 @@ export default function FulfillmentScreen() {
           </Pressable>
         </Modal>
 
-        <Modal
+        <OrderLaterAddToSheet
           visible={Boolean(addToTargetItem)}
-          transparent
-          animationType="fade"
-          onRequestClose={closeAddToModal}
-        >
-          <Pressable className="flex-1 bg-black/35 justify-end" onPress={closeAddToModal}>
-            <Pressable className="bg-gray-50 rounded-t-3xl px-4 pt-4 pb-5" onPress={(e) => e.stopPropagation()}>
-              <View className="flex-row items-center justify-between mb-3">
-                <View className="flex-1 pr-2">
-                  <Text className="text-lg font-bold text-gray-900">Add to Supplier</Text>
-                  <Text className="text-xs text-gray-500 mt-0.5">
-                    {addToTargetItem ? addToTargetItem.itemName : ''}
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={closeAddToModal} className="p-2">
-                  <Ionicons name="close" size={20} color={colors.gray[500]} />
-                </TouchableOpacity>
-              </View>
-
-              <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Supplier</Text>
-              <View className="flex-row flex-wrap mb-3">
-                {availableSuppliers.map((supplier) => {
-                  const selected = supplier.id === addToSupplier;
-                  return (
-                    <TouchableOpacity
-                      key={supplier.id}
-                      onPress={() => setAddToSupplier(supplier.id)}
-                      className={`px-3 py-2 rounded-lg mr-2 mb-2 ${
-                        selected ? 'bg-primary-500' : 'bg-white border border-gray-200'
-                      }`}
-                    >
-                      <Text className={`text-xs font-semibold ${selected ? 'text-white' : 'text-gray-700'}`}>
-                        {supplier.active ? supplier.name : `${supplier.name} (Inactive)`}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Location Bucket</Text>
-              <View className="flex-row mb-3">
-                {(['sushi', 'poki'] as LocationGroup[]).map((group) => {
-                  const selected = group === addToLocationGroup;
-                  return (
-                    <TouchableOpacity
-                      key={group}
-                      onPress={() => setAddToLocationGroup(group)}
-                      className={`px-3 py-2 rounded-lg mr-2 ${
-                        selected ? 'bg-primary-500' : 'bg-white border border-gray-200'
-                      }`}
-                    >
-                      <Text className={`text-xs font-semibold ${selected ? 'text-white' : 'text-gray-700'}`}>
-                        {LOCATION_GROUP_LABELS[group]}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Location</Text>
-              {locationOptionsByGroup[addToLocationGroup].length === 0 ? (
-                <View className="rounded-xl border border-dashed border-gray-300 bg-white px-3 py-3 mb-4">
-                  <Text className="text-xs text-gray-500">
-                    No {LOCATION_GROUP_LABELS[addToLocationGroup]} location is configured. Item will be added without a location.
-                  </Text>
-                </View>
-              ) : (
-                <View className="mb-4">
-                  {locationOptionsByGroup[addToLocationGroup].map((option) => {
-                    const selected = option.id === addToLocationId;
-                    return (
-                      <TouchableOpacity
-                        key={`${option.id}-${option.shortCode}`}
-                        onPress={() => setAddToLocationId(option.id)}
-                        className={`flex-row items-center justify-between rounded-lg px-3 py-2 mb-2 ${
-                          selected ? 'bg-primary-50 border border-primary-200' : 'bg-white border border-gray-200'
-                        }`}
-                      >
-                        <Text className={`text-sm ${selected ? 'text-primary-700 font-semibold' : 'text-gray-700'}`}>
-                          {option.name}
-                        </Text>
-                        <Text className={`text-xs ${selected ? 'text-primary-700' : 'text-gray-500'}`}>
-                          {option.shortCode}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-
-              <View className="flex-row">
-                <TouchableOpacity
-                  onPress={closeAddToModal}
-                  className="flex-1 py-3 rounded-xl bg-gray-100 items-center justify-center mr-2"
-                >
-                  <Text className="font-semibold text-gray-700">Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleConfirmAddTo}
-                  className="flex-1 py-3 rounded-xl bg-primary-500 items-center justify-center"
-                >
-                  <Text className="font-semibold text-white">Add</Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
-          </Pressable>
-        </Modal>
+          itemName={addToTargetItem?.itemName}
+          suppliers={addToSupplierOptions}
+          selectedSupplierId={addToSupplier || null}
+          supplierError={addToSupplierError}
+          isSubmitting={isAddingToSupplierDraft}
+          onSupplierChange={handleAddToSupplierChange}
+          onConfirm={() => { void handleConfirmAddTo(); }}
+          onClose={closeAddToModal}
+        />
 
         <OrderLaterScheduleModal
           visible={Boolean(scheduleEditItem)}

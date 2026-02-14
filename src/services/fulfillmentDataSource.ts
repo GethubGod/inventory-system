@@ -125,7 +125,7 @@ async function loadOrderLaterSourceOrderItemIds(): Promise<Set<string>> {
   const { data, error } = await (supabase as any)
     .from('order_later_items')
     .select('source_order_item_id,original_order_item_ids,status')
-    .in('status', ['queued', 'added'])
+    .eq('status', 'queued')
     .limit(10000);
 
   if (error) {

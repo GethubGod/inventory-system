@@ -13,6 +13,8 @@ export { ReviewItemRow } from './ReviewItemRow';
 export { FulfillmentConfirmItemRow } from './FulfillmentConfirmItemRow';
 export { ItemActionSheet } from './ItemActionSheet';
 export type { ItemActionSheetItem, ItemActionSheetSection } from './ItemActionSheet';
+export { OrderLaterAddToSheet } from './OrderLaterAddToSheet';
+export type { OrderLaterSupplierOption } from './OrderLaterAddToSheet';
 export { ConfirmLocationBottomSheet } from './ConfirmLocationBottomSheet';
 export type { ConfirmLocationOption } from './ConfirmLocationBottomSheet';
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -152,6 +152,111 @@ function toNonNegativeNumber(value: unknown, fallback = 0): number {
 function formatQuantity(value: number): string {
   if (!Number.isFinite(value)) return '0';
   return Number.isInteger(value) ? `${value}` : `${value}`.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
+}
+
+function buildFinalizePayloadFromItems(
+  regularItems: ConfirmationItem[],
+  remainingItems: RemainingConfirmationItem[]
+) {
+  const regularPayload = regularItems.map((item) => ({
+    id: item.id,
+    inventoryItemId: item.inventoryItemId,
+    name: item.name,
+    category: item.category,
+    locationGroup: item.locationGroup,
+    quantity: item.quantity,
+    unitType: item.unitType,
+    unitLabel: item.unitLabel,
+    notes: item.notes.map((note) => note.text),
+    sourceOrderItemIds: item.sourceOrderItemIds,
+    sourceOrderIds: item.sourceOrderIds,
+    sourceDraftItemIds: item.sourceDraftItemIds,
+  }));
+
+  const remainingPayload = remainingItems.map((item) => ({
+    orderItemId: item.orderItemId,
+    orderId: item.orderId,
+    inventoryItemId: item.inventoryItemId,
+    name: item.name,
+    category: item.category,
+    locationGroup: item.locationGroup,
+    locationId: item.locationId,
+    locationName: item.locationName,
+    quantity: item.decidedQuantity ?? 0,
+    decidedQuantity: item.decidedQuantity ?? 0,
+    reportedRemaining: item.reportedRemaining,
+    unitType: item.unitType,
+    unitLabel: item.unitLabel,
+    note: item.note,
+  }));
+
+  const locationSet = new Set<string>();
+  regularPayload.forEach((item) => {
+    locationSet.add(item.locationGroup === 'poki' ? 'Poki' : 'Sushi');
+  });
+  remainingPayload.forEach((item) => {
+    locationSet.add(item.locationGroup === 'poki' ? 'Poki' : 'Sushi');
+  });
+
+  const consumedOrderItemIds = Array.from(
+    new Set([
+      ...regularPayload.flatMap((item) => item.sourceOrderItemIds),
+      ...remainingPayload.map((item) => item.orderItemId),
+    ])
+  );
+
+  const consumedDraftItemIds = Array.from(
+    new Set(regularPayload.flatMap((item) => item.sourceDraftItemIds))
+  );
+
+  const sourceOrderIds = Array.from(
+    new Set([
+      ...regularPayload.flatMap((item) => item.sourceOrderIds),
+      ...remainingPayload.map((item) => item.orderId),
+    ])
+  );
+
+  const historyLineItems = [
+    ...regularPayload.map((item) => ({
+      itemId: item.inventoryItemId,
+      itemName: item.name,
+      unit: item.unitLabel,
+      quantity: item.quantity,
+      locationId: null,
+      locationName: null,
+      locationGroup: item.locationGroup,
+      unitType: item.unitType,
+      note: item.notes.length > 0 ? item.notes[0] : null,
+    })),
+    ...remainingPayload.map((item) => ({
+      itemId: item.inventoryItemId,
+      itemName: item.name,
+      unit: item.unitLabel,
+      quantity: item.decidedQuantity ?? item.quantity,
+      locationId: item.locationId,
+      locationName: item.locationName,
+      locationGroup: item.locationGroup,
+      unitType: item.unitType,
+      note: item.note,
+    })),
+  ].filter(
+    (line) =>
+      typeof line.itemId === 'string' &&
+      line.itemId.trim().length > 0 &&
+      Number.isFinite(line.quantity) &&
+      line.quantity > 0
+  );
+
+  return {
+    regularPayload,
+    remainingPayload,
+    historyLineItems,
+    locationLabels: Array.from(locationSet),
+    consumedOrderItemIds,
+    consumedDraftItemIds,
+    sourceOrderIds,
+    totalItemCount: regularPayload.length + remainingPayload.length,
+  };
 }
 
 function encodeHistorySignaturePart(value: string | null | undefined): string {
@@ -570,6 +675,7 @@ export default function FulfillmentConfirmationScreen() {
   const [historyUnavailableOffline, setHistoryUnavailableOffline] = useState(false);
   const [showRetryActions, setShowRetryActions] = useState(false);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const finalizeInFlightRef = useRef(false);
   const [orderLaterTarget, setOrderLaterTarget] = useState<
     | { kind: 'regular'; id: string }
     | { kind: 'remaining'; id: string }
@@ -713,7 +819,7 @@ export default function FulfillmentConfirmationScreen() {
   }, [items, remainingItems]);
 
   const refreshFromSupplierSource = useCallback(async () => {
-    if (!supplierId) return;
+    if (!supplierId) return null;
 
     try {
       await fetchPendingFulfillmentOrders(managerLocationIds);
@@ -727,12 +833,19 @@ export default function FulfillmentConfirmationScreen() {
         supplierDraftItems,
       });
 
-      setItems(rebuilt.regularItems as any);
-      setRemainingItems(rebuilt.remainingItems as any);
+      const nextRegularItems = rebuilt.regularItems as unknown as ConfirmationItem[];
+      const nextRemainingItems = rebuilt.remainingItems as unknown as RemainingConfirmationItem[];
+      setItems(nextRegularItems);
+      setRemainingItems(nextRemainingItems);
+      return {
+        regularItems: nextRegularItems,
+        remainingItems: nextRemainingItems,
+      };
     } catch (error) {
       if (__DEV__) {
         console.warn('[Fulfillment:Confirm] Unable to refresh supplier payload from source.', error);
       }
+      return null;
     }
   }, [fetchPendingFulfillmentOrders, getSupplierDraftItems, managerLocationIds, supplierId]);
 
@@ -2024,183 +2137,143 @@ export default function FulfillmentConfirmationScreen() {
   ]);
 
   const buildFinalizePayload = useCallback(() => {
-    const regularPayload = items.map((item) => ({
-      id: item.id,
-      inventoryItemId: item.inventoryItemId,
-      name: item.name,
-      category: item.category,
-      locationGroup: item.locationGroup,
-      quantity: item.quantity,
-      unitType: item.unitType,
-      unitLabel: item.unitLabel,
-      notes: item.notes.map((note) => note.text),
-      sourceOrderItemIds: item.sourceOrderItemIds,
-      sourceOrderIds: item.sourceOrderIds,
-      sourceDraftItemIds: item.sourceDraftItemIds,
-    }));
-
-    const remainingPayload = remainingItems.map((item) => ({
-      orderItemId: item.orderItemId,
-      orderId: item.orderId,
-      inventoryItemId: item.inventoryItemId,
-      name: item.name,
-      category: item.category,
-      locationGroup: item.locationGroup,
-      locationId: item.locationId,
-      locationName: item.locationName,
-      quantity: item.decidedQuantity ?? 0,
-      decidedQuantity: item.decidedQuantity ?? 0,
-      reportedRemaining: item.reportedRemaining,
-      unitType: item.unitType,
-      unitLabel: item.unitLabel,
-      note: item.note,
-    }));
-
-    const locationSet = new Set<string>();
-    regularPayload.forEach((item) => {
-      locationSet.add(item.locationGroup === 'poki' ? 'Poki' : 'Sushi');
-    });
-    remainingPayload.forEach((item) => {
-      locationSet.add(item.locationGroup === 'poki' ? 'Poki' : 'Sushi');
-    });
-
-    const consumedOrderItemIds = Array.from(
-      new Set([
-        ...regularPayload.flatMap((item) => item.sourceOrderItemIds),
-        ...remainingPayload.map((item) => item.orderItemId),
-      ])
-    );
-
-    const consumedDraftItemIds = Array.from(
-      new Set(regularPayload.flatMap((item) => item.sourceDraftItemIds))
-    );
-
-    const sourceOrderIds = Array.from(
-      new Set([
-        ...regularPayload.flatMap((item) => item.sourceOrderIds),
-        ...remainingPayload.map((item) => item.orderId),
-      ])
-    );
-
-    const historyLineItems = [
-      ...regularPayload.map((item) => ({
-        itemId: item.inventoryItemId,
-        itemName: item.name,
-        unit: item.unitLabel,
-        quantity: item.quantity,
-        locationId: null,
-        locationName: null,
-        locationGroup: item.locationGroup,
-        unitType: item.unitType,
-        note: item.notes.length > 0 ? item.notes[0] : null,
-      })),
-      ...remainingPayload.map((item) => ({
-        itemId: item.inventoryItemId,
-        itemName: item.name,
-        unit: item.unitLabel,
-        quantity: item.decidedQuantity ?? item.quantity,
-        locationId: item.locationId,
-        locationName: item.locationName,
-        locationGroup: item.locationGroup,
-        unitType: item.unitType,
-        note: item.note,
-      })),
-    ].filter(
-      (line) =>
-        typeof line.itemId === 'string' &&
-        line.itemId.trim().length > 0 &&
-        Number.isFinite(line.quantity) &&
-        line.quantity > 0
-    );
-
-    return {
-      regularPayload,
-      remainingPayload,
-      historyLineItems,
-      locationLabels: Array.from(locationSet),
-      consumedOrderItemIds,
-      consumedDraftItemIds,
-      sourceOrderIds,
-      totalItemCount: regularPayload.length + remainingPayload.length,
-    };
+    return buildFinalizePayloadFromItems(items, remainingItems);
   }, [items, remainingItems]);
 
   const finalizeOrder = useCallback(
     async (shareMethod: 'share' | 'copy') => {
-      if (!user?.id) {
-        Alert.alert('Sign In Required', 'Please sign in again to finalize this order.');
+      if (finalizeInFlightRef.current) {
         return false;
       }
-      if (!supplierId) {
-        Alert.alert('Missing Supplier', 'Unable to finalize because supplier info is missing.');
-        return false;
-      }
+      finalizeInFlightRef.current = true;
 
-      const payload = buildFinalizePayload();
-
-      if (payload.consumedOrderItemIds.length === 0) {
-        Alert.alert(
-          'Finalize Blocked',
-          'This supplier order is missing source order-item links. Pull to refresh and try again.'
-        );
-        return false;
-      }
-
-      if (__DEV__) {
-        console.log(
-          '[Fulfillment:Confirm] finalize — consumed order_item ids:',
-          payload.consumedOrderItemIds.length,
-          payload.consumedOrderItemIds.slice(0, 5)
-        );
-      }
-
-      setIsFinalizing(true);
       try {
-        // createPastOrder (called by finalizeSupplierOrder) handles:
-        //   1. Inserting into past_orders + past_order_items tables
-        //   2. Calling markOrderItemsStatus to set status='sent'
-        //   3. Updating local state (pastOrders, orders) to remove consumed items
-        //   4. Queueing for offline sync if DB operations fail
-        await finalizeSupplierOrder({
-          supplierId,
-          supplierName: supplierLabel,
-          createdBy: user.id,
-          messageText,
-          shareMethod,
-          payload: {
-            regularItems: payload.regularPayload,
-            remainingItems: payload.remainingPayload,
-            locations: payload.locationLabels,
-            sourceOrderIds: payload.sourceOrderIds,
-            source_order_ids: payload.sourceOrderIds,
-            sourceOrderItemIds: payload.consumedOrderItemIds,
-            source_order_item_ids: payload.consumedOrderItemIds,
-            totalItemCount: payload.totalItemCount,
-            finalizedAt: new Date().toISOString(),
-          },
-          consumedOrderItemIds: payload.consumedOrderItemIds,
-          consumedDraftItemIds: payload.consumedDraftItemIds,
-          lineItems: payload.historyLineItems,
-        });
+        if (!user?.id) {
+          Alert.alert('Sign In Required', 'Please sign in again to finalize this order.');
+          return false;
+        }
+        if (!supplierId) {
+          Alert.alert('Missing Supplier', 'Unable to finalize because supplier info is missing.');
+          return false;
+        }
 
-        // Refresh fulfillment data so the cleared items don't reappear
+        let payload = buildFinalizePayload();
+        if (
+          payload.consumedOrderItemIds.length === 0 &&
+          payload.consumedDraftItemIds.length === 0
+        ) {
+          const refreshed = await refreshFromSupplierSource();
+          if (refreshed) {
+            payload = buildFinalizePayloadFromItems(refreshed.regularItems, refreshed.remainingItems);
+          }
+        }
+
+        if (
+          payload.consumedOrderItemIds.length === 0 &&
+          payload.consumedDraftItemIds.length === 0
+        ) {
+          Alert.alert(
+            'Finalize Blocked',
+            'No source links were found for these items. Pull to refresh and try again.'
+          );
+          return false;
+        }
+
+        if (__DEV__) {
+          console.log(
+            '[Fulfillment:Confirm] finalize — consumed order_item ids:',
+            payload.consumedOrderItemIds.length,
+            payload.consumedOrderItemIds.slice(0, 5)
+          );
+        }
+
+        const normalizedIds = Array.from(
+          new Set(
+            payload.consumedOrderItemIds.filter(
+              (id): id is string => typeof id === 'string' && id.trim().length > 0
+            )
+          )
+        );
+        if (normalizedIds.length > 0) {
+          try {
+            const { data, error } = await supabase
+              .from('order_items')
+              .select('id,status')
+              .in('id', normalizedIds);
+            if (error) {
+              throw error;
+            }
+            const pendingIds = new Set(
+              (Array.isArray(data) ? data : [])
+                .filter((row: any) => row?.status === 'pending')
+                .map((row: any) => (typeof row?.id === 'string' ? row.id : null))
+                .filter((id: string | null): id is string => Boolean(id))
+            );
+            const staleIds = normalizedIds.filter((id) => !pendingIds.has(id));
+            if (staleIds.length > 0) {
+              Alert.alert(
+                'Order Changed',
+                'Some items were already processed on another device. The screen will refresh now.'
+              );
+              await fetchPendingFulfillmentOrders(managerLocationIds);
+              router.replace('/(manager)/fulfillment');
+              return false;
+            }
+          } catch (validationError) {
+            console.warn('[Fulfillment:Confirm] unable to validate item freshness before finalize.', validationError);
+          }
+        }
+
+        setIsFinalizing(true);
         try {
-          await fetchPendingFulfillmentOrders(managerLocationIds);
-        } catch {
-          // Non-critical: local state was already updated by createPastOrder
-        }
+          // createPastOrder (called by finalizeSupplierOrder) handles:
+          //   1. Inserting into past_orders + past_order_items tables
+          //   2. Calling markOrderItemsStatus to set status='sent'
+          //   3. Updating local state (pastOrders, orders) to remove consumed items
+          //   4. Queueing for offline sync if DB operations fail
+          await finalizeSupplierOrder({
+            supplierId,
+            supplierName: supplierLabel,
+            createdBy: user.id,
+            messageText,
+            shareMethod,
+            payload: {
+              regularItems: payload.regularPayload,
+              remainingItems: payload.remainingPayload,
+              locations: payload.locationLabels,
+              sourceOrderIds: payload.sourceOrderIds,
+              source_order_ids: payload.sourceOrderIds,
+              sourceOrderItemIds: payload.consumedOrderItemIds,
+              source_order_item_ids: payload.consumedOrderItemIds,
+              totalItemCount: payload.totalItemCount,
+              finalizedAt: new Date().toISOString(),
+            },
+            consumedOrderItemIds: payload.consumedOrderItemIds,
+            consumedDraftItemIds: payload.consumedDraftItemIds,
+            lineItems: payload.historyLineItems,
+          });
 
-        if (Platform.OS !== 'web') {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          // Refresh fulfillment data so the cleared items don't reappear
+          try {
+            await fetchPendingFulfillmentOrders(managerLocationIds);
+          } catch {
+            // Non-critical: local state was already updated by createPastOrder
+          }
+
+          if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+          router.replace('/(manager)/fulfillment');
+          return true;
+        } catch (error: any) {
+          console.error('[Fulfillment:Confirm] finalizeOrder failed:', error);
+          Alert.alert('Finalize Failed', error?.message || 'Unable to move this order to past orders.');
+          return false;
+        } finally {
+          setIsFinalizing(false);
         }
-        router.replace('/(manager)/fulfillment');
-        return true;
-      } catch (error: any) {
-        console.error('[Fulfillment:Confirm] finalizeOrder failed:', error);
-        Alert.alert('Finalize Failed', error?.message || 'Unable to move this order to past orders.');
-        return false;
       } finally {
-        setIsFinalizing(false);
+        finalizeInFlightRef.current = false;
       }
     },
     [
@@ -2209,6 +2282,7 @@ export default function FulfillmentConfirmationScreen() {
       finalizeSupplierOrder,
       managerLocationIds,
       messageText,
+      refreshFromSupplierSource,
       supplierId,
       supplierLabel,
       user?.id,
@@ -2331,6 +2405,9 @@ export default function FulfillmentConfirmationScreen() {
   );
 
   const handleShareOrder = useCallback(async () => {
+    if (finalizeInFlightRef.current) {
+      return;
+    }
     if (actionsDisabled) {
       Alert.alert('Decision Required', 'Set final quantities greater than zero for all remaining items before ordering.');
       return;
@@ -2361,6 +2438,9 @@ export default function FulfillmentConfirmationScreen() {
   }, [actionsDisabled, finalizeOrder, messageText, supplierLabel]);
 
   const handleCopyToClipboard = useCallback(async () => {
+    if (finalizeInFlightRef.current) {
+      return;
+    }
     if (actionsDisabled) {
       Alert.alert('Decision Required', 'Set final quantities greater than zero for all remaining items before ordering.');
       return;
