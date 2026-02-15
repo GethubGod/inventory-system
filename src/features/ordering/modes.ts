@@ -10,13 +10,14 @@ export const EMPLOYEE_ORDERING_MODE: OrderingMode = {
   searchAction: 'voice',
   voiceRoute: '/(tabs)/voice',
   requireLocationConfirm: true,
+  pastOrdersRoute: '/orders/history',
 };
 
 export const MANAGER_ORDERING_MODE: OrderingMode = {
   scope: 'manager',
   quickOrderRoute: '/(manager)/quick-order',
   cartRoute: '/(manager)/cart',
-  browseRoute: '/(manager)',
+  browseRoute: '/(manager)/browse',
   inputAccessoryId: 'managerQuickOrderInput',
   backBehavior: { replace: '/(manager)' },
   searchAction: 'quick_create',

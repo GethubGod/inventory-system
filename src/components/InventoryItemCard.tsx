@@ -3,22 +3,23 @@ import { View, Text, TouchableOpacity, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { InventoryItem, UnitType } from '@/types';
 import { useOrderStore } from '@/store';
-import type { OrderInputMode } from '@/store';
+import type { OrderInputMode, CartContext } from '@/store/orderStore';
 import { categoryColors, CATEGORY_LABELS } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 interface InventoryItemCardProps {
   item: InventoryItem;
   locationId: string;
+  cartContext?: CartContext;
 }
 
 // Memoized to prevent re-renders in list virtualization
-function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
+function InventoryItemCardInner({ item, locationId, cartContext }: InventoryItemCardProps) {
   const addToCart = useOrderStore((state) => state.addToCart);
   const updateCartItem = useOrderStore((state) => state.updateCartItem);
   const removeFromCart = useOrderStore((state) => state.removeFromCart);
   const cartItem = useOrderStore(
-    useCallback((state) => state.getCartItem(locationId, item.id), [locationId, item.id])
+    useCallback((state) => state.getCartItem(locationId, item.id, cartContext), [locationId, item.id, cartContext])
   );
   const ds = useScaledStyles();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -65,6 +66,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
         addToCart(locationId, item.id, qty, unitType, {
           inputMode: 'quantity',
           quantityRequested: qty,
+          context: cartContext,
         });
         setIsExpanded(false);
       }
@@ -76,6 +78,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
       addToCart(locationId, item.id, rem, unitType, {
         inputMode: 'remaining',
         remainingReported: rem,
+        context: cartContext,
       });
       setIsExpanded(false);
     }
@@ -101,6 +104,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
       cartItemId: cartItem.id,
       inputMode: 'quantity',
       quantityRequested: qty,
+      context: cartContext,
     });
   };
 
@@ -116,6 +120,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
       cartItemId: cartItem.id,
       inputMode: 'remaining',
       remainingReported: rem,
+      context: cartContext,
     });
   };
 
@@ -131,6 +136,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
           cartItemId: cartItem.id,
           inputMode: 'quantity',
           quantityRequested: next,
+          context: cartContext,
         });
       }
       return;
@@ -146,6 +152,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
         cartItemId: cartItem.id,
         inputMode: 'remaining',
         remainingReported: next,
+        context: cartContext,
       });
     }
   };
@@ -158,7 +165,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
 
       if (cartItem) {
         if (next <= 0) {
-          removeFromCart(locationId, item.id, cartItem.id);
+          removeFromCart(locationId, item.id, cartItem.id, cartContext);
           setQuantity('1');
           setIsExpanded(false);
         } else {
@@ -166,6 +173,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
             cartItemId: cartItem.id,
             inputMode: 'quantity',
             quantityRequested: next,
+            context: cartContext,
           });
         }
       }
@@ -181,6 +189,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
         cartItemId: cartItem.id,
         inputMode: 'remaining',
         remainingReported: next,
+        context: cartContext,
       });
     }
   };
@@ -199,6 +208,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
         cartItemId: cartItem.id,
         inputMode: 'quantity',
         quantityRequested: qty,
+        context: cartContext,
       });
       return;
     }
@@ -210,6 +220,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
       cartItemId: cartItem.id,
       inputMode: 'remaining',
       remainingReported: rem,
+      context: cartContext,
     });
   };
 
@@ -225,6 +236,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
         cartItemId: cartItem.id,
         inputMode: 'quantity',
         quantityRequested: qty,
+        context: cartContext,
       });
       return;
     }
@@ -235,6 +247,7 @@ function InventoryItemCardInner({ item, locationId }: InventoryItemCardProps) {
       cartItemId: cartItem.id,
       inputMode: 'remaining',
       remainingReported: rem,
+      context: cartContext,
     });
   };
 

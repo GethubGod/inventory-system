@@ -26,6 +26,27 @@ const warnedMissingProfileColumns = new Set<string>();
 const SUSPENDED_ACCOUNT_MESSAGE = 'Account suspended. Contact a manager.';
 let activeSessionUserId: string | null = null;
 let userScopedResetPromise: Promise<void> | null = null;
+const DELETE_SELF_NETWORK_TIMEOUT_MS = 20_000;
+const DELETE_SELF_CLEANUP_TIMEOUT_MS = 8_000;
+
+function withTimeout(promise: Promise<any>, timeoutMs: number, timeoutMessage: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
 
 function clearProfileSubscription() {
   if (!profileRealtimeChannel) return;
@@ -824,27 +845,30 @@ export const useAuthStore = create<AuthState>()(
 
         set({ isLoading: true });
         try {
-          // Refresh session to ensure valid tokens before the destructive call.
-          const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-          if (refreshError || !refreshed?.session) {
-            throw new Error('Unable to verify your session. Please sign out, sign in again, and retry.');
-          }
+          const invokeDeleteSelf = () =>
+            withTimeout(
+              supabase.functions.invoke('delete-self', {
+                body: { confirm: 'DELETE' },
+              }),
+              DELETE_SELF_NETWORK_TIMEOUT_MS,
+              'Delete request timed out. Please check your connection and try again.'
+            );
 
           // Let the Supabase client attach the freshly-refreshed token automatically.
-          let { error } = await supabase.functions.invoke('delete-self', {
-            body: { confirm: 'DELETE' },
-          });
+          let { error } = await invokeDeleteSelf();
 
           // Single retry on 401 — refresh once more in case of a race.
           const initialStatus = (error as any)?.context?.status as number | undefined;
           if (error && initialStatus === 401) {
-            const { data: retryRefreshed, error: retryRefreshError } = await supabase.auth.refreshSession();
+            const { data: retryRefreshed, error: retryRefreshError } = await withTimeout(
+              supabase.auth.refreshSession(),
+              DELETE_SELF_NETWORK_TIMEOUT_MS,
+              'Session refresh timed out. Please check your connection and try again.'
+            );
             if (retryRefreshError || !retryRefreshed?.session) {
               throw new Error('Your session has expired. Please sign out, sign in again, and retry.');
             }
-            ({ error } = await supabase.functions.invoke('delete-self', {
-              body: { confirm: 'DELETE' },
-            }));
+            ({ error } = await invokeDeleteSelf());
           }
 
           if (error) {
@@ -890,14 +914,39 @@ export const useAuthStore = create<AuthState>()(
             throw new Error(serverMessage || error.message || 'Unable to delete account.');
           }
 
-          const signOutResult = await supabase.auth.signOut();
-          if (signOutResult.error) {
-            console.warn('Sign-out after delete-self failed; clearing local session anyway.', signOutResult.error);
+          try {
+            const signOutResult = await withTimeout(
+              supabase.auth.signOut(),
+              DELETE_SELF_CLEANUP_TIMEOUT_MS,
+              'Sign-out timed out after account deletion.'
+            );
+            if (signOutResult.error) {
+              console.warn('Sign-out after delete-self failed; clearing local session anyway.', signOutResult.error);
+            }
+          } catch (signOutError) {
+            console.warn('Sign-out after delete-self timed out; clearing local session anyway.', signOutError);
           }
 
           clearProfileSubscription();
-          await clearUserScopedClientState();
-          await AsyncStorage.removeItem('babytuna-auth');
+          const cleanupResults = await Promise.allSettled([
+            withTimeout(
+              clearUserScopedClientState(),
+              DELETE_SELF_CLEANUP_TIMEOUT_MS,
+              'Timed out clearing user-scoped client state.'
+            ),
+            withTimeout(
+              AsyncStorage.removeItem('babytuna-auth'),
+              DELETE_SELF_CLEANUP_TIMEOUT_MS,
+              'Timed out clearing auth storage.'
+            ),
+          ]);
+          if (cleanupResults[0]?.status === 'rejected') {
+            console.warn('Failed to clear user-scoped client state after delete-self.', cleanupResults[0].reason);
+          }
+          if (cleanupResults[1]?.status === 'rejected') {
+            console.warn('Failed to clear auth storage after delete-self.', cleanupResults[1].reason);
+          }
+
           activeSessionUserId = null;
           set({
             session: null,

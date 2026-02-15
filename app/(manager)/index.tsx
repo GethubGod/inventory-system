@@ -512,6 +512,34 @@ export default function ManagerDashboard() {
               ))
             )}
           </View>
+
+          {/* Browse Inventory */}
+          <TouchableOpacity
+            className="bg-white rounded-2xl border border-gray-100 mt-6 flex-row items-center"
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 16,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+              elevation: 2,
+            }}
+            onPress={() => router.push('/(manager)/browse')}
+            activeOpacity={0.7}
+          >
+            <View
+              className="bg-primary-100 rounded-full items-center justify-center mr-3"
+              style={{ width: 40, height: 40 }}
+            >
+              <Ionicons name="search-outline" size={20} color="#F97316" />
+            </View>
+            <View className="flex-1">
+              <Text className="font-bold text-gray-900 text-base">Browse Inventory</Text>
+              <Text className="text-gray-500 text-sm mt-0.5">Search and add items by category</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          </TouchableOpacity>
         </ScrollView>
       </ManagerScaleContainer>
     </SafeAreaView>

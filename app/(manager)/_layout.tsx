@@ -175,6 +175,14 @@ export default function ManagerLayout() {
         }}
       />
 
+      {/* Browse (hidden — accessed from Dashboard) */}
+      <Tabs.Screen
+        name="browse"
+        options={{
+          href: null,
+        }}
+      />
+
       {/* Quick Order - Replaces Orders */}
       <Tabs.Screen
         name="quick-order"

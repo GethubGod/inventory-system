@@ -64,6 +64,7 @@ export function CartScreenView({
   const context: CartContext = mode.scope;
   const quickOrderRoute = mode.quickOrderRoute;
   const browseRoute = mode.browseRoute;
+  const pastOrdersRoute = mode.pastOrdersRoute;
   const requiresLocationConfirm = mode.requireLocationConfirm ?? context === 'employee';
 
   const {
@@ -1032,8 +1033,19 @@ export function CartScreenView({
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
       {/* Header */}
-      <View style={{ paddingHorizontal: ds.spacing(20) }} className="bg-white py-4 border-b border-gray-100">
-        <Text style={{ fontSize: ds.fontSize(24) }} className="font-bold text-gray-900">Cart</Text>
+      <View style={{ paddingHorizontal: ds.spacing(20) }} className="bg-white py-4 border-b border-gray-100 flex-row items-center">
+        <Text style={{ fontSize: ds.fontSize(24) }} className="font-bold text-gray-900 flex-1">Cart</Text>
+        {pastOrdersRoute && (
+          <TouchableOpacity
+            onPress={() => router.push(pastOrdersRoute as any)}
+            className="flex-row items-center bg-gray-100 rounded-full"
+            style={{ paddingHorizontal: ds.spacing(16), minHeight: 44 }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="time-outline" size={ds.icon(16)} color={colors.gray[700]} />
+            <Text style={{ fontSize: ds.fontSize(14) }} className="ml-2 font-semibold text-gray-700">My Orders</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {totalCartCount > 0 ? (

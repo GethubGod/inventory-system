@@ -39,6 +39,9 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
+        "android.permission.NFC",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
         "android.permission.NFC"
       ]
     },
@@ -77,7 +80,8 @@
           "microphonePermission": "Microphone access is needed for voice ordering.",
           "speechRecognitionPermission": "Speech recognition is needed for voice ordering."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
@@ -87,6 +91,10 @@
       "eas": {
         "projectId": "1d0766bf-1c2a-4628-92da-062887a009a4"
       }
+    },
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/1d0766bf-1c2a-4628-92da-062887a009a4"
     }
   }
 }

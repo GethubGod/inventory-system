@@ -15,4 +15,5 @@ export type OrderingMode = {
   canEditPrice?: boolean;
   canOverrideSupplier?: boolean;
   showManagerBadges?: boolean;
+  pastOrdersRoute?: string;
 };

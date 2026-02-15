@@ -84,8 +84,8 @@ async function prepareSelfDelete(userId: string) {
   // but remove the user's own ownership rows instead of reassigning them.
   await deleteRowsByUser('orders', 'user_id', userId);
   await deleteRowsByUser('stock_check_sessions', 'user_id', userId);
+  await deleteRowsByUser('stock_updates', 'updated_by', userId);
 
-  await nullUserReference('stock_updates', 'updated_by', userId);
   await nullUserReference('storage_areas', 'last_checked_by', userId);
   await nullUserReference('area_items', 'last_updated_by', userId);
   await nullUserReference('inventory_items', 'created_by', userId);
