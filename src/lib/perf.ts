@@ -20,7 +20,6 @@ export function perfMeasure(label: string): number {
   if (start === undefined) return 0;
   marks.delete(label);
   const ms = Date.now() - start;
-  // eslint-disable-next-line no-console
   console.log(`[Perf] ${label}: ${ms}ms`);
   return ms;
 }
@@ -38,7 +37,6 @@ export function perfSync<T>(label: string, fn: () => T): T {
   const start = Date.now();
   const result = fn();
   const ms = Date.now() - start;
-  // eslint-disable-next-line no-console
   console.log(`[Perf] ${label}: ${ms}ms`);
   return result;
 }

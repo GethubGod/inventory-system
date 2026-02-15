@@ -18,7 +18,7 @@ import * as Haptics from 'expo-haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useInventoryStore, useAuthStore, useOrderStore } from '@/store';
 import { InventoryItem, ItemCategory, Location } from '@/types';
-import { CATEGORY_LABELS, categoryColors, colors } from '@/constants';
+import { CATEGORY_LABELS, colors } from '@/constants';
 import { BrandLogo } from '@/components';
 import { InventoryItemCard } from '@/components/InventoryItemCard';
 import { useScaledStyles } from '@/hooks/useScaledStyles';

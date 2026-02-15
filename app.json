@@ -39,9 +39,6 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
-        "android.permission.NFC",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
         "android.permission.NFC"
       ]
     },
@@ -71,7 +68,8 @@
       [
         "react-native-nfc-manager",
         {
-          "nfcPermission": "NFC access is required to scan tags."
+          "nfcPermission": "NFC access is required to scan tags.",
+          "includeNdefEntitlement": false
         }
       ],
       [
