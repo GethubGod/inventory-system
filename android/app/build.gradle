@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.babytuna.inventory'
+    namespace 'com.babytuna.systems'
     defaultConfig {
-        applicationId 'com.babytuna.inventory'
+        applicationId 'com.babytuna.systems'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

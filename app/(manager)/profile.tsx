@@ -207,7 +207,7 @@ export default function ManagerSettingsScreen() {
 
         <View className="items-center" style={{ paddingHorizontal: ds.spacing(24), paddingTop: ds.spacing(24), paddingBottom: ds.spacing(40) }}>
           <BrandLogo variant="footer" size={40} />
-          <Text className="text-gray-500" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(8) }}>Babytuna Internal</Text>
+          <Text className="text-gray-500" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(8) }}>Babytuna Systems</Text>
           <Text className="text-gray-400" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4) }}>Version {appVersion}</Text>
         </View>
       </ScrollView>

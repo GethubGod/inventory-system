@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Babytuna Internal",
-    "slug": "babytuna-internal",
+    "name": "Babytuna Systems",
+    "slug": "babytuna-systems",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
-    "scheme": "babytuna",
+    "scheme": "babytunasystems",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/images/splash.png",
@@ -17,7 +17,7 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.babytuna.app",
+      "bundleIdentifier": "com.babytuna.systems",
       "buildNumber": "1",
       "config": {
         "usesNonExemptEncryption": false
@@ -35,7 +35,7 @@
         "foregroundImage": "./assets/images/app-icon.png",
         "backgroundColor": "#000000"
       },
-      "package": "com.babytuna.inventory",
+      "package": "com.babytuna.systems",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
@@ -89,12 +89,13 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "1d0766bf-1c2a-4628-92da-062887a009a4"
+        "projectId": "fd32384c-3175-4fef-81b4-1321513b386e"
       }
     },
     "runtimeVersion": "1.0.0",
+    "owner": "gethubgod",
     "updates": {
-      "url": "https://u.expo.dev/1d0766bf-1c2a-4628-92da-062887a009a4"
+      "url": "https://u.expo.dev/fd32384c-3175-4fef-81b4-1321513b386e"
     }
   }
 }

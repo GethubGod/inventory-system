@@ -43,11 +43,6 @@ const STATUS_LABELS: Record<StorageAreaWithStatus['check_status'], string> = {
   ok: 'Checked',
 };
 
-const STATUS_EMOJI: Record<StorageAreaWithStatus['check_status'], string> = {
-  overdue: '🔴',
-  due_soon: '🟡',
-  ok: '🟢',
-};
 
 function formatLastChecked(lastCheckedAt: string | null): string {
   if (!lastCheckedAt) return 'Never checked';
@@ -120,7 +115,7 @@ export default function UpdateStockScreen() {
 
   const pulse = useRef(new Animated.Value(0)).current;
   const { height: screenHeight } = useWindowDimensions();
-  const nfcCardHeight = Math.max(320, screenHeight * 0.5);
+  const nfcCardHeight = Math.max(260, screenHeight * 0.35);
 
   useStockNetworkStatus();
 
@@ -555,7 +550,7 @@ export default function UpdateStockScreen() {
               minHeight: nfcCardHeight,
             }}
           >
-            <View className="flex-1 items-center justify-center" style={{ paddingTop: ds.spacing(24) }}>
+            <View className="flex-1 items-center justify-center" style={{ paddingTop: ds.spacing(16) }}>
               <View className="relative items-center justify-center">
                 {!reduceMotion && (
                   <Animated.View
@@ -569,7 +564,7 @@ export default function UpdateStockScreen() {
                   />
                 )}
                 <TouchableOpacity
-                  className="rounded-2xl bg-orange-100 items-center justify-center"
+                  className="rounded-full bg-orange-100 items-center justify-center"
                   style={{
                     width: nfcButtonSize,
                     height: nfcButtonSize,
@@ -577,7 +572,7 @@ export default function UpdateStockScreen() {
                   onLongPress={handleBypassOpen}
                   delayLongPress={600}
                 >
-                  <Ionicons name="phone-portrait-outline" size={ds.icon(32)} color={colors.primary[600]} />
+                  <Ionicons name="phone-portrait-outline" size={ds.icon(28)} color={colors.primary[600]} />
                 </TouchableOpacity>
               </View>
               <Text
@@ -617,9 +612,9 @@ export default function UpdateStockScreen() {
 
             <Text
               className="text-gray-400 text-center"
-              style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(12) }}
+              style={{ fontSize: ds.fontSize(11), marginTop: ds.spacing(12) }}
             >
-              NFC scanning requires a physical device and NFC setup (react-native-nfc-manager).
+              Hold your device near the tag or use QR to begin counting.
             </Text>
           </View>
         </View>
@@ -665,7 +660,6 @@ export default function UpdateStockScreen() {
             storageAreas.map((area) => {
               const statusColor = STATUS_COLORS[area.check_status];
               const statusLabel = STATUS_LABELS[area.check_status];
-              const statusEmoji = STATUS_EMOJI[area.check_status];
               const itemCount = area.item_count ?? 0;
 
               return (
@@ -712,12 +706,31 @@ export default function UpdateStockScreen() {
                       </View>
                     </View>
                     <View className="flex-row items-center">
-                      <Text
-                        className="font-semibold text-gray-400"
-                        style={{ fontSize: ds.fontSize(12), marginRight: ds.spacing(8) }}
+                      <View
+                        className="flex-row items-center rounded-full"
+                        style={{
+                          paddingHorizontal: ds.spacing(8),
+                          paddingVertical: ds.spacing(3),
+                          backgroundColor: statusColor + '18',
+                          marginRight: ds.spacing(6),
+                        }}
                       >
-                        {statusEmoji} {statusLabel}
-                      </Text>
+                        <View
+                          style={{
+                            width: ds.spacing(6),
+                            height: ds.spacing(6),
+                            borderRadius: 999,
+                            backgroundColor: statusColor,
+                            marginRight: ds.spacing(4),
+                          }}
+                        />
+                        <Text
+                          className="font-semibold"
+                          style={{ fontSize: ds.fontSize(11), color: statusColor }}
+                        >
+                          {statusLabel}
+                        </Text>
+                      </View>
                       <Ionicons name="chevron-forward" size={ds.icon(18)} color={colors.gray[400]} />
                     </View>
                   </View>

@@ -19,6 +19,14 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "babytuna1688@yahoo.com",
+        "ascAppId": "6759226573",
+        "appleTeamId": "TH8X9F2YUR",
+        
+
+      }
+    }
   }
 }

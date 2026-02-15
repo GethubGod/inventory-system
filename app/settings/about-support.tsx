@@ -11,7 +11,7 @@ import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 const SUPPORT_EMAIL = 'babytunalovessushi@gmail.com';
 const PRIVACY_POLICY_URL =
-  'https://www.notion.so/Babytuna-Internal-Privacy-Policy-3032ac6e131b807da732efe1834f2531';
+  'https://www.notion.so/Babytuna-Systems-Privacy-Policy-3032ac6e131b807da732efe1834f2531';
 
 function AboutSection() {
   const appVersion = Constants.expoConfig?.version || '1.0.0';
