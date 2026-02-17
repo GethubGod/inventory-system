@@ -496,7 +496,7 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
       },
 
       clearCart: () => {
-        hapicNotifyWarn();
+        hapticNotifyWarn();
         set({ cartItems: [], conversation: [], geminiHistory: [], offlineQueue: [] });
       },
 
@@ -534,7 +534,7 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
   ),
 );
 
-function hapicNotifyWarn() {
+function hapticNotifyWarn() {
   if (Platform.OS !== 'web') {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
   }

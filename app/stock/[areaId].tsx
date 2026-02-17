@@ -179,7 +179,9 @@ export default function StockCountingScreen() {
     async (delta: number) => {
       const nextValue = toNumber(quantityValue) + delta;
       setQuantityValue(String(Math.max(0, nextValue)));
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (Platform.OS !== 'web') {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
     },
     [quantityValue]
   );

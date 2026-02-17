@@ -5,6 +5,8 @@ import {
   TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
+  Keyboard,
+  Pressable,
   Platform,
   Alert,
 } from 'react-native';
@@ -92,7 +94,7 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1 bg-black"
       >
-        <View className="flex-1 px-6 pt-10 pb-8">
+        <Pressable className="flex-1 px-6 pt-10 pb-8" onPress={Keyboard.dismiss}>
           <View className="items-center mb-6">
             <AuthLogoHeader size={128} />
           </View>
@@ -208,7 +210,7 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </Link>
           </View>
-        </View>
+        </Pressable>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

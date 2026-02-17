@@ -101,7 +101,7 @@ Deno.serve(async (req) => {
         .from('locations')
         .select('id')
         .eq('short_code', locationShortCode)
-        .single();
+        .maybeSingle();
 
       if (locationData) {
         const { data: recentOrders } = await supabaseAdmin

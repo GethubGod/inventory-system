@@ -13,6 +13,19 @@ interface InventoryItemCardProps {
   cartContext?: CartContext;
 }
 
+function sanitizeNumericInput(value: string): string {
+  const filtered = value.replace(/[^0-9.]/g, '');
+  if (!filtered) return '';
+  if (filtered === '.') return '0.';
+
+  const firstDot = filtered.indexOf('.');
+  if (firstDot < 0) return filtered;
+
+  const whole = filtered.slice(0, firstDot);
+  const fractional = filtered.slice(firstDot + 1).replace(/\./g, '');
+  return `${whole}.${fractional}`;
+}
+
 // Memoized to prevent re-renders in list virtualization
 function InventoryItemCardInner({ item, locationId, cartContext }: InventoryItemCardProps) {
   const addToCart = useOrderStore((state) => state.addToCart);
@@ -94,9 +107,11 @@ function InventoryItemCardInner({ item, locationId, cartContext }: InventoryItem
   };
 
   const handleUpdateQuantity = (newQty: string) => {
-    setQuantity(newQty);
-    const qty = Number.parseFloat(newQty);
-    if (!Number.isFinite(qty) || qty <= 0 || !cartItem) {
+    const sanitized = sanitizeNumericInput(newQty);
+    setQuantity(sanitized);
+
+    const qty = Number.parseFloat(sanitized);
+    if (!sanitized || !Number.isFinite(qty) || qty <= 0 || !cartItem) {
       return;
     }
 
@@ -109,10 +124,11 @@ function InventoryItemCardInner({ item, locationId, cartContext }: InventoryItem
   };
 
   const handleUpdateRemaining = (newRemaining: string) => {
-    setRemaining(newRemaining);
-    const rem = Number.parseFloat(newRemaining);
+    const sanitized = sanitizeNumericInput(newRemaining);
+    setRemaining(sanitized);
+    const rem = Number.parseFloat(sanitized);
 
-    if (!Number.isFinite(rem) || rem < 0 || !cartItem) {
+    if (!sanitized || !Number.isFinite(rem) || rem < 0 || !cartItem) {
       return;
     }
 

@@ -76,6 +76,19 @@ const getLocationLabel = (location: Location | null): string => {
   return location.short_code;
 };
 
+function sanitizeNumericInput(value: string): string {
+  const filtered = value.replace(/[^0-9.]/g, '');
+  if (!filtered) return '';
+  if (filtered === '.') return '0.';
+
+  const firstDot = filtered.indexOf('.');
+  if (firstDot < 0) return filtered;
+
+  const whole = filtered.slice(0, firstDot);
+  const fractional = filtered.slice(firstDot + 1).replace(/\./g, '');
+  return `${whole}.${fractional}`;
+}
+
 interface QuickOrderScreenViewProps {
   mode: OrderingMode;
 }
@@ -239,6 +252,14 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
     }
     return '';
   }, [autocompleteSuggestion, searchQuery]);
+
+  const handleQuantityInputChange = useCallback((value: string) => {
+    setQuantity(sanitizeNumericInput(value));
+  }, []);
+
+  const handleRemainingInputChange = useCallback((value: string) => {
+    setRemainingAmount(sanitizeNumericInput(value));
+  }, []);
 
   const resetQuickCreateForm = useCallback(() => {
     const defaultName = searchQuery.trim();
@@ -493,28 +514,43 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
           className="flex-row items-center"
           style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(8) }}
         >
-          {/* Back Button */}
-          <TouchableOpacity
-            onPress={() => {
-              if (mode.backBehavior === 'back') {
-                router.back();
-                return;
-              }
-              router.replace(mode.backBehavior.replace as any);
-            }}
-            style={{
-              width: headerIconButtonSize,
-              height: headerIconButtonSize,
-              borderRadius: ds.radius(10),
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={ds.icon(22)} color={colors.gray[700]} />
-          </TouchableOpacity>
+          {/* Left — Back + Browse (matched width with right) */}
+          <View className="flex-row items-center" style={{ width: headerIconButtonSize * 2 + ds.spacing(8) }}>
+            <TouchableOpacity
+              onPress={() => {
+                if (mode.backBehavior === 'back') {
+                  router.back();
+                  return;
+                }
+                router.replace(mode.backBehavior.replace as any);
+              }}
+              style={{
+                width: headerIconButtonSize,
+                height: headerIconButtonSize,
+                borderRadius: ds.radius(10),
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: ds.spacing(8),
+              }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons name="arrow-back" size={ds.icon(22)} color={colors.gray[700]} />
+            </TouchableOpacity>
 
-          {/* Location Dropdown */}
+            <TouchableOpacity
+              onPress={() => router.push(mode.browseRoute as any)}
+              className="rounded-full bg-gray-100 items-center justify-center"
+              style={{
+                width: headerIconButtonSize,
+                height: headerIconButtonSize,
+              }}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="grid-outline" size={ds.icon(20)} color={colors.gray[700]} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Location Dropdown — centered */}
           <TouchableOpacity
             onPress={toggleLocationDropdown}
             className="flex-1 flex-row items-center justify-center"
@@ -544,33 +580,35 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
             </View>
           </TouchableOpacity>
 
-          {/* Cart Button */}
-          <TouchableOpacity
-            onPress={() => router.push(mode.cartRoute as any)}
-            className="relative rounded-full bg-gray-100 items-center justify-center"
-            style={{
-              width: headerIconButtonSize,
-              height: headerIconButtonSize,
-            }}
-          >
-            <Ionicons name="cart-outline" size={ds.icon(20)} color={colors.gray[700]} />
-            {totalCartCount > 0 && (
-              <View
-                className="absolute bg-primary-500 rounded-full items-center justify-center"
-                style={{
-                  top: -ds.spacing(2),
-                  right: -ds.spacing(2),
-                  minWidth: badgeSize,
-                  height: badgeSize,
-                  paddingHorizontal: ds.spacing(4),
-                }}
-              >
-                <Text style={{ fontSize: ds.fontSize(11) }} className="text-white font-bold">
-                  {totalCartCount > 99 ? '99+' : totalCartCount}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          {/* Right — Cart (matched width with left) */}
+          <View className="flex-row items-center justify-end" style={{ width: headerIconButtonSize * 2 + ds.spacing(8) }}>
+            <TouchableOpacity
+              onPress={() => router.push(mode.cartRoute as any)}
+              className="relative rounded-full bg-gray-100 items-center justify-center"
+              style={{
+                width: headerIconButtonSize,
+                height: headerIconButtonSize,
+              }}
+            >
+              <Ionicons name="cart-outline" size={ds.icon(20)} color={colors.gray[700]} />
+              {totalCartCount > 0 && (
+                <View
+                  className="absolute bg-primary-500 rounded-full items-center justify-center"
+                  style={{
+                    top: -ds.spacing(2),
+                    right: -ds.spacing(2),
+                    minWidth: badgeSize,
+                    height: badgeSize,
+                    paddingHorizontal: ds.spacing(4),
+                  }}
+                >
+                  <Text style={{ fontSize: ds.fontSize(11) }} className="text-white font-bold">
+                    {totalCartCount > 99 ? '99+' : totalCartCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Location Dropdown Menu */}
@@ -833,7 +871,11 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     <TextInput
                       ref={quantityInputRef}
                       value={inputMode === 'quantity' ? quantity : remainingAmount}
-                      onChangeText={inputMode === 'quantity' ? setQuantity : setRemainingAmount}
+                      onChangeText={
+                        inputMode === 'quantity'
+                          ? handleQuantityInputChange
+                          : handleRemainingInputChange
+                      }
                       keyboardType="number-pad"
                       className="text-center font-bold text-gray-900"
                       style={{

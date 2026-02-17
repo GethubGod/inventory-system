@@ -288,6 +288,19 @@ export default function ManagerDashboard() {
               style={{
                 width: headerIconButtonSize,
                 height: headerIconButtonSize,
+                marginRight: ds.spacing(8),
+              }}
+              onPress={() => router.push('/(manager)/browse')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="grid-outline" size={ds.icon(20)} color="#6B7280" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              className="bg-gray-100 rounded-full items-center justify-center"
+              style={{
+                width: headerIconButtonSize,
+                height: headerIconButtonSize,
               }}
               onPress={() => router.push('/(manager)/cart')}
               activeOpacity={0.8}

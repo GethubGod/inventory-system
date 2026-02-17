@@ -369,6 +369,40 @@ export function CartScreenView({
     setShowItemMenu(true);
   }, []);
 
+  const applyItemModeChange = useCallback((
+    locationId: string,
+    item: CartItemWithDetails,
+    nextMode: 'quantity' | 'remaining'
+  ) => {
+    const currentValue =
+      item.inputMode === 'quantity'
+        ? item.quantityRequested ?? item.quantity
+        : item.remainingReported ?? 0;
+
+    if (nextMode === 'remaining') {
+      const nextRemaining = Math.max(0, currentValue);
+      updateCartItem(locationId, item.inventoryItemId, nextRemaining, item.unitType, {
+        cartItemId: item.id,
+        inputMode: 'remaining',
+        remainingReported: nextRemaining,
+        context,
+      });
+    } else {
+      const nextQuantity = Math.max(1, item.decidedQuantity ?? currentValue ?? 1);
+      updateCartItem(locationId, item.inventoryItemId, nextQuantity, item.unitType, {
+        cartItemId: item.id,
+        inputMode: 'quantity',
+        quantityRequested: nextQuantity,
+        clearDecision: true,
+        context,
+      });
+    }
+
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
+    }
+  }, [context, updateCartItem]);
+
   const handleDuplicateItem = useCallback(() => {
     if (!menuItem) return;
     const { locationId, item } = menuItem;
@@ -396,35 +430,11 @@ export function CartScreenView({
     if (!menuItem) return;
 
     const { locationId, item } = menuItem;
-    const currentValue =
-      item.inputMode === 'quantity'
-        ? item.quantityRequested ?? item.quantity
-        : item.remainingReported ?? 0;
-
-    if (item.inputMode === 'quantity') {
-      updateCartItem(locationId, item.inventoryItemId, Math.max(0, currentValue), item.unitType, {
-        cartItemId: item.id,
-        inputMode: 'remaining',
-        remainingReported: Math.max(0, currentValue),
-        context,
-      });
-    } else {
-      const nextQuantity = Math.max(1, item.decidedQuantity ?? currentValue ?? 1);
-      updateCartItem(locationId, item.inventoryItemId, nextQuantity, item.unitType, {
-        cartItemId: item.id,
-        inputMode: 'quantity',
-        quantityRequested: nextQuantity,
-        clearDecision: true,
-        context,
-      });
-    }
-
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    const nextMode = item.inputMode === 'quantity' ? 'remaining' : 'quantity';
+    applyItemModeChange(locationId, item, nextMode);
     setShowItemMenu(false);
     setMenuItem(null);
-  }, [context, menuItem, updateCartItem]);
+  }, [applyItemModeChange, menuItem]);
 
   const handleOpenItemNoteModal = useCallback(() => {
     if (!menuItem) return;
@@ -877,6 +887,51 @@ export function CartScreenView({
               </View>
             </View>
 
+            <View className="mt-3 flex-row self-start">
+              <TouchableOpacity
+                onPress={() => applyItemModeChange(locationId, item, 'quantity')}
+                style={{
+                  paddingHorizontal: ds.spacing(12),
+                  paddingVertical: ds.spacing(6),
+                  borderTopLeftRadius: ds.radius(8),
+                  borderBottomLeftRadius: ds.radius(8),
+                  minHeight: 44,
+                  justifyContent: 'center',
+                }}
+                className={!isRemainingMode ? 'bg-primary-500' : 'bg-gray-100'}
+                activeOpacity={0.75}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text
+                  style={{ fontSize: ds.fontSize(12) }}
+                  className={`font-medium ${!isRemainingMode ? 'text-white' : 'text-gray-600'}`}
+                >
+                  Order Qty
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => applyItemModeChange(locationId, item, 'remaining')}
+                style={{
+                  paddingHorizontal: ds.spacing(12),
+                  paddingVertical: ds.spacing(6),
+                  borderTopRightRadius: ds.radius(8),
+                  borderBottomRightRadius: ds.radius(8),
+                  minHeight: 44,
+                  justifyContent: 'center',
+                }}
+                className={isRemainingMode ? 'bg-primary-500' : 'bg-gray-100'}
+                activeOpacity={0.75}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text
+                  style={{ fontSize: ds.fontSize(12) }}
+                  className={`font-medium ${isRemainingMode ? 'text-white' : 'text-gray-600'}`}
+                >
+                  Remaining
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             {/* Unit Toggle */}
             <View className="mt-3 flex-row items-center">
               <View className="flex-row self-start">
@@ -945,7 +1000,15 @@ export function CartScreenView({
         )}
       </View>
     );
-  }, [ds, expandedItems, toggleExpand, handleItemValueChange, handleOpenItemMenu, handleRemoveItem]);
+  }, [
+    ds,
+    expandedItems,
+    toggleExpand,
+    handleItemValueChange,
+    handleOpenItemMenu,
+    handleRemoveItem,
+    applyItemModeChange,
+  ]);
 
   // Render location section
   const renderLocationSection = useCallback((location: Location) => {

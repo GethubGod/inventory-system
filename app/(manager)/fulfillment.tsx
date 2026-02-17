@@ -2573,6 +2573,14 @@ export default function FulfillmentScreen() {
             <Text className="text-[22px] font-bold text-gray-900">Fulfillment</Text>
           </View>
           <TouchableOpacity
+            onPress={() => router.push('/(manager)/browse')}
+            className="rounded-full bg-gray-100 items-center justify-center"
+            style={{ width: 44, height: 44, marginRight: 8 }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="grid-outline" size={20} color={colors.gray[700]} />
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={() => router.push('/(manager)/past-orders')}
             className="flex-row items-center bg-gray-100 rounded-full px-4"
             style={{ minHeight: 44 }}
