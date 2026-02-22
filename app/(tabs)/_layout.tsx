@@ -121,12 +121,6 @@ export default function TabsLayout() {
 
       {/* Hidden screens */}
       <Tabs.Screen
-        name="stock"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
         name="draft"
         options={{
           href: null,

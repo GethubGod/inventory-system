@@ -14,8 +14,25 @@ interface BrandLogoProps {
 
 const BLACK_LOGO = require('../../assets/images/babytuna-logo-black.png');
 const LIGHT_LOGO = require('../../assets/images/babytuna-logo.png');
-const BLACK_LOGO_META = Image.resolveAssetSource(BLACK_LOGO);
-const LIGHT_LOGO_META = Image.resolveAssetSource(LIGHT_LOGO);
+
+function resolveLogoAspectRatio(source: any): number {
+  const resolver = (Image as any).resolveAssetSource;
+  if (typeof resolver === 'function') {
+    const meta = resolver(source);
+    if (meta?.width > 0 && meta?.height > 0) {
+      return meta.width / meta.height;
+    }
+  }
+
+  if (source && typeof source === 'object' && source.width > 0 && source.height > 0) {
+    return source.width / source.height;
+  }
+
+  return 1;
+}
+
+const BLACK_LOGO_ASPECT_RATIO = resolveLogoAspectRatio(BLACK_LOGO);
+const LIGHT_LOGO_ASPECT_RATIO = resolveLogoAspectRatio(LIGHT_LOGO);
 
 const DEFAULT_SIZE: Record<BrandLogoVariant, number> = {
   header: 28,
@@ -45,11 +62,8 @@ export function BrandLogo({
   const baseSize = size ?? DEFAULT_SIZE[variant];
   const resolvedSize = Math.round(baseSize * LOGO_SCALE_MULTIPLIER[uiScale]);
   const source = colorMode === 'dark' ? LIGHT_LOGO : BLACK_LOGO;
-  const sourceMeta = colorMode === 'dark' ? LIGHT_LOGO_META : BLACK_LOGO_META;
   const aspectRatio =
-    sourceMeta.width > 0 && sourceMeta.height > 0
-      ? sourceMeta.width / sourceMeta.height
-      : 1;
+    colorMode === 'dark' ? LIGHT_LOGO_ASPECT_RATIO : BLACK_LOGO_ASPECT_RATIO;
 
   return (
     <View style={[{ opacity: VARIANT_OPACITY[variant] }, style]} pointerEvents="none">

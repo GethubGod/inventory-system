@@ -3,9 +3,9 @@ import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Notifications from 'expo-notifications';
 import { colors } from '@/constants';
 import { useAuthStore, useSettingsStore } from '@/store';
+import { getNotificationsModule } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
@@ -28,6 +28,19 @@ export default function NotificationsDebugScreen() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
+      const Notifications = await getNotificationsModule();
+      if (!Notifications) {
+        setInfo({
+          permissionStatus: 'unsupported',
+          lastPushToken: null,
+          dbTokenCount: 0,
+          scheduledCount: 0,
+          profileNotificationsEnabled: profile?.notifications_enabled ?? null,
+          localPushEnabled: notifications.pushEnabled,
+        });
+        return;
+      }
+
       const { status } = await Notifications.getPermissionsAsync();
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
 
@@ -66,6 +79,12 @@ export default function NotificationsDebugScreen() {
 
   const sendTestNotification = async () => {
     try {
+      const Notifications = await getNotificationsModule();
+      if (!Notifications) {
+        Alert.alert('Unavailable', 'Notifications are not supported on this platform.');
+        return;
+      }
+
       await Notifications.scheduleNotificationAsync({
         content: {
           title: 'Test Notification',

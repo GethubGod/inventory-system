@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
 import NetInfo from '@react-native-community/netinfo';
+import { Platform } from 'react-native';
 import {
   ItemCategory,
   Order,
@@ -13,6 +13,7 @@ import {
 } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { perfMark, perfMeasure } from '@/lib/perf';
+import { getNotificationsModule } from '@/lib/notifications';
 import {
   loadPendingFulfillmentData,
 } from '@/services/fulfillmentDataSource';
@@ -1492,6 +1493,11 @@ function removeConsumedOrderItems(
 }
 
 async function ensureNotificationPermission(): Promise<boolean> {
+  const Notifications = await getNotificationsModule();
+  if (!Notifications || Platform.OS === 'web') {
+    return false;
+  }
+
   const current = await Notifications.getPermissionsAsync();
   if (current.status === 'granted') return true;
   const requested = await Notifications.requestPermissionsAsync();
@@ -1501,6 +1507,9 @@ async function ensureNotificationPermission(): Promise<boolean> {
 async function cancelOrderLaterNotification(notificationId: string | null) {
   if (!notificationId) return;
   try {
+    const Notifications = await getNotificationsModule();
+    if (!Notifications) return;
+
     await Notifications.cancelScheduledNotificationAsync(notificationId);
   } catch {
     // Ignore stale notification identifiers.
@@ -1522,6 +1531,9 @@ async function scheduleOrderLaterNotification(input: {
   const safeTarget = targetDate.getTime() < minimum ? new Date(minimum) : targetDate;
 
   try {
+    const Notifications = await getNotificationsModule();
+    if (!Notifications) return null;
+
     return await Notifications.scheduleNotificationAsync({
       content: {
         title: `Order later reminder: ${input.itemName}`,

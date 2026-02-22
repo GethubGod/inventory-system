@@ -1,32 +1,51 @@
-import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
+import type { NotificationRequest } from 'expo-notifications';
 import { Reminder } from '@/types/settings';
 import { useSettingsStore } from '@/store';
+import { getNotificationsModule } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 
 const STOCK_PAUSED_NOTIFICATION_TYPE = 'stock-count-paused';
+let notificationHandlerConfigured = false;
 
-// Configure notification behavior
-Notifications.setNotificationHandler({
-  handleNotification: async () => {
-    const { notifications } = useSettingsStore.getState();
-    const inQuietHours = isInQuietHours(
-      notifications.quietHours.enabled,
-      notifications.quietHours.startTime,
-      notifications.quietHours.endTime
-    );
+async function getNotifications() {
+  const Notifications = await getNotificationsModule();
+  if (!Notifications) {
+    return null;
+  }
 
-    return {
-      shouldPlaySound: notifications.soundEnabled && !inQuietHours,
-      shouldSetBadge: true,
-      shouldShowBanner: !inQuietHours,
-      shouldShowList: !inQuietHours,
-    };
-  },
-});
+  if (!notificationHandlerConfigured) {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => {
+        const { notifications } = useSettingsStore.getState();
+        const inQuietHours = isInQuietHours(
+          notifications.quietHours.enabled,
+          notifications.quietHours.startTime,
+          notifications.quietHours.endTime
+        );
+
+        return {
+          shouldPlaySound: notifications.soundEnabled && !inQuietHours,
+          shouldSetBadge: true,
+          shouldShowBanner: !inQuietHours,
+          shouldShowList: !inQuietHours,
+        };
+      },
+    });
+
+    notificationHandlerConfigured = true;
+  }
+
+  return Notifications;
+}
 
 export async function requestNotificationPermissions(): Promise<boolean> {
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return false;
+  }
+
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
 
@@ -69,6 +88,11 @@ export async function registerCurrentDevicePushToken(
   // Expo Go does not support remote push token registration reliably.
   // Keep local notifications enabled, but skip remote token enrollment.
   if ((Constants as any)?.appOwnership === 'expo') {
+    return null;
+  }
+
+  const Notifications = await getNotifications();
+  if (!Notifications) {
     return null;
   }
 
@@ -143,6 +167,11 @@ export async function scheduleReminder(reminder: Reminder): Promise<string[]> {
     return notificationIds;
   }
 
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return notificationIds;
+  }
+
   const [hours, minutes] = reminder.time.split(':').map(Number);
 
   if (reminder.repeatType === 'daily') {
@@ -188,6 +217,11 @@ export async function scheduleReminder(reminder: Reminder): Promise<string[]> {
 }
 
 export async function cancelReminder(reminderId: string): Promise<void> {
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return;
+  }
+
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const toCancel = scheduled.filter(
     (notification) => notification.content.data?.reminderId === reminderId
@@ -199,10 +233,20 @@ export async function cancelReminder(reminderId: string): Promise<void> {
 }
 
 export async function cancelAllReminders(): Promise<void> {
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return;
+  }
+
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
 
-export async function getScheduledNotifications(): Promise<Notifications.NotificationRequest[]> {
+export async function getScheduledNotifications(): Promise<NotificationRequest[]> {
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return [];
+  }
+
   return Notifications.getAllScheduledNotificationsAsync();
 }
 
@@ -210,6 +254,11 @@ export async function scheduleNoOrderTodayReminder(
   enabled: boolean,
   time: string = '15:00'
 ): Promise<string | null> {
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return null;
+  }
+
   // Cancel existing
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const existing = scheduled.filter(
@@ -247,6 +296,11 @@ export async function scheduleBeforeClosingReminder(
   closingTime: string = '21:00',
   minutesBefore: number = 30
 ): Promise<string | null> {
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return null;
+  }
+
   // Cancel existing
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const existing = scheduled.filter(
@@ -293,6 +347,11 @@ export async function scheduleBeforeClosingReminder(
 }
 
 export async function cancelStockCountPausedNotifications(): Promise<void> {
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return;
+  }
+
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   const stockNotifications = scheduled.filter(
     (notification) => notification.content.data?.type === STOCK_PAUSED_NOTIFICATION_TYPE
@@ -309,6 +368,11 @@ export async function scheduleStockCountPausedNotification(
 ): Promise<string | null> {
   const granted = await requestNotificationPermissions();
   if (!granted) return null;
+
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return null;
+  }
 
   await cancelStockCountPausedNotifications();
 
@@ -371,6 +435,11 @@ export function isInQuietHours(
 
 // Send immediate notification to employees who haven't ordered today
 export async function sendReminderToEmployees(employeeIds: string[]): Promise<void> {
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return;
+  }
+
   // In a real app, you would send push notifications via a server
   // For now, we'll schedule an immediate local notification as a demo
   // In production, this would call your backend API to send push notifications
@@ -414,6 +483,11 @@ export async function triggerPendingReminderLocalNotification(
   const granted = await requestNotificationPermissions();
   if (!granted) return;
 
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return;
+  }
+
   // Avoid duplicate: cancel any existing pending-reminder notification first
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
   for (const n of scheduled) {
@@ -455,6 +529,11 @@ export async function sendOrderStatusNotification(
   status: string,
   orderNumber: number
 ): Promise<void> {
+  const Notifications = await getNotifications();
+  if (!Notifications) {
+    return;
+  }
+
   const statusMessages: Record<string, string> = {
     submitted: 'Your order has been submitted and is being processed.',
     processing: 'Your order is now being processed.',

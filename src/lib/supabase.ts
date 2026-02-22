@@ -1,16 +1,98 @@
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
+
+const memoryStorage = new Map<string, string>();
+
+function getWebStorage():
+  | {
+      getItem: (key: string) => string | null;
+      setItem: (key: string, value: string) => void;
+      removeItem: (key: string) => void;
+    }
+  | null {
+  const candidate = (globalThis as { localStorage?: unknown }).localStorage as
+    | {
+        getItem?: (key: string) => string | null;
+        setItem?: (key: string, value: string) => void;
+        removeItem?: (key: string) => void;
+      }
+    | undefined;
+
+  if (
+    candidate &&
+    typeof candidate.getItem === 'function' &&
+    typeof candidate.setItem === 'function' &&
+    typeof candidate.removeItem === 'function'
+  ) {
+    return {
+      getItem: candidate.getItem.bind(candidate),
+      setItem: candidate.setItem.bind(candidate),
+      removeItem: candidate.removeItem.bind(candidate),
+    };
+  }
+
+  return null;
+}
 
 const ExpoSecureStoreAdapter = {
-  getItem: (key: string) => {
+  getItem: async (key: string) => {
+    if (Platform.OS === 'web') {
+      const webStorage = getWebStorage();
+
+      if (webStorage) {
+        try {
+          return webStorage.getItem(key);
+        } catch {
+          return memoryStorage.get(key) ?? null;
+        }
+      }
+
+      return memoryStorage.get(key) ?? null;
+    }
+
     return SecureStore.getItemAsync(key);
   },
-  setItem: (key: string, value: string) => {
-    SecureStore.setItemAsync(key, value);
+  setItem: async (key: string, value: string) => {
+    if (Platform.OS === 'web') {
+      const webStorage = getWebStorage();
+
+      if (webStorage) {
+        try {
+          webStorage.setItem(key, value);
+          return;
+        } catch {
+          memoryStorage.set(key, value);
+          return;
+        }
+      }
+
+      memoryStorage.set(key, value);
+      return;
+    }
+
+    await SecureStore.setItemAsync(key, value);
   },
-  removeItem: (key: string) => {
-    SecureStore.deleteItemAsync(key);
+  removeItem: async (key: string) => {
+    if (Platform.OS === 'web') {
+      const webStorage = getWebStorage();
+
+      if (webStorage) {
+        try {
+          webStorage.removeItem(key);
+          return;
+        } catch {
+          memoryStorage.delete(key);
+          return;
+        }
+      }
+
+      memoryStorage.delete(key);
+      return;
+    }
+
+    await SecureStore.deleteItemAsync(key);
   },
 };
 

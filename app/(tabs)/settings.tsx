@@ -161,21 +161,6 @@ export default function SettingsScreen() {
           style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
         >
           <SettingsRow
-            icon="hardware-chip-outline"
-            iconColor="#EA580C"
-            iconBgColor="#FFEDD5"
-            title="Stock Levels"
-            subtitle="Update and view current stock"
-            onPress={() => router.push('/(tabs)/stock')}
-            showBorder={false}
-          />
-        </View>
-
-        <View
-          className="bg-white rounded-xl overflow-hidden"
-          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
-        >
-          <SettingsRow
             icon="receipt-outline"
             iconColor="#F97316"
             iconBgColor="#FFEDD5"
