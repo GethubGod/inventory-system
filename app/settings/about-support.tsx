@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,30 +9,15 @@ import { colors } from '@/constants';
 import { SettingsRow } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
-const SUPPORT_EMAIL = 'babytunalovessushi@gmail.com';
-const PRIVACY_POLICY_URL =
-  'https://www.notion.so/Babytuna-Systems-Privacy-Policy-3032ac6e131b807da732efe1834f2531';
+const APPSTORE_COMPLIANCE_LINKS = {
+  support: 'https://www.babytunasystems.com/support',
+  contact: 'https://www.babytunasystems.com/contact',
+  privacy: 'https://www.babytunasystems.com/privacy',
+} as const;
 
 function AboutSection() {
   const appVersion = Constants.expoConfig?.version || '1.0.0';
   const ds = useScaledStyles();
-  const platformLabel =
-    Platform.OS === 'ios' ? 'iOS' : Platform.OS === 'android' ? 'Android' : Platform.OS;
-
-  const openMailDraft = async (email: string, subject: string) => {
-    try {
-      const body = `Hi Babytuna Team,\n\nApp Version: ${appVersion}\nPlatform: ${platformLabel}\n\n`;
-      const url = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      const canOpen = await Linking.canOpenURL(url);
-      if (!canOpen) {
-        Alert.alert('No email app available.');
-        return;
-      }
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert('No email app available.');
-    }
-  };
 
   const openExternalUrl = async (url: string) => {
     try {
@@ -64,7 +49,7 @@ function AboutSection() {
         title="Contact Support"
         subtitle="Get help with the app"
         onPress={() => {
-          void openMailDraft(SUPPORT_EMAIL, 'Babytuna Support');
+          void openExternalUrl(APPSTORE_COMPLIANCE_LINKS.support);
         }}
       />
 
@@ -75,7 +60,7 @@ function AboutSection() {
         title="Send Feedback"
         subtitle="Tell us what you think"
         onPress={() => {
-          void openMailDraft(SUPPORT_EMAIL, 'Babytuna Feedback');
+          void openExternalUrl(APPSTORE_COMPLIANCE_LINKS.contact);
         }}
       />
 
@@ -85,7 +70,7 @@ function AboutSection() {
         iconBgColor="#F3F4F6"
         title="Privacy Policy"
         onPress={() => {
-          void openExternalUrl(PRIVACY_POLICY_URL);
+          void openExternalUrl(APPSTORE_COMPLIANCE_LINKS.privacy);
         }}
         showBorder={false}
       />
