@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Redirect, Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Sparkles } from "lucide-react-native";
 import { View, Text } from "react-native";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import {
   useAuthStore,
   useOrderStore,
   useDisplayStore,
-  useTunaSpecialistStore,
 } from "@/store";
 import { supabase } from "@/lib/supabase";
 
@@ -16,9 +14,6 @@ export default function ManagerLayout() {
   const { session, profile, user } = useAuthStore();
   const cartCount = useOrderStore((state) =>
     state.getTotalCartCount("manager"),
-  );
-  const voiceCartCount = useTunaSpecialistStore(
-    (state) => state.cartItems.length,
   );
   const uiScale = useDisplayStore((state) => state.uiScale);
   const scaledFontSize = useDisplayStore((state) => state.scaledFontSize);
@@ -281,21 +276,6 @@ export default function ManagerLayout() {
         }}
       />
 
-      {/* Voice */}
-      <Tabs.Screen
-        name="voice"
-        options={{
-          title: "Voice",
-          tabBarIcon: ({ color }) => <Sparkles size={24} color={color} />,
-          tabBarBadge: voiceCartCount > 0 ? voiceCartCount : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: "#F97316",
-            color: "#FFFFFF",
-            fontSize: Math.max(9, scaledFontSize(9)),
-          },
-        }}
-      />
-
       {/* Settings/Profile */}
       <Tabs.Screen
         name="profile"
@@ -323,6 +303,12 @@ export default function ManagerLayout() {
       />
       <Tabs.Screen
         name="cart"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="voice"
         options={{
           href: null,
         }}

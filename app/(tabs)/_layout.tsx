@@ -1,11 +1,9 @@
 import { Redirect, Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { Sparkles } from "lucide-react-native";
 import {
   useAuthStore,
   useOrderStore,
   useDraftStore,
-  useTunaSpecialistStore,
   useDisplayStore,
 } from "@/store";
 
@@ -15,9 +13,6 @@ export default function TabsLayout() {
     state.getTotalCartCount("employee"),
   );
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
-  const voiceCartCount = useTunaSpecialistStore(
-    (state) => state.cartItems.length,
-  );
   const uiScale = useDisplayStore((state) => state.uiScale);
   const scaledFontSize = useDisplayStore((state) => state.scaledFontSize);
 
@@ -106,21 +101,6 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Voice — Tuna Specialist */}
-      <Tabs.Screen
-        name="voice"
-        options={{
-          title: "Voice",
-          tabBarIcon: ({ color }) => <Sparkles size={24} color={color} />,
-          tabBarBadge: voiceCartCount > 0 ? voiceCartCount : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: "#F97316",
-            color: "#FFFFFF",
-            fontSize: 10,
-          },
-        }}
-      />
-
       {/* Settings */}
       <Tabs.Screen
         name="settings"
@@ -147,6 +127,12 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="profile"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="voice"
         options={{
           href: null,
         }}

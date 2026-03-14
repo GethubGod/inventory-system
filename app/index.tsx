@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useAuthStore } from '@/store';
-import { SpinningFish } from '@/components';
+import { LoadingIndicator } from '@/components';
 
 export default function Index() {
   const { session, user, profile, isLoading, isInitialized, viewMode } = useAuthStore();
@@ -10,7 +10,7 @@ export default function Index() {
   if (!isInitialized || isLoading) {
     return (
       <View className="flex-1 items-center justify-center bg-white">
-        <SpinningFish size="large" showText text="Loading..." />
+        <LoadingIndicator size="large" showText text="Loading..." />
       </View>
     );
   }

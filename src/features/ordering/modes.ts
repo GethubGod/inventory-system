@@ -7,8 +7,7 @@ export const EMPLOYEE_ORDERING_MODE: OrderingMode = {
   browseRoute: '/(tabs)',
   inputAccessoryId: 'quickOrderInput',
   backBehavior: 'back',
-  searchAction: 'voice',
-  voiceRoute: '/(tabs)/voice',
+  searchAction: 'none',
   requireLocationConfirm: true,
   pastOrdersRoute: '/orders/history',
 };
@@ -21,7 +20,6 @@ export const MANAGER_ORDERING_MODE: OrderingMode = {
   inputAccessoryId: 'managerQuickOrderInput',
   backBehavior: { replace: '/(manager)' },
   searchAction: 'quick_create',
-  voiceRoute: '/(manager)/voice',
   requireLocationConfirm: true,
   showManagerBadges: true,
 };

@@ -21,6 +21,39 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
+async function getAuthenticatedUser(req: Request) {
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return { error: 'Unauthorized', status: 401, user: null };
+  }
+
+  const token = authHeader.replace('Bearer ', '').trim();
+  const {
+    data: { user },
+    error,
+  } = await supabaseAdmin.auth.getUser(token);
+
+  if (error || !user) {
+    return { error: 'Unauthorized', status: 401, user: null };
+  }
+
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('is_suspended')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (profile?.is_suspended) {
+    return {
+      error: 'Suspended accounts cannot use voice ordering',
+      status: 403,
+      user: null,
+    };
+  }
+
+  return { error: null, status: 200, user };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -31,6 +64,11 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const authResult = await getAuthenticatedUser(req);
+    if (authResult.error || !authResult.user) {
+      return jsonResponse({ error: authResult.error || 'Unauthorized' }, authResult.status);
+    }
+
     const {
       transcript,
       conversationHistory = [],
@@ -38,14 +76,23 @@ Deno.serve(async (req) => {
       locationShortCode,
     } = await req.json();
 
-    if (!transcript) {
+    const normalizedTranscript = typeof transcript === 'string' ? transcript.trim() : '';
+    const normalizedLocationShortCode =
+      typeof locationShortCode === 'string' ? locationShortCode.trim() : '';
+    const effectiveEmployeeId = authResult.user.id;
+
+    if (!normalizedTranscript) {
       return jsonResponse({ error: 'Missing required field: transcript' }, 400);
     }
-    if (!locationShortCode) {
+    if (!normalizedLocationShortCode) {
       return jsonResponse({ error: 'Missing required field: locationShortCode' }, 400);
     }
-    if (!employeeId) {
-      return jsonResponse({ error: 'Employee not authenticated' }, 401);
+    if (
+      typeof employeeId === 'string' &&
+      employeeId.trim().length > 0 &&
+      employeeId.trim() !== effectiveEmployeeId
+    ) {
+      return jsonResponse({ error: 'Authenticated user mismatch' }, 403);
     }
     if (!GOOGLE_API_KEY) {
       return jsonResponse({ error: 'GOOGLE_API_KEY not configured' }, 500);
@@ -63,7 +110,7 @@ Deno.serve(async (req) => {
         inventory_items!inner(id, name, emoji, category),
         storage_areas!inner(id, name, locations!inner(short_code))
       `)
-      .eq('storage_areas.locations.short_code', locationShortCode)
+      .eq('storage_areas.locations.short_code', normalizedLocationShortCode)
       .eq('active', true);
 
     if (dbError) {
@@ -100,7 +147,7 @@ Deno.serve(async (req) => {
       const { data: locationData } = await supabaseAdmin
         .from('locations')
         .select('id')
-        .eq('short_code', locationShortCode)
+        .eq('short_code', normalizedLocationShortCode)
         .maybeSingle();
 
       if (locationData) {
@@ -116,7 +163,7 @@ Deno.serve(async (req) => {
               inventory_items(name)
             )
           `)
-          .eq('user_id', employeeId)
+          .eq('user_id', effectiveEmployeeId)
           .eq('location_id', locationData.id)
           .gte('created_at', thirtyDaysAgo.toISOString())
           .in('status', ['submitted', 'processing', 'fulfilled'])
@@ -204,8 +251,8 @@ The "message" field is what gets displayed to the employee.`;
 
     // Build contents with conversation history + new user message
     const contents = [
-      ...conversationHistory,
-      { role: 'user', parts: [{ text: transcript }] },
+      ...(Array.isArray(conversationHistory) ? conversationHistory : []),
+      { role: 'user', parts: [{ text: normalizedTranscript }] },
     ];
 
     const geminiController = new AbortController();

@@ -3,7 +3,7 @@ export { CartItemCard } from './CartItemCard';
 export { CategoryFilter } from './CategoryFilter';
 export { StatusFilter } from './StatusFilter';
 export { OrderCard } from './OrderCard';
-export { SpinningFish } from './SpinningFish';
+export { LoadingIndicator } from './LoadingIndicator';
 export { OrderConfirmationPopup } from './OrderConfirmationPopup';
 export { QrScannerModal } from './QrScannerModal';
 export { AuthLogoHeader } from './AuthLogoHeader';

@@ -27,8 +27,8 @@ import {
   BrandLogo,
   ConfirmLocationBottomSheet,
   ItemActionSheet,
+  LoadingIndicator,
   OrderConfirmationPopup,
-  SpinningFish,
 } from '@/components';
 import type { ItemActionSheetSection } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -1079,7 +1079,7 @@ export function CartScreenView({
         >
           {isSubmittingThisLocation ? (
             <>
-              <SpinningFish size="small" />
+              <LoadingIndicator size="small" />
               <Text style={{ fontSize: ds.buttonFont + 1 }} className="text-white font-semibold ml-2">Submitting...</Text>
             </>
           ) : (

@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
-import { AuthLogoHeader, SpinningFish } from '@/components';
+import { AuthLogoHeader, LoadingIndicator } from '@/components';
 import { validatePassword } from '@/lib';
 import { colors } from '@/constants';
 
@@ -335,7 +335,7 @@ export default function SignUpScreen() {
                 activeOpacity={canCreateAccount ? 0.8 : 1}
               >
                 {isLoading ? (
-                  <SpinningFish size="small" />
+                  <LoadingIndicator size="small" />
                 ) : (
                   <Text className="text-white font-bold text-lg">Create Account</Text>
                 )}

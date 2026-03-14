@@ -9,8 +9,7 @@ export type OrderingMode = {
   browseRoute: string;
   inputAccessoryId: string;
   backBehavior: 'back' | { replace: string };
-  searchAction: 'voice' | 'quick_create';
-  voiceRoute?: string;
+  searchAction: 'none' | 'quick_create';
   requireLocationConfirm?: boolean;
   canEditPrice?: boolean;
   canOverrideSupplier?: boolean;

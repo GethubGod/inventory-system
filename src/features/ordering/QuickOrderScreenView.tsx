@@ -23,7 +23,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { Sparkles } from "lucide-react-native";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useShallow } from "zustand/react/shallow";
@@ -111,6 +110,7 @@ interface QuickOrderScreenViewProps {
 export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   const ds = useScaledStyles();
   const scope = mode.scope;
+  const showSearchActionButton = mode.searchAction === "quick_create";
   const {
     location: defaultLocation,
     locations,
@@ -899,40 +899,34 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                       />
                     </TouchableOpacity>
                   )}
-                  <TouchableOpacity
-                    onPress={() => {
-                      if (mode.searchAction === "voice") {
-                        const targetVoiceRoute =
-                          mode.voiceRoute || "/(tabs)/voice";
-                        router.navigate(targetVoiceRoute as any);
-                        return;
-                      }
-                      handleOpenQuickCreate();
-                    }}
-                    activeOpacity={0.8}
-                    accessibilityLabel={
-                      mode.searchAction === "voice"
-                        ? "Voice order"
-                        : "Add item to inventory"
-                    }
-                    accessibilityRole="button"
-                    style={{
-                      width: Math.max(44, ds.icon(32)),
-                      height: Math.max(44, ds.icon(32)),
-                      borderRadius: ds.icon(16),
-                      backgroundColor: "#F97316",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      marginLeft: ds.spacing(8),
-                      shadowColor: "#F97316",
-                      shadowOffset: { width: 0, height: 2 },
-                      shadowOpacity: 0.3,
-                      shadowRadius: 8,
-                      elevation: 4,
-                    }}
-                  >
-                    <Sparkles size={ds.icon(16)} color="#FFFFFF" />
-                  </TouchableOpacity>
+                  {showSearchActionButton && (
+                    <TouchableOpacity
+                      onPress={handleOpenQuickCreate}
+                      activeOpacity={0.8}
+                      accessibilityLabel="Add item to inventory"
+                      accessibilityRole="button"
+                      style={{
+                        width: Math.max(44, ds.icon(32)),
+                        height: Math.max(44, ds.icon(32)),
+                        borderRadius: ds.icon(16),
+                        backgroundColor: "#F97316",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginLeft: ds.spacing(8),
+                        shadowColor: "#F97316",
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 8,
+                        elevation: 4,
+                      }}
+                    >
+                      <Ionicons
+                        name="add-outline"
+                        size={ds.icon(18)}
+                        color="#FFFFFF"
+                      />
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
 

@@ -24,7 +24,7 @@ import {
   SupplierCategory,
 } from '@/types';
 import { CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS, categoryColors, colors } from '@/constants';
-import { SpinningFish } from '@/components';
+import { LoadingIndicator } from '@/components';
 import { getInventoryWithStock, InventoryWithStock } from '@/lib/api/stock';
 import { supabase } from '@/lib/supabase';
 import { getCheckStatus } from '@/store/stock.store';
@@ -2886,7 +2886,7 @@ export default function ManagerInventoryScreen() {
                   disabled={isSubmitting}
                 >
                   {isSubmitting ? (
-                    <SpinningFish size="small" />
+                    <LoadingIndicator size="small" />
                   ) : (
                     <Text className="text-white font-bold text-lg">Add Item</Text>
                   )}
@@ -3090,7 +3090,7 @@ export default function ManagerInventoryScreen() {
                 disabled={isSubmitting}
               >
                 {isSubmitting ? (
-                  <SpinningFish size="small" />
+                  <LoadingIndicator size="small" />
                 ) : (
                   <>
                     <Ionicons name="add-circle" size={20} color="white" />

@@ -16,8 +16,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { Sparkles } from "lucide-react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
 import * as Haptics from "expo-haptics";
 import { useShallow } from "zustand/react/shallow";
@@ -727,38 +725,6 @@ export default function OrderScreen() {
               />
             </TouchableOpacity>
           )}
-          <TouchableOpacity
-            onPress={() => router.navigate("/(tabs)/voice")}
-            activeOpacity={0.8}
-            accessibilityLabel="Voice order"
-            accessibilityRole="button"
-            style={{
-              width: Math.max(44, ds.icon(34)),
-              height: Math.max(44, ds.icon(34)),
-              borderRadius: ds.radius(12),
-              marginLeft: ds.spacing(8),
-              overflow: "hidden",
-              shadowColor: "#F97316",
-              shadowOffset: { width: 0, height: 2 },
-              shadowOpacity: 0.24,
-              shadowRadius: 8,
-              elevation: 4,
-            }}
-          >
-            <LinearGradient
-              colors={["#FB923C", "#F97316"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={{
-                flex: 1,
-                width: "100%",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Sparkles size={ds.icon(16)} color="#FFFFFF" />
-            </LinearGradient>
-          </TouchableOpacity>
         </View>
       </View>
 

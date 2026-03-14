@@ -64,6 +64,24 @@ async function getRequesterPermission(userId: string) {
   };
 }
 
+function resolveRole(
+  explicitRole: string | null,
+  authUser: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> } | null
+) {
+  if (explicitRole === 'manager' || explicitRole === 'employee') {
+    return explicitRole;
+  }
+
+  const metadataRole =
+    typeof authUser?.app_metadata?.role === 'string'
+      ? authUser.app_metadata.role
+      : typeof authUser?.user_metadata?.role === 'string'
+        ? authUser.user_metadata.role
+        : null;
+
+  return metadataRole === 'manager' || metadataRole === 'employee' ? metadataRole : null;
+}
+
 async function verifyManagerPassword(email: string, password: string, expectedUserId: string) {
   const { data, error } = await supabaseAuth.auth.signInWithPassword({
     email,
@@ -158,6 +176,12 @@ Deno.serve(async (req) => {
   const { data: targetAuth, error: targetAuthError } = await supabaseAdmin.auth.admin.getUserById(userId);
   if (targetAuthError || !targetAuth?.user) {
     return jsonResponse({ error: 'User not found' }, 404);
+  }
+
+  const targetPermission = await getRequesterPermission(userId);
+  const targetRole = resolveRole(targetPermission.role, targetAuth.user);
+  if (targetRole !== 'employee') {
+    return jsonResponse({ error: 'Only employee accounts can be deleted from user management' }, 403);
   }
 
   const { error: reassignError } = await supabaseAdmin.rpc('admin_prepare_user_delete', {

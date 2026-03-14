@@ -15,7 +15,7 @@ import { useOrderStore, useAuthStore } from '@/store';
 import { OrderItemWithInventory } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS, CATEGORY_LABELS, categoryColors } from '@/constants';
 import { supabase } from '@/lib/supabase';
-import { SpinningFish } from '@/components';
+import { LoadingIndicator } from '@/components';
 import { completePendingRemindersForUser } from '@/services/notificationService';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
@@ -256,7 +256,7 @@ export default function OrderDetailScreen() {
   if (isLoading || !isCurrentOrderLoaded || !currentOrder) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
-        <SpinningFish size="large" showText text="Loading order..." />
+        <LoadingIndicator size="large" showText text="Loading order..." />
       </SafeAreaView>
     );
   }
@@ -476,7 +476,7 @@ export default function OrderDetailScreen() {
                   disabled={isUpdating}
                 >
                   {isUpdating ? (
-                    <SpinningFish size="small" />
+                    <LoadingIndicator size="small" />
                   ) : (
                     <>
                       <Ionicons name="send" size={18} color="white" />
@@ -505,7 +505,7 @@ export default function OrderDetailScreen() {
                   disabled={isUpdating}
                 >
                   {isUpdating ? (
-                    <SpinningFish size="small" />
+                    <LoadingIndicator size="small" />
                   ) : (
                     <>
                       <Ionicons name="play-circle" size={18} color="white" />
@@ -534,7 +534,7 @@ export default function OrderDetailScreen() {
                   disabled={isUpdating}
                 >
                   {isUpdating ? (
-                    <SpinningFish size="small" />
+                    <LoadingIndicator size="small" />
                   ) : (
                     <>
                       <Ionicons name="checkmark-circle" size={18} color="white" />
@@ -556,7 +556,7 @@ export default function OrderDetailScreen() {
                   disabled={isUpdating || !canEmployeeCancelNow}
                 >
                   {isUpdating ? (
-                    <SpinningFish size="small" />
+                    <LoadingIndicator size="small" />
                   ) : (
                     <>
                       <Ionicons

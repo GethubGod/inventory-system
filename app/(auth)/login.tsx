@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
-import { AuthLogoHeader, SpinningFish } from '@/components';
+import { AuthLogoHeader, LoadingIndicator } from '@/components';
 import { supabase } from '@/lib';
 import { colors } from '@/constants';
 
@@ -196,7 +196,7 @@ export default function LoginScreen() {
               activeOpacity={0.8}
             >
               {isLoading ? (
-                <SpinningFish size="small" />
+                <LoadingIndicator size="small" />
               ) : (
                 <Text className="text-white font-bold text-lg">Sign In</Text>
               )}

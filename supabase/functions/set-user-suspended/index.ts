@@ -59,6 +59,24 @@ async function getRequesterPermission(userId: string) {
   };
 }
 
+function resolveRole(
+  explicitRole: string | null,
+  authUser: { app_metadata?: Record<string, unknown>; user_metadata?: Record<string, unknown> } | null
+) {
+  if (explicitRole === 'manager' || explicitRole === 'employee') {
+    return explicitRole;
+  }
+
+  const metadataRole =
+    typeof authUser?.app_metadata?.role === 'string'
+      ? authUser.app_metadata.role
+      : typeof authUser?.user_metadata?.role === 'string'
+        ? authUser.user_metadata.role
+        : null;
+
+  return metadataRole === 'manager' || metadataRole === 'employee' ? metadataRole : null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -113,15 +131,30 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'User not found' }, 404);
   }
 
+  const targetPermission = await getRequesterPermission(userId);
+  const targetRole = resolveRole(targetPermission.role, targetAuth.user);
+  if (targetRole !== 'employee') {
+    return jsonResponse({ error: 'Only employee accounts can be suspended' }, 403);
+  }
+
+  const updateTimestamp = isSuspended ? new Date().toISOString() : null;
+  const profileUpsert: Record<string, unknown> = {
+    id: userId,
+    is_suspended: isSuspended,
+    suspended_at: updateTimestamp,
+    suspended_by: isSuspended ? requesterResult.user.id : null,
+  };
+  const targetEmail =
+    typeof targetAuth.user.email === 'string' && targetAuth.user.email.trim().length > 0
+      ? targetAuth.user.email.trim()
+      : null;
+  if (targetEmail) {
+    profileUpsert.email = targetEmail;
+  }
+
   const { error: upsertError } = await supabaseAdmin
     .from('profiles')
-    .upsert(
-      {
-        id: userId,
-        is_suspended: isSuspended,
-      },
-      { onConflict: 'id' }
-    );
+    .upsert(profileUpsert, { onConflict: 'id' });
 
   if (upsertError) {
     console.error('Failed to update user suspension state', upsertError);
