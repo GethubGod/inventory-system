@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
 import { Location } from '@/types';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { colors } from '@/constants';
 
 export default function ProfileScreen() {
   const ds = useScaledStyles();
@@ -47,7 +48,7 @@ export default function ProfileScreen() {
         <View className="bg-white shadow-sm border border-gray-100" style={{ margin: ds.spacing(16), padding: ds.spacing(24), borderRadius: ds.radius(16) }}>
           <View className="items-center" style={{ marginBottom: ds.spacing(16) }}>
             <View className="bg-primary-100 rounded-full items-center justify-center" style={{ width: ds.icon(80), height: ds.icon(80), marginBottom: ds.spacing(12) }}>
-              <Ionicons name="person" size={ds.icon(40)} color="#F97316" />
+              <Ionicons name="person" size={ds.icon(40)} color={colors.primary[500]} />
             </View>
             <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(20) }}>
               {user?.name || 'User'}
@@ -68,7 +69,7 @@ export default function ProfileScreen() {
           </Text>
           <View className="flex-row items-center">
             <View className="bg-primary-100 rounded-full items-center justify-center" style={{ width: ds.icon(40), height: ds.icon(40) }}>
-              <Ionicons name="location" size={ds.icon(20)} color="#F97316" />
+              <Ionicons name="location" size={ds.icon(20)} color={colors.primary[500]} />
             </View>
             <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18), marginLeft: ds.spacing(12) }}>
               {location?.name || 'No location selected'}
@@ -122,7 +123,7 @@ export default function ProfileScreen() {
                   </View>
                 </View>
                 {isSelected && (
-                  <Ionicons name="checkmark-circle" size={24} color="#F97316" />
+                  <Ionicons name="checkmark-circle" size={24} color={colors.primary[500]} />
                 )}
               </TouchableOpacity>
             );

@@ -14,6 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
 import { AuthLogoHeader, SpinningFish } from '@/components';
+import { colors } from '@/constants';
 
 const ACCESS_CODE_REGEX = /^\d{4}$/;
 
@@ -121,7 +122,7 @@ export default function CompleteProfileScreen() {
                 <Ionicons
                   name="person-outline"
                   size={20}
-                  color={focusedInput === 'name' ? '#F97316' : '#9CA3AF'}
+                  color={focusedInput === 'name' ? colors.primary[500] : '#9CA3AF'}
                 />
                 <TextInput
                   className="flex-1 ml-3 text-gray-900 text-base"
@@ -142,7 +143,7 @@ export default function CompleteProfileScreen() {
                 <Ionicons
                   name="key-outline"
                   size={20}
-                  color={focusedInput === 'accessCode' ? '#F97316' : '#9CA3AF'}
+                  color={focusedInput === 'accessCode' ? colors.primary[500] : '#9CA3AF'}
                 />
                 <TextInput
                   className="flex-1 ml-3 text-gray-900 text-base"

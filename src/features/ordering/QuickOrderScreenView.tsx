@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   View,
   Text,
@@ -14,78 +20,87 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Alert,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { Sparkles } from 'lucide-react-native';
-import { router } from 'expo-router';
-import * as Haptics from 'expo-haptics';
-import { useShallow } from 'zustand/react/shallow';
-import { useAuthStore, useInventoryStore, useOrderStore } from '@/store';
-import type { OrderInputMode } from '@/store';
-import { InventoryItem, UnitType, Location, ItemCategory, SupplierCategory } from '@/types';
-import { colors, CATEGORY_LABELS } from '@/constants';
-import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { BrandLogo } from '@/components';
-import type { OrderingMode } from './types';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { Sparkles } from "lucide-react-native";
+import { router } from "expo-router";
+import * as Haptics from "expo-haptics";
+import { useShallow } from "zustand/react/shallow";
+import { useAuthStore, useInventoryStore, useOrderStore } from "@/store";
+import type { OrderInputMode } from "@/store";
+import {
+  InventoryItem,
+  UnitType,
+  Location,
+  ItemCategory,
+  SupplierCategory,
+} from "@/types";
+import { colors, CATEGORY_LABELS } from "@/constants";
+import { useScaledStyles } from "@/hooks/useScaledStyles";
+import { BrandLogo } from "@/components";
+import type { OrderingMode } from "./types";
 
 // Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 // Category emoji mapping
 const CATEGORY_EMOJI: Record<string, string> = {
-  fish: '🐟',
-  protein: '🥩',
-  produce: '🥬',
-  dry: '🍚',
-  dairy_cold: '🧊',
-  frozen: '❄️',
-  sauces: '🍶',
-  alcohol: '🍺',
-  packaging: '📦',
+  fish: "🐟",
+  protein: "🥩",
+  produce: "🥬",
+  dry: "🍚",
+  dairy_cold: "🧊",
+  frozen: "❄️",
+  sauces: "🍶",
+  alcohol: "🍺",
+  packaging: "📦",
 };
 
 const QUICK_CREATE_CATEGORIES: ItemCategory[] = [
-  'fish',
-  'protein',
-  'produce',
-  'dry',
-  'dairy_cold',
-  'frozen',
-  'sauces',
-  'alcohol',
-  'packaging',
+  "fish",
+  "protein",
+  "produce",
+  "dry",
+  "dairy_cold",
+  "frozen",
+  "sauces",
+  "alcohol",
+  "packaging",
 ];
 
 const QUICK_CREATE_SUPPLIERS: SupplierCategory[] = [
-  'fish_supplier',
-  'main_distributor',
-  'asian_market',
+  "fish_supplier",
+  "main_distributor",
+  "asian_market",
 ];
 
-type ScreenState = 'searching' | 'quantity';
+type ScreenState = "searching" | "quantity";
 
 // Get short label for location (Sushi or Poki)
 const getLocationLabel = (location: Location | null): string => {
-  if (!location) return '';
+  if (!location) return "";
   const name = location.name.toLowerCase();
-  if (name.includes('sushi')) return 'Sushi';
-  if (name.includes('poki') || name.includes('pho')) return 'Poki';
+  if (name.includes("sushi")) return "Sushi";
+  if (name.includes("poki") || name.includes("pho")) return "Poki";
   return location.short_code;
 };
 
 function sanitizeNumericInput(value: string): string {
-  const filtered = value.replace(/[^0-9.]/g, '');
-  if (!filtered) return '';
-  if (filtered === '.') return '0.';
+  const filtered = value.replace(/[^0-9.]/g, "");
+  if (!filtered) return "";
+  if (filtered === ".") return "0.";
 
-  const firstDot = filtered.indexOf('.');
+  const firstDot = filtered.indexOf(".");
   if (firstDot < 0) return filtered;
 
   const whole = filtered.slice(0, firstDot);
-  const fractional = filtered.slice(firstDot + 1).replace(/\./g, '');
+  const fractional = filtered.slice(firstDot + 1).replace(/\./g, "");
   return `${whole}.${fractional}`;
 }
 
@@ -96,43 +111,57 @@ interface QuickOrderScreenViewProps {
 export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   const ds = useScaledStyles();
   const scope = mode.scope;
-  const { location: defaultLocation, locations, user } = useAuthStore(useShallow((state) => ({
-    location: state.location,
-    locations: state.locations,
-    user: state.user,
-  })));
-  const { items, fetchItems, addItem } = useInventoryStore(useShallow((state) => ({
-    items: state.items,
-    fetchItems: state.fetchItems,
-    addItem: state.addItem,
-  })));
-  const { addToCart, getLocationCartTotal, totalCartCount } = useOrderStore(useShallow((state) => ({
-    addToCart: state.addToCart,
-    getLocationCartTotal: state.getLocationCartTotal,
-    totalCartCount: state.getTotalCartCount(scope),
-  })));
+  const {
+    location: defaultLocation,
+    locations,
+    user,
+  } = useAuthStore(
+    useShallow((state) => ({
+      location: state.location,
+      locations: state.locations,
+      user: state.user,
+    })),
+  );
+  const { items, fetchItems, addItem } = useInventoryStore(
+    useShallow((state) => ({
+      items: state.items,
+      fetchItems: state.fetchItems,
+      addItem: state.addItem,
+    })),
+  );
+  const { addToCart, getLocationCartTotal, totalCartCount } = useOrderStore(
+    useShallow((state) => ({
+      addToCart: state.addToCart,
+      getLocationCartTotal: state.getLocationCartTotal,
+      totalCartCount: state.getTotalCartCount(scope),
+    })),
+  );
 
   // Selected location for ordering
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(defaultLocation);
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(
+    defaultLocation,
+  );
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
 
   // Screen state
-  const [screenState, setScreenState] = useState<ScreenState>('searching');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [screenState, setScreenState] = useState<ScreenState>("searching");
+  const [searchQuery, setSearchQuery] = useState("");
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
-  const [quantity, setQuantity] = useState('1');
-  const [remainingAmount, setRemainingAmount] = useState('0');
-  const [inputMode, setInputMode] = useState<OrderInputMode>('quantity');
-  const [selectedUnit, setSelectedUnit] = useState<UnitType>('pack');
+  const [quantity, setQuantity] = useState("1");
+  const [remainingAmount, setRemainingAmount] = useState("0");
+  const [inputMode, setInputMode] = useState<OrderInputMode>("quantity");
+  const [selectedUnit, setSelectedUnit] = useState<UnitType>("pack");
 
   // Quick create state
   const [showQuickCreate, setShowQuickCreate] = useState(false);
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemCategory, setNewItemCategory] = useState<ItemCategory>('produce');
-  const [newItemSupplier, setNewItemSupplier] = useState<SupplierCategory>('main_distributor');
-  const [newItemBaseUnit, setNewItemBaseUnit] = useState('lb');
-  const [newItemPackUnit, setNewItemPackUnit] = useState('case');
-  const [newItemPackSize, setNewItemPackSize] = useState('1');
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemCategory, setNewItemCategory] =
+    useState<ItemCategory>("produce");
+  const [newItemSupplier, setNewItemSupplier] =
+    useState<SupplierCategory>("main_distributor");
+  const [newItemBaseUnit, setNewItemBaseUnit] = useState("lb");
+  const [newItemPackUnit, setNewItemPackUnit] = useState("case");
+  const [newItemPackSize, setNewItemPackSize] = useState("1");
   const [isCreatingItem, setIsCreatingItem] = useState(false);
 
   // Keyboard state
@@ -144,7 +173,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   const quantityInputRef = useRef<TextInput>(null);
 
   // Debounced search
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   // Set default location on mount
   useEffect(() => {
@@ -176,18 +205,18 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   // Keyboard listeners
   useEffect(() => {
     const showSub = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
       (e) => {
         setKeyboardHeight(e.endCoordinates.height);
         setIsKeyboardVisible(true);
-      }
+      },
     );
     const hideSub = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
       () => {
         setKeyboardHeight(0);
         setIsKeyboardVisible(false);
-      }
+      },
     );
 
     return () => {
@@ -203,20 +232,20 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   const parsedQuantity = parseFloat(quantity);
   const parsedRemaining = parseFloat(remainingAmount);
   const canAddToCart =
-    inputMode === 'quantity'
+    inputMode === "quantity"
       ? Number.isFinite(parsedQuantity) && parsedQuantity > 0
       : Number.isFinite(parsedRemaining) && parsedRemaining >= 0;
   const addButtonText =
-    inputMode === 'quantity'
+    inputMode === "quantity"
       ? `Add Order Qty (${locationLabel})`
       : `Add Remaining (${locationLabel})`;
   const iosKeyboardOverlayInset =
-    Platform.OS === 'ios' && isKeyboardVisible ? keyboardHeight : 0;
+    Platform.OS === "ios" && isKeyboardVisible ? keyboardHeight : 0;
   const searchHelperBottomInset = Math.max(
     ds.spacing(24),
     iosKeyboardOverlayInset +
       (totalCartCount > 0 ? Math.max(ds.rowH - ds.spacing(12), 44) : 0) +
-      ds.spacing(16)
+      ds.spacing(16),
   );
 
   // Filter items based on search query
@@ -243,14 +272,14 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
 
   // Get ghost text for autocomplete
   const ghostText = useMemo(() => {
-    if (!autocompleteSuggestion || !searchQuery.trim()) return '';
+    if (!autocompleteSuggestion || !searchQuery.trim()) return "";
     const itemName = autocompleteSuggestion.name;
     const query = searchQuery;
 
     if (itemName.toLowerCase().startsWith(query.toLowerCase())) {
       return itemName.slice(query.length);
     }
-    return '';
+    return "";
   }, [autocompleteSuggestion, searchQuery]);
 
   const handleQuantityInputChange = useCallback((value: string) => {
@@ -264,11 +293,11 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   const resetQuickCreateForm = useCallback(() => {
     const defaultName = searchQuery.trim();
     setNewItemName(defaultName);
-    setNewItemCategory('produce');
-    setNewItemSupplier('main_distributor');
-    setNewItemBaseUnit('lb');
-    setNewItemPackUnit('case');
-    setNewItemPackSize('1');
+    setNewItemCategory("produce");
+    setNewItemSupplier("main_distributor");
+    setNewItemBaseUnit("lb");
+    setNewItemPackUnit("case");
+    setNewItemPackSize("1");
   }, [searchQuery]);
 
   const handleOpenQuickCreate = useCallback(() => {
@@ -278,16 +307,16 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
 
   const handleCreateItem = useCallback(async () => {
     if (!newItemName.trim()) {
-      Alert.alert('Error', 'Please enter an item name');
+      Alert.alert("Error", "Please enter an item name");
       return;
     }
     if (!newItemBaseUnit.trim() || !newItemPackUnit.trim()) {
-      Alert.alert('Error', 'Please enter base and pack units');
+      Alert.alert("Error", "Please enter base and pack units");
       return;
     }
     const packSize = parseFloat(newItemPackSize);
     if (isNaN(packSize) || packSize <= 0) {
-      Alert.alert('Error', 'Please enter a valid pack size');
+      Alert.alert("Error", "Please enter a valid pack size");
       return;
     }
 
@@ -303,14 +332,14 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
         created_by: user?.id,
       });
 
-      if (Platform.OS !== 'web') {
+      if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
       setShowQuickCreate(false);
       setSearchQuery(newItemName.trim());
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to add item');
+      Alert.alert("Error", error.message || "Failed to add item");
     } finally {
       setIsCreatingItem(false);
     }
@@ -334,7 +363,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
 
   // Handle location select
   const handleSelectLocation = useCallback((loc: Location) => {
-    if (Platform.OS !== 'web') {
+    if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setSelectedLocation(loc);
@@ -344,15 +373,15 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
 
   // Handle item selection
   const handleSelectItem = useCallback((item: InventoryItem) => {
-    if (Platform.OS !== 'web') {
+    if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
     setSelectedItem(item);
-    setQuantity('1');
-    setRemainingAmount('0');
-    setInputMode('quantity');
-    setSelectedUnit('pack');
-    setScreenState('quantity');
+    setQuantity("1");
+    setRemainingAmount("0");
+    setInputMode("quantity");
+    setSelectedUnit("pack");
+    setScreenState("quantity");
 
     setTimeout(() => {
       quantityInputRef.current?.focus();
@@ -370,16 +399,16 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   const handleAddToCart = useCallback(() => {
     if (!selectedItem || !selectedLocation) return;
 
-    if (inputMode === 'quantity') {
+    if (inputMode === "quantity") {
       const qty = parseFloat(quantity);
       if (!Number.isFinite(qty) || qty <= 0) return;
 
-      if (Platform.OS !== 'web') {
+      if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
       addToCart(selectedLocation.id, selectedItem.id, qty, selectedUnit, {
-        inputMode: 'quantity',
+        inputMode: "quantity",
         quantityRequested: qty,
         context: scope,
       });
@@ -387,81 +416,122 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
       const remaining = parseFloat(remainingAmount);
       if (!Number.isFinite(remaining) || remaining < 0) return;
 
-      if (Platform.OS !== 'web') {
+      if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
       addToCart(selectedLocation.id, selectedItem.id, remaining, selectedUnit, {
-        inputMode: 'remaining',
+        inputMode: "remaining",
         remainingReported: remaining,
         context: scope,
       });
     }
 
     // Reset to search state
-    setSearchQuery('');
+    setSearchQuery("");
     setSelectedItem(null);
-    setInputMode('quantity');
-    setRemainingAmount('0');
-    setScreenState('searching');
+    setInputMode("quantity");
+    setRemainingAmount("0");
+    setScreenState("searching");
 
     setTimeout(() => {
       searchInputRef.current?.focus();
     }, 100);
-  }, [selectedItem, selectedLocation, inputMode, quantity, remainingAmount, selectedUnit, addToCart, scope]);
+  }, [
+    selectedItem,
+    selectedLocation,
+    inputMode,
+    quantity,
+    remainingAmount,
+    selectedUnit,
+    addToCart,
+    scope,
+  ]);
 
   // Handle back from quantity state
   const handleBackToSearch = useCallback(() => {
     setSelectedItem(null);
-    setScreenState('searching');
+    setScreenState("searching");
     setTimeout(() => {
       searchInputRef.current?.focus();
     }, 100);
   }, []);
 
   // Render suggestion item
-  const renderSuggestionItem = useCallback(({ item, index }: { item: InventoryItem; index: number }) => {
-    const isFirst = index === 0;
-    const emoji = CATEGORY_EMOJI[item.category] || '📦';
-    const categoryLabel = CATEGORY_LABELS[item.category] || item.category;
+  const renderSuggestionItem = useCallback(
+    ({ item, index }: { item: InventoryItem; index: number }) => {
+      const isFirst = index === 0;
+      const emoji = CATEGORY_EMOJI[item.category] || "📦";
+      const categoryLabel = CATEGORY_LABELS[item.category] || item.category;
 
-    return (
-      <TouchableOpacity
-        onPress={() => handleSelectItem(item)}
-        className={`flex-row items-center ${isFirst ? 'bg-primary-50' : ''}`}
-        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12), minHeight: ds.rowH }}
-        activeOpacity={0.7}
-      >
-        <Text style={{ fontSize: ds.icon(32), marginRight: ds.spacing(12) }}>{emoji}</Text>
-        <View className="flex-1">
-          <Text style={{ fontSize: ds.fontSize(15) }} className="font-semibold text-gray-900" numberOfLines={1} ellipsizeMode="tail">{item.name}</Text>
-          <Text style={{ fontSize: ds.fontSize(12) }} className="text-gray-500">
-            {categoryLabel} • {item.pack_size} {item.base_unit}/{item.pack_unit}
+      return (
+        <TouchableOpacity
+          onPress={() => handleSelectItem(item)}
+          className={`flex-row items-center ${isFirst ? "bg-primary-50" : ""}`}
+          style={{
+            paddingHorizontal: ds.spacing(16),
+            paddingVertical: ds.spacing(12),
+            minHeight: ds.rowH,
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={{ fontSize: ds.icon(32), marginRight: ds.spacing(12) }}>
+            {emoji}
           </Text>
-        </View>
-        {isFirst && (
-          <View className="flex-row items-center">
-            <Text style={{ fontSize: ds.fontSize(12), marginRight: ds.spacing(4) }} className="text-gray-400">Enter</Text>
-            <Ionicons name="return-down-back" size={14} color={colors.gray[400]} />
+          <View className="flex-1">
+            <Text
+              style={{ fontSize: ds.fontSize(15) }}
+              className="font-semibold text-gray-900"
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {item.name}
+            </Text>
+            <Text
+              style={{ fontSize: ds.fontSize(12) }}
+              className="text-gray-500"
+            >
+              {categoryLabel} • {item.pack_size} {item.base_unit}/
+              {item.pack_unit}
+            </Text>
           </View>
-        )}
-      </TouchableOpacity>
-    );
-  }, [handleSelectItem, ds]);
+          {isFirst && (
+            <View className="flex-row items-center">
+              <Text
+                style={{
+                  fontSize: ds.fontSize(12),
+                  marginRight: ds.spacing(4),
+                }}
+                className="text-gray-400"
+              >
+                Enter
+              </Text>
+              <Ionicons
+                name="return-down-back"
+                size={14}
+                color={colors.gray[400]}
+              />
+            </View>
+          )}
+        </TouchableOpacity>
+      );
+    },
+    [handleSelectItem, ds],
+  );
 
   // Input accessory view for iOS - shows above keyboard
   const renderInputAccessory = () => {
-    if (Platform.OS !== 'ios') return null;
+    if (Platform.OS !== "ios") return null;
 
     return (
       <InputAccessoryView nativeID={mode.inputAccessoryId}>
         <View className="bg-white border-t border-gray-200">
           {/* Add to Cart button when in quantity mode */}
-          {screenState === 'quantity' && selectedItem && (
+          {screenState === "quantity" && selectedItem && (
             <TouchableOpacity
               onPress={handleAddToCart}
               className={`rounded-xl items-center flex-row justify-center ${
-                canAddToCart ? 'bg-primary-500' : 'bg-primary-300'
+                canAddToCart ? "bg-primary-500" : "bg-primary-300"
               }`}
               style={{
                 minHeight: ds.buttonH,
@@ -473,7 +543,10 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               disabled={!canAddToCart}
             >
               <Ionicons name="cart" size={ds.icon(20)} color="white" />
-              <Text style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }} className="text-white font-bold">
+              <Text
+                style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}
+                className="text-white font-bold"
+              >
                 {addButtonText}
               </Text>
             </TouchableOpacity>
@@ -487,17 +560,42 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                 router.push(mode.cartRoute as any);
               }}
               className="flex-row items-center justify-between bg-gray-50"
-              style={{ minHeight: Math.max(ds.rowH - ds.spacing(12), 44), paddingHorizontal: ds.spacing(16) }}
+              style={{
+                minHeight: Math.max(ds.rowH - ds.spacing(12), 44),
+                paddingHorizontal: ds.spacing(16),
+              }}
             >
               <View className="flex-row items-center">
-                <Ionicons name="cart" size={ds.icon(18)} color={colors.gray[600]} />
-                <Text style={{ fontSize: ds.fontSize(13), marginLeft: ds.spacing(8) }} className="font-medium text-gray-700">
+                <Ionicons
+                  name="cart"
+                  size={ds.icon(18)}
+                  color={colors.gray[600]}
+                />
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(13),
+                    marginLeft: ds.spacing(8),
+                  }}
+                  className="font-medium text-gray-700"
+                >
                   {totalCartCount} in cart
                 </Text>
               </View>
               <View className="flex-row items-center">
-                <Text style={{ fontSize: ds.fontSize(14), marginRight: ds.spacing(4) }} className="font-medium text-primary-600">View</Text>
-                <Ionicons name="chevron-forward" size={ds.icon(16)} color={colors.primary[600]} />
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    marginRight: ds.spacing(4),
+                  }}
+                  className="font-medium text-primary-600"
+                >
+                  View
+                </Text>
+                <Ionicons
+                  name="chevron-forward"
+                  size={ds.icon(16)}
+                  color={colors.primary[600]}
+                />
               </View>
             </TouchableOpacity>
           )}
@@ -507,18 +605,27 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      className="flex-1 bg-gray-50"
+      edges={["top", "left", "right"]}
+    >
       {/* Compact Header with Location Selector */}
       <View className="bg-white border-b border-gray-200">
         <View
           className="flex-row items-center"
-          style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(8) }}
+          style={{
+            paddingHorizontal: ds.spacing(12),
+            paddingVertical: ds.spacing(8),
+          }}
         >
           {/* Left — Back + Browse (matched width with right) */}
-          <View className="flex-row items-center" style={{ width: headerIconButtonSize * 2 + ds.spacing(8) }}>
+          <View
+            className="flex-row items-center"
+            style={{ width: headerIconButtonSize * 2 + ds.spacing(8) }}
+          >
             <TouchableOpacity
               onPress={() => {
-                if (mode.backBehavior === 'back') {
+                if (mode.backBehavior === "back") {
                   router.back();
                   return;
                 }
@@ -528,13 +635,17 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                 width: headerIconButtonSize,
                 height: headerIconButtonSize,
                 borderRadius: ds.radius(10),
-                alignItems: 'center',
-                justifyContent: 'center',
+                alignItems: "center",
+                justifyContent: "center",
                 marginRight: ds.spacing(8),
               }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="arrow-back" size={ds.icon(22)} color={colors.gray[700]} />
+              <Ionicons
+                name="arrow-back"
+                size={ds.icon(22)}
+                color={colors.gray[700]}
+              />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -546,7 +657,11 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               }}
               activeOpacity={0.8}
             >
-              <Ionicons name="grid-outline" size={ds.icon(20)} color={colors.gray[700]} />
+              <Ionicons
+                name="grid-outline"
+                size={ds.icon(20)}
+                color={colors.gray[700]}
+              />
             </TouchableOpacity>
           </View>
 
@@ -566,14 +681,19 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
               <Text
                 className="font-medium text-gray-900"
-                style={{ fontSize: ds.fontSize(15), marginLeft: ds.spacing(8), marginRight: ds.spacing(6), flexShrink: 1 }}
+                style={{
+                  fontSize: ds.fontSize(15),
+                  marginLeft: ds.spacing(8),
+                  marginRight: ds.spacing(6),
+                  flexShrink: 1,
+                }}
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {selectedLocation?.name || 'Select'}
+                {selectedLocation?.name || "Select"}
               </Text>
               <Ionicons
-                name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
+                name={showLocationDropdown ? "chevron-up" : "chevron-down"}
                 size={ds.icon(14)}
                 color={colors.gray[500]}
               />
@@ -581,7 +701,10 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
           </TouchableOpacity>
 
           {/* Right — Cart (matched width with left) */}
-          <View className="flex-row items-center justify-end" style={{ width: headerIconButtonSize * 2 + ds.spacing(8) }}>
+          <View
+            className="flex-row items-center justify-end"
+            style={{ width: headerIconButtonSize * 2 + ds.spacing(8) }}
+          >
             <TouchableOpacity
               onPress={() => router.push(mode.cartRoute as any)}
               className="relative rounded-full bg-gray-100 items-center justify-center"
@@ -590,7 +713,11 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                 height: headerIconButtonSize,
               }}
             >
-              <Ionicons name="cart-outline" size={ds.icon(20)} color={colors.gray[700]} />
+              <Ionicons
+                name="cart-outline"
+                size={ds.icon(20)}
+                color={colors.gray[700]}
+              />
               {totalCartCount > 0 && (
                 <View
                   className="absolute bg-primary-500 rounded-full items-center justify-center"
@@ -602,8 +729,11 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     paddingHorizontal: ds.spacing(4),
                   }}
                 >
-                  <Text style={{ fontSize: ds.fontSize(11) }} className="text-white font-bold">
-                    {totalCartCount > 99 ? '99+' : totalCartCount}
+                  <Text
+                    style={{ fontSize: ds.fontSize(11) }}
+                    className="text-white font-bold"
+                  >
+                    {totalCartCount > 99 ? "99+" : totalCartCount}
                   </Text>
                 </View>
               )}
@@ -623,7 +753,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                   key={loc.id}
                   onPress={() => handleSelectLocation(loc)}
                   className={`flex-row items-center justify-between ${
-                    isSelected ? 'bg-primary-50' : ''
+                    isSelected ? "bg-primary-50" : ""
                   }`}
                   style={{
                     paddingHorizontal: ds.spacing(16),
@@ -632,21 +762,47 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                   }}
                 >
                   <View className="flex-row items-center">
-                    <View className={`rounded-full items-center justify-center ${
-                      isSelected ? 'bg-primary-500' : 'bg-gray-200'
-                    }`} style={{ width: ds.icon(32), height: ds.icon(32), marginRight: ds.spacing(12) }}>
-                      <BrandLogo variant="inline" size={16} colorMode={isSelected ? 'dark' : 'light'} />
+                    <View
+                      className={`rounded-full items-center justify-center ${
+                        isSelected ? "bg-primary-500" : "bg-gray-200"
+                      }`}
+                      style={{
+                        width: ds.icon(32),
+                        height: ds.icon(32),
+                        marginRight: ds.spacing(12),
+                      }}
+                    >
+                      <BrandLogo
+                        variant="inline"
+                        size={16}
+                        colorMode={isSelected ? "dark" : "light"}
+                      />
                     </View>
-                    <Text style={{ fontSize: ds.fontSize(15) }} className={`${isSelected ? 'font-semibold text-primary-700' : 'text-gray-800'}`}>
+                    <Text
+                      style={{ fontSize: ds.fontSize(15) }}
+                      className={`${isSelected ? "font-semibold text-primary-700" : "text-gray-800"}`}
+                    >
                       {loc.name}
                     </Text>
                   </View>
                   <View className="flex-row items-center">
                     {cartCount > 0 && (
-                      <Text style={{ fontSize: ds.fontSize(13), marginRight: ds.spacing(8) }} className="text-gray-500">{cartCount} items</Text>
+                      <Text
+                        style={{
+                          fontSize: ds.fontSize(13),
+                          marginRight: ds.spacing(8),
+                        }}
+                        className="text-gray-500"
+                      >
+                        {cartCount} items
+                      </Text>
                     )}
                     {isSelected && (
-                      <Ionicons name="checkmark" size={ds.icon(18)} color={colors.primary[500]} />
+                      <Ionicons
+                        name="checkmark"
+                        size={ds.icon(18)}
+                        color={colors.primary[500]}
+                      />
                     )}
                   </View>
                 </TouchableOpacity>
@@ -659,23 +815,52 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
       {/* Main Content */}
       <View
         className="flex-1"
-        style={{ paddingHorizontal: ds.spacing(16), paddingTop: ds.spacing(12) }}
+        style={{
+          paddingHorizontal: ds.spacing(16),
+          paddingTop: ds.spacing(12),
+        }}
       >
-        {screenState === 'searching' ? (
+        {screenState === "searching" ? (
           <>
             {/* Search Input with Ghost Text */}
             <View className="relative">
-              <View className="bg-white border border-gray-200 shadow-sm overflow-hidden" style={{ borderRadius: ds.radius(12) }}>
+              <View
+                className="bg-white border border-gray-200 shadow-sm overflow-hidden"
+                style={{ borderRadius: ds.radius(12) }}
+              >
                 <View
                   className="flex-row items-center"
-                  style={{ height: ds.buttonH, paddingHorizontal: ds.spacing(14) }}
+                  style={{
+                    height: ds.buttonH,
+                    paddingHorizontal: ds.spacing(14),
+                  }}
                 >
-                  <Ionicons name="search" size={ds.icon(20)} color={colors.gray[400]} />
-                  <View className="flex-1 relative justify-center" style={{ height: ds.buttonH, marginLeft: ds.spacing(10) }}>
+                  <Ionicons
+                    name="search"
+                    size={ds.icon(20)}
+                    color={colors.gray[400]}
+                  />
+                  <View
+                    className="flex-1 relative justify-center"
+                    style={{ height: ds.buttonH, marginLeft: ds.spacing(10) }}
+                  >
                     {ghostText && (
-                      <View pointerEvents="none" className="absolute inset-0 flex-row items-center">
-                        <Text style={{ fontSize: ds.fontSize(14) }} className="text-transparent">{searchQuery}</Text>
-                        <Text style={{ fontSize: ds.fontSize(14) }} className="text-gray-300">{ghostText}</Text>
+                      <View
+                        pointerEvents="none"
+                        className="absolute inset-0 flex-row items-center"
+                      >
+                        <Text
+                          style={{ fontSize: ds.fontSize(14) }}
+                          className="text-transparent"
+                        >
+                          {searchQuery}
+                        </Text>
+                        <Text
+                          style={{ fontSize: ds.fontSize(14) }}
+                          className="text-gray-300"
+                        >
+                          {ghostText}
+                        </Text>
                       </View>
                     )}
                     <TextInput
@@ -691,38 +876,55 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                       autoCorrect={false}
                       autoFocus
                       returnKeyType="go"
-                      inputAccessoryViewID={Platform.OS === 'ios' ? mode.inputAccessoryId : undefined}
+                      inputAccessoryViewID={
+                        Platform.OS === "ios"
+                          ? mode.inputAccessoryId
+                          : undefined
+                      }
                     />
                   </View>
                   {searchQuery.length > 0 && (
                     <TouchableOpacity
-                      onPress={() => setSearchQuery('')}
-                      style={{ paddingHorizontal: ds.spacing(4), minHeight: 44, justifyContent: 'center' }}
+                      onPress={() => setSearchQuery("")}
+                      style={{
+                        paddingHorizontal: ds.spacing(4),
+                        minHeight: 44,
+                        justifyContent: "center",
+                      }}
                     >
-                      <Ionicons name="close-circle" size={ds.icon(20)} color={colors.gray[400]} />
+                      <Ionicons
+                        name="close-circle"
+                        size={ds.icon(20)}
+                        color={colors.gray[400]}
+                      />
                     </TouchableOpacity>
                   )}
                   <TouchableOpacity
                     onPress={() => {
-                      if (mode.searchAction === 'voice') {
-                        const targetVoiceRoute = mode.voiceRoute || '/(tabs)/voice';
+                      if (mode.searchAction === "voice") {
+                        const targetVoiceRoute =
+                          mode.voiceRoute || "/(tabs)/voice";
                         router.navigate(targetVoiceRoute as any);
                         return;
                       }
                       handleOpenQuickCreate();
                     }}
                     activeOpacity={0.8}
-                    accessibilityLabel={mode.searchAction === 'voice' ? 'Voice order' : 'Add item to inventory'}
+                    accessibilityLabel={
+                      mode.searchAction === "voice"
+                        ? "Voice order"
+                        : "Add item to inventory"
+                    }
                     accessibilityRole="button"
                     style={{
                       width: Math.max(44, ds.icon(32)),
                       height: Math.max(44, ds.icon(32)),
                       borderRadius: ds.icon(16),
-                      backgroundColor: '#F97316',
-                      alignItems: 'center',
-                      justifyContent: 'center',
+                      backgroundColor: "#F97316",
+                      alignItems: "center",
+                      justifyContent: "center",
                       marginLeft: ds.spacing(8),
-                      shadowColor: '#F97316',
+                      shadowColor: "#F97316",
                       shadowOffset: { width: 0, height: 2 },
                       shadowOpacity: 0.3,
                       shadowRadius: 8,
@@ -738,14 +940,19 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               {filteredItems.length > 0 && searchQuery.trim() && (
                 <View
                   className="absolute left-0 right-0 bg-white border border-gray-200 shadow-lg z-10 overflow-hidden"
-                  style={{ top: ds.buttonH + ds.spacing(4), borderRadius: ds.radius(12) }}
+                  style={{
+                    top: ds.buttonH + ds.spacing(4),
+                    borderRadius: ds.radius(12),
+                  }}
                 >
                   <FlatList
                     data={filteredItems}
                     keyExtractor={(item) => item.id}
                     renderItem={renderSuggestionItem}
                     keyboardShouldPersistTaps="always"
-                    ItemSeparatorComponent={() => <View className="h-px bg-gray-100" />}
+                    ItemSeparatorComponent={() => (
+                      <View className="h-px bg-gray-100" />
+                    )}
                   />
                 </View>
               )}
@@ -753,36 +960,87 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
 
             {/* Empty State */}
             {!searchQuery.trim() && (
-              <View className="flex-1 items-center justify-center" style={{ paddingBottom: searchHelperBottomInset }}>
-                <Ionicons name="search-outline" size={ds.icon(56)} color={colors.gray[300]} />
-                <Text style={{ fontSize: ds.fontSize(16), marginTop: ds.spacing(12) }} className="font-medium text-gray-500">Start typing to search</Text>
-                <Text style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(4) }} className="text-gray-400">salmon, avocado, nori...</Text>
+              <View
+                className="flex-1 items-center justify-center"
+                style={{ paddingBottom: searchHelperBottomInset }}
+              >
+                <Ionicons
+                  name="search-outline"
+                  size={ds.icon(56)}
+                  color={colors.gray[300]}
+                />
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(16),
+                    marginTop: ds.spacing(12),
+                  }}
+                  className="font-medium text-gray-500"
+                >
+                  Start typing to search
+                </Text>
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    marginTop: ds.spacing(4),
+                  }}
+                  className="text-gray-400"
+                >
+                  salmon, avocado, nori...
+                </Text>
               </View>
             )}
 
             {/* No results state */}
-            {searchQuery.trim() && filteredItems.length === 0 && debouncedQuery === searchQuery && (
-              <View className="flex-1 items-center justify-center" style={{ paddingBottom: searchHelperBottomInset }}>
-                <Ionicons name="alert-circle-outline" size={ds.icon(56)} color={colors.gray[300]} />
-                <Text style={{ fontSize: ds.fontSize(16), marginTop: ds.spacing(12) }} className="font-medium text-gray-500">No items found</Text>
-                <Text style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(4) }} className="text-gray-400">Try a different search term</Text>
-                <TouchableOpacity
-                  onPress={handleOpenQuickCreate}
-                  className="bg-primary-500 rounded-full"
-                  style={{
-                    minHeight: ds.buttonH,
-                    paddingHorizontal: ds.buttonPadH,
-                    justifyContent: 'center',
-                    marginTop: ds.spacing(16),
-                  }}
-                  activeOpacity={0.8}
+            {searchQuery.trim() &&
+              filteredItems.length === 0 &&
+              debouncedQuery === searchQuery && (
+                <View
+                  className="flex-1 items-center justify-center"
+                  style={{ paddingBottom: searchHelperBottomInset }}
                 >
-                  <Text style={{ fontSize: ds.buttonFont }} className="text-white font-semibold">
-                    Add {searchQuery.trim()} to Inventory?
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={ds.icon(56)}
+                    color={colors.gray[300]}
+                  />
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(16),
+                      marginTop: ds.spacing(12),
+                    }}
+                    className="font-medium text-gray-500"
+                  >
+                    No items found
                   </Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(14),
+                      marginTop: ds.spacing(4),
+                    }}
+                    className="text-gray-400"
+                  >
+                    Try a different search term
+                  </Text>
+                  <TouchableOpacity
+                    onPress={handleOpenQuickCreate}
+                    className="bg-primary-500 rounded-full"
+                    style={{
+                      minHeight: ds.buttonH,
+                      paddingHorizontal: ds.buttonPadH,
+                      justifyContent: "center",
+                      marginTop: ds.spacing(16),
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={{ fontSize: ds.buttonFont }}
+                      className="text-white font-semibold"
+                    >
+                      Add {searchQuery.trim()} to Inventory?
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
           </>
         ) : (
           /* Quantity Entry State - Compact */
@@ -793,8 +1051,17 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               className="flex-row items-center"
               style={{ marginBottom: ds.spacing(12), minHeight: 44 }}
             >
-              <Ionicons name="arrow-back" size={ds.icon(18)} color={colors.gray[600]} />
-              <Text style={{ fontSize: ds.fontSize(14), marginLeft: ds.spacing(4) }} className="text-gray-600">Back</Text>
+              <Ionicons
+                name="arrow-back"
+                size={ds.icon(18)}
+                color={colors.gray[600]}
+              />
+              <Text
+                style={{ fontSize: ds.fontSize(14), marginLeft: ds.spacing(4) }}
+                className="text-gray-600"
+              >
+                Back
+              </Text>
             </TouchableOpacity>
 
             {/* Compact Item Card */}
@@ -804,44 +1071,82 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                 style={{ borderRadius: ds.radius(12), padding: ds.cardPad }}
               >
                 {/* Item Info - Compact */}
-                <View className="flex-row items-center" style={{ marginBottom: ds.spacing(16) }}>
-                  <Text style={{ fontSize: ds.icon(30), marginRight: ds.spacing(12) }}>
-                    {CATEGORY_EMOJI[selectedItem.category] || '📦'}
+                <View
+                  className="flex-row items-center"
+                  style={{ marginBottom: ds.spacing(16) }}
+                >
+                  <Text
+                    style={{
+                      fontSize: ds.icon(30),
+                      marginRight: ds.spacing(12),
+                    }}
+                  >
+                    {CATEGORY_EMOJI[selectedItem.category] || "📦"}
                   </Text>
                   <View className="flex-1">
-                    <Text style={{ fontSize: ds.fontSize(18) }} className="font-semibold text-gray-900" numberOfLines={1} ellipsizeMode="tail">
+                    <Text
+                      style={{ fontSize: ds.fontSize(18) }}
+                      className="font-semibold text-gray-900"
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
                       {selectedItem.name}
                     </Text>
-                    <Text style={{ fontSize: ds.fontSize(12) }} className="text-gray-500">
-                      {selectedItem.pack_size} {selectedItem.base_unit}/{selectedItem.pack_unit}
+                    <Text
+                      style={{ fontSize: ds.fontSize(12) }}
+                      className="text-gray-500"
+                    >
+                      {selectedItem.pack_size} {selectedItem.base_unit}/
+                      {selectedItem.pack_unit}
                     </Text>
                   </View>
                 </View>
 
-                <View className="flex-row" style={{ marginBottom: ds.spacing(12) }}>
+                <View
+                  className="flex-row"
+                  style={{ marginBottom: ds.spacing(12) }}
+                >
                   <TouchableOpacity
-                    onPress={() => setInputMode('quantity')}
+                    onPress={() => setInputMode("quantity")}
                     className={`flex-1 rounded-l-lg items-center justify-center ${
-                      inputMode === 'quantity' ? 'bg-primary-500' : 'bg-gray-100'
+                      inputMode === "quantity"
+                        ? "bg-primary-500"
+                        : "bg-gray-100"
                     }`}
-                    style={{ minHeight: Math.max(44, ds.buttonH - ds.spacing(6)) }}
+                    style={{
+                      minHeight: Math.max(44, ds.buttonH - ds.spacing(6)),
+                    }}
                   >
-                    <Text style={{ fontSize: ds.fontSize(12) }} className={`font-semibold ${
-                      inputMode === 'quantity' ? 'text-white' : 'text-gray-600'
-                    }`}>
+                    <Text
+                      style={{ fontSize: ds.fontSize(12) }}
+                      className={`font-semibold ${
+                        inputMode === "quantity"
+                          ? "text-white"
+                          : "text-gray-600"
+                      }`}
+                    >
                       Order Qty
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={() => setInputMode('remaining')}
+                    onPress={() => setInputMode("remaining")}
                     className={`flex-1 rounded-r-lg items-center justify-center ${
-                      inputMode === 'remaining' ? 'bg-primary-500' : 'bg-gray-100'
+                      inputMode === "remaining"
+                        ? "bg-primary-500"
+                        : "bg-gray-100"
                     }`}
-                    style={{ minHeight: Math.max(44, ds.buttonH - ds.spacing(6)) }}
+                    style={{
+                      minHeight: Math.max(44, ds.buttonH - ds.spacing(6)),
+                    }}
                   >
-                    <Text style={{ fontSize: ds.fontSize(12) }} className={`font-semibold ${
-                      inputMode === 'remaining' ? 'text-white' : 'text-gray-600'
-                    }`}>
+                    <Text
+                      style={{ fontSize: ds.fontSize(12) }}
+                      className={`font-semibold ${
+                        inputMode === "remaining"
+                          ? "text-white"
+                          : "text-gray-600"
+                      }`}
+                    >
                       Remaining
                     </Text>
                   </TouchableOpacity>
@@ -853,26 +1158,41 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                   <View className="flex-row items-center flex-1">
                     <TouchableOpacity
                       onPress={() => {
-                        if (inputMode === 'quantity') {
-                          const q = Math.max(1, (parseFloat(quantity) || 1) - 1);
+                        if (inputMode === "quantity") {
+                          const q = Math.max(
+                            1,
+                            (parseFloat(quantity) || 1) - 1,
+                          );
                           setQuantity(q.toString());
                         } else {
-                          const r = Math.max(0, (parseFloat(remainingAmount) || 0) - 1);
+                          const r = Math.max(
+                            0,
+                            (parseFloat(remainingAmount) || 0) - 1,
+                          );
                           setRemainingAmount(r.toString());
                         }
                         quantityInputRef.current?.focus();
                       }}
                       className="bg-gray-100 rounded-lg items-center justify-center"
-                      style={{ width: Math.max(44, ds.icon(44)), height: Math.max(44, ds.icon(44)) }}
+                      style={{
+                        width: Math.max(44, ds.icon(44)),
+                        height: Math.max(44, ds.icon(44)),
+                      }}
                     >
-                      <Ionicons name="remove" size={ds.icon(20)} color={colors.gray[700]} />
+                      <Ionicons
+                        name="remove"
+                        size={ds.icon(20)}
+                        color={colors.gray[700]}
+                      />
                     </TouchableOpacity>
 
                     <TextInput
                       ref={quantityInputRef}
-                      value={inputMode === 'quantity' ? quantity : remainingAmount}
+                      value={
+                        inputMode === "quantity" ? quantity : remainingAmount
+                      }
                       onChangeText={
-                        inputMode === 'quantity'
+                        inputMode === "quantity"
                           ? handleQuantityInputChange
                           : handleRemainingInputChange
                       }
@@ -885,12 +1205,16 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                         marginHorizontal: ds.spacing(8),
                       }}
                       selectTextOnFocus
-                      inputAccessoryViewID={Platform.OS === 'ios' ? mode.inputAccessoryId : undefined}
+                      inputAccessoryViewID={
+                        Platform.OS === "ios"
+                          ? mode.inputAccessoryId
+                          : undefined
+                      }
                     />
 
                     <TouchableOpacity
                       onPress={() => {
-                        if (inputMode === 'quantity') {
+                        if (inputMode === "quantity") {
                           const q = (parseFloat(quantity) || 0) + 1;
                           setQuantity(q.toString());
                         } else {
@@ -900,58 +1224,89 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                         quantityInputRef.current?.focus();
                       }}
                       className="bg-gray-100 rounded-lg items-center justify-center"
-                      style={{ width: Math.max(44, ds.icon(44)), height: Math.max(44, ds.icon(44)) }}
+                      style={{
+                        width: Math.max(44, ds.icon(44)),
+                        height: Math.max(44, ds.icon(44)),
+                      }}
                     >
-                      <Ionicons name="add" size={ds.icon(20)} color={colors.gray[700]} />
+                      <Ionicons
+                        name="add"
+                        size={ds.icon(20)}
+                        color={colors.gray[700]}
+                      />
                     </TouchableOpacity>
                   </View>
 
                   {/* Unit Toggle */}
-                  <View className="flex-row" style={{ marginLeft: ds.spacing(12) }}>
+                  <View
+                    className="flex-row"
+                    style={{ marginLeft: ds.spacing(12) }}
+                  >
                     <TouchableOpacity
                       onPress={() => {
-                        setSelectedUnit('pack');
+                        setSelectedUnit("pack");
                         quantityInputRef.current?.focus();
                       }}
                       className={`rounded-l-lg justify-center ${
-                        selectedUnit === 'pack' ? 'bg-primary-500' : 'bg-gray-100'
+                        selectedUnit === "pack"
+                          ? "bg-primary-500"
+                          : "bg-gray-100"
                       }`}
                       style={{
                         minHeight: 44,
                         paddingHorizontal: ds.spacing(12),
                       }}
                     >
-                      <Text style={{ fontSize: ds.fontSize(14) }} className={`font-medium ${
-                        selectedUnit === 'pack' ? 'text-white' : 'text-gray-600'
-                      }`}>
+                      <Text
+                        style={{ fontSize: ds.fontSize(14) }}
+                        className={`font-medium ${
+                          selectedUnit === "pack"
+                            ? "text-white"
+                            : "text-gray-600"
+                        }`}
+                      >
                         {selectedItem.pack_unit}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => {
-                        setSelectedUnit('base');
+                        setSelectedUnit("base");
                         quantityInputRef.current?.focus();
                       }}
                       className={`rounded-r-lg justify-center ${
-                        selectedUnit === 'base' ? 'bg-primary-500' : 'bg-gray-100'
+                        selectedUnit === "base"
+                          ? "bg-primary-500"
+                          : "bg-gray-100"
                       }`}
                       style={{
                         minHeight: 44,
                         paddingHorizontal: ds.spacing(12),
                       }}
                     >
-                      <Text style={{ fontSize: ds.fontSize(14) }} className={`font-medium ${
-                        selectedUnit === 'base' ? 'text-white' : 'text-gray-600'
-                      }`}>
+                      <Text
+                        style={{ fontSize: ds.fontSize(14) }}
+                        className={`font-medium ${
+                          selectedUnit === "base"
+                            ? "text-white"
+                            : "text-gray-600"
+                        }`}
+                      >
                         {selectedItem.base_unit}
                       </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
 
-                {inputMode === 'remaining' && (
-                  <Text style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(12) }} className="text-gray-500">
-                    Enter how many are left. A manager will decide how many to order.
+                {inputMode === "remaining" && (
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(12),
+                      marginTop: ds.spacing(12),
+                    }}
+                    className="text-gray-500"
+                  >
+                    Enter how many are left. A manager will decide how many to
+                    order.
                   </Text>
                 )}
               </View>
@@ -969,23 +1324,47 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
       >
         <SafeAreaView className="flex-1 bg-gray-50">
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
             className="flex-1"
           >
             <View
               className="bg-white border-b border-gray-200 flex-row items-center justify-between"
-              style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(14) }}
+              style={{
+                paddingHorizontal: ds.spacing(16),
+                paddingVertical: ds.spacing(14),
+              }}
             >
               <TouchableOpacity onPress={() => setShowQuickCreate(false)}>
-                <Text style={{ fontSize: ds.fontSize(14) }} className="text-primary-500 font-medium">Cancel</Text>
+                <Text
+                  style={{ fontSize: ds.fontSize(14) }}
+                  className="text-primary-500 font-medium"
+                >
+                  Cancel
+                </Text>
               </TouchableOpacity>
-              <Text style={{ fontSize: ds.fontSize(18) }} className="font-bold text-gray-900">Add Item</Text>
+              <Text
+                style={{ fontSize: ds.fontSize(18) }}
+                className="font-bold text-gray-900"
+              >
+                Add Item
+              </Text>
               <View style={{ width: ds.spacing(64) }} />
             </View>
 
-            <ScrollView className="flex-1" contentContainerStyle={{ padding: ds.spacing(16) }}>
+            <ScrollView
+              className="flex-1"
+              contentContainerStyle={{ padding: ds.spacing(16) }}
+            >
               <View style={{ marginBottom: ds.spacing(16) }}>
-                <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Item Name *</Text>
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    marginBottom: ds.spacing(8),
+                  }}
+                  className="font-medium text-gray-700"
+                >
+                  Item Name *
+                </Text>
                 <TextInput
                   className="bg-white border border-gray-200 text-gray-900"
                   style={{
@@ -1003,26 +1382,40 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               </View>
 
               <View style={{ marginBottom: ds.spacing(16) }}>
-                <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Category *</Text>
-                <View className="flex-row flex-wrap" style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}>
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    marginBottom: ds.spacing(8),
+                  }}
+                  className="font-medium text-gray-700"
+                >
+                  Category *
+                </Text>
+                <View
+                  className="flex-row flex-wrap"
+                  style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}
+                >
                   {QUICK_CREATE_CATEGORIES.map((cat) => {
                     const isSelected = newItemCategory === cat;
                     return (
                       <TouchableOpacity
                         key={cat}
                         className={`rounded-lg ${
-                          isSelected ? 'bg-primary-500' : 'bg-gray-100'
+                          isSelected ? "bg-primary-500" : "bg-gray-100"
                         }`}
                         style={{
                           minHeight: Math.max(40, ds.buttonH - ds.spacing(10)),
                           paddingHorizontal: ds.spacing(12),
-                          justifyContent: 'center',
+                          justifyContent: "center",
                         }}
                         onPress={() => setNewItemCategory(cat)}
                       >
-                        <Text style={{ fontSize: ds.fontSize(14) }} className={`font-medium ${
-                          isSelected ? 'text-white' : 'text-gray-700'
-                        }`}>
+                        <Text
+                          style={{ fontSize: ds.fontSize(14) }}
+                          className={`font-medium ${
+                            isSelected ? "text-white" : "text-gray-700"
+                          }`}
+                        >
                           {CATEGORY_LABELS[cat] || cat}
                         </Text>
                       </TouchableOpacity>
@@ -1032,27 +1425,45 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               </View>
 
               <View style={{ marginBottom: ds.spacing(16) }}>
-                <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Supplier *</Text>
-                <View className="flex-row flex-wrap" style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}>
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    marginBottom: ds.spacing(8),
+                  }}
+                  className="font-medium text-gray-700"
+                >
+                  Supplier *
+                </Text>
+                <View
+                  className="flex-row flex-wrap"
+                  style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}
+                >
                   {QUICK_CREATE_SUPPLIERS.map((sup) => {
                     const isSelected = newItemSupplier === sup;
                     return (
                       <TouchableOpacity
                         key={sup}
                         className={`rounded-lg ${
-                          isSelected ? 'bg-primary-500' : 'bg-gray-100'
+                          isSelected ? "bg-primary-500" : "bg-gray-100"
                         }`}
                         style={{
                           minHeight: Math.max(40, ds.buttonH - ds.spacing(10)),
                           paddingHorizontal: ds.spacing(12),
-                          justifyContent: 'center',
+                          justifyContent: "center",
                         }}
                         onPress={() => setNewItemSupplier(sup)}
                       >
-                        <Text style={{ fontSize: ds.fontSize(14) }} className={`font-medium ${
-                          isSelected ? 'text-white' : 'text-gray-700'
-                        }`}>
-                          {sup === 'fish_supplier' ? 'Fish Supplier' : sup === 'asian_market' ? 'Asian Market' : 'Main Distributor'}
+                        <Text
+                          style={{ fontSize: ds.fontSize(14) }}
+                          className={`font-medium ${
+                            isSelected ? "text-white" : "text-gray-700"
+                          }`}
+                        >
+                          {sup === "fish_supplier"
+                            ? "Fish Supplier"
+                            : sup === "asian_market"
+                              ? "Asian Market"
+                              : "Main Distributor"}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -1060,9 +1471,23 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                 </View>
               </View>
 
-              <View className="flex-row" style={{ marginBottom: ds.spacing(16), columnGap: ds.spacing(12) }}>
+              <View
+                className="flex-row"
+                style={{
+                  marginBottom: ds.spacing(16),
+                  columnGap: ds.spacing(12),
+                }}
+              >
                 <View className="flex-1">
-                  <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Base Unit *</Text>
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(14),
+                      marginBottom: ds.spacing(8),
+                    }}
+                    className="font-medium text-gray-700"
+                  >
+                    Base Unit *
+                  </Text>
                   <TextInput
                     className="bg-white border border-gray-200 text-gray-900"
                     style={{
@@ -1079,7 +1504,15 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                   />
                 </View>
                 <View className="flex-1">
-                  <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Pack Unit *</Text>
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(14),
+                      marginBottom: ds.spacing(8),
+                    }}
+                    className="font-medium text-gray-700"
+                  >
+                    Pack Unit *
+                  </Text>
                   <TextInput
                     className="bg-white border border-gray-200 text-gray-900"
                     style={{
@@ -1098,7 +1531,15 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               </View>
 
               <View style={{ marginBottom: ds.spacing(24) }}>
-                <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }} className="font-medium text-gray-700">Pack Size *</Text>
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    marginBottom: ds.spacing(8),
+                  }}
+                  className="font-medium text-gray-700"
+                >
+                  Pack Size *
+                </Text>
                 <View className="flex-row items-center">
                   <TextInput
                     className="bg-white border border-gray-200 text-gray-900"
@@ -1115,8 +1556,14 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     placeholderTextColor="#9CA3AF"
                     keyboardType="decimal-pad"
                   />
-                  <Text style={{ fontSize: ds.fontSize(14), marginLeft: ds.spacing(12) }} className="text-gray-500">
-                    {newItemBaseUnit || 'units'} per {newItemPackUnit || 'pack'}
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(14),
+                      marginLeft: ds.spacing(12),
+                    }}
+                    className="text-gray-500"
+                  >
+                    {newItemBaseUnit || "units"} per {newItemPackUnit || "pack"}
                   </Text>
                 </View>
               </View>
@@ -1124,19 +1571,25 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
 
             <View
               className="bg-white border-t border-gray-200"
-              style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(14) }}
+              style={{
+                paddingHorizontal: ds.spacing(16),
+                paddingVertical: ds.spacing(14),
+              }}
             >
               <TouchableOpacity
                 className={`rounded-xl items-center flex-row justify-center ${
-                  isCreatingItem ? 'bg-primary-300' : 'bg-primary-500'
+                  isCreatingItem ? "bg-primary-300" : "bg-primary-500"
                 }`}
                 style={{ minHeight: ds.buttonH }}
                 onPress={handleCreateItem}
                 disabled={isCreatingItem}
               >
                 <Ionicons name="add-circle" size={ds.icon(20)} color="white" />
-                <Text style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }} className="text-white font-bold">
-                  {isCreatingItem ? 'Adding...' : 'Add Item'}
+                <Text
+                  style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}
+                  className="text-white font-bold"
+                >
+                  {isCreatingItem ? "Adding..." : "Add Item"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1145,33 +1598,45 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
       </Modal>
 
       {/* Android: Add to Cart button above keyboard */}
-      {Platform.OS === 'android' && isKeyboardVisible && screenState === 'quantity' && selectedItem && (
-        <View
-          style={{
-            position: 'absolute',
-            bottom: keyboardHeight,
-            left: 0,
-            right: 0,
-          }}
-        >
-          <View className="bg-white border-t border-gray-200" style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(8) }}>
-            <TouchableOpacity
-              onPress={handleAddToCart}
-              className={`rounded-xl items-center flex-row justify-center ${
-                canAddToCart ? 'bg-primary-500' : 'bg-primary-300'
-              }`}
-              style={{ minHeight: ds.buttonH }}
-              activeOpacity={0.8}
-              disabled={!canAddToCart}
+      {Platform.OS === "android" &&
+        isKeyboardVisible &&
+        screenState === "quantity" &&
+        selectedItem && (
+          <View
+            style={{
+              position: "absolute",
+              bottom: keyboardHeight,
+              left: 0,
+              right: 0,
+            }}
+          >
+            <View
+              className="bg-white border-t border-gray-200"
+              style={{
+                paddingHorizontal: ds.spacing(12),
+                paddingVertical: ds.spacing(8),
+              }}
             >
-              <Ionicons name="cart" size={ds.icon(20)} color="white" />
-              <Text style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }} className="text-white font-bold">
-                {addButtonText}
-              </Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleAddToCart}
+                className={`rounded-xl items-center flex-row justify-center ${
+                  canAddToCart ? "bg-primary-500" : "bg-primary-300"
+                }`}
+                style={{ minHeight: ds.buttonH }}
+                activeOpacity={0.8}
+                disabled={!canAddToCart}
+              >
+                <Ionicons name="cart" size={ds.icon(20)} color="white" />
+                <Text
+                  style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}
+                  className="text-white font-bold"
+                >
+                  {addButtonText}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      )}
+        )}
 
       {/* iOS Input Accessory View */}
       {renderInputAccessory()}

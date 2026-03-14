@@ -190,7 +190,7 @@ export default function ExportFishOrderScreen() {
           headerShown: true,
           title: 'Confirm Order',
           headerBackTitle: 'Back',
-          headerTintColor: '#F97316',
+          headerTintColor: colors.primary[500],
           headerStyle: { backgroundColor: '#FFFFFF' },
           headerTitleStyle: { color: '#111827', fontWeight: '600' },
         }}

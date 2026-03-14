@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, View, Text } from 'react-native';
+import { colors } from '@/constants';
 
 interface SpinningFishProps {
   size?: 'small' | 'medium' | 'large';
@@ -10,7 +11,7 @@ interface SpinningFishProps {
 
 export function SpinningFish({
   size = 'medium',
-  color = '#F97316',
+  color = colors.primary[500],
   showText = false,
   text = 'Loading...',
 }: SpinningFishProps) {

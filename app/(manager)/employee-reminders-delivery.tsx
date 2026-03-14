@@ -104,7 +104,7 @@ export default function EmployeeReminderDeliveryStatusScreen() {
         <ScrollView
           className="flex-1"
           contentContainerStyle={{ padding: ds.spacing(16), paddingBottom: ds.spacing(28) }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#F97316" />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary[500]} />}
         >
           <View
             className="bg-white border border-gray-200 rounded-xl flex-row items-center"

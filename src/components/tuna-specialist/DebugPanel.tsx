@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTunaSpecialistStore } from '@/store';
+import { colors } from '@/constants';
 
 const TEST_TRANSCRIPTS = [
   { label: 'Simple order', text: '10 cases of salmon and 5 tuna' },
@@ -118,7 +119,7 @@ export function DebugPanel({ locationShortCode }: DebugPanelProps) {
           }}
           disabled={isProcessing || !customText.trim()}
           style={{
-            backgroundColor: isProcessing || !customText.trim() ? '#374151' : '#F97316',
+            backgroundColor: isProcessing || !customText.trim() ? '#374151' : colors.primary[500],
             borderRadius: 8,
             paddingHorizontal: 14,
             justifyContent: 'center',

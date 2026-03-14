@@ -1,21 +1,32 @@
-import { useEffect } from 'react';
-import { LogBox, View, Text, Appearance, AppState, AppStateStatus } from 'react-native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { useAuthStore, useDisplayStore } from '@/store';
-import { useInventorySubscription, useOrderSubscription } from '@/hooks';
-import { supabase, supabaseConfigError } from '@/lib/supabase';
-import '../global.css';
+import { useEffect } from "react";
+import {
+  LogBox,
+  View,
+  Text,
+  Appearance,
+  AppState,
+  AppStateStatus,
+} from "react-native";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useAuthStore, useDisplayStore } from "@/store";
+import { useInventorySubscription, useOrderSubscription } from "@/hooks";
+import { supabase, supabaseConfigError } from "@/lib/supabase";
+import "../global.css";
 
 LogBox.ignoreLogs([
-  'SafeAreaView has been deprecated',
-  'expo-notifications: Android Push notifications (remote notifications) functionality provided by expo-notifications was removed from Expo Go',
-  '`expo-notifications` functionality is not fully supported in Expo Go',
-  '[expo-notifications]: `shouldShowAlert` is deprecated',
+  "SafeAreaView has been deprecated",
+  "expo-notifications: Android Push notifications (remote notifications) functionality provided by expo-notifications was removed from Expo Go",
+  "`expo-notifications` functionality is not fully supported in Expo Go",
+  "[expo-notifications]: `shouldShowAlert` is deprecated",
 ]);
 
 // Separate component for subscriptions to avoid hook issues.
-function RealtimeSubscriptionProvider({ children }: { children: React.ReactNode }) {
+function RealtimeSubscriptionProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   useOrderSubscription();
   useInventorySubscription();
   return <>{children}</>;
@@ -25,10 +36,10 @@ function ThemeManager() {
   const theme = useDisplayStore((state) => state.theme);
 
   useEffect(() => {
-    if (theme === 'light') {
-      Appearance.setColorScheme('light');
-    } else if (theme === 'dark') {
-      Appearance.setColorScheme('dark');
+    if (theme === "light") {
+      Appearance.setColorScheme("light");
+    } else if (theme === "dark") {
+      Appearance.setColorScheme("dark");
     } else {
       // 'system' — follow device setting
       Appearance.setColorScheme(null);
@@ -47,18 +58,18 @@ export default function RootLayout() {
     if (supabaseConfigError) return;
 
     const onAppStateChange = (nextState: AppStateStatus) => {
-      if (nextState === 'active') {
+      if (nextState === "active") {
         supabase.auth.startAutoRefresh();
       } else {
         supabase.auth.stopAutoRefresh();
       }
     };
 
-    if (AppState.currentState === 'active') {
+    if (AppState.currentState === "active") {
       supabase.auth.startAutoRefresh();
     }
 
-    const subscription = AppState.addEventListener('change', onAppStateChange);
+    const subscription = AppState.addEventListener("change", onAppStateChange);
 
     return () => {
       subscription.remove();
@@ -74,19 +85,33 @@ export default function RootLayout() {
     }
   }, [initialize, isInitialized]);
 
-  const statusBarStyle = theme === 'dark' ? 'light' : 'dark';
+  const statusBarStyle = theme === "dark" ? "light" : "dark";
 
   if (supabaseConfigError) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#FFFFFF', paddingHorizontal: 24, justifyContent: 'center' }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "#FFFFFF",
+          paddingHorizontal: 24,
+          justifyContent: "center",
+        }}
+      >
         <StatusBar style={statusBarStyle} />
-        <Text style={{ fontSize: 22, fontWeight: '700', color: '#111827', marginBottom: 10 }}>
+        <Text
+          style={{
+            fontSize: 22,
+            fontWeight: "700",
+            color: "#111827",
+            marginBottom: 10,
+          }}
+        >
           App Configuration Required
         </Text>
-        <Text style={{ fontSize: 15, color: '#4B5563', lineHeight: 22 }}>
+        <Text style={{ fontSize: 15, color: "#4B5563", lineHeight: 22 }}>
           {__DEV__
             ? `${supabaseConfigError}. Add these values to your Expo environment and restart the app.`
-            : 'This build is missing required configuration. Please reinstall the app or contact support.'}
+            : "This build is missing required configuration. Please reinstall the app or contact support."}
         </Text>
       </View>
     );
@@ -100,8 +125,8 @@ export default function RootLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: '#FFFFFF' },
-          animation: reduceMotion ? 'none' : 'fade',
+          contentStyle: { backgroundColor: "#FFFFFF" },
+          animation: reduceMotion ? "none" : "fade",
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -117,7 +142,9 @@ export default function RootLayout() {
 
   // Only enable subscriptions when user is logged in
   if (user) {
-    return <RealtimeSubscriptionProvider>{content}</RealtimeSubscriptionProvider>;
+    return (
+      <RealtimeSubscriptionProvider>{content}</RealtimeSubscriptionProvider>
+    );
   }
 
   return content;

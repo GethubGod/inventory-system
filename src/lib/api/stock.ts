@@ -1,3 +1,4 @@
+// PHASE 4: Stock management — direct Supabase calls, no matching edge functions yet.
 import { supabase } from '@/lib/supabase';
 import {
   AreaItemWithDetails,

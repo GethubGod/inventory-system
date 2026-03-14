@@ -6,6 +6,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { User, Location, UserRole, Profile, AuthProvider } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { getUserContext } from '@/lib/api/client';
 import { validateAccessCode } from '@/services/accessCodes';
 
 type ViewMode = 'employee' | 'manager';
@@ -191,6 +192,7 @@ interface AuthState {
   profile: Profile | null;
   location: Location | null;
   locations: Location[];
+  orgId: string | null;
   isLoading: boolean;
   isInitialized: boolean;
   viewMode: ViewMode;
@@ -311,6 +313,7 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           profile: null,
           location: null,
+          orgId: null,
           viewMode: 'employee',
         });
       };
@@ -359,12 +362,23 @@ export const useAuthStore = create<AuthState>()(
         return { profile, suspended: false };
       };
 
+      const resolveAndSetOrgId = async () => {
+        try {
+          const result = await getUserContext();
+          const orgId = result.data?.membership?.orgId ?? result.data?.organization?.id ?? null;
+          set({ orgId });
+        } catch (e) {
+          console.warn('Failed to resolve orgId from user context', e);
+        }
+      };
+
       return {
       session: null,
       user: null,
       profile: null,
       location: null,
       locations: [],
+      orgId: null,
       isLoading: true,
       isInitialized: false,
       viewMode: 'employee',
@@ -474,6 +488,7 @@ export const useAuthStore = create<AuthState>()(
 
             if (!suspended) {
               await get().fetchUser();
+              resolveAndSetOrgId();
               subscribeToProfileChanges(session.user.id, async () => {
                 await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
               });
@@ -570,7 +585,9 @@ export const useAuthStore = create<AuthState>()(
             });
           }
 
-          return await get().fetchUser();
+          const user = await get().fetchUser();
+          resolveAndSetOrgId();
+          return user;
         } finally {
           set({ isLoading: false });
         }
@@ -643,20 +660,21 @@ export const useAuthStore = create<AuthState>()(
             }
             activeSessionUserId = activeSession.user.id;
 
-            await refreshProfileAndHandleSuspension({
-              userId: activeSession.user.id,
-            });
-            await get().fetchUser();
-            subscribeToProfileChanges(activeSession.user.id, async () => {
-              await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
-            });
-          }
-        } finally {
-          set({ isLoading: false });
-        }
-      },
+                await refreshProfileAndHandleSuspension({
+                  userId: activeSession.user.id,
+                });
+                await get().fetchUser();
+                resolveAndSetOrgId();
+                subscribeToProfileChanges(activeSession.user.id, async () => {
+                  await refreshProfileAndHandleSuspension({ shouldThrowOnSuspended: false });
+                });
+              }
+            } finally {
+              set({ isLoading: false });
+            }
+          },
 
-      signUp: async (email, password, name, accessCode, locationId) => {
+          signUp: async (email, password, name, accessCode, locationId) => {
         set({ isLoading: true });
         try {
           const role = await validateAccessCode(accessCode);
@@ -954,6 +972,7 @@ export const useAuthStore = create<AuthState>()(
             profile: null,
             location: null,
             locations: [],
+            orgId: null,
             viewMode: 'employee',
           });
         } finally {
@@ -1010,6 +1029,7 @@ export const useAuthStore = create<AuthState>()(
         location: state.location,
         user: state.user,
         profile: state.profile,
+        orgId: state.orgId,
         viewMode: state.viewMode,
       }),
     }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -13,79 +13,93 @@ import {
   Platform,
   UIManager,
   KeyboardAvoidingView,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { Sparkles } from 'lucide-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { router, useFocusEffect } from 'expo-router';
-import * as Haptics from 'expo-haptics';
-import { useShallow } from 'zustand/react/shallow';
-import { useInventoryStore, useAuthStore, useOrderStore } from '@/store';
-import { InventoryItem, ItemCategory, Location, SupplierCategory } from '@/types';
-import { CATEGORY_LABELS, categoryColors, colors } from '@/constants';
-import { BrandLogo } from '@/components';
-import { InventoryItemCard } from '@/components/InventoryItemCard';
-import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { supabase } from '@/lib/supabase';
-import { triggerPendingReminderLocalNotification } from '@/services/notificationService';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { Sparkles } from "lucide-react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { router, useFocusEffect } from "expo-router";
+import * as Haptics from "expo-haptics";
+import { useShallow } from "zustand/react/shallow";
+import { useInventoryStore, useAuthStore, useOrderStore } from "@/store";
+import {
+  InventoryItem,
+  ItemCategory,
+  Location,
+  SupplierCategory,
+} from "@/types";
+import { CATEGORY_LABELS, categoryColors, colors } from "@/constants";
+import { BrandLogo } from "@/components";
+import { InventoryItemCard } from "@/components/InventoryItemCard";
+import { useScaledStyles } from "@/hooks/useScaledStyles";
+import { supabase } from "@/lib/supabase";
+import { triggerPendingReminderLocalNotification } from "@/services/notificationService";
 
 // Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+if (
+  Platform.OS === "android" &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 const categories: ItemCategory[] = [
-  'fish',
-  'protein',
-  'produce',
-  'dry',
-  'dairy_cold',
-  'frozen',
-  'sauces',
-  'alcohol',
-  'packaging',
+  "fish",
+  "protein",
+  "produce",
+  "dry",
+  "dairy_cold",
+  "frozen",
+  "sauces",
+  "alcohol",
+  "packaging",
 ];
 
 const CATEGORY_ICONS: Record<ItemCategory, keyof typeof Ionicons.glyphMap> = {
-  fish: 'fish-outline',
-  protein: 'restaurant-outline',
-  produce: 'leaf-outline',
-  dry: 'cube-outline',
-  dairy_cold: 'thermometer-outline',
-  frozen: 'snow-outline',
-  sauces: 'water-outline',
-  alcohol: 'wine-outline',
-  packaging: 'archive-outline',
+  fish: "fish-outline",
+  protein: "restaurant-outline",
+  produce: "leaf-outline",
+  dry: "cube-outline",
+  dairy_cold: "thermometer-outline",
+  frozen: "snow-outline",
+  sauces: "water-outline",
+  alcohol: "wine-outline",
+  packaging: "archive-outline",
 };
 
-const CATEGORY_ICON_THEMES: Record<ItemCategory, { background: string; icon: string }> = {
-  fish: { background: '#DBEAFE', icon: '#2563EB' },
-  protein: { background: '#FEE2E2', icon: '#DC2626' },
-  produce: { background: '#DCFCE7', icon: '#16A34A' },
-  dry: { background: '#FEF3C7', icon: '#D97706' },
-  dairy_cold: { background: '#EDE9FE', icon: '#7C3AED' },
-  frozen: { background: '#CFFAFE', icon: '#0891B2' },
-  sauces: { background: '#FCE7F3', icon: '#DB2777' },
-  alcohol: { background: '#E0E7FF', icon: '#4F46E5' },
-  packaging: { background: '#E5E7EB', icon: '#4B5563' },
+const CATEGORY_ICON_THEMES: Record<
+  ItemCategory,
+  { background: string; icon: string }
+> = {
+  fish: { background: "#DBEAFE", icon: "#2563EB" },
+  protein: { background: "#FEE2E2", icon: "#DC2626" },
+  produce: { background: "#DCFCE7", icon: "#16A34A" },
+  dry: { background: "#FEF3C7", icon: "#D97706" },
+  dairy_cold: { background: "#EDE9FE", icon: "#7C3AED" },
+  frozen: { background: "#CFFAFE", icon: "#0891B2" },
+  sauces: { background: "#FCE7F3", icon: "#DB2777" },
+  alcohol: { background: "#E0E7FF", icon: "#4F46E5" },
+  packaging: { background: "#E5E7EB", icon: "#4B5563" },
 };
 
 const SUPPLIER_CATEGORIES: { value: SupplierCategory; label: string }[] = [
-  { value: 'fish_supplier', label: 'Fish Supplier' },
-  { value: 'main_distributor', label: 'Main Distributor' },
-  { value: 'asian_market', label: 'Asian Market' },
+  { value: "fish_supplier", label: "Fish Supplier" },
+  { value: "main_distributor", label: "Main Distributor" },
+  { value: "asian_market", label: "Asian Market" },
 ];
 
 export default function OrderScreen() {
   const ds = useScaledStyles();
-  const { location, locations, setLocation, fetchLocations, user } = useAuthStore(useShallow((state) => ({
-    location: state.location,
-    locations: state.locations,
-    setLocation: state.setLocation,
-    fetchLocations: state.fetchLocations,
-    user: state.user,
-  })));
+  const { location, locations, setLocation, fetchLocations, user } =
+    useAuthStore(
+      useShallow((state) => ({
+        location: state.location,
+        locations: state.locations,
+        setLocation: state.setLocation,
+        fetchLocations: state.fetchLocations,
+        user: state.user,
+      })),
+    );
   const {
     fetchItems,
     getFilteredItems,
@@ -94,34 +108,41 @@ export default function OrderScreen() {
     searchQuery,
     setSearchQuery,
     addItem,
-  } = useInventoryStore(useShallow((state) => ({
-    fetchItems: state.fetchItems,
-    getFilteredItems: state.getFilteredItems,
-    selectedCategory: state.selectedCategory,
-    setSelectedCategory: state.setSelectedCategory,
-    searchQuery: state.searchQuery,
-    setSearchQuery: state.setSearchQuery,
-    addItem: state.addItem,
-  })));
-  const { getLocationCartTotal, totalCartCount } = useOrderStore(useShallow((state) => ({
-    getLocationCartTotal: state.getLocationCartTotal,
-    totalCartCount: state.getTotalCartCount('employee'),
-  })));
+  } = useInventoryStore(
+    useShallow((state) => ({
+      fetchItems: state.fetchItems,
+      getFilteredItems: state.getFilteredItems,
+      selectedCategory: state.selectedCategory,
+      setSelectedCategory: state.setSelectedCategory,
+      searchQuery: state.searchQuery,
+      setSearchQuery: state.setSearchQuery,
+      addItem: state.addItem,
+    })),
+  );
+  const { getLocationCartTotal, totalCartCount } = useOrderStore(
+    useShallow((state) => ({
+      getLocationCartTotal: state.getLocationCartTotal,
+      totalCartCount: state.getTotalCartCount("employee"),
+    })),
+  );
 
   const [refreshing, setRefreshing] = useState(false);
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [showAddItemModal, setShowAddItemModal] = useState(false);
 
   // New item form state
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemCategory, setNewItemCategory] = useState<ItemCategory>('dry');
-  const [newItemSupplierCategory, setNewItemSupplierCategory] = useState<SupplierCategory>('main_distributor');
-  const [newItemBaseUnit, setNewItemBaseUnit] = useState('');
-  const [newItemPackUnit, setNewItemPackUnit] = useState('');
-  const [newItemPackSize, setNewItemPackSize] = useState('');
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemCategory, setNewItemCategory] = useState<ItemCategory>("dry");
+  const [newItemSupplierCategory, setNewItemSupplierCategory] =
+    useState<SupplierCategory>("main_distributor");
+  const [newItemBaseUnit, setNewItemBaseUnit] = useState("");
+  const [newItemPackUnit, setNewItemPackUnit] = useState("");
+  const [newItemPackSize, setNewItemPackSize] = useState("");
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
   const [unreadReminderCount, setUnreadReminderCount] = useState(0);
-  const [latestReminderMessage, setLatestReminderMessage] = useState<string | null>(null);
+  const [latestReminderMessage, setLatestReminderMessage] = useState<
+    string | null
+  >(null);
   const lastNotifiedReminderIdRef = useRef<string | null>(null);
   const headerIconButtonSize = Math.max(44, ds.icon(40));
   const badgeSize = Math.max(18, ds.icon(20));
@@ -150,22 +171,24 @@ export default function OrderScreen() {
 
     const db = supabase as any;
     const { data, error } = await db
-      .from('notifications')
-      .select('id, title, body, created_at')
-      .eq('user_id', user.id)
-      .eq('notification_type', 'employee_reminder')
-      .is('read_at', null)
-      .order('created_at', { ascending: false })
+      .from("notifications")
+      .select("id, title, body, created_at")
+      .eq("user_id", user.id)
+      .eq("notification_type", "employee_reminder")
+      .is("read_at", null)
+      .order("created_at", { ascending: false })
       .limit(20);
 
     if (error) {
-      console.error('Unable to load unread reminders', error);
+      console.error("Unable to load unread reminders", error);
       return;
     }
 
     const rows = data ?? [];
     const latestReminderId =
-      typeof rows[0]?.id === 'string' && rows[0].id.trim().length > 0 ? rows[0].id : null;
+      typeof rows[0]?.id === "string" && rows[0].id.trim().length > 0
+        ? rows[0].id
+        : null;
     setUnreadReminderCount(rows.length);
     setLatestReminderMessage(rows[0]?.body ?? null);
 
@@ -185,7 +208,7 @@ export default function OrderScreen() {
   useFocusEffect(
     useCallback(() => {
       loadUnreadReminderNotifications();
-    }, [loadUnreadReminderNotifications])
+    }, [loadUnreadReminderNotifications]),
   );
 
   // Realtime: reload reminder banner when notifications table changes for this user
@@ -195,18 +218,22 @@ export default function OrderScreen() {
     const channel = supabase
       .channel(`employee-reminder-notifs-${user.id}`)
       .on(
-        'postgres_changes',
+        "postgres_changes",
         {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
           filter: `user_id=eq.${user.id}`,
         },
-        () => { loadUnreadReminderNotifications(); }
+        () => {
+          loadUnreadReminderNotifications();
+        },
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [user?.id, loadUnreadReminderNotifications]);
 
   const onRefresh = async () => {
@@ -221,14 +248,17 @@ export default function OrderScreen() {
 
     const db = supabase as any;
     const { error } = await db
-      .from('notifications')
+      .from("notifications")
       .update({ read_at: new Date().toISOString() })
-      .eq('user_id', user.id)
-      .eq('notification_type', 'employee_reminder')
-      .is('read_at', null);
+      .eq("user_id", user.id)
+      .eq("notification_type", "employee_reminder")
+      .is("read_at", null);
 
     if (error) {
-      Alert.alert('Unable to mark reminders as read', error.message || 'Please try again.');
+      Alert.alert(
+        "Unable to mark reminders as read",
+        error.message || "Please try again.",
+      );
       return;
     }
 
@@ -242,26 +272,32 @@ export default function OrderScreen() {
     setShowLocationDropdown((prev) => !prev);
   }, []);
 
-  const handleSelectLocation = useCallback((selectedLocation: Location) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    setLocation(selectedLocation);
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setShowLocationDropdown(false);
-  }, [setLocation]);
+  const handleSelectLocation = useCallback(
+    (selectedLocation: Location) => {
+      if (Platform.OS !== "web") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      setLocation(selectedLocation);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setShowLocationDropdown(false);
+    },
+    [setLocation],
+  );
 
-  const handleSelectCategory = useCallback((category: ItemCategory) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    setSelectedCategory(category);
-    setSearchQuery('');
-  }, [setSelectedCategory, setSearchQuery]);
+  const handleSelectCategory = useCallback(
+    (category: ItemCategory) => {
+      if (Platform.OS !== "web") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
+      setSelectedCategory(category);
+      setSearchQuery("");
+    },
+    [setSelectedCategory, setSearchQuery],
+  );
 
   const handleBackToCategories = useCallback(() => {
     setSelectedCategory(null);
-    setSearchQuery('');
+    setSearchQuery("");
   }, [setSelectedCategory, setSearchQuery]);
 
   const filteredItems = getFilteredItems();
@@ -269,11 +305,11 @@ export default function OrderScreen() {
 
   const resetNewItemForm = () => {
     setNewItemName(searchQuery); // Pre-fill with search query
-    setNewItemCategory('dry');
-    setNewItemSupplierCategory('main_distributor');
-    setNewItemBaseUnit('');
-    setNewItemPackUnit('');
-    setNewItemPackSize('');
+    setNewItemCategory("dry");
+    setNewItemSupplierCategory("main_distributor");
+    setNewItemBaseUnit("");
+    setNewItemPackUnit("");
+    setNewItemPackSize("");
   };
 
   const handleOpenAddItemModal = () => {
@@ -283,19 +319,19 @@ export default function OrderScreen() {
 
   const handleAddNewItem = async () => {
     if (!newItemName.trim()) {
-      Alert.alert('Error', 'Please enter an item name');
+      Alert.alert("Error", "Please enter an item name");
       return;
     }
     if (!newItemBaseUnit.trim()) {
-      Alert.alert('Error', 'Please enter a base unit (e.g., lb, oz, each)');
+      Alert.alert("Error", "Please enter a base unit (e.g., lb, oz, each)");
       return;
     }
     if (!newItemPackUnit.trim()) {
-      Alert.alert('Error', 'Please enter a pack unit (e.g., case, bag, box)');
+      Alert.alert("Error", "Please enter a pack unit (e.g., case, bag, box)");
       return;
     }
     if (!newItemPackSize.trim() || isNaN(parseFloat(newItemPackSize))) {
-      Alert.alert('Error', 'Please enter a valid pack size number');
+      Alert.alert("Error", "Please enter a valid pack size number");
       return;
     }
 
@@ -311,35 +347,47 @@ export default function OrderScreen() {
         created_by: user?.id,
       });
 
-      if (Platform.OS !== 'web') {
+      if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
 
       setShowAddItemModal(false);
       setSearchQuery(newItemName.trim()); // Search for the new item
-      Alert.alert('Success', `"${newItemName}" has been added to the inventory`);
+      Alert.alert(
+        "Success",
+        `"${newItemName}" has been added to the inventory`,
+      );
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to add item');
+      Alert.alert("Error", error.message || "Failed to add item");
     } finally {
       setIsSubmittingItem(false);
     }
   };
 
   const renderItem = ({ item }: { item: InventoryItem }) => (
-    <InventoryItemCard item={item} locationId={location?.id || ''} />
+    <InventoryItemCard item={item} locationId={location?.id || ""} />
   );
 
-  const CategoryPicker = ({ value, onChange }: { value: ItemCategory; onChange: (v: ItemCategory) => void }) => (
-    <View className="flex-row flex-wrap" style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}>
+  const CategoryPicker = ({
+    value,
+    onChange,
+  }: {
+    value: ItemCategory;
+    onChange: (v: ItemCategory) => void;
+  }) => (
+    <View
+      className="flex-row flex-wrap"
+      style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}
+    >
       {categories.map((cat) => {
         const isSelected = value === cat;
-        const color = categoryColors[cat] || '#6B7280';
+        const color = categoryColors[cat] || "#6B7280";
         return (
           <TouchableOpacity
             key={cat}
             className="rounded-lg items-center justify-center"
             style={{
-              backgroundColor: isSelected ? color : color + '20',
+              backgroundColor: isSelected ? color : color + "20",
               minHeight: Math.max(40, ds.buttonH - ds.spacing(8)),
               paddingHorizontal: ds.spacing(12),
               paddingVertical: ds.spacing(6),
@@ -347,7 +395,10 @@ export default function OrderScreen() {
             onPress={() => onChange(cat)}
           >
             <Text
-              style={{ color: isSelected ? '#FFFFFF' : color, fontSize: ds.fontSize(14) }}
+              style={{
+                color: isSelected ? "#FFFFFF" : color,
+                fontSize: ds.fontSize(14),
+              }}
               className="font-medium"
             >
               {CATEGORY_LABELS[cat]}
@@ -358,14 +409,23 @@ export default function OrderScreen() {
     </View>
   );
 
-  const SupplierPicker = ({ value, onChange }: { value: SupplierCategory; onChange: (v: SupplierCategory) => void }) => (
-    <View className="flex-row flex-wrap" style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}>
+  const SupplierPicker = ({
+    value,
+    onChange,
+  }: {
+    value: SupplierCategory;
+    onChange: (v: SupplierCategory) => void;
+  }) => (
+    <View
+      className="flex-row flex-wrap"
+      style={{ columnGap: ds.spacing(8), rowGap: ds.spacing(8) }}
+    >
       {SUPPLIER_CATEGORIES.map((sup) => {
         const isSelected = value === sup.value;
         return (
           <TouchableOpacity
             key={sup.value}
-            className={`rounded-lg items-center justify-center ${isSelected ? 'bg-primary-500' : 'bg-gray-100'}`}
+            className={`rounded-lg items-center justify-center ${isSelected ? "bg-primary-500" : "bg-gray-100"}`}
             style={{
               minHeight: Math.max(40, ds.buttonH - ds.spacing(8)),
               paddingHorizontal: ds.spacing(12),
@@ -374,7 +434,7 @@ export default function OrderScreen() {
             onPress={() => onChange(sup.value)}
           >
             <Text
-              className={`font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}
+              className={`font-medium ${isSelected ? "text-white" : "text-gray-700"}`}
               style={{ fontSize: ds.fontSize(14) }}
             >
               {sup.label}
@@ -386,7 +446,10 @@ export default function OrderScreen() {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-[#FAFAFA]" edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      className="flex-1 bg-[#FAFAFA]"
+      edges={["top", "left", "right"]}
+    >
       {/* Header */}
       <View className="bg-[#FAFAFA]/90 border-b border-gray-100">
         <View
@@ -400,7 +463,10 @@ export default function OrderScreen() {
             <BrandLogo variant="header" size={headerLogoSize} />
           </View>
 
-          <View className="flex-row items-center flex-1 justify-end" style={{ marginLeft: ds.spacing(8) }}>
+          <View
+            className="flex-row items-center flex-1 justify-end"
+            style={{ marginLeft: ds.spacing(8) }}
+          >
             <TouchableOpacity
               onPress={toggleLocationDropdown}
               className="bg-gray-100 flex-row items-center rounded-full"
@@ -424,17 +490,17 @@ export default function OrderScreen() {
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {location?.name || 'Select Location'}
+                {location?.name || "Select Location"}
               </Text>
               <Ionicons
-                name={showLocationDropdown ? 'chevron-up' : 'chevron-down'}
+                name={showLocationDropdown ? "chevron-up" : "chevron-down"}
                 size={ds.icon(14)}
                 color={colors.gray[500]}
               />
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => router.push('/cart' as any)}
+              onPress={() => router.push("/cart" as any)}
               className="bg-gray-100 rounded-full items-center justify-center relative"
               style={{
                 width: headerIconButtonSize,
@@ -442,7 +508,11 @@ export default function OrderScreen() {
               }}
               activeOpacity={0.8}
             >
-              <Ionicons name="cart-outline" size={ds.icon(20)} color={colors.gray[700]} />
+              <Ionicons
+                name="cart-outline"
+                size={ds.icon(20)}
+                color={colors.gray[700]}
+              />
               {totalCartCount > 0 && (
                 <View
                   className="absolute bg-primary-500 rounded-full items-center justify-center"
@@ -454,8 +524,11 @@ export default function OrderScreen() {
                     paddingHorizontal: ds.spacing(4),
                   }}
                 >
-                  <Text className="text-white font-bold" style={{ fontSize: ds.fontSize(11) }}>
-                    {totalCartCount > 99 ? '99+' : totalCartCount}
+                  <Text
+                    className="text-white font-bold"
+                    style={{ fontSize: ds.fontSize(11) }}
+                  >
+                    {totalCartCount > 99 ? "99+" : totalCartCount}
                   </Text>
                 </View>
               )}
@@ -465,11 +538,17 @@ export default function OrderScreen() {
 
         {/* Location Dropdown Menu */}
         {showLocationDropdown && (
-          <View className="border-t border-gray-100" style={{ paddingHorizontal: ds.spacing(12), paddingBottom: ds.spacing(8) }}>
+          <View
+            className="border-t border-gray-100"
+            style={{
+              paddingHorizontal: ds.spacing(12),
+              paddingBottom: ds.spacing(8),
+            }}
+          >
             <View
               className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
               style={{
-                shadowColor: '#111827',
+                shadowColor: "#111827",
                 shadowOffset: { width: 0, height: 4 },
                 shadowOpacity: 0.06,
                 shadowRadius: 10,
@@ -485,7 +564,7 @@ export default function OrderScreen() {
                     key={loc.id}
                     onPress={() => handleSelectLocation(loc)}
                     activeOpacity={0.7}
-                    className={`flex-row items-center justify-between ${index > 0 ? 'border-t border-gray-100' : ''}`}
+                    className={`flex-row items-center justify-between ${index > 0 ? "border-t border-gray-100" : ""}`}
                     style={{
                       minHeight: ds.rowH,
                       paddingHorizontal: ds.spacing(16),
@@ -495,14 +574,26 @@ export default function OrderScreen() {
                     <View className="flex-row items-center flex-1">
                       <View
                         className={`rounded-full items-center justify-center ${
-                          isSelected ? 'bg-primary-500' : 'bg-gray-200'
+                          isSelected ? "bg-primary-500" : "bg-gray-200"
                         }`}
-                        style={{ width: ds.icon(32), height: ds.icon(32), marginRight: ds.spacing(12) }}
+                        style={{
+                          width: ds.icon(32),
+                          height: ds.icon(32),
+                          marginRight: ds.spacing(12),
+                        }}
                       >
-                        <BrandLogo variant="inline" size={16} colorMode={isSelected ? 'dark' : 'light'} />
+                        <BrandLogo
+                          variant="inline"
+                          size={16}
+                          colorMode={isSelected ? "dark" : "light"}
+                        />
                       </View>
                       <Text
-                        className={isSelected ? 'font-semibold text-primary-700' : 'text-gray-900 font-medium'}
+                        className={
+                          isSelected
+                            ? "font-semibold text-primary-700"
+                            : "text-gray-900 font-medium"
+                        }
                         style={{ fontSize: ds.fontSize(15) }}
                       >
                         {loc.name}
@@ -510,12 +601,22 @@ export default function OrderScreen() {
                     </View>
                     <View className="flex-row items-center">
                       {cartCount > 0 && (
-                        <Text className="text-gray-500" style={{ fontSize: ds.fontSize(13), marginRight: ds.spacing(8) }}>
+                        <Text
+                          className="text-gray-500"
+                          style={{
+                            fontSize: ds.fontSize(13),
+                            marginRight: ds.spacing(8),
+                          }}
+                        >
                           {cartCount} items
                         </Text>
                       )}
                       {isSelected && (
-                        <Ionicons name="checkmark" size={ds.icon(18)} color={colors.primary[500]} />
+                        <Ionicons
+                          name="checkmark"
+                          size={ds.icon(18)}
+                          color={colors.primary[500]}
+                        />
                       )}
                     </View>
                   </TouchableOpacity>
@@ -527,32 +628,54 @@ export default function OrderScreen() {
       </View>
 
       {unreadReminderCount > 0 && (
-        <View className="bg-white border-b border-gray-100" style={{ paddingHorizontal: ds.spacing(16), paddingBottom: ds.spacing(10) }}>
+        <View
+          className="bg-white border-b border-gray-100"
+          style={{
+            paddingHorizontal: ds.spacing(16),
+            paddingBottom: ds.spacing(10),
+          }}
+        >
           <View
             style={{
               borderRadius: ds.radius(12),
-              backgroundColor: '#FFF7ED',
+              backgroundColor: "#FFF7ED",
               borderWidth: 1,
-              borderColor: '#FED7AA',
+              borderColor: "#FED7AA",
               paddingHorizontal: ds.spacing(12),
               paddingVertical: ds.spacing(10),
             }}
           >
             <View className="flex-row items-center justify-between">
               <View className="flex-1 pr-2">
-                <Text className="text-orange-700 font-semibold" style={{ fontSize: ds.fontSize(13) }}>
+                <Text
+                  className="text-orange-700 font-semibold"
+                  style={{ fontSize: ds.fontSize(13) }}
+                >
                   Reminder waiting ({unreadReminderCount})
                 </Text>
-                <Text className="text-orange-800" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(2) }}>
-                  {latestReminderMessage || 'A manager reminded you to place an order.'}
+                <Text
+                  className="text-orange-800"
+                  style={{
+                    fontSize: ds.fontSize(12),
+                    marginTop: ds.spacing(2),
+                  }}
+                >
+                  {latestReminderMessage ||
+                    "A manager reminded you to place an order."}
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={handleMarkReminderNotificationsRead}
                 className="bg-orange-100 rounded-full"
-                style={{ paddingHorizontal: ds.spacing(10), paddingVertical: ds.spacing(6) }}
+                style={{
+                  paddingHorizontal: ds.spacing(10),
+                  paddingVertical: ds.spacing(6),
+                }}
               >
-                <Text className="text-orange-700 font-semibold" style={{ fontSize: ds.fontSize(11) }}>
+                <Text
+                  className="text-orange-700 font-semibold"
+                  style={{ fontSize: ds.fontSize(11) }}
+                >
                   Mark Read
                 </Text>
               </TouchableOpacity>
@@ -564,7 +687,10 @@ export default function OrderScreen() {
       {/* Search Bar */}
       <View
         className="bg-[#FAFAFA]/90 border-b border-gray-100"
-        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
+        style={{
+          paddingHorizontal: ds.spacing(16),
+          paddingVertical: ds.spacing(12),
+        }}
       >
         <View
           className="flex-row items-center bg-white border border-gray-100 rounded-2xl"
@@ -572,7 +698,7 @@ export default function OrderScreen() {
             borderRadius: ds.radius(16),
             paddingHorizontal: ds.spacing(14),
             height: ds.buttonH,
-            shadowColor: '#111827',
+            shadowColor: "#111827",
             shadowOffset: { width: 0, height: 4 },
             shadowOpacity: 0.06,
             shadowRadius: 10,
@@ -590,12 +716,19 @@ export default function OrderScreen() {
             autoCapitalize="none"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="close-circle" size={ds.icon(20)} color="#9CA3AF" />
+            <TouchableOpacity
+              onPress={() => setSearchQuery("")}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name="close-circle"
+                size={ds.icon(20)}
+                color="#9CA3AF"
+              />
             </TouchableOpacity>
           )}
           <TouchableOpacity
-            onPress={() => router.navigate('/(tabs)/voice')}
+            onPress={() => router.navigate("/(tabs)/voice")}
             activeOpacity={0.8}
             accessibilityLabel="Voice order"
             accessibilityRole="button"
@@ -604,8 +737,8 @@ export default function OrderScreen() {
               height: Math.max(44, ds.icon(34)),
               borderRadius: ds.radius(12),
               marginLeft: ds.spacing(8),
-              overflow: 'hidden',
-              shadowColor: '#F97316',
+              overflow: "hidden",
+              shadowColor: "#F97316",
               shadowOffset: { width: 0, height: 2 },
               shadowOpacity: 0.24,
               shadowRadius: 8,
@@ -613,10 +746,15 @@ export default function OrderScreen() {
             }}
           >
             <LinearGradient
-              colors={['#FB923C', '#F97316']}
+              colors={["#FB923C", "#F97316"]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
-              style={{ flex: 1, width: '100%', alignItems: 'center', justifyContent: 'center' }}
+              style={{
+                flex: 1,
+                width: "100%",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
             >
               <Sparkles size={ds.icon(16)} color="#FFFFFF" />
             </LinearGradient>
@@ -636,14 +774,20 @@ export default function OrderScreen() {
             />
           }
         >
-          <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(12), marginBottom: ds.spacing(12) }}>
+          <Text
+            className="text-gray-500 uppercase tracking-wide"
+            style={{ fontSize: ds.fontSize(12), marginBottom: ds.spacing(12) }}
+          >
             Browse by Category
           </Text>
-          <View className="flex-row flex-wrap justify-between" style={{ gap: ds.spacing(12) }}>
+          <View
+            className="flex-row flex-wrap justify-between"
+            style={{ gap: ds.spacing(12) }}
+          >
             {categories.map((cat) => {
               const iconTheme = CATEGORY_ICON_THEMES[cat] || {
-                background: '#E5E7EB',
-                icon: '#4B5563',
+                background: "#E5E7EB",
+                icon: "#4B5563",
               };
               return (
                 <TouchableOpacity
@@ -651,11 +795,11 @@ export default function OrderScreen() {
                   onPress={() => handleSelectCategory(cat)}
                   className="bg-white border border-gray-100 rounded-3xl"
                   style={{
-                    width: '48%',
+                    width: "48%",
                     paddingHorizontal: ds.spacing(14),
                     paddingVertical: ds.spacing(16),
                     borderRadius: Math.max(ds.radius(18), 24),
-                    shadowColor: '#111827',
+                    shadowColor: "#111827",
                     shadowOffset: { width: 0, height: 6 },
                     shadowOpacity: 0.06,
                     shadowRadius: 12,
@@ -672,12 +816,26 @@ export default function OrderScreen() {
                       marginBottom: ds.spacing(12),
                     }}
                   >
-                    <Ionicons name={CATEGORY_ICONS[cat]} size={ds.icon(20)} color={iconTheme.icon} />
+                    <Ionicons
+                      name={CATEGORY_ICONS[cat]}
+                      size={ds.icon(20)}
+                      color={iconTheme.icon}
+                    />
                   </View>
-                  <Text className="font-bold text-gray-800" numberOfLines={1} style={{ fontSize: ds.fontSize(14) }}>
+                  <Text
+                    className="font-bold text-gray-800"
+                    numberOfLines={1}
+                    style={{ fontSize: ds.fontSize(14) }}
+                  >
                     {CATEGORY_LABELS[cat]}
                   </Text>
-                  <Text className="text-gray-500" style={{ fontSize: ds.fontSize(11), marginTop: ds.spacing(5) }}>
+                  <Text
+                    className="text-gray-500"
+                    style={{
+                      fontSize: ds.fontSize(11),
+                      marginTop: ds.spacing(5),
+                    }}
+                  >
                     View Items
                   </Text>
                 </TouchableOpacity>
@@ -687,17 +845,44 @@ export default function OrderScreen() {
         </ScrollView>
       ) : (
         <>
-          <View className="bg-white border-b border-gray-100 flex-row items-center justify-between" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
-            <TouchableOpacity onPress={handleBackToCategories} className="flex-row items-center" hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="arrow-back" size={ds.icon(18)} color={colors.gray[600]} />
-              <Text className="text-gray-600 ml-1" style={{ fontSize: ds.fontSize(14) }}>Categories</Text>
+          <View
+            className="bg-white border-b border-gray-100 flex-row items-center justify-between"
+            style={{
+              paddingHorizontal: ds.spacing(16),
+              paddingVertical: ds.spacing(8),
+            }}
+          >
+            <TouchableOpacity
+              onPress={handleBackToCategories}
+              className="flex-row items-center"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Ionicons
+                name="arrow-back"
+                size={ds.icon(18)}
+                color={colors.gray[600]}
+              />
+              <Text
+                className="text-gray-600 ml-1"
+                style={{ fontSize: ds.fontSize(14) }}
+              >
+                Categories
+              </Text>
             </TouchableOpacity>
             {selectedCategory ? (
-              <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(15) }}>
+              <Text
+                className="font-semibold text-gray-900"
+                style={{ fontSize: ds.fontSize(15) }}
+              >
                 {CATEGORY_LABELS[selectedCategory]}
               </Text>
             ) : (
-              <Text className="text-gray-500" style={{ fontSize: ds.fontSize(14) }}>Search Results</Text>
+              <Text
+                className="text-gray-500"
+                style={{ fontSize: ds.fontSize(14) }}
+              >
+                Search Results
+              </Text>
             )}
           </View>
 
@@ -707,22 +892,30 @@ export default function OrderScreen() {
             renderItem={renderItem}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{ padding: ds.spacing(16) }}
-            ItemSeparatorComponent={() => <View style={{ height: ds.spacing(12) }} />}
+            ItemSeparatorComponent={() => (
+              <View style={{ height: ds.spacing(12) }} />
+            )}
             ListEmptyComponent={() => (
               <View className="flex-1 items-center justify-center py-12">
                 <Ionicons name="cube-outline" size={48} color="#9CA3AF" />
                 <Text className="text-gray-500 mt-4 text-center">
                   {searchQuery || selectedCategory
-                    ? 'No items match your search'
-                    : 'No inventory items found'}
+                    ? "No items match your search"
+                    : "No inventory items found"}
                 </Text>
                 {(searchQuery || selectedCategory) && (
                   <TouchableOpacity
                     onPress={handleOpenAddItemModal}
                     className="mt-4 flex-row items-center bg-primary-500 px-5 py-3 rounded-xl"
                   >
-                    <Ionicons name="add-circle-outline" size={20} color="white" />
-                    <Text className="text-white font-semibold ml-2">Add Missing Item</Text>
+                    <Ionicons
+                      name="add-circle-outline"
+                      size={20}
+                      color="white"
+                    />
+                    <Text className="text-white font-semibold ml-2">
+                      Add Missing Item
+                    </Text>
                   </TouchableOpacity>
                 )}
               </View>
@@ -747,30 +940,55 @@ export default function OrderScreen() {
       >
         <SafeAreaView className="flex-1 bg-gray-50">
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
             className="flex-1"
           >
             {/* Modal Header */}
             <View
               className="bg-white border-b border-gray-200 flex-row items-center justify-between"
-              style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(14) }}
+              style={{
+                paddingHorizontal: ds.spacing(16),
+                paddingVertical: ds.spacing(14),
+              }}
             >
-              <TouchableOpacity onPress={() => setShowAddItemModal(false)} style={{ minHeight: 44, justifyContent: 'center' }}>
-                <Text className="text-primary-500 font-medium" style={{ fontSize: ds.fontSize(14) }}>Cancel</Text>
+              <TouchableOpacity
+                onPress={() => setShowAddItemModal(false)}
+                style={{ minHeight: 44, justifyContent: "center" }}
+              >
+                <Text
+                  className="text-primary-500 font-medium"
+                  style={{ fontSize: ds.fontSize(14) }}
+                >
+                  Cancel
+                </Text>
               </TouchableOpacity>
-              <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(24) }}>Add New Item</Text>
+              <Text
+                className="font-bold text-gray-900"
+                style={{ fontSize: ds.fontSize(24) }}
+              >
+                Add New Item
+              </Text>
               <View style={{ width: ds.spacing(56) }} />
             </View>
 
             <ScrollView
               className="flex-1"
-              contentContainerStyle={{ padding: ds.spacing(16), paddingBottom: modalBodyBottomPadding }}
+              contentContainerStyle={{
+                padding: ds.spacing(16),
+                paddingBottom: modalBodyBottomPadding,
+              }}
               showsVerticalScrollIndicator
               keyboardShouldPersistTaps="handled"
             >
               {/* Name */}
               <View style={{ marginBottom: ds.spacing(16) }}>
-                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
+                <Text
+                  className="font-medium text-gray-700"
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    marginBottom: ds.spacing(8),
+                  }}
+                >
                   Item Name *
                 </Text>
                 <TextInput
@@ -790,7 +1008,13 @@ export default function OrderScreen() {
 
               {/* Category */}
               <View style={{ marginBottom: ds.spacing(16) }}>
-                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
+                <Text
+                  className="font-medium text-gray-700"
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    marginBottom: ds.spacing(8),
+                  }}
+                >
                   Category *
                 </Text>
                 <CategoryPicker
@@ -801,7 +1025,13 @@ export default function OrderScreen() {
 
               {/* Supplier Category */}
               <View style={{ marginBottom: ds.spacing(16) }}>
-                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
+                <Text
+                  className="font-medium text-gray-700"
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    marginBottom: ds.spacing(8),
+                  }}
+                >
                   Supplier *
                 </Text>
                 <SupplierPicker
@@ -811,9 +1041,21 @@ export default function OrderScreen() {
               </View>
 
               {/* Units Row */}
-              <View className="flex-row" style={{ columnGap: ds.spacing(12), marginBottom: ds.spacing(16) }}>
+              <View
+                className="flex-row"
+                style={{
+                  columnGap: ds.spacing(12),
+                  marginBottom: ds.spacing(16),
+                }}
+              >
                 <View className="flex-1">
-                  <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
+                  <Text
+                    className="font-medium text-gray-700"
+                    style={{
+                      fontSize: ds.fontSize(14),
+                      marginBottom: ds.spacing(8),
+                    }}
+                  >
                     Base Unit *
                   </Text>
                   <TextInput
@@ -831,7 +1073,13 @@ export default function OrderScreen() {
                   />
                 </View>
                 <View className="flex-1">
-                  <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
+                  <Text
+                    className="font-medium text-gray-700"
+                    style={{
+                      fontSize: ds.fontSize(14),
+                      marginBottom: ds.spacing(8),
+                    }}
+                  >
                     Pack Unit *
                   </Text>
                   <TextInput
@@ -852,7 +1100,13 @@ export default function OrderScreen() {
 
               {/* Pack Size */}
               <View style={{ marginBottom: ds.spacing(24) }}>
-                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
+                <Text
+                  className="font-medium text-gray-700"
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    marginBottom: ds.spacing(8),
+                  }}
+                >
                   Pack Size *
                 </Text>
                 <View className="flex-row items-center">
@@ -871,42 +1125,90 @@ export default function OrderScreen() {
                     onChangeText={setNewItemPackSize}
                     keyboardType="number-pad"
                   />
-                  <Text className="text-gray-500" style={{ marginLeft: ds.spacing(12), fontSize: ds.fontSize(14) }}>
-                    {newItemBaseUnit || 'units'} per {newItemPackUnit || 'pack'}
+                  <Text
+                    className="text-gray-500"
+                    style={{
+                      marginLeft: ds.spacing(12),
+                      fontSize: ds.fontSize(14),
+                    }}
+                  >
+                    {newItemBaseUnit || "units"} per {newItemPackUnit || "pack"}
                   </Text>
                 </View>
               </View>
 
               {/* Preview */}
               {newItemName && (
-                <View className="bg-primary-50 rounded-xl" style={{ padding: ds.spacing(16), marginBottom: ds.spacing(24), borderRadius: ds.radius(12) }}>
-                  <Text className="font-medium text-primary-700" style={{ fontSize: ds.fontSize(13), marginBottom: ds.spacing(8) }}>
+                <View
+                  className="bg-primary-50 rounded-xl"
+                  style={{
+                    padding: ds.spacing(16),
+                    marginBottom: ds.spacing(24),
+                    borderRadius: ds.radius(12),
+                  }}
+                >
+                  <Text
+                    className="font-medium text-primary-700"
+                    style={{
+                      fontSize: ds.fontSize(13),
+                      marginBottom: ds.spacing(8),
+                    }}
+                  >
                     Preview
                   </Text>
-                  <Text className="text-gray-900 font-semibold" style={{ fontSize: ds.fontSize(15) }}>{newItemName}</Text>
-                  <Text className="text-gray-600 mt-1" style={{ fontSize: ds.fontSize(13) }}>
-                    {CATEGORY_LABELS[newItemCategory]} • {SUPPLIER_CATEGORIES.find((s) => s.value === newItemSupplierCategory)?.label}
+                  <Text
+                    className="text-gray-900 font-semibold"
+                    style={{ fontSize: ds.fontSize(15) }}
+                  >
+                    {newItemName}
                   </Text>
-                  <Text className="text-gray-500 mt-1" style={{ fontSize: ds.fontSize(13) }}>
-                    {newItemPackSize || '1'} {newItemBaseUnit || 'units'} per {newItemPackUnit || 'pack'}
+                  <Text
+                    className="text-gray-600 mt-1"
+                    style={{ fontSize: ds.fontSize(13) }}
+                  >
+                    {CATEGORY_LABELS[newItemCategory]} •{" "}
+                    {
+                      SUPPLIER_CATEGORIES.find(
+                        (s) => s.value === newItemSupplierCategory,
+                      )?.label
+                    }
+                  </Text>
+                  <Text
+                    className="text-gray-500 mt-1"
+                    style={{ fontSize: ds.fontSize(13) }}
+                  >
+                    {newItemPackSize || "1"} {newItemBaseUnit || "units"} per{" "}
+                    {newItemPackUnit || "pack"}
                   </Text>
                 </View>
               )}
             </ScrollView>
 
             {/* Submit Button */}
-            <View className="bg-white border-t border-gray-200" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(14) }}>
+            <View
+              className="bg-white border-t border-gray-200"
+              style={{
+                paddingHorizontal: ds.spacing(16),
+                paddingVertical: ds.spacing(14),
+              }}
+            >
               <TouchableOpacity
                 className={`rounded-xl items-center flex-row justify-center ${
-                  isSubmittingItem ? 'bg-primary-300' : 'bg-primary-500'
+                  isSubmittingItem ? "bg-primary-300" : "bg-primary-500"
                 }`}
-                style={{ minHeight: modalInputHeight, borderRadius: ds.radius(12) }}
+                style={{
+                  minHeight: modalInputHeight,
+                  borderRadius: ds.radius(12),
+                }}
                 onPress={handleAddNewItem}
                 disabled={isSubmittingItem}
               >
                 <Ionicons name="add-circle" size={ds.icon(20)} color="white" />
-                <Text className="text-white font-bold ml-2" style={{ fontSize: ds.buttonFont }}>
-                  {isSubmittingItem ? 'Adding...' : 'Add Item'}
+                <Text
+                  className="text-white font-bold ml-2"
+                  style={{ fontSize: ds.buttonFont }}
+                >
+                  {isSubmittingItem ? "Adding..." : "Add Item"}
                 </Text>
               </TouchableOpacity>
             </View>

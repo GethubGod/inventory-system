@@ -1,3 +1,4 @@
+// KEEP DIRECT: Realtime subscription — intentionally stays as direct Supabase channel.
 import { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { RealtimeChannel } from '@supabase/supabase-js';

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { listEmployeesWithStatus } from '@/lib/api/client';
 
 export type EmployeeReminderState = 'ok' | 'overdue' | 'reminder_active';
 
@@ -187,7 +188,7 @@ async function loadSettings(): Promise<{
 }
 
 // ---------------------------------------------------------------------------
-// listEmployeesWithReminderStatus — direct DB (no Edge Function required)
+// listEmployeesWithReminderStatus — via list-employees-with-status edge function
 // ---------------------------------------------------------------------------
 
 export async function listEmployeesWithReminderStatus(params?: {
@@ -195,188 +196,22 @@ export async function listEmployeesWithReminderStatus(params?: {
   includeManagers?: boolean;
   overdueThresholdDays?: number;
 }): Promise<EmployeeReminderOverview> {
-  const settings = await loadSettings();
-  const overdueThresholdDays = params?.overdueThresholdDays ?? settings.overdueThresholdDays;
+  const result = await listEmployeesWithStatus(params);
 
-  // 1. Fetch employees
-  let usersQuery = db
-    .from('users')
-    .select('id, name, email, role, default_location_id, created_at')
-    .order('name', { ascending: true });
-
-  if (params?.includeManagers) {
-    usersQuery = usersQuery.in('role', ['employee', 'manager']);
-  } else {
-    usersQuery = usersQuery.eq('role', 'employee');
+  if (result.error) {
+    throw new ReminderServiceError(result.error);
   }
 
-  if (params?.locationId) {
-    usersQuery = usersQuery.eq('default_location_id', params.locationId);
-  }
-
-  const { data: users, error: usersError } = await usersQuery;
-  if (usersError) {
-    throw new ReminderServiceError(usersError.message || 'Unable to load users.');
-  }
-
-  const userRows: any[] = users ?? [];
-  const userIds = userRows.map((r: any) => r.id);
-
-  if (userIds.length === 0) {
+  if (!result.data) {
     return {
       employees: [],
       stats: { pendingReminders: 0, overdueEmployees: 0, notificationsOff: 0 },
-      settings: {
-        overdueThresholdDays,
-        reminderRateLimitMinutes: settings.reminderRateLimitMinutes,
-        recurringWindowMinutes: settings.recurringWindowMinutes,
-      },
+      settings: { overdueThresholdDays: 7, reminderRateLimitMinutes: 15, recurringWindowMinutes: 15 },
       generatedAt: new Date().toISOString(),
     };
   }
 
-  // 2. Parallel fetch: profiles, locations, latest orders, active reminders
-  const [profilesRes, locationsRes, ordersRes, remindersRes] = await Promise.all([
-    db
-      .from('profiles')
-      .select('id, notifications_enabled, is_suspended, last_active_at, last_order_at')
-      .in('id', userIds),
-    db
-      .from('locations')
-      .select('id, name, short_code')
-      .eq('active', true),
-    db
-      .from('orders')
-      .select('id, user_id, location_id, created_at, status')
-      .in('user_id', userIds)
-      .neq('status', 'draft')
-      .order('created_at', { ascending: false }),
-    db
-      .from('reminders')
-      .select('id, employee_id, manager_id, location_id, created_at, last_reminded_at, reminder_count, status')
-      .in('employee_id', userIds)
-      .eq('status', 'active')
-      .order('created_at', { ascending: false }),
-  ]);
-
-  const profiles: any[] = profilesRes.data ?? [];
-  const locations: any[] = locationsRes.data ?? [];
-  const orders: any[] = ordersRes.data ?? [];
-  const activeRemindersRaw: any[] = remindersRes.data ?? [];
-
-  const profileById = new Map(profiles.map((r: any) => [r.id, r]));
-  const locationById = new Map(locations.map((r: any) => [r.id, r]));
-
-  // Latest order per user
-  const latestOrderByUserId = new Map<string, any>();
-  for (const order of orders) {
-    if (!latestOrderByUserId.has(order.user_id)) {
-      latestOrderByUserId.set(order.user_id, order);
-    }
-  }
-
-  // Active reminders — auto-resolve stale ones
-  let pendingReminderCount = 0;
-  const activeReminderByEmployeeId = new Map<string, any>();
-
-  for (const reminder of activeRemindersRaw) {
-    const employeeId = reminder.employee_id;
-    const latestOrder = latestOrderByUserId.get(employeeId);
-
-    if (latestOrder?.created_at) {
-      const latestOrderAt = new Date(latestOrder.created_at).getTime();
-      const reminderCreatedAt = new Date(reminder.created_at).getTime();
-
-      if (
-        !Number.isNaN(latestOrderAt) &&
-        !Number.isNaN(reminderCreatedAt) &&
-        latestOrderAt > reminderCreatedAt
-      ) {
-        // Auto-resolve via security-definer RPC
-        db.rpc('resolve_active_reminders_for_employee', {
-          p_employee_id: employeeId,
-          p_order_created_at: latestOrder.created_at,
-          p_order_id: latestOrder.id ?? null,
-        }).catch(() => {});
-        continue;
-      }
-    }
-
-    pendingReminderCount += 1;
-    if (!activeReminderByEmployeeId.has(employeeId)) {
-      activeReminderByEmployeeId.set(employeeId, reminder);
-    }
-  }
-
-  // 3. Build employee rows
-  const employees: EmployeeReminderStatusRow[] = userRows.map((userRow: any) => {
-    const profile = profileById.get(userRow.id);
-    const defaultLocation = userRow.default_location_id
-      ? locationById.get(userRow.default_location_id)
-      : null;
-    const latestOrder = latestOrderByUserId.get(userRow.id);
-    const latestOrderAt =
-      isoOrNull(latestOrder?.created_at) ?? isoOrNull(profile?.last_order_at);
-    const latestActivityAt = isoOrNull(profile?.last_active_at);
-    const employeeDaysSince = daysSince(latestOrderAt);
-    const activeReminder = activeReminderByEmployeeId.get(userRow.id) ?? null;
-    const notificationsEnabled = profile?.notifications_enabled !== false;
-
-    let status: EmployeeReminderState = 'ok';
-    if (activeReminder) {
-      status = 'reminder_active';
-    } else if (employeeDaysSince == null || employeeDaysSince >= overdueThresholdDays) {
-      status = 'overdue';
-    }
-
-    const latestLocation = latestOrder?.location_id
-      ? locationById.get(latestOrder.location_id)
-      : null;
-    const locationName =
-      defaultLocation?.name || latestLocation?.name || 'Unassigned';
-
-    return {
-      userId: userRow.id,
-      name: userRow.name || userRow.email || 'Unknown',
-      email: userRow.email,
-      role: userRow.role,
-      locationId: userRow.default_location_id,
-      locationName,
-      locationShortCode:
-        defaultLocation?.short_code || latestLocation?.short_code || null,
-      lastOrderAt: latestOrderAt,
-      lastActivityAt: latestActivityAt,
-      daysSinceLastOrder: employeeDaysSince,
-      status,
-      notificationsEnabled,
-      notificationsOff: !notificationsEnabled,
-      activeReminder: activeReminder
-        ? {
-            id: activeReminder.id,
-            locationId: activeReminder.location_id,
-            managerId: activeReminder.manager_id,
-            createdAt: isoOrNull(activeReminder.created_at),
-            lastRemindedAt: isoOrNull(activeReminder.last_reminded_at),
-            reminderCount: Number(activeReminder.reminder_count ?? 1),
-          }
-        : null,
-      isSuspended: Boolean(profile?.is_suspended),
-    };
-  });
-
-  const overdueEmployees = employees.filter((e) => e.status === 'overdue').length;
-  const notificationsOff = employees.filter((e) => e.notificationsOff).length;
-
-  return {
-    employees,
-    stats: { pendingReminders: pendingReminderCount, overdueEmployees, notificationsOff },
-    settings: {
-      overdueThresholdDays,
-      reminderRateLimitMinutes: settings.reminderRateLimitMinutes,
-      recurringWindowMinutes: settings.recurringWindowMinutes,
-    },
-    generatedAt: new Date().toISOString(),
-  };
+  return result.data;
 }
 
 // ---------------------------------------------------------------------------
@@ -433,6 +268,11 @@ export async function sendReminder(params: {
   }
 
   // ----- Direct DB fallback (works without Edge Functions) -----
+  // KEEP DIRECT: Intentional fallback — logs when edge function is unavailable
+  console.warn(
+    '[sendReminder] Falling back to direct DB path — send-reminder edge function unavailable',
+    { employeeId: params.employeeId, source: params.source ?? 'manual' }
+  );
   return sendReminderDirect(params);
 }
 
@@ -677,7 +517,9 @@ async function parseFunctionError(error: unknown): Promise<{
 }
 
 // ---------------------------------------------------------------------------
-// Remaining functions (already work directly against DB)
+// Remaining functions — KEEP DIRECT (Phase 3/4 candidates)
+// These stay as direct Supabase calls for now. They touch reminder system
+// settings, recurring rules, and delivery events — no matching edge functions.
 // ---------------------------------------------------------------------------
 
 export async function evaluateRecurringReminderRules(params?: { dryRun?: boolean }) {

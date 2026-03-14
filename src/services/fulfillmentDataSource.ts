@@ -1,3 +1,4 @@
+// PHASE 3: Fulfillment queries — direct Supabase calls, no matching edge function yet.
 import { supabase } from '@/lib/supabase';
 import { OrderWithDetails } from '@/types';
 import {

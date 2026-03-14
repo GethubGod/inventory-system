@@ -287,7 +287,7 @@ export default function OrdersScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#F97316"
+            tintColor={colors.primary[500]}
           />
         }
       />

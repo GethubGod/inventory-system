@@ -1,3 +1,4 @@
+// PHASE 4: Read-only lookup — direct Supabase call, no matching edge function yet.
 import { supabase } from '@/lib/supabase';
 import { UnitType } from '@/types';
 

@@ -1,3 +1,4 @@
+// KEEP DIRECT: One-time setup utility — intentionally stays as direct Supabase calls.
 import { supabase } from '@/lib/supabase';
 
 type LocationRow = {

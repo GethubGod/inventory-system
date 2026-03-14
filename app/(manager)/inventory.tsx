@@ -1510,7 +1510,7 @@ export default function ManagerInventoryScreen() {
                   handleAddToReorder(item);
                 }}
               >
-                <Ionicons name={added ? 'checkmark' : 'add'} size={ds.icon(16)} color={added ? '#16A34A' : '#F97316'} />
+                <Ionicons name={added ? 'checkmark' : 'add'} size={ds.icon(16)} color={added ? '#16A34A' : colors.primary[500]} />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -1657,7 +1657,7 @@ export default function ManagerInventoryScreen() {
                   }}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
+                  <Ionicons name="location" size={ds.icon(14)} color={colors.primary[500]} />
                   <Text
                     className="text-gray-800 font-bold"
                     style={{
@@ -1744,7 +1744,7 @@ export default function ManagerInventoryScreen() {
               { key: 'reorder', label: 'Reorder', count: stats.reorder, color: '#EF4444' },
               { key: 'low', label: 'Low', count: stats.low, color: '#F59E0B' },
               { key: 'good', label: 'Good', count: stats.good, color: '#10B981' },
-              { key: 'overdue', label: 'Overdue', count: stats.overdue, color: '#F97316' },
+              { key: 'overdue', label: 'Overdue', count: stats.overdue, color: colors.primary[500] },
             ] as const).map((pill) => {
               const isSelected = selectedStat === pill.key;
               const isDimmed = selectedStat !== 'all' && !isSelected;

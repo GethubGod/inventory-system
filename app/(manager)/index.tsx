@@ -21,6 +21,7 @@ import { listEmployeesWithReminderStatus } from '@/services';
 import { BrandLogo } from '@/components';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { colors } from '@/constants';
 
 interface EmployeeActivity {
   id: string;
@@ -262,7 +263,7 @@ export default function ManagerDashboard() {
               }}
               activeOpacity={0.7}
             >
-              <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
+              <Ionicons name="location" size={ds.icon(14)} color={colors.primary[500]} />
               <Text
                 className="text-gray-900 font-medium"
                 style={{
@@ -343,12 +344,12 @@ export default function ManagerDashboard() {
                   className="rounded-full bg-primary-100 items-center justify-center"
                   style={{ width: ds.icon(32), height: ds.icon(32), marginRight: ds.spacing(12) }}
                 >
-                  <Ionicons name="globe" size={ds.icon(16)} color="#F97316" />
+                  <Ionicons name="globe" size={ds.icon(16)} color={colors.primary[500]} />
                 </View>
                 <Text className="flex-1 text-gray-900 font-medium" style={{ fontSize: ds.fontSize(15) }}>
                   All Locations
                 </Text>
-                {!selectedLocation && <Ionicons name="checkmark" size={ds.icon(18)} color="#F97316" />}
+                {!selectedLocation && <Ionicons name="checkmark" size={ds.icon(18)} color={colors.primary[500]} />}
               </TouchableOpacity>
 
               {locations.map((loc) => {
@@ -376,7 +377,7 @@ export default function ManagerDashboard() {
                     <Text className="flex-1 text-gray-900 font-medium" style={{ fontSize: ds.fontSize(15) }}>
                       {loc.name}
                     </Text>
-                    {isSelected && <Ionicons name="checkmark" size={ds.icon(18)} color="#F97316" />}
+                    {isSelected && <Ionicons name="checkmark" size={ds.icon(18)} color={colors.primary[500]} />}
                   </TouchableOpacity>
                 );
               })}
@@ -391,7 +392,7 @@ export default function ManagerDashboard() {
           contentContainerStyle={{ padding: 16 }}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary[500]} />
           }
         >
           <View
@@ -468,7 +469,7 @@ export default function ManagerDashboard() {
               <Text className="font-bold text-gray-900 text-lg">Employee Activity</Text>
               <TouchableOpacity className="flex-row items-center" onPress={() => router.push('/(manager)/orders')}>
                 <Text className="text-primary-500 font-medium text-sm mr-1">See All</Text>
-                <Ionicons name="arrow-forward" size={14} color="#F97316" />
+                <Ionicons name="arrow-forward" size={14} color={colors.primary[500]} />
               </TouchableOpacity>
             </View>
 
@@ -545,7 +546,7 @@ export default function ManagerDashboard() {
               className="bg-primary-100 rounded-full items-center justify-center mr-3"
               style={{ width: 40, height: 40 }}
             >
-              <Ionicons name="search-outline" size={20} color="#F97316" />
+              <Ionicons name="search-outline" size={20} color={colors.primary[500]} />
             </View>
             <View className="flex-1">
               <Text className="font-bold text-gray-900 text-base">Browse Inventory</Text>

@@ -1,13 +1,23 @@
-import { Redirect, Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { Sparkles } from 'lucide-react-native';
-import { useAuthStore, useOrderStore, useDraftStore, useTunaSpecialistStore, useDisplayStore } from '@/store';
+import { Redirect, Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { Sparkles } from "lucide-react-native";
+import {
+  useAuthStore,
+  useOrderStore,
+  useDraftStore,
+  useTunaSpecialistStore,
+  useDisplayStore,
+} from "@/store";
 
 export default function TabsLayout() {
   const { session, profile } = useAuthStore();
-  const cartTotal = useOrderStore((state) => state.getTotalCartCount('employee'));
+  const cartTotal = useOrderStore((state) =>
+    state.getTotalCartCount("employee"),
+  );
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
-  const voiceCartCount = useTunaSpecialistStore((state) => state.cartItems.length);
+  const voiceCartCount = useTunaSpecialistStore(
+    (state) => state.cartItems.length,
+  );
   const uiScale = useDisplayStore((state) => state.uiScale);
   const scaledFontSize = useDisplayStore((state) => state.scaledFontSize);
 
@@ -26,22 +36,27 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#F97316',
-        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarActiveTintColor: "#F97316",
+        tabBarInactiveTintColor: "#9CA3AF",
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#E5E7EB',
+          backgroundColor: "#FFFFFF",
+          borderTopColor: "#E5E7EB",
           paddingTop: 12,
           paddingBottom: 12,
           height: 90,
         },
         tabBarLabelStyle: {
           fontSize: Math.max(10, scaledFontSize(10)),
-          fontWeight: '600',
+          fontWeight: "600",
           marginTop: 4,
         },
         tabBarIconStyle: {
-          transform: [{ scale: uiScale === 'large' ? 1.15 : uiScale === 'compact' ? 0.95 : 1 }],
+          transform: [
+            {
+              scale:
+                uiScale === "large" ? 1.15 : uiScale === "compact" ? 0.95 : 1,
+            },
+          ],
         },
         headerShown: false,
       }}
@@ -50,7 +65,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Browse',
+          title: "Browse",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="grid-outline" size={size} color={color} />
           ),
@@ -61,14 +76,14 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="quick-order"
         options={{
-          title: 'Quick',
+          title: "Quick",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="flash-outline" size={size} color={color} />
           ),
           tabBarBadge: draftCount > 0 ? draftCount : undefined,
           tabBarBadgeStyle: {
-            backgroundColor: '#F97316',
-            color: '#FFFFFF',
+            backgroundColor: "#F97316",
+            color: "#FFFFFF",
             fontSize: 10,
           },
         }}
@@ -78,14 +93,14 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="cart"
         options={{
-          title: 'Cart',
+          title: "Cart",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="cart-outline" size={size} color={color} />
           ),
           tabBarBadge: cartTotal > 0 ? cartTotal : undefined,
           tabBarBadgeStyle: {
-            backgroundColor: '#F97316',
-            color: '#FFFFFF',
+            backgroundColor: "#F97316",
+            color: "#FFFFFF",
             fontSize: 10,
           },
         }}
@@ -95,14 +110,12 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="voice"
         options={{
-          title: 'Voice',
-          tabBarIcon: ({ color }) => (
-            <Sparkles size={24} color={color} />
-          ),
+          title: "Voice",
+          tabBarIcon: ({ color }) => <Sparkles size={24} color={color} />,
           tabBarBadge: voiceCartCount > 0 ? voiceCartCount : undefined,
           tabBarBadgeStyle: {
-            backgroundColor: '#F97316',
-            color: '#FFFFFF',
+            backgroundColor: "#F97316",
+            color: "#FFFFFF",
             fontSize: 10,
           },
         }}
@@ -112,7 +125,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="settings"
         options={{
-          title: 'Settings',
+          title: "Settings",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),

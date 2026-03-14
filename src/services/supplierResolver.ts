@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import { cachedFetch, invalidateCachePrefix } from '@/lib/queryCache';
+import { listSuppliers } from '@/lib/api/client';
 
 export interface SupplierLookupRow {
   id: string;
@@ -162,34 +163,12 @@ export function invalidateSupplierCache(): void {
 }
 
 async function _loadSupplierLookupImpl(): Promise<SupplierLookupMaps> {
-  const loadSuppliers = async (columns: string) =>
-    (supabase as any)
-      .from('suppliers')
-      .select(columns)
-      .order('name', { ascending: true });
+  const result = await listSuppliers({ limit: 5000 });
+  if (result.error) throw new Error(result.error);
 
-  let data: Record<string, unknown>[] | null = null;
-  let error: any = null;
-
-  ({ data, error } = await loadSuppliers('id,name,supplier_type,is_default,active'));
-
-  if (error?.code === '42703') {
-    ({ data, error } = await loadSuppliers('id,name,is_default,active'));
-  }
-  if (error?.code === '42703') {
-    ({ data, error } = await loadSuppliers('id,name,active'));
-  }
-  if (error?.code === '42703') {
-    ({ data, error } = await loadSuppliers('id,name'));
-  }
-
-  if (error) {
-    throw error;
-  }
-
-  const suppliers = (Array.isArray(data) ? data : [])
-    .map((row) => normalizeSupplierRow(row))
-    .filter((row): row is SupplierLookupRow => Boolean(row));
+  const suppliers = (result.data ?? []).filter(
+    (row): row is SupplierLookupRow => Boolean(row.id && row.name)
+  );
 
   const supplierById = new Map<string, SupplierLookupRow>();
   const supplierByNameNormalized = new Map<string, SupplierLookupRow>();
@@ -379,6 +358,8 @@ export function resolveOrderItemSupplier(params: {
   };
 }
 
+// PHASE 3: collectInventorySupplierIssues stays as direct DB — diagnostic query,
+// no matching edge function yet.
 export async function collectInventorySupplierIssues(
   lookup: SupplierLookupMaps
 ): Promise<SupplierResolutionIssue[]> {

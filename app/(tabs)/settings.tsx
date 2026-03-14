@@ -11,7 +11,7 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import { useAuthStore, useDisplayStore } from '@/store';
-import { shadow } from '@/constants';
+import {shadow, colors } from '@/constants';
 import { SettingsRow } from '@/components/settings';
 import { BrandLogo } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -162,7 +162,7 @@ export default function SettingsScreen() {
         >
           <SettingsRow
             icon="receipt-outline"
-            iconColor="#F97316"
+            iconColor={colors.primary[500]}
             iconBgColor="#FFEDD5"
             title="My Orders"
             subtitle="View your order history"

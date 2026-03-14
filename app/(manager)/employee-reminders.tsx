@@ -449,7 +449,7 @@ export default function EmployeeRemindersScreen() {
         <ScrollView
           className="flex-1"
           contentContainerStyle={{ padding: ds.spacing(16), paddingBottom: ds.spacing(28) }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#F97316" />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary[500]} />}
         >
           <View className="flex-row" style={{ columnGap: ds.spacing(8), marginBottom: ds.spacing(12) }}>
             <View className="flex-1 bg-white rounded-xl border border-gray-100" style={{ padding: ds.spacing(10) }}>
@@ -628,7 +628,7 @@ export default function EmployeeRemindersScreen() {
                   }}
                 >
                   <Text className="text-gray-900" style={{ fontSize: ds.fontSize(15) }}>{option.label}</Text>
-                  {sortMode === option.value && <Ionicons name="checkmark" size={ds.icon(18)} color="#F97316" />}
+                  {sortMode === option.value && <Ionicons name="checkmark" size={ds.icon(18)} color={colors.primary[500]} />}
                 </TouchableOpacity>
               ))}
             </View>

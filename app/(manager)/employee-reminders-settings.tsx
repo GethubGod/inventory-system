@@ -135,7 +135,7 @@ export default function EmployeeReminderSettingsScreen() {
         <ScrollView
           className="flex-1"
           contentContainerStyle={{ padding: ds.spacing(16), paddingBottom: ds.spacing(28) }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#F97316" />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary[500]} />}
         >
           {isLoading ? (
             <View className="items-center" style={{ paddingVertical: ds.spacing(40) }}>

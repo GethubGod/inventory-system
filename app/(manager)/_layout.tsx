@@ -1,28 +1,41 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Redirect, Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { Sparkles } from 'lucide-react-native';
-import { View, Text } from 'react-native';
-import { RealtimeChannel } from '@supabase/supabase-js';
-import { useAuthStore, useOrderStore, useDisplayStore, useTunaSpecialistStore } from '@/store';
-import { supabase } from '@/lib/supabase';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Redirect, Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { Sparkles } from "lucide-react-native";
+import { View, Text } from "react-native";
+import { RealtimeChannel } from "@supabase/supabase-js";
+import {
+  useAuthStore,
+  useOrderStore,
+  useDisplayStore,
+  useTunaSpecialistStore,
+} from "@/store";
+import { supabase } from "@/lib/supabase";
 
 export default function ManagerLayout() {
   const { session, profile, user } = useAuthStore();
-  const cartCount = useOrderStore((state) => state.getTotalCartCount('manager'));
-  const voiceCartCount = useTunaSpecialistStore((state) => state.cartItems.length);
+  const cartCount = useOrderStore((state) =>
+    state.getTotalCartCount("manager"),
+  );
+  const voiceCartCount = useTunaSpecialistStore(
+    (state) => state.cartItems.length,
+  );
   const uiScale = useDisplayStore((state) => state.uiScale);
   const scaledFontSize = useDisplayStore((state) => state.scaledFontSize);
   const [pendingFulfillmentCount, setPendingFulfillmentCount] = useState(0);
-  const badgeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const badgeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const badgeChannelRef = useRef<RealtimeChannel | null>(null);
-  const badgePollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isLarge = uiScale === 'large';
-  const isCompact = uiScale === 'compact';
+  const badgePollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+  const isLarge = uiScale === "large";
+  const isCompact = uiScale === "compact";
   const metadataRole =
-    typeof session?.user?.user_metadata?.role === 'string'
+    typeof session?.user?.user_metadata?.role === "string"
       ? session.user.user_metadata.role
-      : typeof session?.user?.app_metadata?.role === 'string'
+      : typeof session?.user?.app_metadata?.role === "string"
         ? session.user.app_metadata.role
         : null;
   const resolvedRole = user?.role ?? profile?.role ?? metadataRole;
@@ -30,7 +43,7 @@ export default function ManagerLayout() {
   const tabBarScale = isLarge ? 1.1 : 1;
   const badgeSize = Math.max(18, Math.round(18 * tabBarScale));
   const refreshPendingFulfillmentCount = useCallback(async () => {
-    if (!session || resolvedRole !== 'manager') {
+    if (!session || resolvedRole !== "manager") {
       setPendingFulfillmentCount(0);
       return;
     }
@@ -39,23 +52,28 @@ export default function ManagerLayout() {
       // Count unique submitted orders that still have at least one pending order_item.
       // This tracks actual fulfillment workload more accurately than raw order status counts.
       const { data, error } = await supabase
-        .from('order_items')
-        .select('order_id,orders!inner(status)')
-        .or('status.is.null,status.eq.pending')
-        .eq('orders.status', 'submitted')
+        .from("order_items")
+        .select("order_id,orders!inner(status)")
+        .or("status.is.null,status.eq.pending")
+        .eq("orders.status", "submitted")
         .limit(10000);
 
       if (error) throw error;
 
       const uniqueOrderIds = new Set(
         (Array.isArray(data) ? data : [])
-          .map((row: any) => (typeof row?.order_id === 'string' ? row.order_id : null))
-          .filter((value: string | null): value is string => Boolean(value))
+          .map((row: any) =>
+            typeof row?.order_id === "string" ? row.order_id : null,
+          )
+          .filter((value: string | null): value is string => Boolean(value)),
       );
 
       setPendingFulfillmentCount(uniqueOrderIds.size);
     } catch (error) {
-      console.error('[ManagerLayout] Failed to load fulfillment badge count:', error);
+      console.error(
+        "[ManagerLayout] Failed to load fulfillment badge count:",
+        error,
+      );
       setPendingFulfillmentCount(0);
     }
   }, [resolvedRole, session]);
@@ -65,7 +83,7 @@ export default function ManagerLayout() {
   }, [refreshPendingFulfillmentCount]);
 
   useEffect(() => {
-    if (!session || resolvedRole !== 'manager') {
+    if (!session || resolvedRole !== "manager") {
       if (badgeRefreshTimeoutRef.current) {
         clearTimeout(badgeRefreshTimeoutRef.current);
         badgeRefreshTimeoutRef.current = null;
@@ -91,16 +109,16 @@ export default function ManagerLayout() {
     };
 
     const channel = supabase
-      .channel('manager-fulfillment-tab-badge')
+      .channel("manager-fulfillment-tab-badge")
       .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'orders' },
-        scheduleCountRefresh
+        "postgres_changes",
+        { event: "*", schema: "public", table: "orders" },
+        scheduleCountRefresh,
       )
       .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'order_items' },
-        scheduleCountRefresh
+        "postgres_changes",
+        { event: "*", schema: "public", table: "order_items" },
+        scheduleCountRefresh,
       )
       .subscribe();
 
@@ -137,25 +155,25 @@ export default function ManagerLayout() {
     return <Redirect href="/suspended" />;
   }
 
-  if (resolvedRole !== 'manager') {
+  if (resolvedRole !== "manager") {
     return <Redirect href="/(tabs)/settings" />;
   }
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#F97316',
-        tabBarInactiveTintColor: '#9CA3AF',
+        tabBarActiveTintColor: "#F97316",
+        tabBarInactiveTintColor: "#9CA3AF",
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
-          borderTopColor: '#E5E7EB',
+          backgroundColor: "#FFFFFF",
+          borderTopColor: "#E5E7EB",
           paddingTop: Math.round(12 * tabBarScale),
           paddingBottom: Math.round(12 * tabBarScale),
           height: Math.round(90 * tabBarScale),
         },
         tabBarLabelStyle: {
           fontSize: Math.max(10, scaledFontSize(10)),
-          fontWeight: '600',
+          fontWeight: "600",
           marginTop: Math.round(4 * tabBarScale),
         },
         tabBarIconStyle: {
@@ -168,7 +186,7 @@ export default function ManagerLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Dashboard',
+          title: "Dashboard",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="grid-outline" size={size} color={color} />
           ),
@@ -187,27 +205,33 @@ export default function ManagerLayout() {
       <Tabs.Screen
         name="quick-order"
         options={{
-          title: 'Quick',
+          title: "Quick",
           tabBarIcon: ({ color, size }) => (
             <View>
               <Ionicons name="flash-outline" size={size} color={color} />
               {cartCount > 0 && (
                 <View
                   style={{
-                    position: 'absolute',
+                    position: "absolute",
                     top: -Math.round(4 * tabBarScale),
                     right: -Math.round(8 * tabBarScale),
-                    backgroundColor: '#F97316',
+                    backgroundColor: "#F97316",
                     borderRadius: badgeSize / 2,
                     minWidth: badgeSize,
                     height: badgeSize,
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    alignItems: "center",
+                    justifyContent: "center",
                     paddingHorizontal: Math.round(4 * tabBarScale),
                   }}
                 >
-                  <Text style={{ color: 'white', fontSize: Math.max(9, scaledFontSize(9)), fontWeight: 'bold' }}>
-                    {cartCount > 99 ? '99+' : cartCount}
+                  <Text
+                    style={{
+                      color: "white",
+                      fontSize: Math.max(9, scaledFontSize(9)),
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {cartCount > 99 ? "99+" : cartCount}
                   </Text>
                 </View>
               )}
@@ -220,27 +244,35 @@ export default function ManagerLayout() {
       <Tabs.Screen
         name="fulfillment"
         options={{
-          title: 'Fulfillment',
+          title: "Fulfillment",
           tabBarIcon: ({ color, size }) => (
             <View>
               <Ionicons name="clipboard-outline" size={size} color={color} />
               {pendingFulfillmentCount > 0 && (
                 <View
                   style={{
-                    position: 'absolute',
+                    position: "absolute",
                     top: -Math.round(4 * tabBarScale),
                     right: -Math.round(8 * tabBarScale),
-                    backgroundColor: '#F97316',
+                    backgroundColor: "#F97316",
                     borderRadius: badgeSize / 2,
                     minWidth: badgeSize,
                     height: badgeSize,
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    alignItems: "center",
+                    justifyContent: "center",
                     paddingHorizontal: Math.round(4 * tabBarScale),
                   }}
                 >
-                  <Text style={{ color: 'white', fontSize: Math.max(9, scaledFontSize(9)), fontWeight: 'bold' }}>
-                    {pendingFulfillmentCount > 99 ? '99+' : pendingFulfillmentCount}
+                  <Text
+                    style={{
+                      color: "white",
+                      fontSize: Math.max(9, scaledFontSize(9)),
+                      fontWeight: "bold",
+                    }}
+                  >
+                    {pendingFulfillmentCount > 99
+                      ? "99+"
+                      : pendingFulfillmentCount}
                   </Text>
                 </View>
               )}
@@ -253,14 +285,12 @@ export default function ManagerLayout() {
       <Tabs.Screen
         name="voice"
         options={{
-          title: 'Voice',
-          tabBarIcon: ({ color }) => (
-            <Sparkles size={24} color={color} />
-          ),
+          title: "Voice",
+          tabBarIcon: ({ color }) => <Sparkles size={24} color={color} />,
           tabBarBadge: voiceCartCount > 0 ? voiceCartCount : undefined,
           tabBarBadgeStyle: {
-            backgroundColor: '#F97316',
-            color: '#FFFFFF',
+            backgroundColor: "#F97316",
+            color: "#FFFFFF",
             fontSize: Math.max(9, scaledFontSize(9)),
           },
         }}
@@ -270,7 +300,7 @@ export default function ManagerLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Settings',
+          title: "Settings",
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),
@@ -288,7 +318,7 @@ export default function ManagerLayout() {
         name="inventory"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
@@ -325,70 +355,70 @@ export default function ManagerLayout() {
         name="past-orders/index"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
         name="past-orders/[id]"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
         name="settings/export-format"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
         name="settings/user-management"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
         name="settings/profile"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
         name="settings/access-codes"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
         name="employee-reminders"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
         name="employee-reminders-recurring"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
         name="employee-reminders-settings"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
         name="employee-reminders-delivery"
         options={{
           href: null,
-          tabBarStyle: { display: 'none' },
+          tabBarStyle: { display: "none" },
         }}
       />
     </Tabs>

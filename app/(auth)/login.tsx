@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
 import { AuthLogoHeader, SpinningFish } from '@/components';
 import { supabase } from '@/lib';
+import { colors } from '@/constants';
 
 const SIGN_IN_PASSWORD_HELPER =
   'If you recently created your password, it should be at least 8 characters and include letters and numbers.';
@@ -119,7 +120,7 @@ export default function LoginScreen() {
                 <Ionicons
                   name="mail-outline"
                   size={20}
-                  color={focusedInput === 'email' ? '#F97316' : '#9CA3AF'}
+                  color={focusedInput === 'email' ? colors.primary[500] : '#9CA3AF'}
                 />
                 <TextInput
                   className="flex-1 ml-3 text-gray-900 text-base"
@@ -142,7 +143,7 @@ export default function LoginScreen() {
                 <Ionicons
                   name="lock-closed-outline"
                   size={20}
-                  color={focusedInput === 'password' ? '#F97316' : '#9CA3AF'}
+                  color={focusedInput === 'password' ? colors.primary[500] : '#9CA3AF'}
                 />
                 <TextInput
                   className="flex-1 ml-3 text-gray-900 text-base"

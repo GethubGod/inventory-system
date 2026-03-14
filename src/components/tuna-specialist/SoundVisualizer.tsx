@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Animated, Easing } from 'react-native';
+import { colors } from '@/constants';
 
 type VisualizerState = 'idle' | 'listening' | 'processing' | 'speaking';
 
@@ -8,7 +9,7 @@ interface SoundVisualizerProps {
 }
 
 const COLORS = {
-  orange: '#F97316',
+  orange: colors.primary[500],
   green: '#22C55E',
   blue: '#3B82F6',
 };

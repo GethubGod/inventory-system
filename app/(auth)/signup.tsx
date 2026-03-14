@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
 import { AuthLogoHeader, SpinningFish } from '@/components';
 import { validatePassword } from '@/lib';
+import { colors } from '@/constants';
 
 const ACCESS_CODE_REGEX = /^\d{4}$/;
 
@@ -121,7 +122,7 @@ export default function SignUpScreen() {
                   <Ionicons
                     name="person-outline"
                     size={20}
-                    color={focusedInput === 'name' ? '#F97316' : '#9CA3AF'}
+                    color={focusedInput === 'name' ? colors.primary[500] : '#9CA3AF'}
                   />
                   <TextInput
                     className="flex-1 ml-3 text-gray-900 text-base"
@@ -142,7 +143,7 @@ export default function SignUpScreen() {
                   <Ionicons
                     name="mail-outline"
                     size={20}
-                    color={focusedInput === 'email' ? '#F97316' : '#9CA3AF'}
+                    color={focusedInput === 'email' ? colors.primary[500] : '#9CA3AF'}
                   />
                   <TextInput
                     className="flex-1 ml-3 text-gray-900 text-base"
@@ -165,7 +166,7 @@ export default function SignUpScreen() {
                   <Ionicons
                     name="lock-closed-outline"
                     size={20}
-                    color={focusedInput === 'password' ? '#F97316' : '#9CA3AF'}
+                    color={focusedInput === 'password' ? colors.primary[500] : '#9CA3AF'}
                   />
                   <TextInput
                     className="flex-1 ml-3 text-gray-900 text-base"
@@ -228,7 +229,7 @@ export default function SignUpScreen() {
                   <Ionicons
                     name="shield-checkmark-outline"
                     size={20}
-                    color={focusedInput === 'confirmPassword' ? '#F97316' : '#9CA3AF'}
+                    color={focusedInput === 'confirmPassword' ? colors.primary[500] : '#9CA3AF'}
                   />
                   <TextInput
                     className="flex-1 ml-3 text-gray-900 text-base"
@@ -281,7 +282,7 @@ export default function SignUpScreen() {
                   <Ionicons
                     name="key-outline"
                     size={20}
-                    color={focusedInput === 'accessCode' ? '#F97316' : '#9CA3AF'}
+                    color={focusedInput === 'accessCode' ? colors.primary[500] : '#9CA3AF'}
                   />
                   <TextInput
                     className="flex-1 ml-3 text-gray-900 text-base"

@@ -16,7 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store';
 import { Order, OrderStatus, Location } from '@/types';
-import { statusColors, ORDER_STATUS_LABELS } from '@/constants';
+import {statusColors, ORDER_STATUS_LABELS, colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { BrandLogo } from '@/components';
 
@@ -266,7 +266,7 @@ export default function ManagerOrdersScreen() {
           }}
           activeOpacity={0.7}
         >
-          <Ionicons name="location" size={14} color="#F97316" />
+          <Ionicons name="location" size={14} color={colors.primary[500]} />
           <Text className="text-gray-900 font-medium ml-2" numberOfLines={1}>
             {selectedLocation?.name || 'All Locations'}
           </Text>
@@ -288,10 +288,10 @@ export default function ManagerOrdersScreen() {
               activeOpacity={0.7}
             >
               <View className="w-9 h-9 rounded-full bg-primary-100 items-center justify-center mr-3">
-                <Ionicons name="globe" size={18} color="#F97316" />
+                <Ionicons name="globe" size={18} color={colors.primary[500]} />
               </View>
               <Text className="flex-1 text-gray-900 font-medium">All Locations</Text>
-              {!selectedLocation && <Ionicons name="checkmark" size={18} color="#F97316" />}
+              {!selectedLocation && <Ionicons name="checkmark" size={18} color={colors.primary[500]} />}
             </TouchableOpacity>
 
             {locations.map((loc) => {
@@ -311,7 +311,7 @@ export default function ManagerOrdersScreen() {
                     <BrandLogo variant="inline" size={18} colorMode={isSelected ? 'dark' : 'light'} />
                   </View>
                   <Text className="flex-1 text-gray-900 font-medium">{loc.name}</Text>
-                  {isSelected && <Ionicons name="checkmark" size={18} color="#F97316" />}
+                  {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary[500]} />}
                 </TouchableOpacity>
               );
             })}
@@ -337,7 +337,7 @@ export default function ManagerOrdersScreen() {
                 className="px-4 py-2 rounded-full mr-2 flex-row items-center"
                 style={{
                   backgroundColor: isSelected
-                    ? filterColor?.text || '#F97316'
+                    ? filterColor?.text || colors.primary[500]
                     : filterColor?.bg || '#F3F4F6',
                 }}
                 onPress={() => handleSelectStatus(filter.key)}
@@ -399,7 +399,7 @@ export default function ManagerOrdersScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#F97316"
+            tintColor={colors.primary[500]}
           />
         }
       />

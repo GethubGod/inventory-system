@@ -1,3 +1,5 @@
+// PHASE 3: Order lifecycle, past orders, order-later — direct Supabase calls,
+// no matching edge functions yet. Covers shared data that the dashboard also reads.
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';

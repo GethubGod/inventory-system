@@ -1,3 +1,4 @@
+// KEEP DIRECT: Already uses validate-access-code and update-access-codes edge functions.
 import { supabase } from '@/lib/supabase';
 import { UserRole } from '@/types';
 

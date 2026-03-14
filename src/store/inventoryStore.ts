@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { InventoryItem, ItemCategory, SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
+import { listInventory } from '@/lib/api/client';
 
 export interface NewInventoryItem {
   name: string;
@@ -62,8 +63,6 @@ export const useInventoryStore = create<InventoryState>()(
         const force = options?.force === true;
         const { lastFetched, items, hasFetchedThisSession } = get();
 
-        // Only reuse cache after one fresh fetch in the current app session.
-        // This prevents stale persisted data after app relaunch.
         if (!force && hasFetchedThisSession && lastFetched && items.length > 0) {
           const cacheAge = Date.now() - lastFetched;
           if (cacheAge < CACHE_DURATION) {
@@ -73,17 +72,18 @@ export const useInventoryStore = create<InventoryState>()(
 
         set({ isLoading: true });
         try {
-          const { data, error } = await supabase
-            .from('inventory_items')
-            .select('*')
-            .eq('active', true)
-            .order('category')
-            .order('name');
+          const result = await listInventory({ limit: 5000 });
+          if (result.error) throw new Error(result.error);
 
-          if (error) throw error;
+          const activeItems = (result.data ?? [])
+            .filter((item) => item.active)
+            .sort((a, b) => {
+              if (a.category !== b.category) return a.category.localeCompare(b.category);
+              return a.name.localeCompare(b.name);
+            });
 
           set({
-            items: data || [],
+            items: activeItems,
             lastFetched: Date.now(),
             hasFetchedThisSession: true,
           });
@@ -92,6 +92,8 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
+      // PHASE 3: addItem stays as direct DB — v1-create-inventory-item requires
+      // org_memberships row that mobile users don't have yet.
       addItem: async (item) => {
         set({ isLoading: true });
         try {
@@ -163,6 +165,7 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
+      // PHASE 3: updateItem stays as direct DB — same org_memberships blocker.
       updateItem: async (id, updates) => {
         set({ isLoading: true });
         try {
@@ -184,6 +187,7 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
+      // PHASE 3: deleteItem stays as direct DB — same org_memberships blocker.
       deleteItem: async (id) => {
         set({ isLoading: true });
         try {

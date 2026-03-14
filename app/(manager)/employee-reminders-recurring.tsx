@@ -352,7 +352,7 @@ export default function EmployeeReminderRecurringScreen() {
         <ScrollView
           className="flex-1"
           contentContainerStyle={{ padding: ds.spacing(16), paddingBottom: ds.spacing(28) }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#F97316" />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.primary[500]} />}
         >
           <TouchableOpacity
             className="bg-primary-500 rounded-xl flex-row items-center justify-center"
@@ -428,7 +428,7 @@ export default function EmployeeReminderRecurringScreen() {
                         value={rule.enabled}
                         onValueChange={() => handleToggleEnabled(rule)}
                         trackColor={{ false: '#D1D5DB', true: '#FDBA74' }}
-                        thumbColor={rule.enabled ? '#F97316' : '#F3F4F6'}
+                        thumbColor={rule.enabled ? colors.primary[500] : '#F3F4F6'}
                       />
                     </View>
                   </View>
@@ -613,7 +613,7 @@ export default function EmployeeReminderRecurringScreen() {
                     value={form.quietHoursEnabled}
                     onValueChange={(value) => setForm((prev) => ({ ...prev, quietHoursEnabled: value }))}
                     trackColor={{ false: '#D1D5DB', true: '#FDBA74' }}
-                    thumbColor={form.quietHoursEnabled ? '#F97316' : '#F3F4F6'}
+                    thumbColor={form.quietHoursEnabled ? colors.primary[500] : '#F3F4F6'}
                   />
                 </View>
 
@@ -666,7 +666,7 @@ export default function EmployeeReminderRecurringScreen() {
                     value={form.enabled}
                     onValueChange={(value) => setForm((prev) => ({ ...prev, enabled: value }))}
                     trackColor={{ false: '#D1D5DB', true: '#FDBA74' }}
-                    thumbColor={form.enabled ? '#F97316' : '#F3F4F6'}
+                    thumbColor={form.enabled ? colors.primary[500] : '#F3F4F6'}
                   />
                 </View>
 

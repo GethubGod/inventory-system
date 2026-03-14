@@ -2595,7 +2595,7 @@ export default function FulfillmentScreen() {
           className="flex-1"
           contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F97316" />
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary[500]} />
           }
         >
           <View className="bg-white rounded-2xl border border-gray-100 mb-4 overflow-hidden">

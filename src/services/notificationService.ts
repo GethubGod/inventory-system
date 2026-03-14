@@ -1,3 +1,4 @@
+// PHASE 4: Notifications, push tokens, in-app — direct Supabase calls, no matching edge functions yet.
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import type { NotificationRequest } from 'expo-notifications';

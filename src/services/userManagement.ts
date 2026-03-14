@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { listUsers, setUserSuspended } from '@/lib/api/client';
 
 export type ManagedUserRole = 'employee' | 'manager';
 
@@ -82,24 +83,11 @@ async function selectManagedProfiles() {
 }
 
 export async function listManagedUsers(): Promise<ManagedUser[]> {
-  try {
-    const rows = await selectManagedProfiles();
-
-    return rows.map((row) => ({
-      id: String(row.id),
-      email: typeof row.email === 'string' ? row.email : '',
-      full_name: typeof row.full_name === 'string' ? row.full_name : null,
-      role: normalizeRole(row.role),
-      is_suspended: Boolean(row.is_suspended),
-      suspended_at: typeof row.suspended_at === 'string' ? row.suspended_at : null,
-      suspended_by: typeof row.suspended_by === 'string' ? row.suspended_by : null,
-      last_active_at: typeof row.last_active_at === 'string' ? row.last_active_at : null,
-      last_order_at: typeof row.last_order_at === 'string' ? row.last_order_at : null,
-      created_at: typeof row.created_at === 'string' ? row.created_at : null,
-    }));
-  } catch (error) {
-    throw new Error(extractErrorMessage(error, 'Unable to load users.'));
+  const result = await listUsers();
+  if (result.error) {
+    throw new Error(result.error);
   }
+  return result.data ?? [];
 }
 
 async function updateSuspensionWithFallback(
@@ -142,34 +130,13 @@ export async function setManagedUserSuspended(params: {
     throw new Error('User ID is required.');
   }
 
-  const {
-    data: { user: authUser },
-  } = await supabase.auth.getUser();
+  const result = await setUserSuspended({
+    userId,
+    isSuspended: params.isSuspended,
+  });
 
-  if (!authUser?.id) {
-    throw new Error('Please sign in again.');
-  }
-
-  const nextPayload = params.isSuspended
-    ? {
-        is_suspended: true,
-        suspended_at: new Date().toISOString(),
-        suspended_by: authUser.id,
-      }
-    : {
-        is_suspended: false,
-        suspended_at: null,
-        suspended_by: null,
-      };
-
-  try {
-    const updatedRow = await updateSuspensionWithFallback(userId, nextPayload);
-
-    if (!updatedRow) {
-      throw new Error('Managers can only suspend or reinstate employee accounts.');
-    }
-  } catch (error) {
-    throw new Error(extractErrorMessage(error, 'Unable to update suspension state.'));
+  if (result.error) {
+    throw new Error(result.error);
   }
 }
 
