@@ -1,6 +1,7 @@
 import { ScrollView, TouchableOpacity, Text } from 'react-native';
 import { OrderStatus } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS } from '@/constants';
+import { glassColors, glassHairlineWidth, glassRadii } from '@/design/tokens';
 
 interface StatusFilterProps {
   statuses: (OrderStatus | null)[];
@@ -17,7 +18,11 @@ export function StatusFilter({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      className="bg-white border-b border-gray-200"
+      style={{
+        backgroundColor: glassColors.background,
+        borderBottomWidth: glassHairlineWidth,
+        borderBottomColor: glassColors.divider,
+      }}
       contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 12 }}
     >
       {statuses.map((status) => {
@@ -28,15 +33,20 @@ export function StatusFilter({
           return (
             <TouchableOpacity
               key="all"
-              className={`px-4 py-2 rounded-full mr-2 ${
-                isSelected ? 'bg-primary-500' : 'bg-gray-100'
-              }`}
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+                borderRadius: glassRadii.pill,
+                marginRight: 8,
+                backgroundColor: isSelected ? glassColors.accent : glassColors.mediumFill,
+              }}
               onPress={() => onSelectStatus(null)}
             >
               <Text
-                className={`font-medium ${
-                  isSelected ? 'text-white' : 'text-gray-700'
-                }`}
+                style={{
+                  fontWeight: '500',
+                  color: isSelected ? glassColors.textOnPrimary : glassColors.textPrimary,
+                }}
               >
                 All
               </Text>
@@ -47,15 +57,20 @@ export function StatusFilter({
         return (
           <TouchableOpacity
             key={status}
-            className="px-4 py-2 rounded-full mr-2"
             style={{
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: glassRadii.pill,
+              marginRight: 8,
               backgroundColor: isSelected ? colors?.text : colors?.bg,
             }}
             onPress={() => onSelectStatus(isSelected ? null : status)}
           >
             <Text
-              style={{ color: isSelected ? '#FFFFFF' : colors?.text }}
-              className="font-medium"
+              style={{
+                color: isSelected ? glassColors.textOnPrimary : colors?.text,
+                fontWeight: '500',
+              }}
             >
               {ORDER_STATUS_LABELS[status]}
             </Text>

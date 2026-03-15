@@ -11,8 +11,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { colors } from '@/constants';
-import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { GlassSurface } from '@/components';
+import { colors } from '@/theme/design';
+import {
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+  glassSpacing,
+  glassTypography,
+} from '@/design/tokens';
 
 const AUTO_DISMISS_SECONDS = 3;
 
@@ -31,7 +38,6 @@ export function OrderConfirmationPopup({
   itemCount,
   onClose,
 }: OrderConfirmationPopupProps) {
-  const ds = useScaledStyles();
   const [countdown, setCountdown] = useState(AUTO_DISMISS_SECONDS);
   const popupScale = useRef(new Animated.Value(0.8)).current;
   const popupOpacity = useRef(new Animated.Value(0)).current;
@@ -104,74 +110,144 @@ export function OrderConfirmationPopup({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
-      <View className="flex-1 bg-black/50 items-center justify-center" style={{ paddingHorizontal: ds.spacing(24) }}>
+      <View
+        className="flex-1 items-center justify-center"
+        style={{ backgroundColor: colors.overlay, paddingHorizontal: glassSpacing.screen }}
+      >
         <Pressable className="absolute inset-0" onPress={onClose} />
 
         <Animated.View
           style={{
+            width: '100%',
+            maxWidth: 360,
             transform: [{ scale: popupScale }],
             opacity: popupOpacity,
-            maxWidth: ds.spacing(420),
           }}
-          className="bg-white rounded-3xl w-full overflow-hidden"
         >
-          <View className="bg-gray-100" style={{ height: Math.max(3, ds.spacing(4)) }}>
-            <Animated.View
-              className="h-full bg-green-500"
+          <GlassSurface intensity="strong" style={{ borderRadius: glassRadii.surface }}>
+            <View
               style={{
-                width: progressWidth.interpolate({
-                  inputRange: [0, 100],
-                  outputRange: ['0%', '100%'],
-                }),
+                height: 3,
+                backgroundColor: glassColors.mediumFill,
               }}
-            />
-          </View>
-
-          <TouchableOpacity
-            onPress={onClose}
-            className="absolute z-10 bg-gray-100 rounded-full items-center justify-center"
-            style={{
-              top: ds.spacing(12),
-              right: ds.spacing(12),
-              width: ds.icon(32),
-              height: ds.icon(32),
-            }}
-          >
-            <Ionicons name="close" size={ds.icon(18)} color="#6B7280" />
-          </TouchableOpacity>
-
-          <View className="items-center" style={{ paddingHorizontal: ds.spacing(24), paddingVertical: ds.spacing(22) }}>
-            <Animated.View
-              style={{ transform: [{ scale: checkmarkScale }], width: ds.icon(64), height: ds.icon(64), borderRadius: ds.icon(32) }}
-              className="bg-green-500 items-center justify-center mb-4"
             >
-              <Ionicons name="checkmark" size={ds.icon(36)} color="white" />
-            </Animated.View>
-
-            <Text className="font-bold text-gray-900 text-center" style={{ fontSize: ds.fontSize(32) }}>
-              Order #{orderNumber}
-            </Text>
-            <Text className="text-green-600 font-semibold" style={{ marginTop: ds.spacing(4), fontSize: ds.fontSize(18) }}>
-              Submitted!
-            </Text>
-
-            <View className="flex-row items-center flex-wrap justify-center" style={{ marginTop: ds.spacing(10), marginBottom: ds.spacing(10) }}>
-              <Ionicons name="location" size={ds.icon(16)} color={colors.primary[500]} />
-              <Text className="text-gray-600" style={{ marginLeft: ds.spacing(4), fontSize: ds.fontSize(14) }}>{locationName}</Text>
-              {itemCount > 0 && (
-                <>
-                  <Text className="text-gray-400" style={{ marginHorizontal: ds.spacing(8), fontSize: ds.fontSize(14) }}>•</Text>
-                  <Text className="text-gray-500" style={{ fontSize: ds.fontSize(14) }}>
-                    {itemCount} item{itemCount === 1 ? '' : 's'}
-                  </Text>
-                </>
-              )}
+              <Animated.View
+                style={{
+                  height: '100%',
+                  backgroundColor: glassColors.accent,
+                  width: progressWidth.interpolate({
+                    inputRange: [0, 100],
+                    outputRange: ['0%', '100%'],
+                  }),
+                }}
+              />
             </View>
 
-            <Text className="text-gray-400" style={{ fontSize: ds.fontSize(13) }}>
-              Closing in {countdown}s
-            </Text>
-          </View>
+            <TouchableOpacity
+              onPress={onClose}
+              style={{
+                position: 'absolute',
+                top: 12,
+                right: 12,
+                zIndex: 10,
+                width: 32,
+                height: 32,
+                borderRadius: glassRadii.round,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: glassColors.mediumFill,
+              }}
+            >
+              <Ionicons name="close" size={18} color={glassColors.textSecondary} />
+            </TouchableOpacity>
+
+            <View style={{ padding: 24, alignItems: 'center' }}>
+              <Animated.View
+                style={{
+                  transform: [{ scale: checkmarkScale }],
+                  width: 56,
+                  height: 56,
+                  borderRadius: glassRadii.round,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: 16,
+                  backgroundColor: glassColors.successSoft,
+                }}
+              >
+                <Ionicons name="checkmark" size={28} color={glassColors.successText} />
+              </Animated.View>
+
+              <Text
+                style={{
+                  fontSize: glassTypography.screenTitle,
+                  fontWeight: '600',
+                  color: glassColors.textPrimary,
+                }}
+              >
+                Order submitted
+              </Text>
+              <Text
+                style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  color: glassColors.textSecondary,
+                }}
+              >
+                {itemCount} item{itemCount === 1 ? '' : 's'} for {locationName}
+              </Text>
+
+              <GlassSurface
+                intensity="subtle"
+                blurred={false}
+                style={{
+                  width: '100%',
+                  marginTop: 20,
+                  paddingHorizontal: glassSpacing.card,
+                  paddingVertical: glassSpacing.card,
+                  borderRadius: glassRadii.surface,
+                }}
+              >
+                {[
+                  ['Order ID', `#${orderNumber}`],
+                  ['Location', locationName],
+                ].map(([label, value], index) => (
+                  <View
+                    key={label}
+                    style={{
+                      flexDirection: 'row',
+                      justifyContent: 'space-between',
+                      paddingVertical: 8,
+                      borderTopWidth: index > 0 ? glassHairlineWidth : 0,
+                      borderTopColor: glassColors.divider,
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, color: glassColors.textSecondary }}>
+                      {label}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '500',
+                        color: glassColors.textPrimary,
+                      }}
+                    >
+                      {value}
+                    </Text>
+                  </View>
+                ))}
+              </GlassSurface>
+
+              <Text
+                style={{
+                  marginTop: 12,
+                  fontSize: 11,
+                  color: glassColors.textSecondary,
+                }}
+              >
+                Closing in {countdown}s
+              </Text>
+            </View>
+          </GlassSurface>
         </Animated.View>
       </View>
     </Modal>

@@ -112,12 +112,12 @@ export default function ManagerAccessCodesScreen() {
               className="flex-row items-center bg-gray-100 border-2 border-transparent"
               style={{ borderRadius: ds.radius(12), paddingHorizontal: ds.spacing(14), minHeight: Math.max(48, ds.buttonH) }}
             >
-              <Ionicons name="person-outline" size={ds.icon(20)} color="#9CA3AF" />
+              <Ionicons name="person-outline" size={ds.icon(20)} color={colors.gray[400]} />
               <TextInput
                 className="flex-1 text-gray-900"
                 style={{ marginLeft: ds.spacing(10), fontSize: ds.fontSize(16) }}
                 placeholder="4-digit employee code"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.gray[400]}
                 value={employeeAccessCode}
                 onChangeText={(value) => {
                   setEmployeeAccessCode(sanitizeCode(value));
@@ -135,7 +135,7 @@ export default function ManagerAccessCodesScreen() {
                 <Ionicons
                   name={showEmployeeAccessCode ? 'eye-off-outline' : 'eye-outline'}
                   size={ds.icon(20)}
-                  color="#9CA3AF"
+                  color={colors.gray[400]}
                 />
               </TouchableOpacity>
               {canShare(employeeAccessCode) && (
@@ -156,12 +156,12 @@ export default function ManagerAccessCodesScreen() {
               className="flex-row items-center bg-gray-100 border-2 border-transparent"
               style={{ borderRadius: ds.radius(12), paddingHorizontal: ds.spacing(14), minHeight: Math.max(48, ds.buttonH) }}
             >
-              <Ionicons name="briefcase-outline" size={ds.icon(20)} color="#9CA3AF" />
+              <Ionicons name="briefcase-outline" size={ds.icon(20)} color={colors.gray[400]} />
               <TextInput
                 className="flex-1 text-gray-900"
                 style={{ marginLeft: ds.spacing(10), fontSize: ds.fontSize(16) }}
                 placeholder="4-digit manager code"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor={colors.gray[400]}
                 value={managerAccessCode}
                 onChangeText={(value) => {
                   setManagerAccessCode(sanitizeCode(value));
@@ -179,7 +179,7 @@ export default function ManagerAccessCodesScreen() {
                 <Ionicons
                   name={showManagerAccessCode ? 'eye-off-outline' : 'eye-outline'}
                   size={ds.icon(20)}
-                  color="#9CA3AF"
+                  color={colors.gray[400]}
                 />
               </TouchableOpacity>
               {canShare(managerAccessCode) && (
@@ -203,7 +203,7 @@ export default function ManagerAccessCodesScreen() {
               className="bg-green-50 flex-row items-center"
               style={{ borderRadius: ds.radius(12), paddingHorizontal: ds.spacing(14), paddingVertical: ds.spacing(10), marginBottom: ds.spacing(12) }}
             >
-              <Ionicons name="checkmark-circle" size={ds.icon(18)} color="#22C55E" />
+              <Ionicons name="checkmark-circle" size={ds.icon(18)} color={colors.success} />
               <Text className="text-green-700 font-medium" style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(14) }}>
                 Codes saved successfully
               </Text>

@@ -11,10 +11,16 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import { useAuthStore, useDisplayStore } from '@/store';
-import {shadow, colors } from '@/constants';
-import { SettingsRow } from '@/components/settings';
-import { BrandLogo } from '@/components';
+import { SettingsRow, settingsIconPalettes } from '@/components/settings';
+import { BrandLogo, GlassSurface } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import {
+  glassColors,
+  glassRadii,
+  glassSpacing,
+  glassTabBarHeight,
+  glassTypography,
+} from '@/design/tokens';
 
 export default function SettingsScreen() {
   const ds = useScaledStyles();
@@ -56,172 +62,192 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: glassColors.background }}
+      edges={['top', 'left', 'right']}
+    >
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: ds.spacing(32) }}
+        contentContainerStyle={{ paddingBottom: glassTabBarHeight + ds.spacing(20) }}
         showsVerticalScrollIndicator={false}
       >
-        <View className="flex-row items-center" style={{ paddingHorizontal: ds.spacing(20), paddingVertical: ds.spacing(16) }}>
-          <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(22) }}>Settings</Text>
+        <View style={{ paddingHorizontal: glassSpacing.screen, paddingVertical: ds.spacing(16) }}>
+          <Text
+            style={{
+              fontSize: glassTypography.screenTitle,
+              fontWeight: '600',
+              color: glassColors.textPrimary,
+            }}
+          >
+            Settings
+          </Text>
         </View>
 
-        <View
-          className="bg-white rounded-xl overflow-hidden"
-          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
         >
           <SettingsRow
             icon="person-outline"
-            iconColor="#3B82F6"
-            iconBgColor="#DBEAFE"
+            iconColor={settingsIconPalettes.profile.icon}
+            iconBgColor={settingsIconPalettes.profile.background}
             title="Profile"
             subtitle="Manage your account details"
             onPress={() => router.push('/settings/profile')}
             showBorder={false}
           />
-        </View>
+        </GlassSurface>
 
-        <View
-          className="bg-white rounded-xl overflow-hidden"
-          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
         >
           <SettingsRow
             icon="eye-outline"
-            iconColor="#8B5CF6"
-            iconBgColor="#EDE9FE"
+            iconColor={settingsIconPalettes.display.icon}
+            iconBgColor={settingsIconPalettes.display.background}
             title="Display & Accessibility"
             subtitle="Text size, button size, and interaction settings"
             onPress={() => router.push('/settings/display-accessibility')}
             showBorder={false}
           />
-        </View>
+        </GlassSurface>
 
-        <View
-          className="bg-white rounded-xl overflow-hidden"
-          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
         >
           <SettingsRow
             icon="notifications-outline"
-            iconColor="#F59E0B"
-            iconBgColor="#FEF3C7"
+            iconColor={settingsIconPalettes.notifications.icon}
+            iconBgColor={settingsIconPalettes.notifications.background}
             title="Notifications"
             subtitle="Control alerts, sounds, and quiet hours"
             onPress={() => router.push('/settings/notifications')}
             showBorder={false}
           />
-        </View>
+        </GlassSurface>
 
-        <View
-          className="bg-white rounded-xl overflow-hidden"
-          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
         >
           <SettingsRow
             icon="alarm-outline"
-            iconColor="#10B981"
-            iconBgColor="#D1FAE5"
+            iconColor={settingsIconPalettes.reminders.icon}
+            iconBgColor={settingsIconPalettes.reminders.background}
             title="Reminders"
             subtitle="Configure quick and custom reminders"
             onPress={() => router.push('/settings/reminders')}
             showBorder={false}
           />
-        </View>
+        </GlassSurface>
 
-        <View
-          className="bg-white rounded-xl overflow-hidden"
-          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
         >
           <SettingsRow
             icon="cube-outline"
-            iconColor="#EA580C"
-            iconBgColor="#FFEDD5"
+            iconColor={settingsIconPalettes.stock.icon}
+            iconBgColor={settingsIconPalettes.stock.background}
             title="Stock"
             subtitle="Tune stock warning preferences"
             onPress={() => router.push('/settings/stock-settings')}
             showBorder={false}
           />
-        </View>
+        </GlassSurface>
 
-        <View
-          className="bg-white rounded-xl overflow-hidden"
-          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
         >
           <SettingsRow
             icon="information-circle-outline"
-            iconColor="#6366F1"
-            iconBgColor="#E0E7FF"
+            iconColor={settingsIconPalettes.support.icon}
+            iconBgColor={settingsIconPalettes.support.background}
             title="About & Support"
             subtitle="Version info, support, and policies"
             onPress={() => router.push('/settings/about-support')}
             showBorder={false}
           />
-        </View>
+        </GlassSurface>
 
-        <View
-          className="bg-white rounded-xl overflow-hidden"
-          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
         >
           <SettingsRow
             icon="receipt-outline"
-            iconColor={colors.primary[500]}
-            iconBgColor="#FFEDD5"
+            iconColor={settingsIconPalettes.orders.icon}
+            iconBgColor={settingsIconPalettes.orders.background}
             title="My Orders"
             subtitle="View your order history"
             onPress={() => router.push('/orders/history')}
             showBorder={false}
           />
-        </View>
+        </GlassSurface>
 
         {isManager && (
-          <View
-            className="bg-white rounded-xl overflow-hidden"
-            style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
+          <GlassSurface
+            intensity="subtle"
+            blurred={false}
+            style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
           >
             <SettingsRow
               icon="people-outline"
-              iconColor="#2563EB"
-              iconBgColor="#DBEAFE"
+              iconColor={settingsIconPalettes.users.icon}
+              iconBgColor={settingsIconPalettes.users.background}
               title="User Management"
               subtitle="Suspend inactive users and delete accounts"
               onPress={() => router.push('/(manager)/settings/user-management')}
             />
             <SettingsRow
               icon="swap-horizontal"
-              iconColor="#7C3AED"
-              iconBgColor="#EDE9FE"
+              iconColor={settingsIconPalettes.switchView.icon}
+              iconBgColor={settingsIconPalettes.switchView.background}
               title="Switch to Manager View"
               subtitle="Manage orders and fulfillment"
               onPress={handleSwitchToManager}
               showBorder={false}
             />
-          </View>
+          </GlassSurface>
         )}
 
-        <View
-          className="bg-white rounded-xl overflow-hidden"
-          style={[shadow.md, { marginHorizontal: ds.spacing(16), marginBottom: ds.spacing(16) }]}
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
         >
           <SettingsRow
             icon="log-out-outline"
-            iconColor="#EF4444"
-            iconBgColor="#FEE2E2"
+            iconColor={settingsIconPalettes.danger.icon}
+            iconBgColor={settingsIconPalettes.danger.background}
             title="Sign Out"
             onPress={handleSignOut}
             showChevron={false}
             destructive
             showBorder={false}
           />
-        </View>
+        </GlassSurface>
 
         <View className="items-center" style={{ marginTop: ds.spacing(8) }}>
-          <Text className="text-gray-400" style={{ fontSize: ds.fontSize(14) }}>
+          <Text style={{ fontSize: ds.fontSize(11), color: glassColors.textSecondary }}>
             Signed in as {user?.email}
           </Text>
         </View>
 
         <View className="items-center" style={{ paddingHorizontal: ds.spacing(24), paddingTop: ds.spacing(24), paddingBottom: ds.spacing(40) }}>
           <BrandLogo variant="footer" size={40} />
-          <Text className="text-gray-500" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(8) }}>Babytuna Systems</Text>
-          <Text className="text-gray-400" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4) }}>Version {appVersion}</Text>
+          <Text style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(8), color: glassColors.textPrimary }}>Babytuna Systems</Text>
+          <Text style={{ fontSize: ds.fontSize(11), marginTop: ds.spacing(4), color: glassColors.textSecondary }}>Version {appVersion}</Text>
         </View>
       </ScrollView>
     </SafeAreaView>

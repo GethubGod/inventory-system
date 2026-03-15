@@ -85,14 +85,14 @@ export default function SignUpScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-black">
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1 bg-black"
+        style={{ flex: 1, backgroundColor: colors.background }}
       >
         <ScrollView
-          className="flex-1 bg-black"
+          style={{ flex: 1, backgroundColor: colors.background }}
           contentContainerStyle={{ paddingVertical: 24 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -105,11 +105,13 @@ export default function SignUpScreen() {
             <View
               className="bg-white rounded-2xl p-6 border border-gray-100"
               style={{
-                elevation: 8,
-                shadowColor: '#000',
-                shadowOpacity: 0.25,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 6 },
+                backgroundColor: colors.card,
+                borderColor: colors.divider,
+                elevation: 0,
+                shadowColor: colors.background,
+                shadowOpacity: 0,
+                shadowRadius: 0,
+                shadowOffset: { width: 0, height: 0 },
               }}
             >
               <Text className="text-2xl font-bold text-gray-900 mb-6 text-center">
@@ -122,12 +124,12 @@ export default function SignUpScreen() {
                   <Ionicons
                     name="person-outline"
                     size={20}
-                    color={focusedInput === 'name' ? colors.primary[500] : '#9CA3AF'}
+                    color={focusedInput === 'name' ? colors.primary[500] : colors.gray[400]}
                   />
                   <TextInput
                     className="flex-1 ml-3 text-gray-900 text-base"
                     placeholder="Enter your name"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.gray[400]}
                     value={name}
                     onChangeText={setName}
                     autoComplete="name"
@@ -143,12 +145,12 @@ export default function SignUpScreen() {
                   <Ionicons
                     name="mail-outline"
                     size={20}
-                    color={focusedInput === 'email' ? colors.primary[500] : '#9CA3AF'}
+                    color={focusedInput === 'email' ? colors.primary[500] : colors.gray[400]}
                   />
                   <TextInput
                     className="flex-1 ml-3 text-gray-900 text-base"
                     placeholder="Enter your email"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.gray[400]}
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
@@ -166,12 +168,12 @@ export default function SignUpScreen() {
                   <Ionicons
                     name="lock-closed-outline"
                     size={20}
-                    color={focusedInput === 'password' ? colors.primary[500] : '#9CA3AF'}
+                    color={focusedInput === 'password' ? colors.primary[500] : colors.gray[400]}
                   />
                   <TextInput
                     className="flex-1 ml-3 text-gray-900 text-base"
                     placeholder="Create a password"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.gray[400]}
                     value={password}
                     onChangeText={(value) => {
                       setPassword(value);
@@ -192,7 +194,7 @@ export default function SignUpScreen() {
                     <Ionicons
                       name={showPassword ? 'eye-off-outline' : 'eye-outline'}
                       size={20}
-                      color="#9CA3AF"
+                      color={colors.gray[400]}
                     />
                   </TouchableOpacity>
                 </View>
@@ -208,7 +210,7 @@ export default function SignUpScreen() {
                     : isMet
                       ? 'checkmark-circle'
                       : 'close-circle';
-                  const iconColor = isNeutral ? '#9CA3AF' : isMet ? '#16A34A' : '#DC2626';
+                  const iconColor = isNeutral ? colors.gray[400] : isMet ? colors.success : colors.error;
                   const textColor = isNeutral ? 'text-gray-500' : isMet ? 'text-green-700' : 'text-red-600';
 
                   return (
@@ -229,12 +231,12 @@ export default function SignUpScreen() {
                   <Ionicons
                     name="shield-checkmark-outline"
                     size={20}
-                    color={focusedInput === 'confirmPassword' ? colors.primary[500] : '#9CA3AF'}
+                    color={focusedInput === 'confirmPassword' ? colors.primary[500] : colors.gray[400]}
                   />
                   <TextInput
                     className="flex-1 ml-3 text-gray-900 text-base"
                     placeholder="Re-enter your password"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.gray[400]}
                     value={confirmPassword}
                     onChangeText={(value) => {
                       setConfirmPassword(value);
@@ -252,7 +254,7 @@ export default function SignUpScreen() {
                     <Ionicons
                       name={showConfirmPassword ? 'eye-off-outline' : 'eye-outline'}
                       size={20}
-                      color="#9CA3AF"
+                      color={colors.gray[400]}
                     />
                   </TouchableOpacity>
                 </View>
@@ -261,12 +263,12 @@ export default function SignUpScreen() {
                   <Text className="text-xs text-gray-500 mt-1.5 ml-1">Re-enter password to confirm.</Text>
                 ) : passwordsMatch ? (
                   <View className="mt-1.5 ml-1 flex-row items-center">
-                    <Ionicons name="checkmark-circle" size={14} color="#16A34A" />
+                    <Ionicons name="checkmark-circle" size={14} color={colors.success} />
                     <Text className="text-xs text-green-700 ml-1">Passwords match</Text>
                   </View>
                 ) : (
                   <View className="mt-1.5 ml-1 flex-row items-center">
-                    <Ionicons name="close-circle" size={14} color="#DC2626" />
+                    <Ionicons name="close-circle" size={14} color={colors.error} />
                     <Text className="text-xs text-red-600 ml-1">Passwords do not match</Text>
                   </View>
                 )}
@@ -282,12 +284,12 @@ export default function SignUpScreen() {
                   <Ionicons
                     name="key-outline"
                     size={20}
-                    color={focusedInput === 'accessCode' ? colors.primary[500] : '#9CA3AF'}
+                    color={focusedInput === 'accessCode' ? colors.primary[500] : colors.gray[400]}
                   />
                   <TextInput
                     className="flex-1 ml-3 text-gray-900 text-base"
                     placeholder="Enter 4-digit code"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.gray[400]}
                     value={accessCode}
                     onChangeText={(value) => {
                       setAccessCode(sanitizeAccessCode(value));
@@ -313,7 +315,7 @@ export default function SignUpScreen() {
                     <Ionicons
                       name={showAccessCode ? 'eye-off-outline' : 'eye-outline'}
                       size={20}
-                      color="#9CA3AF"
+                      color={colors.gray[400]}
                     />
                   </TouchableOpacity>
                 </View>

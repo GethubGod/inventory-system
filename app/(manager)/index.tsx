@@ -280,7 +280,7 @@ export default function ManagerDashboard() {
               <Ionicons
                 name={showLocationPicker ? 'chevron-up' : 'chevron-down'}
                 size={ds.icon(14)}
-                color="#6B7280"
+                color={colors.gray[600]}
               />
             </TouchableOpacity>
 
@@ -294,7 +294,7 @@ export default function ManagerDashboard() {
               onPress={() => router.push('/(manager)/browse')}
               activeOpacity={0.8}
             >
-              <Ionicons name="grid-outline" size={ds.icon(20)} color="#6B7280" />
+              <Ionicons name="grid-outline" size={ds.icon(20)} color={colors.gray[600]} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -306,7 +306,7 @@ export default function ManagerDashboard() {
               onPress={() => router.push('/(manager)/cart')}
               activeOpacity={0.8}
             >
-              <Ionicons name="cart-outline" size={ds.icon(20)} color="#6B7280" />
+              <Ionicons name="cart-outline" size={ds.icon(20)} color={colors.gray[600]} />
               {cartCount > 0 && (
                 <View
                   className="absolute bg-primary-500 rounded-full items-center justify-center"
@@ -398,11 +398,13 @@ export default function ManagerDashboard() {
           <View
             className="bg-white rounded-2xl p-4 mb-6 border border-gray-100"
             style={{
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-              elevation: 2,
+              backgroundColor: colors.card,
+              borderColor: colors.divider,
+              shadowColor: colors.background,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0,
+              shadowRadius: 0,
+              elevation: 0,
             }}
           >
             <Text className="text-gray-900 font-bold" style={{ fontSize: ds.fontSize(28) }}>
@@ -416,11 +418,13 @@ export default function ManagerDashboard() {
           <View
             className="bg-white rounded-2xl p-4 mb-6 border border-gray-100"
             style={{
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-              elevation: 2,
+              backgroundColor: colors.card,
+              borderColor: colors.divider,
+              shadowColor: colors.background,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0,
+              shadowRadius: 0,
+              elevation: 0,
             }}
           >
             <View className="flex-row items-center justify-between">
@@ -458,11 +462,13 @@ export default function ManagerDashboard() {
           <View
             className="bg-white rounded-2xl p-4 border border-gray-100"
             style={{
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-              elevation: 2,
+              backgroundColor: colors.card,
+              borderColor: colors.divider,
+              shadowColor: colors.background,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0,
+              shadowRadius: 0,
+              elevation: 0,
             }}
           >
             <View className="flex-row justify-between items-center mb-4">
@@ -475,7 +481,7 @@ export default function ManagerDashboard() {
 
             {employeeActivity.length === 0 ? (
               <View className="py-8 items-center">
-                <Ionicons name="people-outline" size={40} color="#D1D5DB" />
+                <Ionicons name="people-outline" size={40} color={colors.gray[300]} />
                 <Text className="text-gray-400 mt-2">No recent activity</Text>
               </View>
             ) : (
@@ -508,10 +514,10 @@ export default function ManagerDashboard() {
                       </View>
 
                       <View className="flex-row items-center mt-1">
-                        <Ionicons name="location-outline" size={12} color="#9CA3AF" />
+                        <Ionicons name="location-outline" size={12} color={colors.gray[400]} />
                         <Text className="text-gray-400 text-xs ml-1">{activity.locationName}</Text>
                         <Text className="text-gray-300 mx-2">•</Text>
-                        <Ionicons name="time-outline" size={12} color="#9CA3AF" />
+                        <Ionicons name="time-outline" size={12} color={colors.gray[400]} />
                         <Text className="text-gray-400 text-xs ml-1">{formatTimeAgo(activity.timestamp)}</Text>
                       </View>
                     </View>
@@ -533,11 +539,13 @@ export default function ManagerDashboard() {
             style={{
               paddingHorizontal: 16,
               paddingVertical: 16,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-              elevation: 2,
+              backgroundColor: colors.card,
+              borderColor: colors.divider,
+              shadowColor: colors.background,
+              shadowOffset: { width: 0, height: 0 },
+              shadowOpacity: 0,
+              shadowRadius: 0,
+              elevation: 0,
             }}
             onPress={() => router.push('/(manager)/browse')}
             activeOpacity={0.7}
@@ -552,7 +560,7 @@ export default function ManagerDashboard() {
               <Text className="font-bold text-gray-900 text-base">Browse Inventory</Text>
               <Text className="text-gray-500 text-sm mt-0.5">Search and add items by category</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+            <Ionicons name="chevron-forward" size={20} color={colors.gray[400]} />
           </TouchableOpacity>
         </ScrollView>
       </ManagerScaleContainer>

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useDisplayStore } from '@/store';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { colors } from '@/constants';
 
 interface Option<T> {
   value: T;
@@ -67,7 +68,7 @@ export function MultiOptionToggle<T extends string | number>({
               }`}
               style={{
                 fontSize: ds.fontSize(14),
-                color: isOptionDisabled && !isSelected ? '#9CA3AF' : undefined,
+                color: isOptionDisabled && !isSelected ? colors.gray[400] : undefined,
               }}
               numberOfLines={1}
             >

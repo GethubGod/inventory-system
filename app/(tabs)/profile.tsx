@@ -102,7 +102,7 @@ export default function ProfileScreen() {
                     <Ionicons
                       name="restaurant"
                       size={20}
-                      color={isSelected ? 'white' : '#6B7280'}
+                      color={isSelected ? colors.white : colors.gray[600]}
                     />
                   </View>
                   <View className="ml-3 flex-1">
@@ -137,7 +137,7 @@ export default function ProfileScreen() {
           onPress={handleSignOut}
           disabled={isLoading}
         >
-          <Ionicons name="log-out-outline" size={ds.icon(20)} color="#EF4444" />
+          <Ionicons name="log-out-outline" size={ds.icon(20)} color={colors.error} />
           <Text className="text-red-500 font-semibold" style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}>Sign Out</Text>
         </TouchableOpacity>
       </ScrollView>

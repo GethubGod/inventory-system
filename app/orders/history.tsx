@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabase';
 import { OrderWithDetails, OrderStatus } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS, colors } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { glassColors, glassRadii, glassSpacing, glassTypography } from '@/design/tokens';
 
 const statuses: (OrderStatus | null)[] = [null, 'submitted', 'fulfilled', 'cancelled'];
 
@@ -55,14 +56,15 @@ function OrderListCard({ order }: { order: OrderWithDetails }) {
       onPress={() => router.push(`/orders/${order.id}`)}
       className="bg-white"
       style={{
+        backgroundColor: colors.card,
         borderRadius: ds.radius(16),
         paddingHorizontal: ds.spacing(16),
         paddingVertical: ds.spacing(14),
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 4,
-        elevation: 2,
+        shadowColor: colors.background,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        elevation: 0,
       }}
       activeOpacity={0.7}
     >
@@ -191,27 +193,24 @@ export default function OrdersScreen() {
   );
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
       {/* Header */}
-      <View
-        className="bg-white border-b border-gray-100 flex-row items-center"
-        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(10) }}
-      >
+      <View style={{ 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        paddingHorizontal: glassSpacing.screen, 
+        paddingVertical: ds.spacing(12),
+        backgroundColor: glassColors.background 
+      }}>
         <View className="flex-row items-center flex-1">
           <TouchableOpacity
             onPress={() => router.back()}
-            style={{
-              minWidth: 44,
-              minHeight: 44,
-              marginRight: ds.spacing(8),
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+            style={{ width: 44, height: 44, borderRadius: glassRadii.round, backgroundColor: glassColors.mediumFill, alignItems: 'center', justifyContent: 'center', marginRight: ds.spacing(12) }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
+            <Ionicons name="arrow-back" size={ds.icon(22)} color={glassColors.textPrimary} />
           </TouchableOpacity>
-          <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(22) }}>My Orders</Text>
+          <Text style={{ fontSize: glassTypography.screenTitle, fontWeight: '700', color: glassColors.textPrimary }}>My Orders</Text>
         </View>
       </View>
 

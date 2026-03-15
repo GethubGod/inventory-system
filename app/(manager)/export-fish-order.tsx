@@ -191,8 +191,8 @@ export default function ExportFishOrderScreen() {
           title: 'Confirm Order',
           headerBackTitle: 'Back',
           headerTintColor: colors.primary[500],
-          headerStyle: { backgroundColor: '#FFFFFF' },
-          headerTitleStyle: { color: '#111827', fontWeight: '600' },
+          headerStyle: { backgroundColor: colors.white },
+          headerTitleStyle: { color: colors.text, fontWeight: '600' },
         }}
       />
       <SafeAreaView className="flex-1 bg-gray-50" edges={['bottom']}>
@@ -202,7 +202,7 @@ export default function ExportFishOrderScreen() {
           <View
             className="bg-white rounded-2xl p-4 mb-4 border border-gray-200"
             style={{
-              shadowColor: '#000',
+              shadowColor: colors.background,
               shadowOffset: { width: 0, height: 1 },
               shadowOpacity: 0.05,
               shadowRadius: 4,
@@ -256,7 +256,7 @@ export default function ExportFishOrderScreen() {
                 key={item.itemId}
                 className="bg-white rounded-xl p-4 mb-3 border border-gray-200 flex-row items-center"
                 style={{
-                  shadowColor: '#000',
+                  shadowColor: colors.background,
                   shadowOffset: { width: 0, height: 1 },
                   shadowOpacity: 0.05,
                   shadowRadius: 4,
@@ -310,7 +310,7 @@ export default function ExportFishOrderScreen() {
                 key={index}
                 className="bg-white rounded-xl p-4 mb-3 border border-gray-200 flex-row items-center"
                 style={{
-                  shadowColor: '#000',
+                  shadowColor: colors.background,
                   shadowOffset: { width: 0, height: 1 },
                   shadowOpacity: 0.05,
                   shadowRadius: 4,
@@ -369,7 +369,7 @@ export default function ExportFishOrderScreen() {
           <View
             className="bg-white rounded-xl p-4 border border-gray-200"
             style={{
-              shadowColor: '#000',
+              shadowColor: colors.background,
               shadowOffset: { width: 0, height: 1 },
               shadowOpacity: 0.05,
               shadowRadius: 4,

@@ -72,23 +72,23 @@ function statusConfig(status: EmployeeReminderStatusRow['status']) {
   if (status === 'reminder_active') {
     return {
       label: 'Reminder Active',
-      bg: '#FFEDD5',
-      text: '#C2410C',
+      bg: colors.primary[50],
+      text: colors.primary[700],
     };
   }
 
   if (status === 'overdue') {
     return {
       label: 'Overdue',
-      bg: '#FEE2E2',
-      text: '#B91C1C',
+      bg: colors.errorBg,
+      text: colors.error,
     };
   }
 
   return {
     label: 'OK',
-    bg: '#DCFCE7',
-    text: '#166534',
+    bg: colors.successBg,
+    text: colors.success,
   };
 }
 
@@ -374,13 +374,13 @@ export default function EmployeeRemindersScreen() {
               {row.notificationsOff && (
                 <View
                   style={{
-                    backgroundColor: '#E5E7EB',
+                    backgroundColor: colors.gray[200],
                     paddingHorizontal: ds.spacing(8),
                     paddingVertical: ds.spacing(3),
                     borderRadius: ds.radius(999),
                   }}
                 >
-                  <Text style={{ color: '#374151', fontSize: ds.fontSize(11), fontWeight: '700' }}>
+                  <Text style={{ color: colors.gray[700], fontSize: ds.fontSize(11), fontWeight: '700' }}>
                     Notifications OFF
                   </Text>
                 </View>
@@ -440,7 +440,7 @@ export default function EmployeeRemindersScreen() {
 
           <TouchableOpacity
             onPress={() => setShowMoreMenu(true)}
-            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: colors.gray[100], alignItems: 'center', justifyContent: 'center' }}
           >
             <Ionicons name="ellipsis-horizontal" size={18} color={colors.gray[700]} />
           </TouchableOpacity>
@@ -532,7 +532,7 @@ export default function EmployeeRemindersScreen() {
               <Ionicons
                 name="warning-outline"
                 size={ds.icon(16)}
-                color="#B45309"
+                color={colors.warning}
                 style={{ marginTop: 1 }}
               />
               <Text
@@ -571,7 +571,7 @@ export default function EmployeeRemindersScreen() {
           <TouchableOpacity
             activeOpacity={1}
             onPress={() => setShowLocationMenu(false)}
-            style={{ flex: 1, backgroundColor: 'rgba(17,24,39,0.35)', justifyContent: 'flex-end' }}
+            style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' }}
           >
             <View className="bg-white" style={{ borderTopLeftRadius: ds.radius(20), borderTopRightRadius: ds.radius(20), paddingBottom: ds.spacing(20) }}>
               <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(16), padding: ds.spacing(16) }}>
@@ -606,7 +606,7 @@ export default function EmployeeRemindersScreen() {
           <TouchableOpacity
             activeOpacity={1}
             onPress={() => setShowSortMenu(false)}
-            style={{ flex: 1, backgroundColor: 'rgba(17,24,39,0.35)', justifyContent: 'flex-end' }}
+            style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' }}
           >
             <View className="bg-white" style={{ borderTopLeftRadius: ds.radius(20), borderTopRightRadius: ds.radius(20), paddingBottom: ds.spacing(20) }}>
               <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(16), padding: ds.spacing(16) }}>
@@ -639,7 +639,7 @@ export default function EmployeeRemindersScreen() {
           <TouchableOpacity
             activeOpacity={1}
             onPress={() => setShowMoreMenu(false)}
-            style={{ flex: 1, backgroundColor: 'rgba(17,24,39,0.35)', justifyContent: 'flex-end' }}
+            style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' }}
           >
             <View className="bg-white" style={{ borderTopLeftRadius: ds.radius(20), borderTopRightRadius: ds.radius(20), paddingBottom: ds.spacing(20) }}>
               <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(16), padding: ds.spacing(16) }}>

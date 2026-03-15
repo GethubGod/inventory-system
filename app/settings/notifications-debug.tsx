@@ -105,9 +105,9 @@ export default function NotificationsDebugScreen() {
       value === null ? 'null' : typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value);
     const color =
       value === true || value === 'granted'
-        ? '#16A34A'
+        ? colors.success
         : value === false || value === 'denied'
-          ? '#DC2626'
+          ? colors.error
           : colors.gray[700];
 
     return (

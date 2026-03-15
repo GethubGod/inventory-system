@@ -11,30 +11,56 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useOrderStore } from '@/store';
-import { colors } from '@/constants';
+import { GlassSurface } from '@/components';
+import { useAuthStore, useOrderStore } from '@/store';
+import {
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+  glassSpacing,
+  glassTypography,
+} from '@/design/tokens';
+import { colors } from '@/theme/design';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 const AUTO_DISMISS_SECONDS = 3;
 
 export default function OrderConfirmationScreen() {
+  const ds = useScaledStyles();
   const { currentOrder } = useOrderStore();
+  const { user, profile } = useAuthStore();
   const params = useLocalSearchParams<{
     orderNumber?: string | string[];
     locationName?: string | string[];
   }>();
   const [countdown, setCountdown] = useState(AUTO_DISMISS_SECONDS);
 
-  // Animation values
   const popupScale = useRef(new Animated.Value(0.8)).current;
   const popupOpacity = useRef(new Animated.Value(0)).current;
   const checkmarkScale = useRef(new Animated.Value(0)).current;
   const progressWidth = useRef(new Animated.Value(100)).current;
 
-  const routeOrderNumber = Array.isArray(params.orderNumber) ? params.orderNumber[0] : params.orderNumber;
-  const routeLocationName = Array.isArray(params.locationName) ? params.locationName[0] : params.locationName;
-  const orderNumber = routeOrderNumber || currentOrder?.order_number?.toString() || '---';
-  const locationName = routeLocationName || currentOrder?.location?.name || 'Location';
+  const routeOrderNumber = Array.isArray(params.orderNumber)
+    ? params.orderNumber[0]
+    : params.orderNumber;
+  const routeLocationName = Array.isArray(params.locationName)
+    ? params.locationName[0]
+    : params.locationName;
+  const orderNumber =
+    routeOrderNumber || currentOrder?.order_number?.toString() || '---';
+  const locationName =
+    routeLocationName || currentOrder?.location?.name || 'Location';
   const itemCount = currentOrder?.order_items?.length || 0;
+  const submittedBy = profile?.full_name || user?.name || user?.email || 'Staff';
+  const submittedAt = currentOrder?.created_at
+    ? new Date(currentOrder.created_at).toLocaleTimeString([], {
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : new Date().toLocaleTimeString([], {
+        hour: 'numeric',
+        minute: '2-digit',
+      });
 
   const handleClose = useCallback(() => {
     if (Platform.OS !== 'web') {
@@ -44,12 +70,10 @@ export default function OrderConfirmationScreen() {
   }, []);
 
   useEffect(() => {
-    // Play success haptic
     if (Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
-    // Animate popup in
     Animated.parallel([
       Animated.spring(popupScale, {
         toValue: 1,
@@ -64,7 +88,6 @@ export default function OrderConfirmationScreen() {
       }),
     ]).start();
 
-    // Animate checkmark
     Animated.sequence([
       Animated.delay(100),
       Animated.spring(checkmarkScale, {
@@ -75,7 +98,6 @@ export default function OrderConfirmationScreen() {
       }),
     ]).start();
 
-    // Animate progress bar
     Animated.timing(progressWidth, {
       toValue: 0,
       duration: AUTO_DISMISS_SECONDS * 1000,
@@ -83,7 +105,6 @@ export default function OrderConfirmationScreen() {
       useNativeDriver: false,
     }).start();
 
-    // Countdown timer
     const countdownInterval = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
@@ -94,7 +115,6 @@ export default function OrderConfirmationScreen() {
       });
     }, 1000);
 
-    // Auto dismiss after countdown
     const dismissTimeout = setTimeout(() => {
       handleClose();
     }, AUTO_DISMISS_SECONDS * 1000);
@@ -106,70 +126,176 @@ export default function OrderConfirmationScreen() {
   }, [checkmarkScale, handleClose, popupOpacity, popupScale, progressWidth]);
 
   return (
-    <View className="flex-1 bg-black/50 items-center justify-center px-6">
+    <View
+      className="flex-1 items-center justify-center"
+      style={{
+        backgroundColor: colors.overlay,
+        paddingHorizontal: glassSpacing.screen,
+      }}
+    >
       <Pressable className="absolute inset-0" onPress={handleClose} />
 
       <Animated.View
         style={{
+          width: '100%',
+          maxWidth: 360,
           transform: [{ scale: popupScale }],
           opacity: popupOpacity,
         }}
-        className="bg-white rounded-3xl w-full max-w-sm overflow-hidden"
       >
-        {/* Progress bar */}
-        <View className="h-1 bg-gray-100">
-          <Animated.View
-            className="h-full bg-green-500"
+        <GlassSurface intensity="strong" style={{ borderRadius: glassRadii.surface }}>
+          <View
             style={{
-              width: progressWidth.interpolate({
-                inputRange: [0, 100],
-                outputRange: ['0%', '100%'],
-              }),
+              height: 3,
+              backgroundColor: glassColors.mediumFill,
             }}
-          />
-        </View>
-
-        {/* Close button */}
-        <TouchableOpacity
-          onPress={handleClose}
-          className="absolute top-3 right-3 z-10 w-8 h-8 bg-gray-100 rounded-full items-center justify-center"
-        >
-          <Ionicons name="close" size={18} color="#6B7280" />
-        </TouchableOpacity>
-
-        <View className="p-6 items-center">
-          {/* Success checkmark */}
-          <Animated.View
-            style={{ transform: [{ scale: checkmarkScale }] }}
-            className="w-16 h-16 bg-green-500 rounded-full items-center justify-center mb-4"
           >
-            <Ionicons name="checkmark" size={36} color="white" />
-          </Animated.View>
-
-          {/* Order info */}
-          <Text className="text-2xl font-bold text-gray-900 text-center">
-            Order #{orderNumber}
-          </Text>
-          <Text className="text-lg text-green-600 font-semibold mt-1">
-            Submitted!
-          </Text>
-
-          <View className="flex-row items-center mt-3 mb-4">
-            <Ionicons name="location" size={16} color={colors.primary[500]} />
-            <Text className="text-gray-600 ml-1">{locationName}</Text>
-            {itemCount > 0 && (
-              <>
-                <Text className="text-gray-400 mx-2">•</Text>
-                <Text className="text-gray-500">{itemCount} items</Text>
-              </>
-            )}
+            <Animated.View
+              style={{
+                height: '100%',
+                backgroundColor: glassColors.accent,
+                width: progressWidth.interpolate({
+                  inputRange: [0, 100],
+                  outputRange: ['0%', '100%'],
+                }),
+              }}
+            />
           </View>
 
-          {/* Countdown text */}
-          <Text className="text-gray-400 text-sm">
-            Closing in {countdown}s
-          </Text>
-        </View>
+          <TouchableOpacity
+            onPress={handleClose}
+            style={{
+              position: 'absolute',
+              top: 12,
+              right: 12,
+              zIndex: 10,
+              width: 32,
+              height: 32,
+              borderRadius: glassRadii.round,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: glassColors.mediumFill,
+            }}
+          >
+            <Ionicons name="close" size={18} color={glassColors.textSecondary} />
+          </TouchableOpacity>
+
+          <View style={{ padding: ds.spacing(32), alignItems: 'center' }}>
+            <Animated.View
+              style={{
+                transform: [{ scale: checkmarkScale }],
+                width: 80,
+                height: 80,
+                borderRadius: glassRadii.round,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: ds.spacing(24),
+                backgroundColor: 'rgba(52, 199, 89, 0.12)',
+              }}
+            >
+              <Ionicons name="checkmark" size={40} color="#34C759" />
+            </Animated.View>
+
+            <Text
+              style={{
+                fontSize: glassTypography.screenTitle,
+                fontWeight: '700',
+                color: glassColors.textPrimary,
+                textAlign: 'center',
+              }}
+            >
+              Order submitted
+            </Text>
+            <Text
+              style={{
+                marginTop: ds.spacing(8),
+                fontSize: ds.fontSize(14),
+                color: glassColors.textSecondary,
+                textAlign: 'center',
+              }}
+            >
+              {itemCount} items ready to process
+            </Text>
+
+            <GlassSurface
+              intensity="medium"
+              blurred={false}
+              style={{
+                width: '100%',
+                marginTop: 24,
+                paddingHorizontal: glassSpacing.card + 4,
+                paddingVertical: glassSpacing.card + 4,
+                borderRadius: glassRadii.surface,
+              }}
+            >
+              {[
+                ['Order ID', `#${orderNumber}`],
+                ['Location', locationName],
+                ['Submitted by', submittedBy],
+                ['Time', submittedAt],
+              ].map(([label, value], index) => (
+                <View
+                  key={label}
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    paddingVertical: 10,
+                    borderTopWidth: index > 0 ? glassHairlineWidth : 0,
+                    borderTopColor: glassColors.divider,
+                  }}
+                >
+                  <Text style={{ fontSize: ds.fontSize(14), color: glassColors.textSecondary }}>
+                    {label}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(14),
+                      fontWeight: '600',
+                      color: glassColors.textPrimary,
+                    }}
+                  >
+                    {value}
+                  </Text>
+                </View>
+              ))}
+            </GlassSurface>
+
+            <TouchableOpacity
+              onPress={handleClose}
+              style={{
+                marginTop: 18,
+                width: '100%',
+                minHeight: 48,
+                borderRadius: glassRadii.surface,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: glassColors.mediumFill,
+                borderWidth: glassHairlineWidth,
+                borderColor: glassColors.controlBorder,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: ds.fontSize(15),
+                  fontWeight: '600',
+                  color: glassColors.textPrimary,
+                }}
+              >
+                Back to browse
+              </Text>
+            </TouchableOpacity>
+
+            <Text
+              style={{
+                marginTop: ds.spacing(12),
+                fontSize: ds.fontSize(12),
+                color: glassColors.textSecondary,
+              }}
+            >
+              Closing in {countdown}s
+            </Text>
+          </View>
+        </GlassSurface>
       </Animated.View>
     </View>
   );

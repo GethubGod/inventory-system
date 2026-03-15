@@ -2,12 +2,12 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
-import { colors } from '@/constants';
-import { SettingsRow } from '@/components/settings';
+import * as Linking from 'expo-linking';
+import { BrandLogo, GlassSurface, StackScreenHeader } from '@/components';
+import { SettingsRow, settingsIconPalettes } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { glassColors, glassRadii, glassSpacing } from '@/design/tokens';
 
 const APPSTORE_COMPLIANCE_LINKS = {
   support: 'https://www.babytunasystems.com/support',
@@ -33,19 +33,29 @@ function AboutSection() {
   };
 
   return (
-    <View>
+    <GlassSurface
+      intensity="subtle"
+      blurred={false}
+      style={{ marginHorizontal: glassSpacing.screen, borderRadius: glassRadii.surface }}
+    >
       <View
-        className="flex-row justify-between items-center border-b border-gray-100"
-        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(14), minHeight: Math.max(ds.rowH, 56) }}
+        className="flex-row justify-between items-center"
+        style={{
+          paddingHorizontal: ds.spacing(16),
+          paddingVertical: ds.spacing(14),
+          minHeight: Math.max(ds.rowH, 56),
+          borderBottomWidth: 1,
+          borderBottomColor: glassColors.divider,
+        }}
       >
-        <Text className="text-gray-900" style={{ fontSize: ds.fontSize(16) }}>App Version</Text>
-        <Text className="text-gray-500" style={{ fontSize: ds.fontSize(16) }}>{appVersion}</Text>
+        <Text style={{ fontSize: ds.fontSize(16), color: glassColors.textPrimary }}>App Version</Text>
+        <Text style={{ fontSize: ds.fontSize(16), color: glassColors.textSecondary }}>{appVersion}</Text>
       </View>
 
       <SettingsRow
         icon="mail-outline"
-        iconColor="#3B82F6"
-        iconBgColor="#DBEAFE"
+        iconColor={settingsIconPalettes.profile.icon}
+        iconBgColor={settingsIconPalettes.profile.background}
         title="Contact Support"
         subtitle="Get help with the app"
         onPress={() => {
@@ -55,8 +65,8 @@ function AboutSection() {
 
       <SettingsRow
         icon="chatbubble-outline"
-        iconColor="#10B981"
-        iconBgColor="#D1FAE5"
+        iconColor={settingsIconPalettes.reminders.icon}
+        iconBgColor={settingsIconPalettes.reminders.background}
         title="Send Feedback"
         subtitle="Tell us what you think"
         onPress={() => {
@@ -66,38 +76,28 @@ function AboutSection() {
 
       <SettingsRow
         icon="shield-outline"
-        iconColor="#6B7280"
-        iconBgColor="#F3F4F6"
+        iconColor={settingsIconPalettes.neutral.icon}
+        iconBgColor={settingsIconPalettes.neutral.background}
         title="Privacy Policy"
         onPress={() => {
           void openExternalUrl(APPSTORE_COMPLIANCE_LINKS.privacy);
         }}
         showBorder={false}
       />
-    </View>
+    </GlassSurface>
   );
 }
 
 export default function AboutSupportSettingsScreen() {
   const ds = useScaledStyles();
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      <View
-        className="bg-white border-b border-gray-100 flex-row items-center"
-        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
-        </TouchableOpacity>
-        <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>About & Support</Text>
-      </View>
-
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
+      <StackScreenHeader title="About & Support" />
+      <ScrollView contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
         <AboutSection />
+        <View className="items-center" style={{ paddingHorizontal: ds.spacing(24), paddingTop: ds.spacing(24), paddingBottom: ds.spacing(40) }}>
+          <BrandLogo variant="footer" size={40} />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

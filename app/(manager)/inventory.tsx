@@ -71,9 +71,9 @@ const BULK_BAR_HEIGHT = 88;
 const ADD_EMOJIS = ['🐟', '🥩', '🥬', '🧊', '❄️', '🍶', '🍺', '📦', '🥗', '🍜'];
 
 const STATUS_COLORS = {
-  critical: '#EF4444',
-  low: '#F59E0B',
-  good: '#10B981',
+  critical: colors.error,
+  low: colors.warning,
+  good: colors.success,
 } as const;
 
 type InventoryStatus = 'critical' | 'low' | 'good';
@@ -1337,7 +1337,7 @@ export default function ManagerInventoryScreen() {
           style={{
             paddingHorizontal: ds.spacing(16),
             paddingVertical: ds.spacing(14),
-            shadowColor: '#000',
+            shadowColor: colors.background,
             shadowOffset: { width: 0, height: 1 },
             shadowOpacity: 0.05,
             shadowRadius: 2,
@@ -1510,7 +1510,7 @@ export default function ManagerInventoryScreen() {
                   handleAddToReorder(item);
                 }}
               >
-                <Ionicons name={added ? 'checkmark' : 'add'} size={ds.icon(16)} color={added ? '#16A34A' : colors.primary[500]} />
+                <Ionicons name={added ? 'checkmark' : 'add'} size={ds.icon(16)} color={added ? colors.success : colors.primary[500]} />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -1711,26 +1711,26 @@ export default function ManagerInventoryScreen() {
               borderRadius: ds.radius(16),
               paddingHorizontal: ds.spacing(14),
               height: ds.buttonH,
-              shadowColor: '#111827',
+              shadowColor: colors.text,
               shadowOffset: { width: 0, height: 4 },
               shadowOpacity: 0.06,
               shadowRadius: 10,
               elevation: 3,
             }}
           >
-            <Ionicons name="search-outline" size={ds.icon(20)} color="#9CA3AF" />
+            <Ionicons name="search-outline" size={ds.icon(20)} color={colors.gray[400]} />
             <TextInput
               className="flex-1 text-gray-900"
               style={{ fontSize: ds.fontSize(14), marginLeft: ds.spacing(8) }}
               placeholder="Search items..."
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor={colors.gray[400]}
               value={searchQuery}
               onChangeText={setSearchQuery}
               autoCapitalize="none"
             />
             {searchQuery.length > 0 && (
               <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close-circle" size={ds.icon(20)} color="#9CA3AF" />
+                <Ionicons name="close-circle" size={ds.icon(20)} color={colors.gray[400]} />
               </TouchableOpacity>
             )}
           </View>
@@ -1741,9 +1741,9 @@ export default function ManagerInventoryScreen() {
             contentContainerStyle={{ paddingVertical: ds.spacing(12) }}
           >
             {([
-              { key: 'reorder', label: 'Reorder', count: stats.reorder, color: '#EF4444' },
-              { key: 'low', label: 'Low', count: stats.low, color: '#F59E0B' },
-              { key: 'good', label: 'Good', count: stats.good, color: '#10B981' },
+              { key: 'reorder', label: 'Reorder', count: stats.reorder, color: colors.error },
+              { key: 'low', label: 'Low', count: stats.low, color: colors.warning },
+              { key: 'good', label: 'Good', count: stats.good, color: colors.success },
               { key: 'overdue', label: 'Overdue', count: stats.overdue, color: colors.primary[500] },
             ] as const).map((pill) => {
               const isSelected = selectedStat === pill.key;
@@ -1757,8 +1757,8 @@ export default function ManagerInventoryScreen() {
                     paddingVertical: ds.spacing(10),
                     marginRight: ds.spacing(10),
                     minWidth: ds.spacing(88),
-                    borderColor: isSelected ? colors.primary[500] : '#E5E7EB',
-                    backgroundColor: isSelected ? '#FFF7ED' : '#FFFFFF',
+                    borderColor: isSelected ? colors.primary[500] : colors.gray[200],
+                    backgroundColor: isSelected ? colors.primary[50] : colors.white,
                     opacity: isDimmed ? 0.5 : 1,
                   }}
                   onPress={() =>
@@ -1802,7 +1802,7 @@ export default function ManagerInventoryScreen() {
                     paddingHorizontal: ds.spacing(16),
                     paddingVertical: ds.spacing(8),
                     marginRight: ds.spacing(8),
-                    backgroundColor: isSelected ? colors.primary[500] : '#F3F4F6',
+                    backgroundColor: isSelected ? colors.primary[500] : colors.gray[100],
                   }}
                   onPress={() => setCategoryFilter(category)}
                 >
@@ -1830,7 +1830,7 @@ export default function ManagerInventoryScreen() {
                 style={{
                   width: Math.max(36, ds.icon(32)),
                   height: Math.max(36, ds.icon(32)),
-                  backgroundColor: inventoryView === 'list' ? '#FFF7ED' : '#F3F4F6',
+                  backgroundColor: inventoryView === 'list' ? colors.primary[50] : colors.gray[100],
                   marginRight: ds.spacing(8),
                 }}
                 onPress={() => setInventoryView('list')}
@@ -1842,7 +1842,7 @@ export default function ManagerInventoryScreen() {
                 style={{
                   width: Math.max(36, ds.icon(32)),
                   height: Math.max(36, ds.icon(32)),
-                  backgroundColor: inventoryView === 'compact' ? '#FFF7ED' : '#F3F4F6',
+                  backgroundColor: inventoryView === 'compact' ? colors.primary[50] : colors.gray[100],
                 }}
                 onPress={() => setInventoryView('compact')}
               >
@@ -2191,7 +2191,7 @@ export default function ManagerInventoryScreen() {
                         </View>
                         {existing && !isCurrent ? (
                           <View className="flex-row items-center mt-2">
-                            <Ionicons name="alert-circle" size={14} color="#F59E0B" />
+                            <Ionicons name="alert-circle" size={14} color={colors.warning} />
                             <Text className="text-xs text-amber-600 ml-1">Item already exists here</Text>
                           </View>
                         ) : null}
@@ -2663,7 +2663,7 @@ export default function ManagerInventoryScreen() {
                     <TextInput
                       className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
                       placeholder="e.g., Dragon Fruit"
-                      placeholderTextColor="#9CA3AF"
+                      placeholderTextColor={colors.gray[400]}
                       value={form.name}
                       onChangeText={(text) => setForm({ ...form, name: text })}
                     />
@@ -2682,7 +2682,7 @@ export default function ManagerInventoryScreen() {
                             style={{ backgroundColor: isSelected ? color : color + '20' }}
                             onPress={() => setForm({ ...form, category: cat })}
                           >
-                            <Text style={{ color: isSelected ? '#FFFFFF' : color }} className="text-sm font-medium">
+                            <Text style={{ color: isSelected ? colors.white : color }} className="text-sm font-medium">
                               {CATEGORY_LABELS[cat]}
                             </Text>
                           </TouchableOpacity>
@@ -2972,7 +2972,7 @@ export default function ManagerInventoryScreen() {
             <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
               <View className="bg-blue-50 rounded-xl p-4 mb-4 border border-blue-100">
                 <View className="flex-row items-start">
-                  <Ionicons name="information-circle" size={20} color="#3B82F6" />
+                  <Ionicons name="information-circle" size={20} color={colors.info} />
                   <View className="flex-1 ml-2">
                     <Text className="text-blue-800 font-medium">How to use</Text>
                     <Text className="text-blue-700 text-sm mt-1">
@@ -2987,7 +2987,7 @@ export default function ManagerInventoryScreen() {
                 <TextInput
                   className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
                   placeholder={"Salmon\nTuna\nYellowtail\nMackerel"}
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.gray[400]}
                   value={bulkInput}
                   onChangeText={setBulkInput}
                   multiline
@@ -3016,7 +3016,7 @@ export default function ManagerInventoryScreen() {
                         style={{ backgroundColor: isSelected ? color : color + '20' }}
                         onPress={() => setBulkCategory(cat)}
                       >
-                        <Text style={{ color: isSelected ? '#FFFFFF' : color }} className="text-sm font-medium">
+                        <Text style={{ color: isSelected ? colors.white : color }} className="text-sm font-medium">
                           {CATEGORY_LABELS[cat]}
                         </Text>
                       </TouchableOpacity>
@@ -3051,7 +3051,7 @@ export default function ManagerInventoryScreen() {
                   <TextInput
                     className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
                     placeholder="e.g., lb"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.gray[400]}
                     value={bulkBaseUnit}
                     onChangeText={setBulkBaseUnit}
                   />
@@ -3061,7 +3061,7 @@ export default function ManagerInventoryScreen() {
                   <TextInput
                     className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
                     placeholder="e.g., case"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.gray[400]}
                     value={bulkPackUnit}
                     onChangeText={setBulkPackUnit}
                   />
@@ -3073,7 +3073,7 @@ export default function ManagerInventoryScreen() {
                 <TextInput
                   className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-900"
                   placeholder="10"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.gray[400]}
                   value={bulkPackSize}
                   onChangeText={setBulkPackSize}
                   keyboardType="number-pad"

@@ -9,6 +9,7 @@ import { colors } from '@/constants';
 import { MultiOptionToggle, SettingToggle } from '@/components/settings';
 import { TEXT_SCALE_LABELS } from '@/types/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { glassColors, glassRadii, glassSpacing, glassTypography, glassHairlineWidth } from '@/design/tokens';
 
 
 function PreviewCard() {
@@ -37,9 +38,9 @@ function PreviewCard() {
             <View className="flex-row items-center" style={{ marginTop: ds.spacing(4) }}>
               <View
                 className="rounded"
-                style={{ backgroundColor: '#EF444420', paddingHorizontal: ds.spacing(8), paddingVertical: ds.spacing(2) }}
+                style={{ backgroundColor: colors.errorBg, paddingHorizontal: ds.spacing(8), paddingVertical: ds.spacing(2) }}
               >
-                <Text style={{ color: '#EF4444', fontSize: ds.fontSize(11) }} className="font-medium">
+                <Text style={{ color: colors.error, fontSize: ds.fontSize(11) }} className="font-medium">
                   Fish & Seafood
                 </Text>
               </View>
@@ -126,7 +127,7 @@ function DisplaySection() {
                   height: Math.max(44, ds.buttonH - 8),
                   justifyContent: 'center',
                   alignItems: 'center',
-                  backgroundColor: isSelected ? '#FFF7ED' : '#FFFFFF',
+                  backgroundColor: isSelected ? colors.primary[50] : colors.background,
                 }}
                 activeOpacity={0.7}
               >
@@ -240,16 +241,24 @@ function DisplaySection() {
 export default function DisplayAccessibilitySettingsScreen() {
   const ds = useScaledStyles();
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      <View className="bg-white border-b border-gray-100 flex-row items-center" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
+      <View style={{ 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        paddingHorizontal: glassSpacing.screen, 
+        paddingVertical: ds.spacing(12),
+        backgroundColor: glassColors.background 
+      }}>
         <TouchableOpacity
           onPress={() => router.back()}
-          style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
+          style={{ width: 44, height: 44, borderRadius: glassRadii.round, backgroundColor: glassColors.mediumFill, alignItems: 'center', justifyContent: 'center', marginRight: ds.spacing(12) }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
+          <Ionicons name="arrow-back" size={ds.icon(22)} color={glassColors.textPrimary} />
         </TouchableOpacity>
-        <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>Display & Accessibility</Text>
+        <Text style={{ fontSize: glassTypography.screenTitle, fontWeight: '700', color: glassColors.textPrimary }}>
+          Display
+        </Text>
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>

@@ -12,6 +12,7 @@ import { StatusBar } from "expo-status-bar";
 import { useAuthStore, useDisplayStore } from "@/store";
 import { useInventorySubscription, useOrderSubscription } from "@/hooks";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
+import { colors } from "@/theme/design";
 import "../global.css";
 
 LogBox.ignoreLogs([
@@ -92,7 +93,7 @@ export default function RootLayout() {
       <View
         style={{
           flex: 1,
-          backgroundColor: "#FFFFFF",
+          backgroundColor: colors.background,
           paddingHorizontal: 24,
           justifyContent: "center",
         }}
@@ -102,13 +103,13 @@ export default function RootLayout() {
           style={{
             fontSize: 22,
             fontWeight: "700",
-            color: "#111827",
+            color: colors.textPrimary,
             marginBottom: 10,
           }}
         >
           App Configuration Required
         </Text>
-        <Text style={{ fontSize: 15, color: "#4B5563", lineHeight: 22 }}>
+        <Text style={{ fontSize: 15, color: colors.textMuted, lineHeight: 22 }}>
           {__DEV__
             ? `${supabaseConfigError}. Add these values to your Expo environment and restart the app.`
             : "This build is missing required configuration. Please reinstall the app or contact support."}
@@ -125,8 +126,9 @@ export default function RootLayout() {
       <Stack
         screenOptions={{
           headerShown: false,
-          contentStyle: { backgroundColor: "#FFFFFF" },
-          animation: reduceMotion ? "none" : "fade",
+          contentStyle: { backgroundColor: colors.background },
+          animation: reduceMotion ? "none" : "simple_push",
+          gestureEnabled: true,
         }}
       >
         <Stack.Screen name="index" options={{ headerShown: false }} />

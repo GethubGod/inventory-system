@@ -44,15 +44,15 @@ export function DebugPanel({ locationShortCode }: DebugPanelProps) {
   return (
     <View
       style={{
-        backgroundColor: 'rgba(0,0,0,0.85)',
+        backgroundColor: colors.card,
         borderRadius: 16,
         padding: 14,
         margin: 12,
         borderWidth: 1,
-        borderColor: 'rgba(249,115,22,0.3)',
+        borderColor: colors.divider,
       }}
     >
-      <Text style={{ fontSize: 13, fontWeight: '700', color: '#FDBA74', marginBottom: 10 }}>
+      <Text style={{ fontSize: 13, fontWeight: '700', color: colors.primary[700], marginBottom: 10 }}>
         Debug Panel
       </Text>
 
@@ -67,7 +67,7 @@ export function DebugPanel({ locationShortCode }: DebugPanelProps) {
       </View>
 
       {/* Quick test transcripts */}
-      <Text style={{ fontSize: 11, color: '#6B7280', marginBottom: 6 }}>
+      <Text style={{ fontSize: 11, color: colors.gray[600], marginBottom: 6 }}>
         Test Transcripts
       </Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
@@ -77,13 +77,13 @@ export function DebugPanel({ locationShortCode }: DebugPanelProps) {
             onPress={() => handleSendTest(t.text)}
             disabled={isProcessing}
             style={{
-              backgroundColor: isProcessing ? '#374151' : 'rgba(249,115,22,0.2)',
+              backgroundColor: isProcessing ? colors.gray[100] : colors.primary[50],
               borderRadius: 8,
               paddingHorizontal: 10,
               paddingVertical: 6,
             }}
           >
-            <Text style={{ fontSize: 11, color: isProcessing ? '#6B7280' : '#FDBA74', fontWeight: '600' }}>
+            <Text style={{ fontSize: 11, color: isProcessing ? colors.gray[600] : colors.primary[700], fontWeight: '600' }}>
               {t.label}
             </Text>
           </TouchableOpacity>
@@ -96,14 +96,14 @@ export function DebugPanel({ locationShortCode }: DebugPanelProps) {
           value={customText}
           onChangeText={setCustomText}
           placeholder="Custom transcript..."
-          placeholderTextColor="#4B5563"
+          placeholderTextColor={colors.gray[600]}
           style={{
             flex: 1,
-            backgroundColor: 'rgba(255,255,255,0.06)',
+            backgroundColor: colors.gray[100],
             borderRadius: 8,
             paddingHorizontal: 10,
             paddingVertical: 8,
-            color: '#E2E8F0',
+            color: colors.text,
             fontSize: 13,
           }}
           returnKeyType="send"
@@ -119,13 +119,13 @@ export function DebugPanel({ locationShortCode }: DebugPanelProps) {
           }}
           disabled={isProcessing || !customText.trim()}
           style={{
-            backgroundColor: isProcessing || !customText.trim() ? '#374151' : colors.primary[500],
+            backgroundColor: isProcessing || !customText.trim() ? colors.gray[100] : colors.primary[500],
             borderRadius: 8,
             paddingHorizontal: 14,
             justifyContent: 'center',
           }}
         >
-          <Ionicons name="send" size={16} color="#FFF" />
+          <Ionicons name="send" size={16} color={colors.white} />
         </TouchableOpacity>
       </View>
 
@@ -139,9 +139,9 @@ export function DebugPanel({ locationShortCode }: DebugPanelProps) {
             <Ionicons
               name={showRawResponse ? 'chevron-down' : 'chevron-forward'}
               size={14}
-              color="#6B7280"
+              color={colors.gray[600]}
             />
-            <Text style={{ fontSize: 11, color: '#6B7280', marginLeft: 4 }}>
+            <Text style={{ fontSize: 11, color: colors.gray[600], marginLeft: 4 }}>
               Raw Response
             </Text>
           </TouchableOpacity>
@@ -150,12 +150,12 @@ export function DebugPanel({ locationShortCode }: DebugPanelProps) {
             <ScrollView
               style={{
                 maxHeight: 200,
-                backgroundColor: 'rgba(255,255,255,0.04)',
+                backgroundColor: colors.gray[100],
                 borderRadius: 8,
                 padding: 8,
               }}
             >
-              <Text style={{ fontSize: 10, color: '#94A3B8', fontFamily: 'monospace' }}>
+              <Text style={{ fontSize: 10, color: colors.gray[500], fontFamily: 'monospace' }}>
                 {lastRawResponse}
               </Text>
             </ScrollView>
@@ -170,7 +170,7 @@ function StateBadge({ label, active }: { label: string; active: boolean }) {
   return (
     <View
       style={{
-        backgroundColor: active ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.06)',
+        backgroundColor: active ? colors.successBg : colors.gray[100],
         borderRadius: 6,
         paddingHorizontal: 8,
         paddingVertical: 3,
@@ -179,7 +179,7 @@ function StateBadge({ label, active }: { label: string; active: boolean }) {
       <Text
         style={{
           fontSize: 10,
-          color: active ? '#86EFAC' : '#6B7280',
+          color: active ? colors.success : colors.gray[600],
           fontWeight: '600',
         }}
       >

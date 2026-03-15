@@ -301,14 +301,14 @@ export default function UserManagementScreen() {
 
     const roleStyle =
       item.role === 'manager'
-        ? { label: 'Manager', bg: '#EDE9FE', text: '#6D28D9' }
-        : { label: 'Employee', bg: '#DBEAFE', text: '#1D4ED8' };
+        ? { label: 'Manager', bg: colors.purpleBg, text: colors.purple }
+        : { label: 'Employee', bg: colors.blueBg, text: colors.blue };
 
     const statusStyle = item.is_suspended
-      ? { label: 'Suspended', bg: '#FEE2E2', text: '#B91C1C' }
+      ? { label: 'Suspended', bg: colors.errorBg, text: colors.error }
       : inactive
-        ? { label: 'Inactive', bg: '#FEF3C7', text: '#B45309' }
-        : { label: 'Active', bg: '#DCFCE7', text: '#166534' };
+        ? { label: 'Inactive', bg: colors.warningBg, text: colors.warning }
+        : { label: 'Active', bg: colors.successBg, text: colors.success };
 
     return (
       <View
@@ -395,7 +395,7 @@ export default function UserManagementScreen() {
               className="font-semibold"
               style={{
                 fontSize: ds.fontSize(14),
-                color: item.is_suspended ? '#166534' : '#C2410C',
+                color: item.is_suspended ? colors.success : colors.primary[700],
               }}
             >
               {isUpdating ? 'Saving...' : item.is_suspended ? 'Reinstate' : 'Suspend'}
@@ -506,7 +506,7 @@ export default function UserManagementScreen() {
                     borderRadius: ds.radius(999),
                     borderWidth: 1,
                     borderColor: selected ? colors.primary[500] : colors.gray[200],
-                    backgroundColor: selected ? colors.primary[500] : '#FFFFFF',
+                    backgroundColor: selected ? colors.primary[500] : colors.white,
                     paddingHorizontal: ds.spacing(12),
                     paddingVertical: ds.spacing(6),
                   }}
@@ -515,7 +515,7 @@ export default function UserManagementScreen() {
                     className="font-semibold"
                     style={{
                       fontSize: ds.fontSize(12),
-                      color: selected ? '#FFFFFF' : colors.gray[600],
+                      color: selected ? colors.white : colors.gray[600],
                     }}
                   >
                     {option.label}

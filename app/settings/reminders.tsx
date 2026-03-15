@@ -7,8 +7,10 @@ import * as Haptics from 'expo-haptics';
 import { useDisplayStore, useSettingsStore } from '@/store';
 import { colors } from '@/constants';
 import { Reminder } from '@/types/settings';
-import { ReminderModal, ReminderListItem, SettingToggle, TimePickerRow } from '@/components/settings';
+import { GlassSurface, StackScreenHeader } from '@/components';
+import { ReminderModal, ReminderListItem, SettingToggle, TimePickerRow, settingsIconPalettes } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { glassColors, glassHairlineWidth, glassRadii, glassSpacing } from '@/design/tokens';
 
 import {
   requestNotificationPermissions,
@@ -130,8 +132,8 @@ function RemindersSection({
     <View>
       <SettingToggle
         icon="alarm"
-        iconColor="#10B981"
-        iconBgColor="#D1FAE5"
+        iconColor={settingsIconPalettes.reminders.icon}
+        iconBgColor={settingsIconPalettes.reminders.background}
         title="Reminders"
         subtitle="Get reminded to place orders"
         value={reminders.enabled}
@@ -141,7 +143,7 @@ function RemindersSection({
       {reminders.enabled && (
         <>
           <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
-            <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11) }}>
+            <Text style={{ fontSize: ds.fontSize(11), color: glassColors.textSecondary }}>
               Quick Reminders
             </Text>
           </View>
@@ -162,27 +164,38 @@ function RemindersSection({
 
           {reminders.beforeClosingReminder && (
             <View style={{ paddingHorizontal: ds.spacing(16), paddingBottom: ds.spacing(8) }}>
-              <View className="bg-gray-50 rounded-xl" style={{ paddingHorizontal: ds.spacing(14), borderRadius: ds.radius(12) }}>
+              <GlassSurface
+                intensity="medium"
+                blurred={false}
+                style={{ paddingHorizontal: ds.spacing(14), borderRadius: glassRadii.surface }}
+              >
                 <TimePickerRow
                   title="Closing Time"
                   value={reminders.closingTime}
                   onTimeChange={handleClosingTimeChange}
                 />
-              </View>
+              </GlassSurface>
             </View>
           )}
 
-          <View className="h-px bg-gray-100" style={{ marginHorizontal: ds.spacing(16), marginVertical: ds.spacing(8) }} />
+          <View
+            style={{
+              height: glassHairlineWidth,
+              backgroundColor: glassColors.divider,
+              marginHorizontal: ds.spacing(16),
+              marginVertical: ds.spacing(8),
+            }}
+          />
 
           <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
-            <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11) }}>
+            <Text style={{ fontSize: ds.fontSize(11), color: glassColors.textSecondary }}>
               Custom Reminders
             </Text>
           </View>
 
           {reminders.reminders.length === 0 ? (
             <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(16) }}>
-              <Text className="text-gray-400 text-center" style={{ fontSize: ds.fontSize(14) }}>
+              <Text style={{ fontSize: ds.fontSize(14), color: glassColors.textSecondary, textAlign: 'center' }}>
                 No custom reminders yet
               </Text>
             </View>
@@ -200,17 +213,22 @@ function RemindersSection({
 
           <TouchableOpacity
             onPress={onAddReminder}
-            className="bg-gray-100 rounded-xl flex-row items-center justify-center"
             style={{
               marginHorizontal: ds.spacing(16),
               marginVertical: ds.spacing(12),
               minHeight: Math.max(48, ds.buttonH),
-              borderRadius: ds.radius(12),
+              borderRadius: glassRadii.surface,
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'row',
+              backgroundColor: glassColors.mediumFill,
+              borderWidth: glassHairlineWidth,
+              borderColor: glassColors.cardBorder,
             }}
             activeOpacity={0.7}
           >
             <Ionicons name="add" size={ds.icon(20)} color={colors.primary[500]} />
-            <Text className="text-primary-500 font-semibold" style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(15) }}>
+            <Text style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(15), color: glassColors.accent, fontWeight: '600' }}>
               Add Reminder
             </Text>
           </TouchableOpacity>
@@ -245,32 +263,26 @@ export default function RemindersSettingsScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      <View
-        className="bg-white border-b border-gray-100 flex-row items-center"
-        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
-        </TouchableOpacity>
-        <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>Reminders</Text>
-      </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
+      <StackScreenHeader title="Reminders" />
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
-        <RemindersSection
-          onAddReminder={() => {
-            setEditingReminder(null);
-            setShowReminderModal(true);
-          }}
-          onEditReminder={(reminder) => {
-            setEditingReminder(reminder);
-            setShowReminderModal(true);
-          }}
-        />
+      <ScrollView contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, borderRadius: glassRadii.surface }}
+        >
+          <RemindersSection
+            onAddReminder={() => {
+              setEditingReminder(null);
+              setShowReminderModal(true);
+            }}
+            onEditReminder={(reminder) => {
+              setEditingReminder(reminder);
+              setShowReminderModal(true);
+            }}
+          />
+        </GlassSurface>
       </ScrollView>
 
       <ReminderModal

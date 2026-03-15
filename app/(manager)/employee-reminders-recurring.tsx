@@ -359,7 +359,7 @@ export default function EmployeeReminderRecurringScreen() {
             style={{ minHeight: Math.max(48, ds.buttonH), marginBottom: ds.spacing(14) }}
             onPress={openNewRule}
           >
-            <Ionicons name="add-circle-outline" size={ds.icon(18)} color="#FFFFFF" />
+            <Ionicons name="add-circle-outline" size={ds.icon(18)} color={colors.white} />
             <Text className="text-white font-semibold" style={{ fontSize: ds.fontSize(15), marginLeft: ds.spacing(6) }}>
               New Recurring Rule
             </Text>
@@ -427,8 +427,8 @@ export default function EmployeeReminderRecurringScreen() {
                       <Switch
                         value={rule.enabled}
                         onValueChange={() => handleToggleEnabled(rule)}
-                        trackColor={{ false: '#D1D5DB', true: '#FDBA74' }}
-                        thumbColor={rule.enabled ? colors.primary[500] : '#F3F4F6'}
+                        trackColor={{ false: colors.gray[300], true: colors.primary[200] }}
+                        thumbColor={rule.enabled ? colors.primary[500] : colors.gray[100]}
                       />
                     </View>
                   </View>
@@ -461,7 +461,7 @@ export default function EmployeeReminderRecurringScreen() {
           animationType="slide"
           onRequestClose={() => setShowEditor(false)}
         >
-          <View style={{ flex: 1, backgroundColor: 'rgba(17,24,39,0.45)', justifyContent: 'flex-end' }}>
+          <View style={{ flex: 1, backgroundColor: colors.scrimStrong, justifyContent: 'flex-end' }}>
             <View
               className="bg-white"
               style={{ borderTopLeftRadius: ds.radius(22), borderTopRightRadius: ds.radius(22), maxHeight: '92%' }}
@@ -612,8 +612,8 @@ export default function EmployeeReminderRecurringScreen() {
                   <Switch
                     value={form.quietHoursEnabled}
                     onValueChange={(value) => setForm((prev) => ({ ...prev, quietHoursEnabled: value }))}
-                    trackColor={{ false: '#D1D5DB', true: '#FDBA74' }}
-                    thumbColor={form.quietHoursEnabled ? colors.primary[500] : '#F3F4F6'}
+                    trackColor={{ false: colors.gray[300], true: colors.primary[200] }}
+                    thumbColor={form.quietHoursEnabled ? colors.primary[500] : colors.gray[100]}
                   />
                 </View>
 
@@ -665,8 +665,8 @@ export default function EmployeeReminderRecurringScreen() {
                   <Switch
                     value={form.enabled}
                     onValueChange={(value) => setForm((prev) => ({ ...prev, enabled: value }))}
-                    trackColor={{ false: '#D1D5DB', true: '#FDBA74' }}
-                    thumbColor={form.enabled ? colors.primary[500] : '#F3F4F6'}
+                    trackColor={{ false: colors.gray[300], true: colors.primary[200] }}
+                    thumbColor={form.enabled ? colors.primary[500] : colors.gray[100]}
                   />
                 </View>
 

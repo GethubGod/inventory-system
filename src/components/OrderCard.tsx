@@ -2,14 +2,14 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Order } from '@/types';
-import { statusColors, ORDER_STATUS_LABELS } from '@/constants';
+import { statusColors, ORDER_STATUS_LABELS, colors } from '@/constants';
 
 interface OrderCardProps {
   order: Order;
 }
 
 export function OrderCard({ order }: OrderCardProps) {
-  const colors = statusColors[order.status];
+  const statusPalette = statusColors[order.status];
   const statusLabel = ORDER_STATUS_LABELS[order.status];
 
   const formatDate = (dateString: string) => {
@@ -56,12 +56,12 @@ export function OrderCard({ order }: OrderCardProps) {
         </View>
         <View
           className="flex-row items-center px-3 py-1 rounded-full"
-          style={{ backgroundColor: colors.bg }}
+          style={{ backgroundColor: statusPalette.bg }}
         >
-          <Ionicons name={getStatusIcon()} size={14} color={colors.text} />
+          <Ionicons name={getStatusIcon()} size={14} color={statusPalette.text} />
           <Text
             className="ml-1 font-medium text-sm"
-            style={{ color: colors.text }}
+            style={{ color: statusPalette.text }}
           >
             {statusLabel}
           </Text>
@@ -71,7 +71,7 @@ export function OrderCard({ order }: OrderCardProps) {
       {/* Footer */}
       <View className="flex-row items-center justify-between pt-3 border-t border-gray-100">
         <View className="flex-row items-center">
-          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
+          <Ionicons name="chevron-forward" size={20} color={colors.gray[400]} />
           <Text className="text-gray-400 text-sm ml-1">View Details</Text>
         </View>
         {order.fulfilled_at && (

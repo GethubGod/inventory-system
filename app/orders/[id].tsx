@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useOrderStore, useAuthStore } from '@/store';
 import { OrderItemWithInventory } from '@/types';
-import { statusColors, ORDER_STATUS_LABELS, CATEGORY_LABELS, categoryColors } from '@/constants';
+import { statusColors, ORDER_STATUS_LABELS, CATEGORY_LABELS, categoryColors, colors } from '@/constants';
 import { supabase } from '@/lib/supabase';
 import { LoadingIndicator } from '@/components';
 import { completePendingRemindersForUser } from '@/services/notificationService';
@@ -222,8 +222,8 @@ export default function OrderDetailScreen() {
 
   if (!orderId) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center px-6">
-        <Ionicons name="alert-circle-outline" size={30} color="#DC2626" />
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} className="items-center justify-center px-6">
+        <Ionicons name="alert-circle-outline" size={30} color={colors.error} />
         <Text className="text-gray-900 font-semibold mt-3 text-center">Invalid order link</Text>
         <TouchableOpacity
           className="mt-5 bg-primary-500 rounded-lg px-4 py-2"
@@ -237,8 +237,8 @@ export default function OrderDetailScreen() {
 
   if (loadError) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center px-6">
-        <Ionicons name="warning-outline" size={30} color="#F59E0B" />
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} className="items-center justify-center px-6">
+        <Ionicons name="warning-outline" size={30} color={colors.warning} />
         <Text className="text-gray-900 font-semibold mt-3 text-center">Unable to load order</Text>
         <Text className="text-gray-500 mt-2 text-center">{loadError}</Text>
         <TouchableOpacity
@@ -255,13 +255,13 @@ export default function OrderDetailScreen() {
 
   if (isLoading || !isCurrentOrderLoaded || !currentOrder) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center">
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} className="items-center justify-center">
         <LoadingIndicator size="large" showText text="Loading order..." />
       </SafeAreaView>
     );
   }
 
-  const colors = statusColors[currentOrder.status];
+  const statusTone = statusColors[currentOrder.status];
   const isManagerView = user?.role === 'manager' && viewMode === 'manager';
   const isEmployeeView = !isManagerView;
   const canMarkProcessing = currentOrder.status === 'submitted' && isManagerView;
@@ -284,7 +284,7 @@ export default function OrderDetailScreen() {
   const canEmployeeCancelNow = showEmployeeCancellationAction && withinEmployeeCancelWindow;
 
   const renderOrderItem = ({ item }: { item: OrderItemWithInventory }) => {
-    const categoryColor = categoryColors[item.inventory_item.category] || '#6B7280';
+    const categoryColor = categoryColors[item.inventory_item.category] || colors.gray[600];
     const unitLabel =
       item.unit_type === 'base'
         ? item.inventory_item.base_unit
@@ -297,11 +297,13 @@ export default function OrderDetailScreen() {
       <View
         className="bg-white rounded-2xl p-4 mb-3 border border-gray-100"
         style={{
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.05,
-          shadowRadius: 4,
-          elevation: 2,
+          backgroundColor: colors.card,
+          borderColor: colors.divider,
+          shadowColor: colors.background,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          elevation: 0,
         }}
       >
         <View className="flex-row justify-between items-start">
@@ -318,9 +320,9 @@ export default function OrderDetailScreen() {
               </Text>
             </View>
             {lineNote && (
-              <View className="mt-2 bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-2">
-                <Text className="text-[11px] font-semibold text-blue-700">Note</Text>
-                <Text className="text-sm text-blue-800 mt-0.5">{lineNote}</Text>
+              <View style={{ marginTop: 8, backgroundColor: colors.infoBg, borderWidth: 1, borderColor: colors.infoBg, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8 }}>
+                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.info }}>Note</Text>
+                <Text style={{ fontSize: 14, color: colors.info, marginTop: 2 }}>{lineNote}</Text>
               </View>
             )}
           </View>
@@ -342,10 +344,10 @@ export default function OrderDetailScreen() {
           headerShown: true,
           headerBackVisible: false,
           headerTitleAlign: 'center',
-          headerTintColor: '#374151',
-          headerStyle: { backgroundColor: '#FFFFFF' },
+          headerTintColor: colors.gray[700],
+          headerStyle: { backgroundColor: colors.background },
           title: `Order #${currentOrder.order_number}`,
-          headerTitleStyle: { color: '#111827', fontSize: 17, fontWeight: '700' },
+          headerTitleStyle: { color: colors.text, fontSize: 17, fontWeight: '700' },
           headerLeft: () => (
             <TouchableOpacity
               onPress={handleBackPress}
@@ -358,21 +360,23 @@ export default function OrderDetailScreen() {
               }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="arrow-back" size={ds.icon(20)} color="#374151" />
+              <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
             </TouchableOpacity>
           ),
         }}
       />
-      <SafeAreaView className="flex-1 bg-gray-50" edges={['left', 'right', 'bottom']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['left', 'right', 'bottom']}>
         {/* Order Info Card */}
         <View
           className="mx-4 mt-4 bg-white rounded-2xl p-4 border border-gray-100"
           style={{
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.05,
-            shadowRadius: 4,
-            elevation: 2,
+            backgroundColor: colors.card,
+            borderColor: colors.divider,
+            shadowColor: colors.background,
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0,
+            shadowRadius: 0,
+            elevation: 0,
           }}
         >
           {/* Status Row */}
@@ -381,11 +385,11 @@ export default function OrderDetailScreen() {
               <Text className="text-gray-500 text-xs uppercase tracking-wide mb-1">Status</Text>
               <View
                 className="px-3 py-1.5 rounded-full"
-                style={{ backgroundColor: colors.bg }}
+                style={{ backgroundColor: statusTone.bg }}
               >
                 <Text
                   className="font-bold text-sm"
-                  style={{ color: colors.text }}
+                  style={{ color: statusTone.text }}
                 >
                   {ORDER_STATUS_LABELS[currentOrder.status]}
                 </Text>
@@ -401,7 +405,7 @@ export default function OrderDetailScreen() {
 
           {/* Submitted By */}
           <View className="flex-row items-center py-2 border-t border-gray-100">
-            <Ionicons name="person-outline" size={18} color="#6B7280" />
+            <Ionicons name="person-outline" size={18} color={colors.gray[600]} />
             <View className="ml-3">
               <Text className="text-gray-500 text-xs">Submitted by</Text>
               <Text className="text-gray-900 font-medium">
@@ -412,7 +416,7 @@ export default function OrderDetailScreen() {
 
           {/* Location */}
           <View className="flex-row items-center py-2 border-t border-gray-100">
-            <Ionicons name="location-outline" size={18} color="#6B7280" />
+            <Ionicons name="location-outline" size={18} color={colors.gray[600]} />
             <View className="ml-3">
               <Text className="text-gray-500 text-xs">Location</Text>
               <Text className="text-gray-900 font-medium">
@@ -424,7 +428,7 @@ export default function OrderDetailScreen() {
           {/* Fulfilled Info */}
           {isFulfilled && currentOrder.fulfilled_at && (
             <View className="flex-row items-center py-2 border-t border-gray-100">
-              <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+              <Ionicons name="checkmark-circle" size={18} color={colors.success} />
               <View className="ml-3">
                 <Text className="text-gray-500 text-xs">Fulfilled</Text>
                 <Text className="text-green-700 font-medium">
@@ -451,7 +455,7 @@ export default function OrderDetailScreen() {
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 16 }}
           ListEmptyComponent={() => (
             <View className="items-center py-8">
-              <Ionicons name="cube-outline" size={40} color="#D1D5DB" />
+              <Ionicons name="cube-outline" size={40} color={colors.gray[300]} />
               <Text className="text-gray-400 mt-2">No items in this order</Text>
             </View>
           )}
@@ -562,11 +566,11 @@ export default function OrderDetailScreen() {
                       <Ionicons
                         name="close-circle"
                         size={18}
-                        color={canEmployeeCancelNow ? 'white' : '#6B7280'}
+                        color={canEmployeeCancelNow ? colors.white : colors.gray[600]}
                       />
                       <Text
                         className="font-semibold ml-2"
-                        style={{ color: canEmployeeCancelNow ? 'white' : '#6B7280' }}
+                        style={{ color: canEmployeeCancelNow ? colors.white : colors.gray[600] }}
                       >
                         Cancel Order
                       </Text>
@@ -587,7 +591,7 @@ export default function OrderDetailScreen() {
         {isFulfilled && (
           <View className="p-4 bg-green-50 border-t border-green-100">
             <View className="flex-row items-center justify-center">
-              <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+              <Ionicons name="checkmark-circle" size={20} color={colors.success} />
               <Text className="text-green-700 font-semibold ml-2">
                 Order Complete
               </Text>
@@ -599,7 +603,7 @@ export default function OrderDetailScreen() {
         {currentOrder.status === 'cancelled' && (
           <View className="p-4 bg-red-50 border-t border-red-100">
             <View className="flex-row items-center justify-center">
-              <Ionicons name="close-circle" size={20} color="#EF4444" />
+              <Ionicons name="close-circle" size={20} color={colors.error} />
               <Text className="text-red-700 font-semibold ml-2">
                 Order Cancelled
               </Text>

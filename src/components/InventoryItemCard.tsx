@@ -1,16 +1,25 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, TextInput, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { InventoryItem, UnitType } from '@/types';
 import { useOrderStore } from '@/store';
 import type { OrderInputMode, CartContext } from '@/store/orderStore';
 import { categoryColors, CATEGORY_LABELS } from '@/constants';
+import { GlassView } from '@/components/ui';
+import {
+  categoryGlassTints,
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+  glassStatusStyles,
+} from '@/design/tokens';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 interface InventoryItemCardProps {
   item: InventoryItem;
   locationId: string;
   cartContext?: CartContext;
+  hideCategory?: boolean;
 }
 
 function sanitizeNumericInput(value: string): string {
@@ -27,7 +36,7 @@ function sanitizeNumericInput(value: string): string {
 }
 
 // Memoized to prevent re-renders in list virtualization
-function InventoryItemCardInner({ item, locationId, cartContext }: InventoryItemCardProps) {
+function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }: InventoryItemCardProps) {
   const addToCart = useOrderStore((state) => state.addToCart);
   const updateCartItem = useOrderStore((state) => state.updateCartItem);
   const removeFromCart = useOrderStore((state) => state.removeFromCart);
@@ -57,15 +66,14 @@ function InventoryItemCardInner({ item, locationId, cartContext }: InventoryItem
     }
   }, [cartItem]);
 
-  const categoryColor = categoryColors[item.category] || '#6B7280';
+  const categoryColor = categoryColors[item.category] || glassColors.textTertiary;
+  const categoryTint = categoryGlassTints[item.category];
   const showControls = isExpanded || Boolean(cartItem);
 
   const baseFontSize = ds.fontSize(16);
-  const smallFontSize = ds.fontSize(13);
-  const tinyFontSize = ds.fontSize(11);
-  const modeToggleHeight = Math.max(42, ds.buttonH - ds.spacing(8));
-  const modeToggleFontSize = ds.fontSize(14);
-  const actionButtonSize = Math.max(44, ds.icon(40));
+  const tinyFontSize = ds.fontSize(12);
+  const modeToggleHeight = Math.max(44, ds.buttonH - ds.spacing(6));
+  const controlButtonSize = Math.max(40, ds.icon(40));
 
   const parsedQuantity = Number.parseFloat(quantity);
   const parsedRemaining = Number.parseFloat(remaining);
@@ -279,43 +287,89 @@ function InventoryItemCardInner({ item, locationId, cartContext }: InventoryItem
   const isInputValid = inputMode === 'quantity' ? isQuantityValid : isRemainingValid;
 
   return (
-    <View className="bg-white rounded-xl shadow-sm" style={{ padding: ds.cardPad, borderRadius: ds.radius(12) }}>
+    <GlassView
+      variant="card"
+      style={{
+        padding: ds.cardPad,
+        borderRadius: glassRadii.surface,
+      }}
+    >
       {/* Top row: Name and Add button / Controls */}
       <View className="flex-row items-center justify-between">
         {/* Left: Item info */}
         <View className="flex-1 mr-3">
           <View className="flex-row items-center">
             <Text
-              className="text-gray-900 font-semibold flex-shrink"
-              style={{ fontSize: baseFontSize }}
+              style={{
+                fontSize: ds.fontSize(18),
+                color: glassColors.textPrimary,
+                fontWeight: '600',
+                flexShrink: 1,
+              }}
               numberOfLines={1}
             >
               {item.name}
             </Text>
             {cartItem && (
-              <View className="bg-primary-500 w-5 h-5 rounded-full items-center justify-center ml-2">
-                <Ionicons name="checkmark" size={12} color="white" />
+              <View
+                className="items-center justify-center ml-2"
+                style={{
+                  width: 24,
+                  height: 24,
+                  borderRadius: glassRadii.round,
+                  backgroundColor: 'rgba(34, 197, 94, 0.18)',
+                  borderWidth: 2,
+                  borderColor: 'rgba(34, 197, 94, 0.5)',
+                }}
+              >
+                <Ionicons
+                  name="checkmark"
+                  size={16}
+                  color={glassStatusStyles.success.text}
+                />
               </View>
             )}
           </View>
-          <View className="flex-row items-center mt-1">
-            <View
-              style={{ backgroundColor: categoryColor + '20' }}
-              className="px-2 py-1 rounded mr-2"
+          <View className="flex-row items-center mt-2">
+            {!hideCategory && (
+              <View
+                style={{
+                  backgroundColor: categoryTint?.background ?? `${categoryColor}14`,
+                  paddingHorizontal: ds.spacing(10),
+                  paddingVertical: ds.spacing(4),
+                  borderRadius: glassRadii.tag,
+                  marginRight: ds.spacing(10),
+                }}
+              >
+                <Text style={{ color: categoryColor, fontSize: tinyFontSize, fontWeight: '500' }}>
+                  {CATEGORY_LABELS[item.category]}
+                </Text>
+              </View>
+            )}
+            <Text
+              style={{ fontSize: ds.fontSize(13), color: glassColors.textSecondary }}
             >
-              <Text style={{ color: categoryColor, fontSize: tinyFontSize }} className="font-medium">
-                {CATEGORY_LABELS[item.category]}
-              </Text>
-            </View>
-            <Text style={{ fontSize: tinyFontSize }} className="text-gray-400">
               {item.pack_size} {item.base_unit}/{item.pack_unit}
             </Text>
             {cartItem?.inputMode === 'remaining' && (
               <View
-                className="ml-2 rounded-full bg-amber-100"
-                style={{ paddingHorizontal: ds.spacing(8), paddingVertical: ds.spacing(3) }}
+                style={{
+                  marginLeft: ds.spacing(8),
+                  borderRadius: glassRadii.tag,
+                  backgroundColor: glassStatusStyles.warning.background,
+                  paddingHorizontal: ds.spacing(8),
+                  paddingVertical: ds.spacing(2),
+                }}
               >
-                <Text style={{ fontSize: ds.fontSize(12) }} className="font-semibold text-amber-700">Remaining</Text>
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(9),
+                    color: glassStatusStyles.warning.text,
+                    fontWeight: '500',
+                  }}
+                >
+                  Remaining
+                </Text>
               </View>
             )}
           </View>
@@ -324,86 +378,186 @@ function InventoryItemCardInner({ item, locationId, cartContext }: InventoryItem
         {/* Right: Add button */}
         {!showControls && (
           <TouchableOpacity
-            className="bg-primary-500 items-center justify-center"
-            style={{ height: ds.buttonH, paddingHorizontal: ds.buttonPadH, borderRadius: ds.radius(12), minWidth: 44 }}
+            style={{
+              minWidth: 76,
+              height: Math.max(40, ds.buttonH - ds.spacing(4)),
+              paddingHorizontal: ds.spacing(20),
+              borderRadius: glassRadii.button,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: glassColors.accent,
+            }}
             onPress={handleExpandToAdd}
           >
-            <Text className="text-white font-semibold" style={{ fontSize: ds.buttonFont }}>Add</Text>
+            <Text
+              style={{
+                fontSize: ds.fontSize(16),
+                color: glassColors.textOnPrimary,
+                fontWeight: '600',
+              }}
+            >
+              Add
+            </Text>
           </TouchableOpacity>
         )}
       </View>
 
       {/* Quantity/Remaining Controls */}
       {showControls && (
-        <View className="mt-3 pt-3 border-t border-gray-100">
+        <View
+          style={{
+            marginTop: ds.spacing(12),
+            paddingTop: ds.spacing(12),
+            borderTopWidth: glassHairlineWidth,
+            borderTopColor: glassColors.divider,
+          }}
+        >
           <View className="flex-row mb-3">
-            <TouchableOpacity
-              className={`flex-1 rounded-l-lg items-center justify-center ${
-                inputMode === 'quantity' ? 'bg-primary-500' : 'bg-gray-100'
-              }`}
-              style={{ minHeight: modeToggleHeight }}
-              onPress={() => handleModeChange('quantity')}
+            <View
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                borderRadius: glassRadii.button,
+                borderWidth: 1.5,
+                borderColor: 'rgba(0,0,0,0.12)',
+                backgroundColor: '#F2F2F2',
+                overflow: 'hidden',
+              }}
             >
-              <Text
-                className={`font-semibold ${inputMode === 'quantity' ? 'text-white' : 'text-gray-600'}`}
-                style={{ fontSize: modeToggleFontSize }}
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  minHeight: modeToggleHeight,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor:
+                    inputMode === 'quantity'
+                      ? glassColors.accent
+                      : 'transparent',
+                }}
+                onPress={() => handleModeChange('quantity')}
               >
-                Order Qty
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              className={`flex-1 rounded-r-lg items-center justify-center ${
-                inputMode === 'remaining' ? 'bg-primary-500' : 'bg-gray-100'
-              }`}
-              style={{ minHeight: modeToggleHeight }}
-              onPress={() => handleModeChange('remaining')}
-            >
-              <Text
-                className={`font-semibold ${inputMode === 'remaining' ? 'text-white' : 'text-gray-600'}`}
-                style={{ fontSize: modeToggleFontSize }}
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    fontWeight: '600',
+                    color:
+                      inputMode === 'quantity'
+                        ? glassColors.textOnPrimary
+                        : glassColors.textSecondary,
+                  }}
+                >
+                  Order qty
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  minHeight: modeToggleHeight,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor:
+                    inputMode === 'remaining'
+                      ? glassColors.accent
+                      : 'transparent',
+                }}
+                onPress={() => handleModeChange('remaining')}
               >
-                Remaining
-              </Text>
-            </TouchableOpacity>
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(14),
+                    fontWeight: '600',
+                    color:
+                      inputMode === 'remaining'
+                        ? glassColors.textOnPrimary
+                        : glassColors.textSecondary,
+                  }}
+                >
+                  Remaining
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View className="flex-row items-center justify-between">
             {/* Unit Toggle */}
             <TouchableOpacity
-              className="flex-row items-center bg-gray-100 rounded-lg px-3 py-2"
               onPress={toggleUnit}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: ds.spacing(12),
+                paddingVertical: ds.spacing(8),
+                borderRadius: glassRadii.stepper,
+                backgroundColor: '#F0F0F0',
+                borderWidth: 1,
+                borderColor: 'rgba(0,0,0,0.1)',
+              }}
             >
-              <Text className="text-gray-700 font-medium" style={{ fontSize: smallFontSize }}>
+              <Text style={{ fontSize: ds.fontSize(15), fontWeight: "600", color: glassColors.textPrimary }}>
                 {unitType === 'base' ? item.base_unit : item.pack_unit}
               </Text>
-              <Ionicons name="swap-horizontal" size={16} color="#6B7280" style={{ marginLeft: 4 }} />
+              <Ionicons
+                name="chevron-down"
+                size={16}
+                color={glassColors.textSecondary}
+                style={{ marginLeft: 4 }}
+              />
             </TouchableOpacity>
 
             {/* Value Controls */}
             <View className="flex-row items-center">
               <TouchableOpacity
-                className="bg-gray-100 rounded-lg items-center justify-center"
-                style={{ width: Math.max(44, ds.icon(40)), height: Math.max(44, ds.icon(40)) }}
+                style={{
+                  width: controlButtonSize,
+                  height: controlButtonSize,
+                  borderRadius: glassRadii.stepper,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#EEEEEE',
+                  borderWidth: 1,
+                  borderColor: 'rgba(0,0,0,0.1)',
+                }}
                 onPress={handleDecrement}
               >
-                <Ionicons name="remove" size={ds.icon(20)} color="#374151" />
+                <Ionicons name="remove" size={ds.icon(20)} color={glassColors.textPrimary} />
               </TouchableOpacity>
 
               <TextInput
-                className="bg-gray-50 border border-gray-200 rounded-lg mx-2 text-center text-gray-900 font-semibold"
-                style={{ width: ds.spacing(64), height: Math.max(44, ds.icon(40)), fontSize: baseFontSize }}
+                style={{
+                  width: ds.spacing(56),
+                  height: controlButtonSize,
+                  marginHorizontal: ds.spacing(8),
+                  borderRadius: glassRadii.button,
+                  textAlign: 'center',
+                  color: glassColors.textPrimary,
+                  fontWeight: '600',
+                  fontSize: ds.fontSize(17),
+                  backgroundColor: '#F5F5F5',
+                  borderWidth: 1,
+                  borderColor: 'rgba(0,0,0,0.08)',
+                }}
                 value={value}
                 onChangeText={onValueChange}
                 keyboardType="decimal-pad"
                 placeholder={inputMode === 'quantity' ? '0' : '0'}
+                placeholderTextColor={glassColors.textSecondary}
               />
 
               <TouchableOpacity
-                className="bg-gray-100 rounded-lg items-center justify-center"
-                style={{ width: Math.max(44, ds.icon(40)), height: Math.max(44, ds.icon(40)) }}
+                style={{
+                  width: controlButtonSize,
+                  height: controlButtonSize,
+                  borderRadius: glassRadii.stepper,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#EEEEEE',
+                  borderWidth: 1,
+                  borderColor: 'rgba(0,0,0,0.1)',
+                }}
                 onPress={handleIncrement}
               >
-                <Ionicons name="add" size={ds.icon(20)} color="#374151" />
+                <Ionicons name="add" size={ds.icon(20)} color={glassColors.textPrimary} />
               </TouchableOpacity>
             </View>
 
@@ -411,36 +565,96 @@ function InventoryItemCardInner({ item, locationId, cartContext }: InventoryItem
             {isExpanded && !cartItem && (
               <View className="flex-row items-center">
                 <TouchableOpacity
-                  className="bg-gray-100 rounded-lg items-center justify-center"
-                  style={{ width: actionButtonSize, height: actionButtonSize }}
+                  style={{
+                    width: controlButtonSize,
+                    height: controlButtonSize,
+                    borderRadius: glassRadii.stepper,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(239, 68, 68, 0.15)',
+                  }}
                   onPress={handleCancelExpand}
                   accessibilityLabel="Cancel add item"
                 >
-                  <Ionicons name="close" size={ds.icon(20)} color="#6B7280" />
+                  <Ionicons name="close" size={ds.icon(20)} color="#DC2626" />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  className={`bg-primary-500 rounded-lg items-center justify-center ml-2 ${
-                    !isInputValid ? 'opacity-50' : ''
-                  }`}
-                  style={{ width: actionButtonSize, height: actionButtonSize }}
+                  style={{
+                    width: controlButtonSize,
+                    height: controlButtonSize,
+                    marginLeft: ds.spacing(8),
+                    borderRadius: glassRadii.stepper,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: glassColors.accent,
+                    opacity: !isInputValid ? 0.5 : 1,
+                  }}
                   onPress={handleAddToCart}
                   disabled={!isInputValid}
                   accessibilityLabel="Confirm add item"
                 >
-                  <Ionicons name="checkmark" size={ds.icon(20)} color="white" />
+                  <Ionicons
+                    name="checkmark"
+                    size={ds.icon(22)}
+                    color={glassColors.textOnPrimary}
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Remove button when item is already in cart */}
+            {cartItem && (
+              <View className="flex-row items-center">
+                <TouchableOpacity
+                  style={{
+                    width: controlButtonSize,
+                    height: controlButtonSize,
+                    marginLeft: ds.spacing(8),
+                    borderRadius: glassRadii.stepper,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: 'rgba(239, 68, 68, 0.08)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(239, 68, 68, 0.15)',
+                  }}
+                  onPress={() => {
+                    Alert.alert(
+                      'Remove from cart?',
+                      `Remove ${item.name} from your order?`,
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Remove',
+                          style: 'destructive',
+                          onPress: () => {
+                            removeFromCart(locationId, item.id, cartItem.id, cartContext);
+                            setIsExpanded(false);
+                            setQuantity('1');
+                            setRemaining('0');
+                            setInputMode('quantity');
+                          },
+                        },
+                      ],
+                    );
+                  }}
+                  accessibilityLabel="Remove from cart"
+                >
+                  <Ionicons name="close" size={ds.icon(20)} color="#DC2626" />
                 </TouchableOpacity>
               </View>
             )}
           </View>
 
           {inputMode === 'remaining' && (
-            <Text className="text-gray-500 mt-2" style={{ fontSize: ds.fontSize(13) }}>
+            <Text style={{ fontSize: ds.fontSize(10), color: glassColors.textSecondary, marginTop: ds.spacing(8) }}>
               Enter what is left on hand. A manager will decide order quantity.
             </Text>
           )}
         </View>
       )}
-    </View>
+    </GlassView>
   );
 }
 

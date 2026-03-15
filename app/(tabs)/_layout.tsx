@@ -1,11 +1,45 @@
 import { Redirect, Tabs } from "expo-router";
+import { View, Text } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useAuthStore,
   useOrderStore,
   useDraftStore,
   useDisplayStore,
 } from "@/store";
+import { colors, hairline, radii, spacing } from "@/theme/design";
+
+/**
+ * Custom tab icon: renders a rounded-square tinted container behind the icon
+ * when active, matching the reference screenshots exactly.
+ */
+function TabIcon({
+  name,
+  color,
+  size,
+  focused,
+}: {
+  name: keyof typeof Ionicons.glyphMap;
+  color: string;
+  size: number;
+  focused: boolean;
+}) {
+  return (
+    <View
+      style={{
+        width: 64,
+        height: 52,
+        borderRadius: 22,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: focused ? "rgba(232, 80, 58, 0.15)" : "transparent",
+      }}
+    >
+      <Ionicons name={name} size={size} color={color} />
+    </View>
+  );
+}
 
 export default function TabsLayout() {
   const { session, profile } = useAuthStore();
@@ -15,6 +49,21 @@ export default function TabsLayout() {
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
   const uiScale = useDisplayStore((state) => state.uiScale);
   const scaledFontSize = useDisplayStore((state) => state.scaledFontSize);
+  const insets = useSafeAreaInsets();
+  const tabBarBottomInset = Math.max(insets.bottom, spacing.tabBarBottom);
+  const tabBarHeight = 60 + tabBarBottomInset;
+  const badgeStyle = {
+    backgroundColor: colors.primary,
+    color: colors.textOnPrimary,
+    fontSize: 10,
+    fontWeight: "700" as const,
+    minWidth: 18,
+    height: 18,
+    lineHeight: 16,
+    borderRadius: 9,
+    top: -2,
+    right: -6,
+  };
 
   if (!session) {
     return <Redirect href="/(auth)/login" />;
@@ -31,27 +80,26 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#F97316",
-        tabBarInactiveTintColor: "#9CA3AF",
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
-          backgroundColor: "#FFFFFF",
-          borderTopColor: "#E5E7EB",
-          paddingTop: 12,
-          paddingBottom: 12,
-          height: 90,
+          position: "absolute",
+          backgroundColor: colors.tabBarBg,
+          borderTopWidth: hairline,
+          borderTopColor: colors.glassBorder,
+          paddingTop: 6,
+          paddingBottom: tabBarBottomInset,
+          paddingHorizontal: spacing.tabBarHorizontal,
+          height: tabBarHeight,
+          elevation: 0,
         },
         tabBarLabelStyle: {
           fontSize: Math.max(10, scaledFontSize(10)),
           fontWeight: "600",
-          marginTop: 4,
+          marginTop: 0,
         },
-        tabBarIconStyle: {
-          transform: [
-            {
-              scale:
-                uiScale === "large" ? 1.15 : uiScale === "compact" ? 0.95 : 1,
-            },
-          ],
+        tabBarItemStyle: {
+          paddingTop: 2,
         },
         headerShown: false,
       }}
@@ -61,8 +109,8 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Browse",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="grid-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon name="grid-outline" size={size} color={color} focused={focused} />
           ),
         }}
       />
@@ -72,15 +120,11 @@ export default function TabsLayout() {
         name="quick-order"
         options={{
           title: "Quick",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="flash-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon name="flash-outline" size={size} color={color} focused={focused} />
           ),
           tabBarBadge: draftCount > 0 ? draftCount : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: "#F97316",
-            color: "#FFFFFF",
-            fontSize: 10,
-          },
+          tabBarBadgeStyle: badgeStyle,
         }}
       />
 
@@ -89,15 +133,21 @@ export default function TabsLayout() {
         name="cart"
         options={{
           title: "Cart",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cart-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon name="bag-handle-outline" size={size} color={color} focused={focused} />
           ),
           tabBarBadge: cartTotal > 0 ? cartTotal : undefined,
-          tabBarBadgeStyle: {
-            backgroundColor: "#F97316",
-            color: "#FFFFFF",
-            fontSize: 10,
-          },
+          tabBarBadgeStyle: badgeStyle,
+        }}
+      />
+
+      <Tabs.Screen
+        name="voice"
+        options={{
+          title: "Voice",
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon name="time-outline" size={size} color={color} focused={focused} />
+          ),
         }}
       />
 
@@ -106,8 +156,8 @@ export default function TabsLayout() {
         name="settings"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabIcon name="person-circle-outline" size={size} color={color} focused={focused} />
           ),
         }}
       />
@@ -127,12 +177,6 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="profile"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="voice"
         options={{
           href: null,
         }}

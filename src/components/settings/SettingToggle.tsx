@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { useDisplayStore } from '@/store';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { glassColors, glassHairlineWidth, glassRadii } from '@/design/tokens';
 
 interface SettingToggleProps {
   icon?: keyof typeof Ionicons.glyphMap;
@@ -42,13 +43,13 @@ export function SettingToggle({
 
   return (
     <View
-      className={`bg-white flex-row items-center ${
-        showBorder ? 'border-b border-gray-100' : ''
-      } ${disabled ? 'opacity-50' : ''}`}
+      className={`flex-row items-center ${disabled ? 'opacity-50' : ''}`}
       style={{
         paddingHorizontal: ds.spacing(16),
         paddingVertical: ds.spacing(12),
         minHeight: Math.max(ds.rowH, 56),
+        borderBottomWidth: showBorder ? glassHairlineWidth : 0,
+        borderBottomColor: glassColors.divider,
       }}
     >
       {icon && (
@@ -57,20 +58,32 @@ export function SettingToggle({
           style={{
             width: Math.max(40, ds.icon(40)),
             height: Math.max(40, ds.icon(40)),
-            borderRadius: ds.radius(12),
+            borderRadius: glassRadii.iconTile,
             marginRight: ds.spacing(14),
-            backgroundColor: iconBgColor || colors.gray[100],
+            backgroundColor: iconBgColor || glassColors.mediumFill,
           }}
         >
-          <Ionicons name={icon} size={ds.icon(22)} color={iconColor || colors.gray[500]} />
+          <Ionicons name={icon} size={ds.icon(20)} color={iconColor || colors.gray[500]} />
         </View>
       )}
       <View className="flex-1">
-        <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(16) }}>
+        <Text
+          style={{
+            fontSize: ds.fontSize(13),
+            fontWeight: '500',
+            color: glassColors.textPrimary,
+          }}
+        >
           {title}
         </Text>
         {subtitle && (
-          <Text className="text-gray-500" style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(2) }}>
+          <Text
+            style={{
+              fontSize: ds.fontSize(11),
+              marginTop: ds.spacing(2),
+              color: glassColors.textSecondary,
+            }}
+          >
             {subtitle}
           </Text>
         )}

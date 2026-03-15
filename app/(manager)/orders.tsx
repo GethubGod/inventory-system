@@ -181,7 +181,7 @@ export default function ManagerOrdersScreen() {
   };
 
   const renderOrder = ({ item: order }: { item: Order }) => {
-    const colors = statusColors[order.status];
+    const statusTone = statusColors[order.status];
     const orderUser = (order as any).user;
     const orderLocation = (order as any).location;
     const itemCount = getItemCount(order);
@@ -190,11 +190,13 @@ export default function ManagerOrdersScreen() {
       <TouchableOpacity
         className="bg-white rounded-2xl p-4 mb-3 border border-gray-100"
         style={{
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 1 },
-          shadowOpacity: 0.05,
-          shadowRadius: 4,
-          elevation: 2,
+          backgroundColor: colors.card,
+          borderColor: colors.divider,
+          shadowColor: colors.background,
+          shadowOffset: { width: 0, height: 0 },
+          shadowOpacity: 0,
+          shadowRadius: 0,
+          elevation: 0,
         }}
         onPress={() => router.push(`/orders/${order.id}`)}
         activeOpacity={0.7}
@@ -205,11 +207,11 @@ export default function ManagerOrdersScreen() {
           </Text>
           <View
             className="px-3 py-1 rounded-full"
-            style={{ backgroundColor: colors.bg }}
+            style={{ backgroundColor: statusTone.bg }}
           >
             <Text
               className="text-sm font-semibold"
-              style={{ color: colors.text }}
+              style={{ color: statusTone.text }}
             >
               {ORDER_STATUS_LABELS[order.status]}
             </Text>
@@ -218,21 +220,21 @@ export default function ManagerOrdersScreen() {
 
         <View className="space-y-2">
           <View className="flex-row items-center">
-            <Ionicons name="person-outline" size={16} color="#6B7280" />
+            <Ionicons name="person-outline" size={16} color={colors.gray[600]} />
             <Text className="text-gray-700 ml-2 font-medium">
               {orderUser?.name || 'Unknown User'}
             </Text>
           </View>
 
           <View className="flex-row items-center mt-1">
-            <Ionicons name="location-outline" size={16} color="#6B7280" />
+            <Ionicons name="location-outline" size={16} color={colors.gray[600]} />
             <Text className="text-gray-600 ml-2">
               {orderLocation?.name || 'Unknown Location'}
             </Text>
           </View>
 
           <View className="flex-row items-center mt-1">
-            <Ionicons name="time-outline" size={16} color="#6B7280" />
+            <Ionicons name="time-outline" size={16} color={colors.gray[600]} />
             <Text className="text-gray-500 ml-2">
               {formatDate(order.created_at)} • {itemCount} item{itemCount !== 1 ? 's' : ''}
             </Text>
@@ -243,16 +245,19 @@ export default function ManagerOrdersScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }} edges={['top', 'left', 'right']}>
       <ManagerScaleContainer>
       {/* Header */}
-      <View className="bg-white px-4 py-3 flex-row items-center justify-between border-b border-gray-100">
+      <View
+        className="px-4 py-3 flex-row items-center justify-between"
+        style={{ backgroundColor: colors.background, borderBottomWidth: 1, borderBottomColor: colors.divider }}
+      >
         <View className="flex-row items-center">
           <TouchableOpacity
             className="w-10 h-10 items-center justify-center -ml-2"
             onPress={() => router.back()}
           >
-            <Ionicons name="arrow-back" size={24} color="#374151" />
+            <Ionicons name="arrow-back" size={24} color={colors.gray[700]} />
           </TouchableOpacity>
           <Text className="text-xl font-bold text-gray-900 ml-2">Orders</Text>
         </View>
@@ -273,15 +278,18 @@ export default function ManagerOrdersScreen() {
           <Ionicons
             name={showLocationPicker ? 'chevron-up' : 'chevron-down'}
             size={14}
-            color="#6B7280"
+            color={colors.gray[600]}
             className="ml-1.5"
           />
         </TouchableOpacity>
       </View>
 
       {showLocationPicker && (
-        <View className="bg-white border-b border-gray-100">
-          <View className="mt-1 bg-white rounded-2xl border border-gray-100 overflow-hidden mx-4 mb-2">
+        <View style={{ backgroundColor: colors.background, borderBottomWidth: 1, borderBottomColor: colors.divider }}>
+          <View
+            className="mt-1 rounded-2xl overflow-hidden mx-4 mb-2"
+            style={{ backgroundColor: colors.card, borderWidth: 1, borderColor: colors.divider }}
+          >
             <TouchableOpacity
               className="flex-row items-center px-4 py-3"
               onPress={() => handleSelectLocation(null)}
@@ -338,7 +346,7 @@ export default function ManagerOrdersScreen() {
                 style={{
                   backgroundColor: isSelected
                     ? filterColor?.text || colors.primary[500]
-                    : filterColor?.bg || '#F3F4F6',
+                    : filterColor?.bg || colors.neutralBg,
                 }}
                 onPress={() => handleSelectStatus(filter.key)}
               >
@@ -346,8 +354,8 @@ export default function ManagerOrdersScreen() {
                   className="font-semibold"
                   style={{
                     color: isSelected
-                      ? '#FFFFFF'
-                      : filterColor?.text || '#374151',
+                      ? colors.white
+                      : filterColor?.text || colors.gray[700],
                   }}
                 >
                   {filter.label}
@@ -357,16 +365,16 @@ export default function ManagerOrdersScreen() {
                     className="ml-1.5 px-1.5 py-0.5 rounded-full"
                     style={{
                       backgroundColor: isSelected
-                        ? 'rgba(255,255,255,0.3)'
-                        : 'rgba(0,0,0,0.1)',
+                        ? colors.overlay
+                        : colors.divider,
                     }}
                   >
                     <Text
                       className="text-xs font-bold"
                       style={{
                         color: isSelected
-                          ? '#FFFFFF'
-                          : filterColor?.text || '#374151',
+                          ? colors.white
+                          : filterColor?.text || colors.gray[700],
                       }}
                     >
                       {count}
@@ -387,7 +395,7 @@ export default function ManagerOrdersScreen() {
         contentContainerStyle={{ padding: 16 }}
         ListEmptyComponent={() => (
           <View className="flex-1 items-center justify-center py-16">
-            <Ionicons name="receipt-outline" size={48} color="#D1D5DB" />
+            <Ionicons name="receipt-outline" size={48} color={colors.gray[300]} />
             <Text className="text-gray-400 mt-4 text-center">
               {selectedStatus !== 'all'
                 ? `No ${ORDER_STATUS_LABELS[selectedStatus]?.toLowerCase() || selectedStatus} orders`

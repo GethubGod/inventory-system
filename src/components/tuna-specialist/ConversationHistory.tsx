@@ -9,6 +9,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { ConversationMessage } from '@/store/tunaSpecialistStore';
+import { colors } from '@/constants';
 
 interface ConversationHistoryProps {
   visible: boolean;
@@ -44,7 +45,7 @@ export function ConversationHistory({
       <View
         style={{
           flex: 1,
-          backgroundColor: '#0F172A',
+          backgroundColor: colors.background,
           paddingTop: insets.top,
         }}
       >
@@ -57,10 +58,10 @@ export function ConversationHistory({
             paddingHorizontal: 20,
             paddingVertical: 14,
             borderBottomWidth: 1,
-            borderBottomColor: 'rgba(255,255,255,0.08)',
+            borderBottomColor: colors.divider,
           }}
         >
-          <Text style={{ fontSize: 17, fontWeight: '700', color: '#F9FAFB' }}>
+          <Text style={{ fontSize: 17, fontWeight: '700', color: colors.text }}>
             Conversation
           </Text>
           <TouchableOpacity
@@ -70,12 +71,12 @@ export function ConversationHistory({
               width: 32,
               height: 32,
               borderRadius: 16,
-              backgroundColor: 'rgba(255,255,255,0.1)',
+              backgroundColor: colors.gray[100],
               alignItems: 'center',
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="close" size={18} color="#9CA3AF" />
+            <Ionicons name="close" size={18} color={colors.gray[400]} />
           </TouchableOpacity>
         </View>
 
@@ -90,11 +91,11 @@ export function ConversationHistory({
         >
           {conversation.length === 0 && (
             <View style={{ alignItems: 'center', paddingTop: 60 }}>
-              <Ionicons name="chatbubbles-outline" size={48} color="#4B5563" />
-              <Text style={{ color: '#6B7280', marginTop: 12, fontSize: 15 }}>
+              <Ionicons name="chatbubbles-outline" size={48} color={colors.gray[600]} />
+              <Text style={{ color: colors.gray[500], marginTop: 12, fontSize: 15 }}>
                 No conversation yet
               </Text>
-              <Text style={{ color: '#4B5563', marginTop: 4, fontSize: 13 }}>
+              <Text style={{ color: colors.gray[600], marginTop: 4, fontSize: 13 }}>
                 Tap the mic to start ordering
               </Text>
             </View>
@@ -114,8 +115,8 @@ export function ConversationHistory({
                   style={{
                     maxWidth: '85%',
                     backgroundColor: isHuman
-                      ? 'rgba(34,197,94,0.15)'
-                      : 'rgba(255,255,255,0.08)',
+                      ? colors.successBg
+                      : colors.card,
                     borderRadius: 16,
                     borderTopRightRadius: isHuman ? 4 : 16,
                     borderTopLeftRadius: isHuman ? 16 : 4,
@@ -126,7 +127,7 @@ export function ConversationHistory({
                   <Text
                     style={{
                       fontSize: 14,
-                      color: isHuman ? '#86EFAC' : '#E2E8F0',
+                      color: isHuman ? colors.success : colors.text,
                       lineHeight: 20,
                     }}
                   >
@@ -149,7 +150,7 @@ export function ConversationHistory({
                           style={{
                             flexDirection: 'row',
                             alignItems: 'center',
-                            backgroundColor: 'rgba(249,115,22,0.2)',
+                            backgroundColor: colors.primary[50],
                             borderRadius: 10,
                             paddingHorizontal: 8,
                             paddingVertical: 4,
@@ -159,7 +160,7 @@ export function ConversationHistory({
                           <Text
                             style={{
                               fontSize: 11,
-                              color: '#FDBA74',
+                              color: colors.primary[700],
                               fontWeight: '600',
                               marginLeft: 4,
                             }}
@@ -176,7 +177,7 @@ export function ConversationHistory({
                 <Text
                   style={{
                     fontSize: 10,
-                    color: '#4B5563',
+                    color: colors.gray[600],
                     marginTop: 3,
                     marginHorizontal: 4,
                   }}

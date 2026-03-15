@@ -147,12 +147,12 @@ export function QrScannerModal({ visible, onClose, onScan }: QrScannerModalProps
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: colors.scrimStrong,
     justifyContent: 'center',
     padding: 20,
   },
   container: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.background,
     borderRadius: 24,
     overflow: 'hidden',
   },
@@ -163,16 +163,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: colors.gray[100],
   },
   title: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#111827',
+    color: colors.text,
   },
   cameraContainer: {
     height: 320,
-    backgroundColor: '#000',
+    backgroundColor: colors.text,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
     height: 220,
     borderRadius: 16,
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.85)',
+    borderColor: colors.overlay,
   },
   instruction: {
     paddingHorizontal: 20,
@@ -189,7 +189,7 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
     fontSize: 14,
     textAlign: 'center',
-    color: '#4B5563',
+    color: colors.gray[700],
   },
   errorText: {
     paddingBottom: 16,
@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
   permissionText: {
     marginTop: 12,
     textAlign: 'center',
-    color: '#4B5563',
+    color: colors.gray[700],
   },
   permissionButton: {
     marginTop: 12,
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   permissionButtonText: {
-    color: '#FFFFFF',
+    color: colors.white,
     fontWeight: '600',
   },
 });

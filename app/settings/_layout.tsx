@@ -1,5 +1,6 @@
 import { Redirect, Stack } from 'expo-router';
 import { useAuthStore } from '@/store';
+import { colors } from '@/theme/design';
 
 export default function SettingsLayout() {
   const { session, profile } = useAuthStore();
@@ -20,7 +21,9 @@ export default function SettingsLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: '#F9FAFB' },
+        contentStyle: { backgroundColor: colors.background },
+        gestureEnabled: true,
+        animation: 'simple_push',
       }}
     />
   );

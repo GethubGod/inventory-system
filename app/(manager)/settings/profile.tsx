@@ -170,7 +170,7 @@ function ProfileSection({
                 minHeight: Math.max(52, ds.rowH - ds.spacing(12)),
                 paddingHorizontal: ds.spacing(14),
                 borderBottomWidth: index < locations.length - 1 ? 1 : 0,
-                borderBottomColor: '#F3F4F6',
+                borderBottomColor: colors.gray[100],
               }}
             >
               <View
@@ -188,7 +188,7 @@ function ProfileSection({
                   width: ds.icon(10),
                   height: ds.icon(10),
                   borderRadius: ds.radius(999),
-                  backgroundColor: loc.active ? '#22C55E' : '#D1D5DB',
+                  backgroundColor: loc.active ? colors.success : colors.gray[300],
                 }}
               />
             </View>
@@ -214,9 +214,9 @@ function ProfileSection({
         activeOpacity={0.7}
       >
         {isDeletingAccount ? (
-          <ActivityIndicator size="small" color="#9CA3AF" />
+          <ActivityIndicator size="small" color={colors.gray[400]} />
         ) : (
-          <Ionicons name="trash-outline" size={ds.icon(18)} color="#DC2626" />
+          <Ionicons name="trash-outline" size={ds.icon(18)} color={colors.error} />
         )}
         <Text className={isDeletingAccount ? 'text-gray-500 font-semibold' : 'text-red-700 font-semibold'} style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(15) }}>
           {isDeletingAccount ? 'Deleting Account...' : 'Delete Account'}
@@ -315,7 +315,7 @@ export default function ManagerProfileSettingsScreen() {
           }
         }}
       >
-        <View className="flex-1 bg-black/40 items-center justify-center" style={{ padding: ds.spacing(20) }}>
+        <View className="flex-1 items-center justify-center" style={{ padding: ds.spacing(20), backgroundColor: colors.scrimStrong }}>
           <View
             className="bg-white w-full"
             style={{ borderRadius: ds.radius(16), padding: ds.spacing(16), maxWidth: 420 }}

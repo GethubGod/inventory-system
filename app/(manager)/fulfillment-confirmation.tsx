@@ -2521,7 +2521,7 @@ export default function FulfillmentConfirmationScreen() {
                           className="ml-1.5 p-1"
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Ionicons name="information-circle-outline" size={16} color="#B45309" />
+                          <Ionicons name="information-circle-outline" size={16} color={colors.warning} />
                         </TouchableOpacity>
                       </View>
                     </View>

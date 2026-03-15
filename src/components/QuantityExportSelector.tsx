@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { colors } from '@/constants';
 
 type UnitType = 'base' | 'pack';
 
@@ -51,7 +52,7 @@ function UnitPillToggle({
       <Ionicons
         name="swap-horizontal"
         size={14}
-        color={isPack ? '#FFFFFF' : '#6B7280'}
+        color={isPack ? colors.white : colors.gray[600]}
         style={{ marginLeft: 3 }}
       />
     </TouchableOpacity>

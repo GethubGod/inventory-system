@@ -18,10 +18,19 @@ import * as Haptics from "expo-haptics";
 import { useShallow } from "zustand/react/shallow";
 import { useInventoryStore, useAuthStore, useOrderStore } from "@/store";
 import { InventoryItem, ItemCategory, Location } from "@/types";
-import { CATEGORY_LABELS, colors } from "@/constants";
-import { BrandLogo } from "@/components";
+import { CATEGORY_LABELS } from "@/constants";
+import { BrandLogo, GlassSurface } from "@/components";
 import { InventoryItemCard } from "@/components/InventoryItemCard";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
+import {
+  categoryGlassTints,
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+  glassSpacing,
+  glassTabBarHeight,
+  glassTypography,
+} from "@/design/tokens";
 
 if (
   Platform.OS === "android" &&
@@ -57,17 +66,7 @@ const CATEGORY_ICONS: Record<ItemCategory, keyof typeof Ionicons.glyphMap> = {
 const CATEGORY_ICON_THEMES: Record<
   ItemCategory,
   { background: string; icon: string }
-> = {
-  fish: { background: "#DBEAFE", icon: "#2563EB" },
-  protein: { background: "#FEE2E2", icon: "#DC2626" },
-  produce: { background: "#DCFCE7", icon: "#16A34A" },
-  dry: { background: "#FEF3C7", icon: "#D97706" },
-  dairy_cold: { background: "#EDE9FE", icon: "#7C3AED" },
-  frozen: { background: "#CFFAFE", icon: "#0891B2" },
-  sauces: { background: "#FCE7F3", icon: "#DB2777" },
-  alcohol: { background: "#E0E7FF", icon: "#4F46E5" },
-  packaging: { background: "#E5E7EB", icon: "#4B5563" },
-};
+> = categoryGlassTints;
 
 export default function ManagerBrowseScreen() {
   const ds = useScaledStyles();
@@ -176,127 +175,144 @@ export default function ManagerBrowseScreen() {
 
   return (
     <SafeAreaView
-      className="flex-1 bg-[#FAFAFA]"
+      style={{ flex: 1, backgroundColor: glassColors.background }}
       edges={["top", "left", "right"]}
     >
-      {/* Header — matches Manager Quick Order style */}
-      <View className="bg-white border-b border-gray-200">
-        <View
-          className="flex-row items-center"
-          style={{
-            paddingHorizontal: ds.spacing(8),
-            paddingVertical: ds.spacing(8),
-          }}
-        >
-          {/* Back button → Dashboard */}
-          <TouchableOpacity
-            onPress={() => router.replace("/(manager)" as any)}
+      <View
+        style={{
+          backgroundColor: glassColors.background,
+          paddingHorizontal: glassSpacing.screen,
+          paddingTop: ds.spacing(8),
+          paddingBottom: ds.spacing(10),
+        }}
+      >
+        <View className="flex-row items-center" style={{ columnGap: glassSpacing.gap }}>
+          <GlassSurface
+            intensity="medium"
             style={{
               width: headerIconButtonSize,
               height: headerIconButtonSize,
-              borderRadius: ds.radius(10),
-              alignItems: "center",
-              justifyContent: "center",
+              borderRadius: glassRadii.round,
             }}
           >
-            <Ionicons
-              name="arrow-back"
-              size={ds.icon(22)}
-              color={colors.gray[700]}
-            />
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.replace("/(manager)" as any)}
+              className="flex-1 items-center justify-center"
+            >
+              <Ionicons
+                name="arrow-back"
+                size={ds.icon(22)}
+                color={glassColors.textPrimary}
+              />
+            </TouchableOpacity>
+          </GlassSurface>
 
-          {/* Spacer */}
           <View className="flex-1" />
 
-          {/* Location Pill */}
-          <TouchableOpacity
-            onPress={toggleLocationDropdown}
-            className="flex-row items-center bg-gray-100 rounded-full"
+          <GlassSurface
+            intensity="medium"
             style={{
-              paddingHorizontal: ds.spacing(12),
-              minHeight: headerIconButtonSize,
-              marginRight: ds.spacing(8),
               flexShrink: 1,
+              marginRight: glassSpacing.gap,
+              borderRadius: glassRadii.pill,
             }}
-            activeOpacity={0.7}
           >
-            <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
-            <Text
-              className="text-gray-800 font-bold"
+            <TouchableOpacity
+              onPress={toggleLocationDropdown}
+              className="flex-row items-center"
               style={{
-                fontSize: ds.fontSize(15),
-                marginLeft: ds.spacing(8),
-                marginRight: ds.spacing(6),
-                maxWidth: ds.spacing(120),
+                minHeight: headerIconButtonSize,
+                paddingHorizontal: ds.spacing(14),
               }}
-              numberOfLines={1}
-              ellipsizeMode="tail"
+              activeOpacity={0.7}
             >
-              {location?.name || "Select"}
-            </Text>
-            <Ionicons
-              name={showLocationDropdown ? "chevron-up" : "chevron-down"}
-              size={ds.icon(14)}
-              color={colors.gray[500]}
-            />
-          </TouchableOpacity>
+              <View
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: glassRadii.round,
+                  backgroundColor: glassColors.accent,
+                  marginRight: ds.spacing(8),
+                }}
+              />
+              <Text
+                style={{
+                  fontSize: ds.fontSize(13),
+                  fontWeight: "500",
+                  color: glassColors.textPrimary,
+                  marginRight: ds.spacing(6),
+                  maxWidth: ds.spacing(160),
+                }}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {location?.name || "Select Location"}
+              </Text>
+              <Ionicons
+                name={showLocationDropdown ? "chevron-up" : "chevron-down"}
+                size={ds.icon(14)}
+                color={glassColors.textSecondary}
+              />
+            </TouchableOpacity>
+          </GlassSurface>
 
-          {/* Cart button */}
-          <TouchableOpacity
-            onPress={() => router.push("/(manager)/cart" as any)}
-            className="relative rounded-full bg-gray-100 items-center justify-center"
+          <GlassSurface
+            intensity="medium"
             style={{
               width: headerIconButtonSize,
               height: headerIconButtonSize,
+              borderRadius: glassRadii.round,
             }}
           >
-            <Ionicons
-              name="cart-outline"
-              size={ds.icon(20)}
-              color={colors.gray[700]}
-            />
-            {totalCartCount > 0 && (
-              <View
-                className="absolute bg-primary-500 rounded-full items-center justify-center"
-                style={{
-                  top: -ds.spacing(2),
-                  right: -ds.spacing(2),
-                  minWidth: badgeSize,
-                  height: badgeSize,
-                  paddingHorizontal: ds.spacing(4),
-                }}
-              >
-                <Text
-                  className="text-white font-bold"
-                  style={{ fontSize: ds.fontSize(11) }}
+            <TouchableOpacity
+              onPress={() => router.push("/(manager)/cart" as any)}
+              className="flex-1 items-center justify-center"
+              activeOpacity={0.8}
+            >
+              <Ionicons
+                name="bag-handle-outline"
+                size={ds.icon(18)}
+                color={glassColors.textPrimary}
+              />
+              {totalCartCount > 0 && (
+                <View
+                  style={{
+                    position: "absolute",
+                    top: -2,
+                    right: -2,
+                    minWidth: badgeSize,
+                    height: badgeSize,
+                    paddingHorizontal: ds.spacing(4),
+                    borderRadius: glassRadii.round,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: glassColors.accent,
+                  }}
                 >
-                  {totalCartCount > 99 ? "99+" : totalCartCount}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
+                  <Text
+                    style={{
+                      color: glassColors.textOnPrimary,
+                      fontSize: ds.fontSize(11),
+                      fontWeight: "600",
+                    }}
+                  >
+                    {totalCartCount > 99 ? "99+" : totalCartCount}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          </GlassSurface>
         </View>
 
-        {/* Location Dropdown */}
         {showLocationDropdown && (
-          <View
-            className="border-t border-gray-100"
+          <GlassSurface
+            intensity="strong"
             style={{
-              paddingHorizontal: ds.spacing(12),
-              paddingBottom: ds.spacing(8),
+              marginTop: ds.spacing(10),
+              borderRadius: glassRadii.surface,
             }}
           >
-            <View
-              className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
-              style={{
-                shadowColor: "#111827",
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.06,
-                shadowRadius: 10,
-                elevation: 3,
-              }}
-            >
+            <View>
               {locations.map((loc, index) => {
                 const isSelected = location?.id === loc.id;
                 const cartCount = getLocationCartTotal(loc.id, "manager");
@@ -306,37 +322,43 @@ export default function ManagerBrowseScreen() {
                     key={loc.id}
                     onPress={() => handleSelectLocation(loc)}
                     activeOpacity={0.7}
-                    className={`flex-row items-center justify-between ${index > 0 ? "border-t border-gray-100" : ""}`}
+                    className="flex-row items-center justify-between"
                     style={{
                       minHeight: ds.rowH,
                       paddingHorizontal: ds.spacing(16),
                       paddingVertical: ds.spacing(12),
+                      borderTopWidth: index > 0 ? glassHairlineWidth : 0,
+                      borderTopColor: glassColors.divider,
                     }}
                   >
                     <View className="flex-row items-center flex-1">
                       <View
-                        className={`rounded-full items-center justify-center ${
-                          isSelected ? "bg-primary-500" : "bg-gray-200"
-                        }`}
                         style={{
                           width: ds.icon(32),
                           height: ds.icon(32),
                           marginRight: ds.spacing(12),
+                          borderRadius: glassRadii.round,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: isSelected
+                            ? glassColors.accentSoft
+                            : glassColors.mediumFill,
                         }}
                       >
                         <BrandLogo
                           variant="inline"
                           size={16}
-                          colorMode={isSelected ? "dark" : "light"}
+                          colorMode="light"
                         />
                       </View>
                       <Text
-                        className={
-                          isSelected
-                            ? "font-semibold text-primary-700"
-                            : "text-gray-900 font-medium"
-                        }
-                        style={{ fontSize: ds.fontSize(15) }}
+                        style={{
+                          fontSize: ds.fontSize(13),
+                          fontWeight: isSelected ? "500" : "400",
+                          color: isSelected
+                            ? glassColors.accent
+                            : glassColors.textPrimary,
+                        }}
                       >
                         {loc.name}
                       </Text>
@@ -344,9 +366,9 @@ export default function ManagerBrowseScreen() {
                     <View className="flex-row items-center">
                       {cartCount > 0 && (
                         <Text
-                          className="text-gray-500"
                           style={{
-                            fontSize: ds.fontSize(13),
+                            color: glassColors.textSecondary,
+                            fontSize: ds.fontSize(11),
                             marginRight: ds.spacing(8),
                           }}
                         >
@@ -357,7 +379,7 @@ export default function ManagerBrowseScreen() {
                         <Ionicons
                           name="checkmark"
                           size={ds.icon(18)}
-                          color={colors.primary[500]}
+                          color={glassColors.accent}
                         />
                       )}
                     </View>
@@ -365,192 +387,241 @@ export default function ManagerBrowseScreen() {
                 );
               })}
             </View>
-          </View>
+          </GlassSurface>
         )}
       </View>
 
-      {/* Search Bar */}
       <View
-        className="bg-[#FAFAFA]/90 border-b border-gray-100"
         style={{
-          paddingHorizontal: ds.spacing(16),
+          paddingHorizontal: glassSpacing.screen,
           paddingVertical: ds.spacing(12),
         }}
       >
-        <View
-          className="flex-row items-center bg-white border border-gray-100 rounded-2xl"
+        <GlassSurface
+          intensity="medium"
           style={{
-            borderRadius: ds.radius(16),
+            borderRadius: glassRadii.search,
             paddingHorizontal: ds.spacing(14),
             height: ds.buttonH,
-            shadowColor: "#111827",
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.06,
-            shadowRadius: 10,
-            elevation: 3,
           }}
         >
-          <Ionicons name="search-outline" size={ds.icon(20)} color="#9CA3AF" />
-          <TextInput
-            className="flex-1 ml-2 text-gray-900"
-            style={{ fontSize: ds.fontSize(14) }}
-            placeholder="Search inventory..."
-            placeholderTextColor="#9CA3AF"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            autoCapitalize="none"
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity
-              onPress={() => setSearchQuery("")}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Ionicons
-                name="close-circle"
-                size={ds.icon(20)}
-                color="#9CA3AF"
-              />
-            </TouchableOpacity>
-          )}
-        </View>
+          <View className="flex-1 flex-row items-center">
+            <Ionicons
+              name="search-outline"
+              size={ds.icon(20)}
+              color={glassColors.textSecondary}
+            />
+            <TextInput
+              className="flex-1 ml-2"
+              style={{
+                fontSize: ds.fontSize(13),
+                color: glassColors.textPrimary,
+              }}
+              placeholder="Search inventory..."
+              placeholderTextColor={glassColors.textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoCapitalize="none"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setSearchQuery("")}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={ds.icon(20)}
+                  color={glassColors.textSecondary}
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+        </GlassSurface>
       </View>
 
       {showCategoryGrid ? (
         <ScrollView
           className="flex-1"
-          contentContainerStyle={{ padding: ds.spacing(16), paddingBottom: 32 }}
+          contentContainerStyle={{
+            paddingHorizontal: glassSpacing.screen,
+            paddingTop: ds.spacing(4),
+            paddingBottom: glassTabBarHeight + ds.spacing(20),
+          }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor="#F97316"
+              tintColor={glassColors.accent}
             />
           }
         >
           <Text
-            className="text-gray-500 uppercase tracking-wide"
-            style={{ fontSize: ds.fontSize(12), marginBottom: ds.spacing(12) }}
+            style={{
+              color: glassColors.textSecondary,
+              fontSize: glassTypography.sectionLabel,
+              fontWeight: "500",
+              letterSpacing: 0.8,
+              textTransform: "uppercase",
+              marginBottom: ds.spacing(8),
+            }}
           >
             Browse by Category
           </Text>
           <View
             className="flex-row flex-wrap justify-between"
-            style={{ gap: ds.spacing(12) }}
+            style={{ gap: glassSpacing.gap }}
           >
             {categories.map((cat) => {
-              const iconTheme = CATEGORY_ICON_THEMES[cat] || {
-                background: "#E5E7EB",
-                icon: "#4B5563",
-              };
+              const iconTheme = categoryGlassTints[cat];
+              const itemCount = items.filter((item) => item.category === cat).length;
+
               return (
-                <TouchableOpacity
+                <GlassSurface
                   key={cat}
-                  onPress={() => handleSelectCategory(cat)}
-                  className="bg-white border border-gray-100 rounded-3xl"
                   style={{
                     width: "48%",
-                    paddingHorizontal: ds.spacing(14),
-                    paddingVertical: ds.spacing(16),
-                    borderRadius: Math.max(ds.radius(18), 24),
-                    shadowColor: "#111827",
-                    shadowOffset: { width: 0, height: 6 },
-                    shadowOpacity: 0.06,
-                    shadowRadius: 12,
-                    elevation: 3,
+                    borderRadius: glassRadii.surface,
                   }}
-                  activeOpacity={0.85}
                 >
-                  <View
-                    className="rounded-xl items-center justify-center"
+                  <TouchableOpacity
+                    onPress={() => handleSelectCategory(cat)}
                     style={{
-                      width: ds.icon(42),
-                      height: ds.icon(42),
-                      backgroundColor: iconTheme.background,
-                      marginBottom: ds.spacing(12),
+                      paddingHorizontal: ds.spacing(12),
+                      paddingVertical: ds.spacing(14),
                     }}
+                    activeOpacity={0.85}
                   >
-                    <Ionicons
-                      name={CATEGORY_ICONS[cat]}
-                      size={ds.icon(20)}
-                      color={iconTheme.icon}
-                    />
-                  </View>
-                  <Text
-                    className="font-bold text-gray-800"
-                    numberOfLines={1}
-                    style={{ fontSize: ds.fontSize(14) }}
-                  >
-                    {CATEGORY_LABELS[cat]}
-                  </Text>
-                  <Text
-                    className="text-gray-500"
-                    style={{
-                      fontSize: ds.fontSize(11),
-                      marginTop: ds.spacing(5),
-                    }}
-                  >
-                    View Items
-                  </Text>
-                </TouchableOpacity>
+                    <View
+                      className="items-center justify-center"
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: glassRadii.iconTile,
+                        backgroundColor: iconTheme.background,
+                        marginBottom: ds.spacing(8),
+                      }}
+                    >
+                      <Ionicons
+                        name={CATEGORY_ICONS[cat]}
+                        size={ds.icon(18)}
+                        color={iconTheme.icon}
+                      />
+                    </View>
+                    <Text
+                      numberOfLines={1}
+                      style={{
+                        fontSize: ds.fontSize(13),
+                        fontWeight: "500",
+                        color: glassColors.textPrimary,
+                      }}
+                    >
+                      {CATEGORY_LABELS[cat]}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: ds.fontSize(10),
+                        color: glassColors.textSecondary,
+                        marginTop: ds.spacing(4),
+                      }}
+                    >
+                      {itemCount} items
+                    </Text>
+                  </TouchableOpacity>
+                </GlassSurface>
               );
             })}
           </View>
         </ScrollView>
       ) : (
         <>
-          <View
-            className="bg-white border-b border-gray-100 flex-row items-center justify-between"
+          <GlassSurface
+            intensity="subtle"
             style={{
-              paddingHorizontal: ds.spacing(16),
-              paddingVertical: ds.spacing(8),
+              marginHorizontal: glassSpacing.screen,
+              marginBottom: ds.spacing(8),
+              borderRadius: glassRadii.surface,
             }}
           >
-            <TouchableOpacity
-              onPress={handleBackToCategories}
-              className="flex-row items-center"
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            <View
+              className="flex-row items-center justify-between"
+              style={{
+                paddingHorizontal: ds.spacing(14),
+                paddingVertical: ds.spacing(10),
+              }}
             >
-              <Ionicons
-                name="arrow-back"
-                size={ds.icon(18)}
-                color={colors.gray[600]}
-              />
-              <Text
-                className="text-gray-600 ml-1"
-                style={{ fontSize: ds.fontSize(14) }}
+              <TouchableOpacity
+                onPress={handleBackToCategories}
+                className="flex-row items-center"
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                Categories
-              </Text>
-            </TouchableOpacity>
-            {selectedCategory ? (
-              <Text
-                className="font-semibold text-gray-900"
-                style={{ fontSize: ds.fontSize(15) }}
-              >
-                {CATEGORY_LABELS[selectedCategory]}
-              </Text>
-            ) : (
-              <Text
-                className="text-gray-500"
-                style={{ fontSize: ds.fontSize(14) }}
-              >
-                Search Results
-              </Text>
-            )}
-          </View>
+                <Ionicons
+                  name="arrow-back"
+                  size={ds.icon(16)}
+                  color={glassColors.textSecondary}
+                />
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(11),
+                    fontWeight: "500",
+                    color: glassColors.textSecondary,
+                    marginLeft: ds.spacing(6),
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  Categories
+                </Text>
+              </TouchableOpacity>
+              {selectedCategory ? (
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(13),
+                    fontWeight: "500",
+                    color: glassColors.textPrimary,
+                  }}
+                >
+                  {CATEGORY_LABELS[selectedCategory]}
+                </Text>
+              ) : (
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(11),
+                    color: glassColors.textSecondary,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                  }}
+                >
+                  Search Results
+                </Text>
+              )}
+            </View>
+          </GlassSurface>
 
           <FlatList
             data={filteredItems}
             renderItem={renderItem}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={{ padding: ds.spacing(16) }}
+            contentContainerStyle={{
+              paddingHorizontal: glassSpacing.screen,
+              paddingBottom: glassTabBarHeight + ds.spacing(20),
+            }}
             ItemSeparatorComponent={() => (
               <View style={{ height: ds.spacing(12) }} />
             )}
             ListEmptyComponent={() => (
               <View className="flex-1 items-center justify-center py-12">
-                <Ionicons name="cube-outline" size={48} color="#9CA3AF" />
-                <Text className="text-gray-500 mt-4 text-center">
+                <Ionicons
+                  name="cube-outline"
+                  size={48}
+                  color={glassColors.textSecondary}
+                />
+                <Text
+                  style={{
+                    marginTop: ds.spacing(12),
+                    color: glassColors.textSecondary,
+                    textAlign: "center",
+                  }}
+                >
                   {searchQuery || selectedCategory
                     ? "No items match your search"
                     : "No inventory items found"}
@@ -561,7 +632,7 @@ export default function ManagerBrowseScreen() {
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={onRefresh}
-                tintColor="#F97316"
+                tintColor={glassColors.accent}
               />
             }
             removeClippedSubviews={Platform.OS === "android"}

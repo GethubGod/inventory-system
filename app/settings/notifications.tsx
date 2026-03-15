@@ -5,7 +5,8 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore, useSettingsStore } from '@/store';
 import { colors } from '@/constants';
-import { SettingToggle, TimePickerRow } from '@/components/settings';
+import { GlassSurface, StackScreenHeader } from '@/components';
+import { SettingToggle, TimePickerRow, settingsIconPalettes } from '@/components/settings';
 import {
   deactivatePushTokensForUser,
   registerCurrentDevicePushToken,
@@ -13,6 +14,7 @@ import {
   syncNotificationPreference,
 } from '@/services/notificationService';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { glassColors, glassHairlineWidth, glassRadii, glassSpacing } from '@/design/tokens';
 
 
 function NotificationsSection() {
@@ -76,8 +78,8 @@ function NotificationsSection() {
     <View>
       <SettingToggle
         icon="notifications"
-        iconColor="#F59E0B"
-        iconBgColor="#FEF3C7"
+        iconColor={settingsIconPalettes.notifications.icon}
+        iconBgColor={settingsIconPalettes.notifications.background}
         title="Push Notifications"
         subtitle="Receive alerts on your device"
         value={notifications.pushEnabled}
@@ -87,7 +89,7 @@ function NotificationsSection() {
       {notifications.pushEnabled && (
         <>
           <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
-            <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11) }}>
+            <Text style={{ fontSize: ds.fontSize(11), color: glassColors.textSecondary }}>
               Notification Types
             </Text>
           </View>
@@ -115,10 +117,17 @@ function NotificationsSection() {
             onValueChange={(v) => setNotificationSettings({ dailySummary: v })}
           />
 
-          <View className="h-px bg-gray-100" style={{ marginHorizontal: ds.spacing(16), marginVertical: ds.spacing(8) }} />
+          <View
+            style={{
+              height: glassHairlineWidth,
+              backgroundColor: glassColors.divider,
+              marginHorizontal: ds.spacing(16),
+              marginVertical: ds.spacing(8),
+            }}
+          />
 
           <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
-            <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11) }}>
+            <Text style={{ fontSize: ds.fontSize(11), color: glassColors.textSecondary }}>
               Sound & Vibration
             </Text>
           </View>
@@ -137,7 +146,14 @@ function NotificationsSection() {
             onValueChange={(v) => setNotificationSettings({ vibrationEnabled: v })}
           />
 
-          <View className="h-px bg-gray-100" style={{ marginHorizontal: ds.spacing(16), marginVertical: ds.spacing(8) }} />
+          <View
+            style={{
+              height: glassHairlineWidth,
+              backgroundColor: glassColors.divider,
+              marginHorizontal: ds.spacing(16),
+              marginVertical: ds.spacing(8),
+            }}
+          />
 
           <SettingToggle
             title="Quiet Hours"
@@ -148,20 +164,24 @@ function NotificationsSection() {
 
           {notifications.quietHours.enabled && (
             <View style={{ paddingHorizontal: ds.spacing(16), paddingBottom: ds.spacing(16) }}>
-              <View className="bg-gray-50 rounded-xl" style={{ paddingHorizontal: ds.spacing(14), borderRadius: ds.radius(12) }}>
+              <GlassSurface
+                intensity="medium"
+                blurred={false}
+                style={{ paddingHorizontal: ds.spacing(14), borderRadius: glassRadii.surface }}
+              >
                 <TimePickerRow
                   title="Start"
                   value={notifications.quietHours.startTime}
                   onTimeChange={(t) => setQuietHours({ startTime: t })}
                 />
-                <View className="h-px bg-gray-200" />
+                <View style={{ height: glassHairlineWidth, backgroundColor: glassColors.divider }} />
                 <TimePickerRow
                   title="End"
                   value={notifications.quietHours.endTime}
                   onTimeChange={(t) => setQuietHours({ endTime: t })}
                 />
-              </View>
-              <Text className="text-gray-400" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(8) }}>
+              </GlassSurface>
+              <Text style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(8), color: glassColors.textSecondary }}>
                 Notifications will be silenced during these hours
               </Text>
             </View>
@@ -175,34 +195,35 @@ function NotificationsSection() {
 export default function NotificationsSettingsScreen() {
   const ds = useScaledStyles();
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      <View className="bg-white border-b border-gray-100 flex-row items-center" style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
+      <StackScreenHeader title="Notifications" />
+      <ScrollView contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, borderRadius: glassRadii.surface }}
         >
-          <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
-        </TouchableOpacity>
-        <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>Notifications</Text>
-      </View>
-
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
-        <NotificationsSection />
+          <NotificationsSection />
+        </GlassSurface>
 
         {__DEV__ && (
           <TouchableOpacity
             onPress={() => router.push('/settings/notifications-debug')}
-            className="bg-gray-100 rounded-xl flex-row items-center justify-center"
             style={{
-              marginHorizontal: ds.spacing(16),
+              marginHorizontal: glassSpacing.screen,
               marginTop: ds.spacing(16),
               minHeight: Math.max(44, 44),
-              borderRadius: 12,
+              borderRadius: glassRadii.surface,
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexDirection: 'row',
+              backgroundColor: glassColors.mediumFill,
+              borderWidth: glassHairlineWidth,
+              borderColor: glassColors.cardBorder,
             }}
           >
             <Ionicons name="bug-outline" size={16} color={colors.gray[500]} />
-            <Text className="text-gray-500 font-medium ml-2" style={{ fontSize: ds.fontSize(13) }}>
+            <Text style={{ fontSize: ds.fontSize(13), marginLeft: ds.spacing(8), color: glassColors.textSecondary, fontWeight: '500' }}>
               Notifications Debug (DEV)
             </Text>
           </TouchableOpacity>

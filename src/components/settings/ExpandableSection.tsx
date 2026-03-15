@@ -9,9 +9,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { colors, shadow } from '@/constants';
+import { colors } from '@/constants';
 import { useDisplayStore } from '@/store';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { GlassSurface } from '@/components/ui';
+import { glassColors, glassHairlineWidth, glassRadii } from '@/design/tokens';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -50,15 +52,14 @@ export function ExpandableSection({
   };
 
   return (
-    <View
-      className="bg-white rounded-xl overflow-hidden"
-      style={[
-        shadow.md,
-        {
-          marginHorizontal: ds.spacing(16),
-          marginBottom: ds.spacing(16),
-        },
-      ]}
+    <GlassSurface
+      intensity="subtle"
+      blurred={false}
+      style={{
+        marginHorizontal: ds.spacing(16),
+        marginBottom: ds.spacing(16),
+        borderRadius: glassRadii.surface,
+      }}
     >
       {/* Header - always visible */}
       <TouchableOpacity
@@ -91,8 +92,15 @@ export function ExpandableSection({
 
       {/* Content - conditionally rendered */}
       {isExpanded && (
-        <View className="border-t border-gray-100">{children}</View>
+        <View
+          style={{
+            borderTopWidth: glassHairlineWidth,
+            borderTopColor: glassColors.divider,
+          }}
+        >
+          {children}
+        </View>
       )}
-    </View>
+    </GlassSurface>
   );
 }

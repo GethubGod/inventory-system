@@ -384,7 +384,7 @@ export function OrderLaterScheduleModal({
           >
             {submitting ? (
               <View className="flex-row items-center">
-                <ActivityIndicator color="#FFFFFF" size="small" />
+                <ActivityIndicator color={colors.white} size="small" />
                 <Text
                   style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}
                   className="font-semibold text-white"

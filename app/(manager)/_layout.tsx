@@ -3,12 +3,14 @@ import { Redirect, Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { View, Text } from "react-native";
 import { RealtimeChannel } from "@supabase/supabase-js";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useAuthStore,
   useOrderStore,
   useDisplayStore,
 } from "@/store";
 import { supabase } from "@/lib/supabase";
+import { colors, hairline, radii, spacing } from "@/theme/design";
 
 export default function ManagerLayout() {
   const { session, profile, user } = useAuthStore();
@@ -17,6 +19,7 @@ export default function ManagerLayout() {
   );
   const uiScale = useDisplayStore((state) => state.uiScale);
   const scaledFontSize = useDisplayStore((state) => state.scaledFontSize);
+  const insets = useSafeAreaInsets();
   const [pendingFulfillmentCount, setPendingFulfillmentCount] = useState(0);
   const badgeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -34,9 +37,10 @@ export default function ManagerLayout() {
         ? session.user.app_metadata.role
         : null;
   const resolvedRole = user?.role ?? profile?.role ?? metadataRole;
-  // Match employee tab bar size for default/compact and only expand for large UI scale.
   const tabBarScale = isLarge ? 1.1 : 1;
   const badgeSize = Math.max(18, Math.round(18 * tabBarScale));
+  const tabBarBottomInset = Math.max(insets.bottom, spacing.tabBarBottom);
+  const tabBarHeight = Math.round(58 * tabBarScale) + tabBarBottomInset;
   const refreshPendingFulfillmentCount = useCallback(async () => {
     if (!session || resolvedRole !== "manager") {
       setPendingFulfillmentCount(0);
@@ -157,19 +161,27 @@ export default function ManagerLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#F97316",
-        tabBarInactiveTintColor: "#9CA3AF",
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textSecondary,
+        tabBarActiveBackgroundColor: colors.primaryLight,
         tabBarStyle: {
-          backgroundColor: "#FFFFFF",
-          borderTopColor: "#E5E7EB",
-          paddingTop: Math.round(12 * tabBarScale),
-          paddingBottom: Math.round(12 * tabBarScale),
-          height: Math.round(90 * tabBarScale),
+          backgroundColor: colors.tabBarBg,
+          borderTopWidth: hairline,
+          borderTopColor: colors.glassBorder,
+          paddingTop: Math.round(spacing.tabBarTop * tabBarScale),
+          paddingBottom: tabBarBottomInset,
+          paddingHorizontal: spacing.tabBarHorizontal,
+          height: tabBarHeight,
         },
         tabBarLabelStyle: {
           fontSize: Math.max(10, scaledFontSize(10)),
           fontWeight: "600",
           marginTop: Math.round(4 * tabBarScale),
+        },
+        tabBarItemStyle: {
+          borderRadius: radii.pill,
+          marginHorizontal: 4,
+          marginVertical: 2,
         },
         tabBarIconStyle: {
           transform: [{ scale: isLarge ? 1.15 : isCompact ? 0.95 : 1 }],
@@ -210,7 +222,7 @@ export default function ManagerLayout() {
                     position: "absolute",
                     top: -Math.round(4 * tabBarScale),
                     right: -Math.round(8 * tabBarScale),
-                    backgroundColor: "#F97316",
+                    backgroundColor: colors.primary,
                     borderRadius: badgeSize / 2,
                     minWidth: badgeSize,
                     height: badgeSize,
@@ -221,7 +233,7 @@ export default function ManagerLayout() {
                 >
                   <Text
                     style={{
-                      color: "white",
+                      color: colors.textOnPrimary,
                       fontSize: Math.max(9, scaledFontSize(9)),
                       fontWeight: "bold",
                     }}
@@ -249,7 +261,7 @@ export default function ManagerLayout() {
                     position: "absolute",
                     top: -Math.round(4 * tabBarScale),
                     right: -Math.round(8 * tabBarScale),
-                    backgroundColor: "#F97316",
+                    backgroundColor: colors.primary,
                     borderRadius: badgeSize / 2,
                     minWidth: badgeSize,
                     height: badgeSize,
@@ -260,7 +272,7 @@ export default function ManagerLayout() {
                 >
                   <Text
                     style={{
-                      color: "white",
+                      color: colors.textOnPrimary,
                       fontSize: Math.max(9, scaledFontSize(9)),
                       fontWeight: "bold",
                     }}
@@ -282,7 +294,7 @@ export default function ManagerLayout() {
         options={{
           title: "Settings",
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings-outline" size={size} color={color} />
+            <Ionicons name="person-circle-outline" size={size} color={color} />
           ),
         }}
       />

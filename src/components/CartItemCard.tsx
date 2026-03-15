@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { InventoryItem, UnitType } from '@/types';
 import { useOrderStore } from '@/store';
-import { categoryColors, CATEGORY_LABELS } from '@/constants';
+import { categoryColors, CATEGORY_LABELS, colors } from '@/constants';
 
 interface CartItem {
   inventoryItemId: string;
@@ -23,7 +23,7 @@ export function CartItemCard({ cartItem, inventoryItem, locationId }: CartItemCa
     return null;
   }
 
-  const categoryColor = categoryColors[inventoryItem.category] || '#6B7280';
+  const categoryColor = categoryColors[inventoryItem.category] || colors.gray[600];
 
   const handleIncrement = () => {
     updateCartItem(
@@ -81,7 +81,7 @@ export function CartItemCard({ cartItem, inventoryItem, locationId }: CartItemCa
           </View>
         </View>
         <TouchableOpacity onPress={handleRemove} className="p-1">
-          <Ionicons name="trash-outline" size={20} color="#EF4444" />
+          <Ionicons name="trash-outline" size={20} color={colors.error} />
         </TouchableOpacity>
       </View>
 
@@ -93,7 +93,7 @@ export function CartItemCard({ cartItem, inventoryItem, locationId }: CartItemCa
           onPress={toggleUnit}
         >
           <Text className="text-gray-700 font-medium mr-1">{unitLabel}</Text>
-          <Ionicons name="swap-horizontal" size={16} color="#6B7280" />
+          <Ionicons name="swap-horizontal" size={16} color={colors.gray[600]} />
         </TouchableOpacity>
 
         {/* Quantity Controls */}
@@ -102,7 +102,7 @@ export function CartItemCard({ cartItem, inventoryItem, locationId }: CartItemCa
             className="w-10 h-10 bg-gray-100 rounded-lg items-center justify-center"
             onPress={handleDecrement}
           >
-            <Ionicons name="remove" size={20} color="#374151" />
+            <Ionicons name="remove" size={20} color={colors.gray[700]} />
           </TouchableOpacity>
 
           <View className="w-16 h-10 bg-primary-50 border border-primary-200 rounded-lg mx-2 items-center justify-center">
@@ -113,7 +113,7 @@ export function CartItemCard({ cartItem, inventoryItem, locationId }: CartItemCa
             className="w-10 h-10 bg-gray-100 rounded-lg items-center justify-center"
             onPress={handleIncrement}
           >
-            <Ionicons name="add" size={20} color="#374151" />
+            <Ionicons name="add" size={20} color={colors.gray[700]} />
           </TouchableOpacity>
         </View>
       </View>

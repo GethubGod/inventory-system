@@ -88,11 +88,11 @@ export default function CompleteProfileScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-black">
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style="light" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1 bg-black"
+        style={{ flex: 1, backgroundColor: colors.background }}
       >
         <View className="flex-1 px-6 pt-10 pb-8">
           <View className="items-center mb-6">
@@ -102,11 +102,13 @@ export default function CompleteProfileScreen() {
           <View
             className="bg-white rounded-2xl p-6 border border-gray-100"
             style={{
-              elevation: 8,
-              shadowColor: '#000',
-              shadowOpacity: 0.25,
-              shadowRadius: 10,
-              shadowOffset: { width: 0, height: 6 },
+              backgroundColor: colors.card,
+              borderColor: colors.divider,
+              elevation: 0,
+              shadowColor: colors.background,
+              shadowOpacity: 0,
+              shadowRadius: 0,
+              shadowOffset: { width: 0, height: 0 },
             }}
           >
             <Text className="text-2xl font-bold text-gray-900 mb-2 text-center">
@@ -122,12 +124,12 @@ export default function CompleteProfileScreen() {
                 <Ionicons
                   name="person-outline"
                   size={20}
-                  color={focusedInput === 'name' ? colors.primary[500] : '#9CA3AF'}
+                  color={focusedInput === 'name' ? colors.primary[500] : colors.gray[400]}
                 />
                 <TextInput
                   className="flex-1 ml-3 text-gray-900 text-base"
                   placeholder="Enter your full name"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.gray[400]}
                   value={fullName}
                   onChangeText={setFullName}
                   autoComplete="name"
@@ -143,12 +145,12 @@ export default function CompleteProfileScreen() {
                 <Ionicons
                   name="key-outline"
                   size={20}
-                  color={focusedInput === 'accessCode' ? colors.primary[500] : '#9CA3AF'}
+                  color={focusedInput === 'accessCode' ? colors.primary[500] : colors.gray[400]}
                 />
                 <TextInput
                   className="flex-1 ml-3 text-gray-900 text-base"
                   placeholder="Enter 4-digit code"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.gray[400]}
                   value={accessCode}
                   onChangeText={(value) => {
                     setAccessCode(sanitizeAccessCode(value));
@@ -174,7 +176,7 @@ export default function CompleteProfileScreen() {
                   <Ionicons
                     name={showAccessCode ? 'eye-off-outline' : 'eye-outline'}
                     size={20}
-                    color="#9CA3AF"
+                    color={colors.gray[400]}
                   />
                 </TouchableOpacity>
               </View>

@@ -180,13 +180,13 @@ export default function EmployeeReminderDeliveryStatusScreen() {
                       <View
                         key={`${entry.id}-${channel}`}
                         style={{
-                          backgroundColor: '#E5E7EB',
+                          backgroundColor: colors.gray[200],
                           paddingHorizontal: ds.spacing(8),
                           paddingVertical: ds.spacing(3),
                           borderRadius: ds.radius(999),
                         }}
                       >
-                        <Text style={{ color: '#374151', fontSize: ds.fontSize(11), fontWeight: '700' }}>{channel}</Text>
+                        <Text style={{ color: colors.gray[700], fontSize: ds.fontSize(11), fontWeight: '700' }}>{channel}</Text>
                       </View>
                     ))}
 
@@ -194,10 +194,10 @@ export default function EmployeeReminderDeliveryStatusScreen() {
                       style={{
                         backgroundColor:
                           pushStatus === 'sent'
-                            ? '#DCFCE7'
+                            ? colors.successBg
                             : pushStatus === 'not_delivered_push_disabled'
-                              ? '#E5E7EB'
-                              : '#FEE2E2',
+                              ? colors.gray[200]
+                              : colors.errorBg,
                         paddingHorizontal: ds.spacing(8),
                         paddingVertical: ds.spacing(3),
                         borderRadius: ds.radius(999),
@@ -207,10 +207,10 @@ export default function EmployeeReminderDeliveryStatusScreen() {
                         style={{
                           color:
                             pushStatus === 'sent'
-                              ? '#166534'
+                              ? colors.success
                               : pushStatus === 'not_delivered_push_disabled'
-                                ? '#374151'
-                                : '#B91C1C',
+                                ? colors.gray[700]
+                                : colors.error,
                           fontSize: ds.fontSize(11),
                           fontWeight: '700',
                         }}

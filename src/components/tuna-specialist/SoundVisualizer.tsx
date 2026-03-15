@@ -10,8 +10,8 @@ interface SoundVisualizerProps {
 
 const COLORS = {
   orange: colors.primary[500],
-  green: '#22C55E',
-  blue: '#3B82F6',
+  green: colors.success,
+  blue: colors.info,
 };
 
 const SIZE = 220;

@@ -37,7 +37,14 @@ import {
 } from "@/types";
 import { colors, CATEGORY_LABELS } from "@/constants";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
-import { BrandLogo } from "@/components";
+import { BrandLogo, GlassSurface } from "@/components";
+import {
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+  glassSpacing,
+  glassTabBarHeight,
+} from "@/design/tokens";
 import type { OrderingMode } from "./types";
 
 // Enable LayoutAnimation on Android
@@ -525,7 +532,13 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
 
     return (
       <InputAccessoryView nativeID={mode.inputAccessoryId}>
-        <View className="bg-white border-t border-gray-200">
+        <View
+          style={{
+            backgroundColor: glassColors.background,
+            borderTopWidth: glassHairlineWidth,
+            borderTopColor: glassColors.divider,
+          }}
+        >
           {/* Add to Cart button when in quantity mode */}
           {screenState === "quantity" && selectedItem && (
             <TouchableOpacity
@@ -542,10 +555,18 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               activeOpacity={0.8}
               disabled={!canAddToCart}
             >
-              <Ionicons name="cart" size={ds.icon(20)} color="white" />
+              <Ionicons
+                name="cart"
+                size={ds.icon(20)}
+                color={glassColors.textOnPrimary}
+              />
               <Text
-                style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}
-                className="text-white font-bold"
+                style={{
+                  fontSize: ds.buttonFont,
+                  marginLeft: ds.spacing(8),
+                  color: glassColors.textOnPrimary,
+                  fontWeight: "700",
+                }}
               >
                 {addButtonText}
               </Text>
@@ -554,12 +575,16 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
 
           {/* Cart indicator bar */}
           {totalCartCount > 0 && (
+            <GlassSurface
+              intensity="subtle"
+              style={{ borderRadius: glassRadii.surface }}
+            >
             <TouchableOpacity
               onPress={() => {
                 Keyboard.dismiss();
                 router.push(mode.cartRoute as any);
               }}
-              className="flex-row items-center justify-between bg-gray-50"
+              className="flex-row items-center justify-between"
               style={{
                 minHeight: Math.max(ds.rowH - ds.spacing(12), 44),
                 paddingHorizontal: ds.spacing(16),
@@ -569,14 +594,15 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                 <Ionicons
                   name="cart"
                   size={ds.icon(18)}
-                  color={colors.gray[600]}
+                  color={glassColors.textMuted}
                 />
                 <Text
                   style={{
                     fontSize: ds.fontSize(13),
                     marginLeft: ds.spacing(8),
+                    color: glassColors.textPrimary,
+                    fontWeight: "500",
                   }}
-                  className="font-medium text-gray-700"
                 >
                   {totalCartCount} in cart
                 </Text>
@@ -586,18 +612,20 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                   style={{
                     fontSize: ds.fontSize(14),
                     marginRight: ds.spacing(4),
+                    color: glassColors.accent,
+                    fontWeight: "500",
                   }}
-                  className="font-medium text-primary-600"
                 >
                   View
                 </Text>
                 <Ionicons
                   name="chevron-forward"
                   size={ds.icon(16)}
-                  color={colors.primary[600]}
+                  color={glassColors.accent}
                 />
               </View>
             </TouchableOpacity>
+            </GlassSurface>
           )}
         </View>
       </InputAccessoryView>
@@ -606,144 +634,185 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
 
   return (
     <SafeAreaView
-      className="flex-1 bg-gray-50"
+      style={{ flex: 1, backgroundColor: glassColors.background }}
       edges={["top", "left", "right"]}
     >
       {/* Compact Header with Location Selector */}
-      <View className="bg-white border-b border-gray-200">
+      <View
+        style={{
+          backgroundColor: glassColors.background,
+          paddingHorizontal: glassSpacing.screen,
+          paddingTop: ds.spacing(8),
+          paddingBottom: ds.spacing(10),
+        }}
+      >
         <View
           className="flex-row items-center"
           style={{
-            paddingHorizontal: ds.spacing(12),
-            paddingVertical: ds.spacing(8),
+            columnGap: glassSpacing.gap,
           }}
         >
-          {/* Left — Back + Browse (matched width with right) */}
+          {/* Left — Back button */}
           <View
             className="flex-row items-center"
-            style={{ width: headerIconButtonSize * 2 + ds.spacing(8) }}
+            style={{ width: headerIconButtonSize }}
           >
-            <TouchableOpacity
-              onPress={() => {
-                if (mode.backBehavior === "back") {
-                  router.back();
-                  return;
-                }
-                router.replace(mode.backBehavior.replace as any);
-              }}
+            <GlassSurface
+              intensity="medium"
               style={{
                 width: headerIconButtonSize,
                 height: headerIconButtonSize,
-                borderRadius: ds.radius(10),
-                alignItems: "center",
-                justifyContent: "center",
-                marginRight: ds.spacing(8),
+                borderRadius: glassRadii.round,
               }}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons
-                name="arrow-back"
-                size={ds.icon(22)}
-                color={colors.gray[700]}
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => router.push(mode.browseRoute as any)}
-              className="rounded-full bg-gray-100 items-center justify-center"
-              style={{
-                width: headerIconButtonSize,
-                height: headerIconButtonSize,
-              }}
-              activeOpacity={0.8}
-            >
-              <Ionicons
-                name="grid-outline"
-                size={ds.icon(20)}
-                color={colors.gray[700]}
-              />
-            </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  if (mode.backBehavior === "back") {
+                    router.back();
+                    return;
+                  }
+                  router.replace(mode.backBehavior.replace as any);
+                }}
+                className="flex-1 items-center justify-center"
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons
+                  name="arrow-back"
+                  size={ds.icon(22)}
+                  color={glassColors.textPrimary}
+                />
+              </TouchableOpacity>
+            </GlassSurface>
           </View>
 
           {/* Location Dropdown — centered */}
-          <TouchableOpacity
-            onPress={toggleLocationDropdown}
+          <View
             className="flex-1 flex-row items-center justify-center"
             style={{ marginHorizontal: ds.spacing(6) }}
           >
-            <View
-              className="flex-row items-center bg-gray-100 rounded-full"
+            <GlassSurface
+              intensity="medium"
               style={{
-                paddingHorizontal: ds.spacing(12),
-                minHeight: headerIconButtonSize,
+                borderRadius: glassRadii.pill,
               }}
             >
-              <Ionicons name="location" size={ds.icon(14)} color="#F97316" />
-              <Text
-                className="font-medium text-gray-900"
+              <TouchableOpacity
+                onPress={toggleLocationDropdown}
+                className="flex-row items-center"
                 style={{
-                  fontSize: ds.fontSize(15),
-                  marginLeft: ds.spacing(8),
-                  marginRight: ds.spacing(6),
-                  flexShrink: 1,
+                  paddingHorizontal: ds.spacing(14),
+                  minHeight: headerIconButtonSize,
                 }}
-                numberOfLines={1}
-                ellipsizeMode="tail"
+                activeOpacity={0.7}
               >
-                {selectedLocation?.name || "Select"}
-              </Text>
-              <Ionicons
-                name={showLocationDropdown ? "chevron-up" : "chevron-down"}
-                size={ds.icon(14)}
-                color={colors.gray[500]}
-              />
-            </View>
-          </TouchableOpacity>
+                <View
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: glassRadii.round,
+                    backgroundColor: glassColors.accent,
+                    marginRight: ds.spacing(8),
+                  }}
+                />
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(13),
+                    marginRight: ds.spacing(6),
+                    flexShrink: 1,
+                    color: glassColors.textPrimary,
+                    fontWeight: "500",
+                  }}
+                  numberOfLines={1}
+                  ellipsizeMode="tail"
+                >
+                  {selectedLocation?.name || "Select"}
+                </Text>
+                <Ionicons
+                  name={showLocationDropdown ? "chevron-up" : "chevron-down"}
+                  size={ds.icon(14)}
+                  color={glassColors.textSecondary}
+                />
+              </TouchableOpacity>
+            </GlassSurface>
+          </View>
 
-          {/* Right — Cart (matched width with left) */}
+          {/* Right — Cart */}
           <View
             className="flex-row items-center justify-end"
-            style={{ width: headerIconButtonSize * 2 + ds.spacing(8) }}
+            style={{ width: headerIconButtonSize }}
           >
-            <TouchableOpacity
-              onPress={() => router.push(mode.cartRoute as any)}
-              className="relative rounded-full bg-gray-100 items-center justify-center"
-              style={{
-                width: headerIconButtonSize,
-                height: headerIconButtonSize,
-              }}
-            >
-              <Ionicons
-                name="cart-outline"
-                size={ds.icon(20)}
-                color={colors.gray[700]}
-              />
+            <View style={{ width: headerIconButtonSize, height: headerIconButtonSize }}>
+              <GlassSurface
+                intensity="medium"
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  borderRadius: glassRadii.round,
+                }}
+              >
+                <View />
+              </GlassSurface>
+              <TouchableOpacity
+                onPress={() => router.push(mode.cartRoute as any)}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons
+                  name="bag-handle-outline"
+                  size={ds.icon(20)}
+                  color={glassColors.textPrimary}
+                />
+              </TouchableOpacity>
               {totalCartCount > 0 && (
                 <View
-                  className="absolute bg-primary-500 rounded-full items-center justify-center"
                   style={{
-                    top: -ds.spacing(2),
-                    right: -ds.spacing(2),
-                    minWidth: badgeSize,
-                    height: badgeSize,
-                    paddingHorizontal: ds.spacing(4),
+                    position: "absolute",
+                    top: -6,
+                    right: -6,
+                    minWidth: ds.spacing(20),
+                    height: ds.spacing(20),
+                    paddingHorizontal: 4,
+                    borderRadius: glassRadii.round,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: glassColors.accent,
+                    borderWidth: 2,
+                    borderColor: '#FFFFFF',
+                    zIndex: 10,
                   }}
                 >
                   <Text
-                    style={{ fontSize: ds.fontSize(11) }}
-                    className="text-white font-bold"
+                    style={{
+                      fontSize: ds.fontSize(10),
+                      color: glassColors.textOnPrimary,
+                      fontWeight: "700",
+                    }}
                   >
                     {totalCartCount > 99 ? "99+" : totalCartCount}
                   </Text>
                 </View>
               )}
-            </TouchableOpacity>
+            </View>
           </View>
         </View>
 
         {/* Location Dropdown Menu */}
         {showLocationDropdown && (
-          <View className="border-t border-gray-100">
+          <GlassSurface
+            intensity="strong"
+            style={{ marginTop: ds.spacing(10), borderRadius: glassRadii.surface }}
+          >
             {locations.map((loc) => {
               const isSelected = selectedLocation?.id === loc.id;
               const cartCount = getLocationCartTotal(loc.id, scope);
@@ -753,23 +822,28 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                   key={loc.id}
                   onPress={() => handleSelectLocation(loc)}
                   className={`flex-row items-center justify-between ${
-                    isSelected ? "bg-primary-50" : ""
+                    ""
                   }`}
                   style={{
                     paddingHorizontal: ds.spacing(16),
                     paddingVertical: ds.spacing(12),
                     minHeight: ds.rowH,
+                    borderTopWidth: loc.id !== locations[0]?.id ? glassHairlineWidth : 0,
+                    borderTopColor: glassColors.divider,
                   }}
                 >
                   <View className="flex-row items-center">
                     <View
-                      className={`rounded-full items-center justify-center ${
-                        isSelected ? "bg-primary-500" : "bg-gray-200"
-                      }`}
                       style={{
                         width: ds.icon(32),
                         height: ds.icon(32),
                         marginRight: ds.spacing(12),
+                        borderRadius: glassRadii.round,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: isSelected
+                          ? glassColors.accentSoft
+                          : glassColors.mediumFill,
                       }}
                     >
                       <BrandLogo
@@ -779,8 +853,11 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                       />
                     </View>
                     <Text
-                      style={{ fontSize: ds.fontSize(15) }}
-                      className={`${isSelected ? "font-semibold text-primary-700" : "text-gray-800"}`}
+                      style={{
+                        fontSize: ds.fontSize(13),
+                        color: isSelected ? glassColors.accent : glassColors.textPrimary,
+                        fontWeight: isSelected ? "500" : "400",
+                      }}
                     >
                       {loc.name}
                     </Text>
@@ -789,10 +866,10 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     {cartCount > 0 && (
                       <Text
                         style={{
-                          fontSize: ds.fontSize(13),
+                          fontSize: ds.fontSize(11),
                           marginRight: ds.spacing(8),
+                          color: glassColors.textSecondary,
                         }}
-                        className="text-gray-500"
                       >
                         {cartCount} items
                       </Text>
@@ -801,14 +878,14 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                       <Ionicons
                         name="checkmark"
                         size={ds.icon(18)}
-                        color={colors.primary[500]}
+                        color={glassColors.accent}
                       />
                     )}
                   </View>
                 </TouchableOpacity>
               );
             })}
-          </View>
+          </GlassSurface>
         )}
       </View>
 
@@ -816,7 +893,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
       <View
         className="flex-1"
         style={{
-          paddingHorizontal: ds.spacing(16),
+          paddingHorizontal: glassSpacing.screen,
           paddingTop: ds.spacing(12),
         }}
       >
@@ -824,9 +901,9 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
           <>
             {/* Search Input with Ghost Text */}
             <View className="relative">
-              <View
-                className="bg-white border border-gray-200 shadow-sm overflow-hidden"
-                style={{ borderRadius: ds.radius(12) }}
+              <GlassSurface
+                intensity="medium"
+                style={{ borderRadius: glassRadii.surface }}
               >
                 <View
                   className="flex-row items-center"
@@ -838,7 +915,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                   <Ionicons
                     name="search"
                     size={ds.icon(20)}
-                    color={colors.gray[400]}
+                    color={glassColors.textSecondary}
                   />
                   <View
                     className="flex-1 relative justify-center"
@@ -869,9 +946,12 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                       onChangeText={setSearchQuery}
                       onSubmitEditing={handleSearchSubmit}
                       placeholder="Type item name..."
-                      placeholderTextColor={colors.gray[400]}
-                      className="text-gray-900"
-                      style={{ height: ds.buttonH, fontSize: ds.fontSize(14) }}
+                      placeholderTextColor={glassColors.textSecondary}
+                      style={{
+                        height: ds.buttonH,
+                        fontSize: ds.fontSize(14),
+                        color: glassColors.textPrimary,
+                      }}
                       autoCapitalize="none"
                       autoCorrect={false}
                       autoFocus
@@ -895,7 +975,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                       <Ionicons
                         name="close-circle"
                         size={ds.icon(20)}
-                        color={colors.gray[400]}
+                        color={glassColors.textSecondary}
                       />
                     </TouchableOpacity>
                   )}
@@ -909,33 +989,31 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                         width: Math.max(44, ds.icon(32)),
                         height: Math.max(44, ds.icon(32)),
                         borderRadius: ds.icon(16),
-                        backgroundColor: "#F97316",
+                        backgroundColor: glassColors.accent,
                         alignItems: "center",
                         justifyContent: "center",
                         marginLeft: ds.spacing(8),
-                        shadowColor: "#F97316",
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.3,
-                        shadowRadius: 8,
-                        elevation: 4,
                       }}
                     >
                       <Ionicons
                         name="add-outline"
                         size={ds.icon(18)}
-                        color="#FFFFFF"
+                        color={glassColors.textOnPrimary}
                       />
                     </TouchableOpacity>
                   )}
                 </View>
-              </View>
+              </GlassSurface>
 
               {/* Suggestions Dropdown */}
               {filteredItems.length > 0 && searchQuery.trim() && (
-                <View
-                  className="absolute left-0 right-0 bg-white border border-gray-200 shadow-lg z-10 overflow-hidden"
+                <GlassSurface
+                  intensity="strong"
                   style={{
                     top: ds.buttonH + ds.spacing(4),
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
                     borderRadius: ds.radius(12),
                   }}
                 >
@@ -948,7 +1026,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                       <View className="h-px bg-gray-100" />
                     )}
                   />
-                </View>
+                </GlassSurface>
               )}
             </View>
 
@@ -961,14 +1039,15 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                 <Ionicons
                   name="search-outline"
                   size={ds.icon(56)}
-                  color={colors.gray[300]}
+                  color={glassColors.textSecondary}
                 />
                 <Text
                   style={{
                     fontSize: ds.fontSize(16),
                     marginTop: ds.spacing(12),
+                    color: glassColors.textPrimary,
+                    fontWeight: "500",
                   }}
-                  className="font-medium text-gray-500"
                 >
                   Start typing to search
                 </Text>
@@ -976,8 +1055,8 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                   style={{
                     fontSize: ds.fontSize(14),
                     marginTop: ds.spacing(4),
+                    color: glassColors.textSecondary,
                   }}
-                  className="text-gray-400"
                 >
                   salmon, avocado, nori...
                 </Text>
@@ -1370,7 +1449,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                   value={newItemName}
                   onChangeText={setNewItemName}
                   placeholder="e.g., Salmon (Sushi Grade)"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor={colors.gray[400]}
                   autoCapitalize="words"
                 />
               </View>
@@ -1493,7 +1572,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     value={newItemBaseUnit}
                     onChangeText={setNewItemBaseUnit}
                     placeholder="e.g., lb"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.gray[400]}
                     autoCapitalize="none"
                   />
                 </View>
@@ -1518,7 +1597,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     value={newItemPackUnit}
                     onChangeText={setNewItemPackUnit}
                     placeholder="e.g., case"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.gray[400]}
                     autoCapitalize="none"
                   />
                 </View>
@@ -1547,7 +1626,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     value={newItemPackSize}
                     onChangeText={setNewItemPackSize}
                     placeholder="1"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor={colors.gray[400]}
                     keyboardType="decimal-pad"
                   />
                   <Text
@@ -1605,8 +1684,10 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
             }}
           >
             <View
-              className="bg-white border-t border-gray-200"
               style={{
+                backgroundColor: glassColors.background,
+                borderTopWidth: glassHairlineWidth,
+                borderTopColor: glassColors.divider,
                 paddingHorizontal: ds.spacing(12),
                 paddingVertical: ds.spacing(8),
               }}
@@ -1620,10 +1701,14 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                 activeOpacity={0.8}
                 disabled={!canAddToCart}
               >
-                <Ionicons name="cart" size={ds.icon(20)} color="white" />
+                <Ionicons name="cart" size={ds.icon(20)} color={glassColors.textOnPrimary} />
                 <Text
-                  style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}
-                  className="text-white font-bold"
+                  style={{
+                    fontSize: ds.buttonFont,
+                    marginLeft: ds.spacing(8),
+                    color: glassColors.textOnPrimary,
+                    fontWeight: "700",
+                  }}
                 >
                   {addButtonText}
                 </Text>

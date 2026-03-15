@@ -21,6 +21,7 @@ import { useAuthStore, useSettingsStore, useDisplayStore } from '@/store';
 import { colors } from '@/constants';
 import { ChangePasswordModal } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { glassColors, glassRadii, glassSpacing, glassTypography, glassHairlineWidth } from '@/design/tokens';
 
 
 function ProfileSection({
@@ -186,9 +187,9 @@ function ProfileSection({
         activeOpacity={0.7}
       >
         {isDeletingAccount ? (
-          <ActivityIndicator size="small" color="#9CA3AF" />
+          <ActivityIndicator size="small" color={colors.gray[400]} />
         ) : (
-          <Ionicons name="trash-outline" size={ds.icon(18)} color="#DC2626" />
+          <Ionicons name="trash-outline" size={ds.icon(18)} color={colors.error} />
         )}
         <Text className={isDeletingAccount ? 'text-gray-500 font-semibold' : 'text-red-700 font-semibold'} style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(15) }}>
           {isDeletingAccount ? 'Deleting Account...' : 'Delete Account'}
@@ -249,19 +250,24 @@ export default function ProfileSettingsScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      <View
-        className="bg-white border-b border-gray-100 flex-row items-center"
-        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
-      >
+    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
+      <View style={{ 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        paddingHorizontal: glassSpacing.screen, 
+        paddingVertical: ds.spacing(12),
+        backgroundColor: glassColors.background 
+      }}>
         <TouchableOpacity
           onPress={() => router.back()}
-          style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
+          style={{ width: 44, height: 44, borderRadius: glassRadii.round, backgroundColor: glassColors.mediumFill, alignItems: 'center', justifyContent: 'center', marginRight: ds.spacing(12) }}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
+          <Ionicons name="arrow-back" size={ds.icon(22)} color={glassColors.textPrimary} />
         </TouchableOpacity>
-        <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>Profile</Text>
+        <Text style={{ fontSize: glassTypography.screenTitle, fontWeight: '700', color: glassColors.textPrimary }}>
+          Profile
+        </Text>
       </View>
 
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
@@ -287,7 +293,7 @@ export default function ProfileSettingsScreen() {
           }
         }}
       >
-        <View className="flex-1 bg-black/40 items-center justify-center" style={{ padding: ds.spacing(20) }}>
+        <View className="flex-1 items-center justify-center" style={{ padding: ds.spacing(20), backgroundColor: colors.scrimStrong }}>
           <View
             className="bg-white w-full"
             style={{ borderRadius: ds.radius(16), padding: ds.spacing(16), maxWidth: 420 }}

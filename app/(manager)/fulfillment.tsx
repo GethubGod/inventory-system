@@ -2482,7 +2482,7 @@ export default function FulfillmentScreen() {
                           <View className="pt-3">
                             <View className="mx-2 mb-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex-row items-center justify-between">
                               <View className="flex-row items-center">
-                                <Ionicons name="alert-circle-outline" size={14} color="#B45309" />
+                                <Ionicons name="alert-circle-outline" size={14} color={colors.warning} />
                                 <Text className="ml-2 text-xs font-semibold text-amber-800">Remaining Items</Text>
                               </View>
                               <Text className="text-xs font-semibold text-amber-800">{remainingCards.length}</Text>
@@ -2688,7 +2688,7 @@ export default function FulfillmentScreen() {
               <TouchableOpacity
                 onPress={() => router.push('/(manager)/employee-reminders')}
                 className="mt-8 px-7 py-3.5 bg-primary-500 rounded-xl flex-row items-center"
-                style={{ shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}
+                style={{ shadowColor: colors.background, shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}
               >
                 <Ionicons name="megaphone-outline" size={18} color="white" />
                 <Text className="text-white font-semibold ml-2 text-base">Remind Employees</Text>

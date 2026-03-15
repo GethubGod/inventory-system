@@ -17,7 +17,7 @@ interface LoadingIndicatorProps {
 
 const SMALL_CONFIG = {
   indicatorSize: 'small' as const,
-  defaultColor: 'rgba(255,255,255,0.96)',
+  defaultColor: colors.white,
 };
 
 const BAR_CONFIG = {
