@@ -20,6 +20,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Alert,
+  StyleSheet,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -647,52 +648,49 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
         }}
       >
         <View
-          className="flex-row items-center"
+          className="flex-row items-center justify-between"
           style={{
             columnGap: glassSpacing.gap,
           }}
         >
           {/* Left — Back button */}
-          <View
-            className="flex-row items-center"
-            style={{ width: headerIconButtonSize }}
+          <GlassSurface
+            intensity="medium"
+            style={{
+              width: headerIconButtonSize,
+              height: headerIconButtonSize,
+              borderRadius: glassRadii.round,
+            }}
           >
-            <GlassSurface
-              intensity="medium"
-              style={{
-                width: headerIconButtonSize,
-                height: headerIconButtonSize,
-                borderRadius: glassRadii.round,
+            <TouchableOpacity
+              onPress={() => {
+                if (mode.backBehavior === "back") {
+                  router.back();
+                  return;
+                }
+                router.replace(mode.backBehavior.replace as any);
               }}
+              className="flex-1 items-center justify-center"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <TouchableOpacity
-                onPress={() => {
-                  if (mode.backBehavior === "back") {
-                    router.back();
-                    return;
-                  }
-                  router.replace(mode.backBehavior.replace as any);
-                }}
-                className="flex-1 items-center justify-center"
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Ionicons
-                  name="arrow-back"
-                  size={ds.icon(22)}
-                  color={glassColors.textPrimary}
-                />
-              </TouchableOpacity>
-            </GlassSurface>
-          </View>
+              <Ionicons
+                name="arrow-back"
+                size={ds.icon(22)}
+                color={glassColors.textPrimary}
+              />
+            </TouchableOpacity>
+          </GlassSurface>
 
-          {/* Location Dropdown — centered */}
+          {/* Right — Location Dropdown & Cart */}
           <View
-            className="flex-1 flex-row items-center justify-center"
-            style={{ marginHorizontal: ds.spacing(6) }}
+            className="flex-row items-center flex-1 justify-end"
+            style={{ marginLeft: glassSpacing.gap }}
           >
             <GlassSurface
               intensity="medium"
               style={{
+                flexShrink: 1,
+                marginRight: glassSpacing.gap,
                 borderRadius: glassRadii.pill,
               }}
             >
@@ -700,15 +698,15 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                 onPress={toggleLocationDropdown}
                 className="flex-row items-center"
                 style={{
-                  paddingHorizontal: ds.spacing(14),
                   minHeight: headerIconButtonSize,
+                  paddingHorizontal: ds.spacing(14),
                 }}
                 activeOpacity={0.7}
               >
                 <View
                   style={{
-                    width: 6,
-                    height: 6,
+                    width: 8,
+                    height: 8,
                     borderRadius: glassRadii.round,
                     backgroundColor: glassColors.accent,
                     marginRight: ds.spacing(8),
@@ -716,40 +714,30 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                 />
                 <Text
                   style={{
-                    fontSize: ds.fontSize(13),
-                    marginRight: ds.spacing(6),
-                    flexShrink: 1,
+                    fontSize: ds.fontSize(14),
+                    fontWeight: "600",
                     color: glassColors.textPrimary,
-                    fontWeight: "500",
+                    marginRight: ds.spacing(6),
+                    maxWidth: ds.spacing(170),
                   }}
                   numberOfLines={1}
                   ellipsizeMode="tail"
                 >
-                  {selectedLocation?.name || "Select"}
+                  {selectedLocation?.name || "Select Location"}
                 </Text>
                 <Ionicons
                   name={showLocationDropdown ? "chevron-up" : "chevron-down"}
-                  size={ds.icon(14)}
+                  size={ds.icon(13)}
                   color={glassColors.textSecondary}
                 />
               </TouchableOpacity>
             </GlassSurface>
-          </View>
 
-          {/* Right — Cart */}
-          <View
-            className="flex-row items-center justify-end"
-            style={{ width: headerIconButtonSize }}
-          >
             <View style={{ width: headerIconButtonSize, height: headerIconButtonSize }}>
               <GlassSurface
                 intensity="medium"
                 style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
+                  ...StyleSheet.absoluteFillObject,
                   borderRadius: glassRadii.round,
                 }}
               >
@@ -757,15 +745,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               </GlassSurface>
               <TouchableOpacity
                 onPress={() => router.push(mode.cartRoute as any)}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
+                className="absolute inset-0 items-center justify-center"
                 activeOpacity={0.8}
               >
                 <Ionicons
@@ -794,8 +774,8 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                 >
                   <Text
                     style={{
-                      fontSize: ds.fontSize(10),
                       color: glassColors.textOnPrimary,
+                      fontSize: ds.fontSize(10),
                       fontWeight: "700",
                     }}
                   >

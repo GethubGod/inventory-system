@@ -11,16 +11,18 @@ import {
 import { colors, hairline, radii, spacing } from "@/theme/design";
 
 /**
- * Custom tab icon: renders a rounded-square tinted container behind the icon
- * when active, matching the reference screenshots exactly.
+ * Custom tab button: renders a soft rounded bubble enclosing both
+ * the icon and label when active, matching the reference screenshots.
  */
-function TabIcon({
+function TabButton({
   name,
+  label,
   color,
   size,
   focused,
 }: {
   name: keyof typeof Ionicons.glyphMap;
+  label: string;
   color: string;
   size: number;
   focused: boolean;
@@ -28,15 +30,26 @@ function TabIcon({
   return (
     <View
       style={{
-        width: 64,
-        height: 52,
-        borderRadius: 22,
+        width: 76,
+        height: 56,
+        borderRadius: 28,
         alignItems: "center",
         justifyContent: "center",
-        backgroundColor: focused ? "rgba(232, 80, 58, 0.15)" : "transparent",
+        backgroundColor: focused ? "rgba(232, 80, 58, 0.14)" : "transparent",
       }}
     >
       <Ionicons name={name} size={size} color={color} />
+      <Text
+        style={{
+          fontSize: 10,
+          fontWeight: "600",
+          color,
+          marginTop: 2,
+        }}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
     </View>
   );
 }
@@ -61,7 +74,7 @@ export default function TabsLayout() {
     height: 18,
     lineHeight: 16,
     borderRadius: 9,
-    top: -2,
+    top: -4,
     right: -6,
   };
 
@@ -94,12 +107,12 @@ export default function TabsLayout() {
           elevation: 0,
         },
         tabBarLabelStyle: {
-          fontSize: Math.max(10, scaledFontSize(10)),
-          fontWeight: "600",
-          marginTop: 0,
+          fontSize: 0,  // hide default label — rendered inside TabButton
+          height: 0,
+          margin: 0,
         },
         tabBarItemStyle: {
-          paddingTop: 2,
+          paddingTop: 8,
         },
         headerShown: false,
       }}
@@ -110,7 +123,7 @@ export default function TabsLayout() {
         options={{
           title: "Browse",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabIcon name="grid-outline" size={size} color={color} focused={focused} />
+            <TabButton name="grid-outline" label="Browse" size={size} color={color} focused={focused} />
           ),
         }}
       />
@@ -121,7 +134,7 @@ export default function TabsLayout() {
         options={{
           title: "Quick",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabIcon name="flash-outline" size={size} color={color} focused={focused} />
+            <TabButton name="flash-outline" label="Quick" size={size} color={color} focused={focused} />
           ),
           tabBarBadge: draftCount > 0 ? draftCount : undefined,
           tabBarBadgeStyle: badgeStyle,
@@ -134,7 +147,7 @@ export default function TabsLayout() {
         options={{
           title: "Cart",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabIcon name="bag-handle-outline" size={size} color={color} focused={focused} />
+            <TabButton name="bag-handle-outline" label="Cart" size={size} color={color} focused={focused} />
           ),
           tabBarBadge: cartTotal > 0 ? cartTotal : undefined,
           tabBarBadgeStyle: badgeStyle,
@@ -146,7 +159,7 @@ export default function TabsLayout() {
         options={{
           title: "Voice",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabIcon name="time-outline" size={size} color={color} focused={focused} />
+            <TabButton name="time-outline" label="Voice" size={size} color={color} focused={focused} />
           ),
         }}
       />
@@ -157,7 +170,7 @@ export default function TabsLayout() {
         options={{
           title: "Settings",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabIcon name="person-circle-outline" size={size} color={color} focused={focused} />
+            <TabButton name="person-circle-outline" label="Settings" size={size} color={color} focused={focused} />
           ),
         }}
       />

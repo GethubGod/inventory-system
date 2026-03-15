@@ -785,17 +785,26 @@ export function CartScreenView({
           activeOpacity={0.7}
         >
           <View className="flex-1 mr-3">
-            <Text
-              style={{
-                fontSize: ds.fontSize(17),
-                fontWeight: '600',
-                color: glassColors.textPrimary,
-              }}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-            >
-              {itemName}
-            </Text>
+            <View className="flex-row items-center">
+              <Text
+                style={{
+                  fontSize: ds.fontSize(17),
+                  fontWeight: '600',
+                  color: glassColors.textPrimary,
+                  flexShrink: 1,
+                }}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {itemName}
+              </Text>
+              <Ionicons
+                name={isExpanded ? "chevron-up" : "chevron-down"}
+                size={ds.icon(16)}
+                color={glassColors.textSecondary}
+                style={{ marginLeft: ds.spacing(6) }}
+              />
+            </View>
             <View className="flex-row items-center mt-1">
               <Text
                 style={{
@@ -1187,10 +1196,10 @@ export function CartScreenView({
         }}
       >
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: glassTypography.screenTitle, fontWeight: '700', color: glassColors.textPrimary }}>
+          <Text style={{ fontSize: ds.fontSize(32), fontWeight: '800', color: glassColors.textPrimary, letterSpacing: -0.5 }}>
             Cart
           </Text>
-          <Text style={{ marginTop: 4, fontSize: ds.fontSize(15), color: glassColors.textSecondary }}>
+          <Text style={{ marginTop: 6, fontSize: ds.fontSize(15), color: glassColors.textSecondary }}>
             {totalCartCount} items · {locationsWithCart.length} locations
           </Text>
         </View>

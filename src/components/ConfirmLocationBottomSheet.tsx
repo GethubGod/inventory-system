@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '@/constants';
+import { colors, hairline, radii } from '@/theme/design';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { BrandLogo } from './BrandLogo';
 import { BottomSheetShell } from './BottomSheetShell';
@@ -94,10 +94,10 @@ export function ConfirmLocationBottomSheet({
       {viewMode === 'change' ? (
         <>
           <View style={{ paddingHorizontal: ds.spacing(6), paddingBottom: ds.spacing(8) }}>
-            <Text style={{ fontSize: ds.fontSize(18) }} className="font-bold text-gray-900">
+            <Text style={{ fontSize: ds.fontSize(18), fontWeight: '700', color: colors.textPrimary }}>
               Change Location
             </Text>
-            <Text style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(4) }} className="text-gray-500">
+            <Text style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(4), color: colors.textSecondary }}>
               Select another location.
             </Text>
           </View>
@@ -108,36 +108,49 @@ export function ConfirmLocationBottomSheet({
             showsVerticalScrollIndicator={false}
           >
             {otherLocations.length > 0 ? (
-              <View className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+              <View style={{ borderRadius: radii.button, borderWidth: hairline, borderColor: colors.glassBorder, backgroundColor: colors.white, overflow: 'hidden' }}>
                 {otherLocations.map((location, index) => (
                   <TouchableOpacity
                     key={location.id}
                     activeOpacity={0.75}
-                    className={`flex-row items-center ${index < otherLocations.length - 1 ? 'border-b border-gray-100' : ''}`}
-                    style={{ minHeight: Math.max(56, ds.rowH), paddingHorizontal: ds.spacing(14), paddingVertical: ds.spacing(10) }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      minHeight: Math.max(56, ds.rowH),
+                      paddingHorizontal: ds.spacing(16),
+                      paddingVertical: ds.spacing(10),
+                      borderBottomWidth: index < otherLocations.length - 1 ? hairline : 0,
+                      borderBottomColor: colors.divider,
+                    }}
                     onPress={() => {
                       onLocationChange(location.id);
                       setViewMode('confirm');
                     }}
                   >
                     <View
-                      style={{ width: ds.icon(36), height: ds.icon(36), borderRadius: ds.icon(18) }}
-                      className="bg-gray-100 items-center justify-center"
+                      style={{
+                        width: ds.icon(40),
+                        height: ds.icon(40),
+                        borderRadius: ds.icon(20),
+                        backgroundColor: colors.background,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
                     >
-                      <BrandLogo variant="inline" size={16} colorMode="light" />
+                      <BrandLogo variant="inline" size={18} colorMode="light" />
                     </View>
-                    <View className="flex-1" style={{ marginLeft: ds.spacing(12) }}>
-                      <Text style={{ fontSize: ds.fontSize(16) }} className="font-medium text-gray-900">
+                    <View style={{ flex: 1, marginLeft: ds.spacing(12) }}>
+                      <Text style={{ fontSize: ds.fontSize(16), fontWeight: '500', color: colors.textPrimary }}>
                         {location.name}
                       </Text>
                     </View>
-                    <Ionicons name="arrow-forward" size={ds.icon(18)} color={colors.gray[500]} />
+                    <Ionicons name="arrow-forward" size={ds.icon(18)} color={colors.textSecondary} />
                   </TouchableOpacity>
                 ))}
               </View>
             ) : (
-              <View className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-5 items-center">
-                <Text style={{ fontSize: ds.fontSize(14) }} className="text-gray-500 text-center">
+              <View style={{ borderRadius: radii.button, borderWidth: hairline, borderColor: colors.glassBorder, backgroundColor: colors.background, paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(20), alignItems: 'center' }}>
+                <Text style={{ fontSize: ds.fontSize(14), color: colors.textSecondary, textAlign: 'center' }}>
                   No other cart locations available.
                 </Text>
               </View>
@@ -145,10 +158,9 @@ export function ConfirmLocationBottomSheet({
 
             <TouchableOpacity
               onPress={() => setViewMode('confirm')}
-              className="py-4"
-              style={{ marginTop: ds.spacing(4) }}
+              style={{ paddingVertical: ds.spacing(16), marginTop: ds.spacing(4) }}
             >
-              <Text style={{ fontSize: ds.fontSize(14) }} className="font-semibold text-gray-500 text-center">
+              <Text style={{ fontSize: ds.fontSize(15), fontWeight: '600', color: colors.textSecondary, textAlign: 'center' }}>
                 Back
               </Text>
             </TouchableOpacity>
@@ -157,7 +169,7 @@ export function ConfirmLocationBottomSheet({
       ) : (
         <>
           <View style={{ paddingHorizontal: ds.spacing(6), paddingBottom: ds.spacing(10) }}>
-            <Text style={{ fontSize: ds.fontSize(18) }} className="font-bold text-gray-900">
+            <Text style={{ fontSize: ds.fontSize(18), fontWeight: '700', color: colors.textPrimary }}>
               Confirm Location
             </Text>
           </View>
@@ -168,30 +180,37 @@ export function ConfirmLocationBottomSheet({
             showsVerticalScrollIndicator={false}
           >
             <View
-              className="rounded-2xl border bg-white"
               style={{
-                borderColor: colors.gray[200],
-                backgroundColor: colors.gray[50],
-                paddingHorizontal: ds.spacing(14),
-                paddingVertical: ds.spacing(12),
+                borderRadius: radii.button,
+                borderWidth: hairline,
+                borderColor: colors.glassBorder,
+                backgroundColor: colors.background,
+                paddingHorizontal: ds.spacing(16),
+                paddingVertical: ds.spacing(14),
               }}
             >
-              <View className="flex-row items-center">
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <View
-                  style={{ width: ds.icon(38), height: ds.icon(38), borderRadius: ds.icon(19) }}
-                  className="bg-white items-center justify-center"
+                  style={{
+                    width: ds.icon(42),
+                    height: ds.icon(42),
+                    borderRadius: ds.icon(21),
+                    backgroundColor: colors.white,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
                 >
-                  <BrandLogo variant="inline" size={16} colorMode="light" />
+                  <BrandLogo variant="inline" size={18} colorMode="light" />
                 </View>
-                <View className="flex-1" style={{ marginLeft: ds.spacing(12) }}>
-                  <Text style={{ fontSize: ds.fontSize(16) }} className="font-semibold text-gray-900" numberOfLines={1}>
+                <View style={{ flex: 1, marginLeft: ds.spacing(12) }}>
+                  <Text style={{ fontSize: ds.fontSize(17), fontWeight: '600', color: colors.textPrimary }} numberOfLines={1}>
                     {selectedLocation?.name || 'Selected location'}
                   </Text>
                 </View>
               </View>
             </View>
 
-            <Text style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(10) }} className="text-gray-500">
+            <Text style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(10), color: colors.textSecondary }}>
               {submitLabel}
             </Text>
 
@@ -199,18 +218,25 @@ export function ConfirmLocationBottomSheet({
               onPress={onConfirm}
               activeOpacity={0.8}
               disabled={isSubmitting || !selectedLocation}
-              className={`${isSubmitting || !selectedLocation ? 'bg-primary-300' : 'bg-primary-500'} rounded-xl items-center justify-center flex-row`}
-              style={{ minHeight: ds.buttonH, marginTop: ds.spacing(14) }}
+              style={{
+                minHeight: ds.buttonH,
+                marginTop: ds.spacing(14),
+                borderRadius: radii.submitButton,
+                backgroundColor: isSubmitting || !selectedLocation ? colors.primaryLight : colors.primary,
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexDirection: 'row',
+              }}
             >
               {isSubmitting ? (
                 <>
                   <ActivityIndicator color={colors.white} size="small" />
-                  <Text style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }} className="text-white font-semibold">
+                  <Text style={{ fontSize: ds.fontSize(17), marginLeft: ds.spacing(8), color: colors.white, fontWeight: '600' }}>
                     Submitting...
                   </Text>
                 </>
               ) : (
-                <Text style={{ fontSize: ds.buttonFont }} className="text-white font-semibold">
+                <Text style={{ fontSize: ds.fontSize(17), color: colors.white, fontWeight: '600' }}>
                   Confirm & Submit
                 </Text>
               )}
@@ -220,12 +246,18 @@ export function ConfirmLocationBottomSheet({
               onPress={handlePressChangeLocation}
               activeOpacity={0.8}
               disabled={isSubmitting}
-              className={`rounded-xl border items-center justify-center ${
-                isSubmitting ? 'border-gray-200 bg-gray-100' : 'border-gray-200 bg-white'
-              }`}
-              style={{ minHeight: ds.buttonH, marginTop: ds.spacing(10) }}
+              style={{
+                minHeight: ds.buttonH,
+                marginTop: ds.spacing(10),
+                borderRadius: radii.submitButton,
+                borderWidth: 1.5,
+                borderColor: 'rgba(0,0,0,0.15)',
+                backgroundColor: isSubmitting ? colors.background : colors.white,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <Text style={{ fontSize: ds.buttonFont }} className="font-semibold text-gray-700">
+              <Text style={{ fontSize: ds.fontSize(17), fontWeight: '600', color: colors.textPrimary }}>
                 Change Location
               </Text>
             </TouchableOpacity>
@@ -233,10 +265,9 @@ export function ConfirmLocationBottomSheet({
             <TouchableOpacity
               onPress={onClose}
               disabled={isSubmitting}
-              className="py-4"
-              style={{ marginTop: ds.spacing(4) }}
+              style={{ paddingVertical: ds.spacing(16), marginTop: ds.spacing(4) }}
             >
-              <Text style={{ fontSize: ds.fontSize(14) }} className="font-semibold text-gray-500 text-center">
+              <Text style={{ fontSize: ds.fontSize(15), fontWeight: '600', color: colors.textSecondary, textAlign: 'center' }}>
                 Cancel
               </Text>
             </TouchableOpacity>

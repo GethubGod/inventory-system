@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors } from '@/constants';
+import { colors, hairline, radii } from '@/theme/design';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { BottomSheetShell } from './BottomSheetShell';
 
@@ -63,11 +63,11 @@ export function OrderLaterAddToSheet({
       bottomPadding={Math.max(ds.spacing(10), insets.bottom + ds.spacing(8))}
     >
       <View style={{ paddingHorizontal: ds.spacing(6), paddingBottom: ds.spacing(10) }}>
-        <Text style={{ fontSize: ds.fontSize(18) }} className="font-bold text-gray-900">
+        <Text style={{ fontSize: ds.fontSize(18), fontWeight: '700', color: colors.textPrimary }}>
           Add to Supplier
         </Text>
         {itemName ? (
-          <Text style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(4) }} className="text-gray-500">
+          <Text style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(4), color: colors.textSecondary }}>
             {itemName}
           </Text>
         ) : null}
@@ -80,49 +80,61 @@ export function OrderLaterAddToSheet({
       >
         <Text
           style={{
-            fontSize: ds.fontSize(11),
+            fontSize: ds.fontSize(12),
             marginBottom: ds.spacing(6),
             marginLeft: ds.spacing(6),
+            fontWeight: '600',
+            letterSpacing: 0.6,
+            textTransform: 'uppercase',
+            color: colors.textSecondary,
           }}
-          className="font-semibold uppercase tracking-wide text-gray-500"
         >
           Supplier
         </Text>
-        <View className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+        <View style={{ borderRadius: radii.button, borderWidth: hairline, borderColor: colors.glassBorder, backgroundColor: colors.white, overflow: 'hidden' }}>
           <View
-            className="flex-row items-center justify-between"
             style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
               minHeight: Math.max(56, ds.rowH),
-              paddingHorizontal: ds.spacing(14),
+              paddingHorizontal: ds.spacing(16),
               paddingVertical: ds.spacing(10),
             }}
           >
-            <View className="flex-1 pr-3">
-              <Text style={{ fontSize: ds.fontSize(16) }} className="font-medium text-gray-900">
+            <View style={{ flex: 1, paddingRight: ds.spacing(12) }}>
+              <Text style={{ fontSize: ds.fontSize(16), fontWeight: '500', color: colors.textPrimary }}>
                 {selectedSupplier?.name || 'Select supplier'}
               </Text>
               {!selectedSupplier && (
-                <Text style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(2) }} className="text-gray-500">
+                <Text style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(2), color: colors.textSecondary }}>
                   A supplier is required to add this item.
                 </Text>
               )}
             </View>
             <TouchableOpacity
               onPress={() => setShowSupplierPicker((prev) => !prev)}
-              className="px-3 py-2 rounded-lg border border-gray-200 bg-gray-50"
+              style={{
+                paddingHorizontal: ds.spacing(12),
+                paddingVertical: ds.spacing(8),
+                borderRadius: radii.tag,
+                borderWidth: hairline,
+                borderColor: colors.glassBorder,
+                backgroundColor: colors.background,
+              }}
               activeOpacity={0.8}
             >
-              <Text style={{ fontSize: ds.fontSize(13) }} className="font-semibold text-gray-700">
+              <Text style={{ fontSize: ds.fontSize(13), fontWeight: '600', color: colors.textPrimary }}>
                 {showSupplierPicker ? 'Done' : 'Change'}
               </Text>
             </TouchableOpacity>
           </View>
 
           {showSupplierPicker && (
-            <View className="border-t border-gray-100">
+            <View style={{ borderTopWidth: hairline, borderTopColor: colors.divider }}>
               {suppliers.length === 0 ? (
-                <View className="px-4 py-4">
-                  <Text style={{ fontSize: ds.fontSize(13) }} className="text-gray-500">
+                <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(16) }}>
+                  <Text style={{ fontSize: ds.fontSize(13), color: colors.textSecondary }}>
                     No suppliers are available.
                   </Text>
                 </View>
@@ -136,24 +148,29 @@ export function OrderLaterAddToSheet({
                         onSupplierChange(supplier.id);
                         setShowSupplierPicker(false);
                       }}
-                      className={`flex-row items-center justify-between ${
-                        index < suppliers.length - 1 ? 'border-b border-gray-100' : ''
-                      }`}
                       style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
                         minHeight: Math.max(52, ds.rowH),
-                        paddingHorizontal: ds.spacing(14),
+                        paddingHorizontal: ds.spacing(16),
                         paddingVertical: ds.spacing(9),
+                        borderBottomWidth: index < suppliers.length - 1 ? hairline : 0,
+                        borderBottomColor: colors.divider,
                       }}
                       activeOpacity={0.75}
                     >
                       <Text
-                        style={{ fontSize: ds.fontSize(15) }}
-                        className={selected ? 'font-semibold text-primary-700' : 'font-medium text-gray-700'}
+                        style={{
+                          fontSize: ds.fontSize(15),
+                          fontWeight: selected ? '600' : '500',
+                          color: selected ? colors.primary : colors.textPrimary,
+                        }}
                       >
                         {supplier.name}
                       </Text>
                       {selected && (
-                        <Ionicons name="checkmark-circle" size={ds.icon(18)} color={colors.primary[500]} />
+                        <Ionicons name="checkmark-circle" size={ds.icon(20)} color={colors.primary} />
                       )}
                     </TouchableOpacity>
                   );
@@ -164,46 +181,56 @@ export function OrderLaterAddToSheet({
         </View>
 
         {supplierError ? (
-          <Text style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(8) }} className="text-red-600 font-medium">
+          <Text style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(8), color: colors.primary, fontWeight: '500' }}>
             {supplierError}
           </Text>
         ) : null}
       </ScrollView>
 
       <View style={{ paddingHorizontal: ds.spacing(6), paddingTop: ds.spacing(10) }}>
-        <View className="flex-row">
+        <View style={{ flexDirection: 'row' }}>
           <TouchableOpacity
             onPress={onClose}
             disabled={isSubmitting}
-            className="flex-1 rounded-xl border border-gray-200 bg-white items-center justify-center mr-2"
-            style={{ minHeight: ds.buttonH }}
+            style={{
+              flex: 1,
+              borderRadius: radii.submitButton,
+              borderWidth: hairline,
+              borderColor: colors.glassBorder,
+              backgroundColor: colors.white,
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: ds.buttonH,
+              marginRight: ds.spacing(8),
+            }}
             activeOpacity={0.8}
           >
-            <Text style={{ fontSize: ds.buttonFont }} className="font-semibold text-gray-700">
+            <Text style={{ fontSize: ds.fontSize(17), fontWeight: '600', color: colors.textPrimary }}>
               Cancel
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onConfirm}
             disabled={confirmDisabled}
-            className={`flex-1 rounded-xl items-center justify-center ${
-              confirmDisabled ? 'bg-primary-300' : 'bg-primary-500'
-            }`}
-            style={{ minHeight: ds.buttonH }}
+            style={{
+              flex: 1,
+              borderRadius: radii.submitButton,
+              backgroundColor: confirmDisabled ? colors.primaryLight : colors.primary,
+              alignItems: 'center',
+              justifyContent: 'center',
+              minHeight: ds.buttonH,
+            }}
             activeOpacity={0.8}
           >
             {isSubmitting ? (
-              <View className="flex-row items-center">
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <ActivityIndicator color={colors.white} size="small" />
-                <Text
-                  style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}
-                  className="font-semibold text-white"
-                >
+                <Text style={{ fontSize: ds.fontSize(17), marginLeft: ds.spacing(8), fontWeight: '600', color: colors.white }}>
                   Adding...
                 </Text>
               </View>
             ) : (
-              <Text style={{ fontSize: ds.buttonFont }} className="font-semibold text-white">
+              <Text style={{ fontSize: ds.fontSize(17), fontWeight: '600', color: colors.white }}>
                 Add
               </Text>
             )}

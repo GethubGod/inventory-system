@@ -74,9 +74,10 @@ export default function SettingsScreen() {
         <View style={{ paddingHorizontal: glassSpacing.screen, paddingVertical: ds.spacing(16) }}>
           <Text
             style={{
-              fontSize: glassTypography.screenTitle,
-              fontWeight: '600',
+              fontSize: ds.fontSize(32),
+              fontWeight: '800',
               color: glassColors.textPrimary,
+              letterSpacing: -0.5,
             }}
           >
             Settings

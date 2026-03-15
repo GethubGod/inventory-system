@@ -7,6 +7,7 @@ import {
   View,
 } from 'react-native';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { colors, radii } from '@/theme/design';
 
 interface BottomSheetShellProps {
   visible: boolean;
@@ -79,18 +80,34 @@ export function BottomSheetShell({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable className="flex-1 bg-black/40 justify-end" onPress={onClose}>
+      <Pressable
+        style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' }}
+        onPress={onClose}
+      >
         <Animated.View
           style={{
             paddingHorizontal: horizontalPadding ?? ds.spacing(20),
             paddingBottom: bottomPadding ?? ds.spacing(10),
+            paddingTop: ds.spacing(16),
             transform: [{ translateY }],
+            backgroundColor: colors.white,
+            borderTopLeftRadius: radii.card,
+            borderTopRightRadius: radii.card,
           }}
-          className="bg-white rounded-t-3xl pt-4"
         >
           <Pressable onPress={(event) => event.stopPropagation()}>
-            <View className="items-center pb-3" {...panResponder.panHandlers}>
-              <View className="h-1 rounded-full bg-gray-300" style={{ width: ds.spacing(42) }} />
+            <View
+              style={{ alignItems: 'center', paddingBottom: ds.spacing(12) }}
+              {...panResponder.panHandlers}
+            >
+              <View
+                style={{
+                  width: ds.spacing(42),
+                  height: 4,
+                  borderRadius: 2,
+                  backgroundColor: colors.textMuted,
+                }}
+              />
             </View>
             {children}
           </Pressable>

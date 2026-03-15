@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { colors } from '@/constants';
+import { colors, hairline, radii } from '@/theme/design';
 import { useDisplayStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -111,27 +111,26 @@ export function ChangePasswordModal({
         className="flex-1"
       >
         <Pressable
-          className="flex-1 bg-black/50 justify-end"
+          style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' }}
           onPress={handleClose}
         >
           <Pressable
-            className="bg-white rounded-t-3xl"
+            style={{ backgroundColor: colors.white, borderTopLeftRadius: radii.card, borderTopRightRadius: radii.card }}
             onPress={(e) => e.stopPropagation()}
           >
             {/* Handle */}
-            <View className="items-center" style={{ paddingTop: ds.spacing(12), paddingBottom: ds.spacing(8) }}>
-              <View style={{ width: ds.spacing(40), height: ds.spacing(4), borderRadius: ds.radius(999) }} className="bg-gray-300" />
+            <View style={{ alignItems: 'center', paddingTop: ds.spacing(12), paddingBottom: ds.spacing(8) }}>
+              <View style={{ width: ds.spacing(40), height: 4, borderRadius: 2, backgroundColor: colors.textMuted }} />
             </View>
 
             {/* Header */}
             <View
-              className="flex-row justify-between items-center border-b border-gray-100"
-              style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
+              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: hairline, borderBottomColor: colors.divider, paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
             >
               <TouchableOpacity onPress={handleClose} disabled={isLoading} style={{ minHeight: 44, justifyContent: 'center' }}>
-                <Text className="text-gray-500" style={{ fontSize: ds.fontSize(16) }}>Cancel</Text>
+                <Text style={{ fontSize: ds.fontSize(16), color: colors.textSecondary }}>Cancel</Text>
               </TouchableOpacity>
-              <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>
+              <Text style={{ fontSize: ds.fontSize(18), fontWeight: '600', color: colors.textPrimary }}>
                 Change Password
               </Text>
               <View style={{ width: ds.spacing(56) }} />
@@ -144,13 +143,15 @@ export function ChangePasswordModal({
             >
               {/* Current Password */}
               <View style={{ marginBottom: ds.spacing(16) }}>
-                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
+              <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8), fontWeight: '500', color: colors.textPrimary }}>
                   Current Password
                 </Text>
                 <View
-                  className="flex-row items-center bg-gray-100"
                   style={{
-                    borderRadius: ds.radius(12),
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: colors.background,
+                    borderRadius: radii.stepper,
                     minHeight: Math.max(48, ds.buttonH),
                     paddingHorizontal: ds.spacing(14),
                   }}
@@ -160,9 +161,8 @@ export function ChangePasswordModal({
                     onChangeText={setCurrentPassword}
                     secureTextEntry={!showCurrentPassword}
                     placeholder="Enter current password"
-                    placeholderTextColor={colors.gray[400]}
-                    className="flex-1 text-gray-900"
-                    style={{ fontSize: ds.fontSize(15) }}
+                    placeholderTextColor={colors.textMuted}
+                    style={{ flex: 1, fontSize: ds.fontSize(15), color: colors.textPrimary }}
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
@@ -173,7 +173,7 @@ export function ChangePasswordModal({
                     <Ionicons
                       name={showCurrentPassword ? 'eye-off' : 'eye'}
                       size={ds.icon(22)}
-                      color={colors.gray[400]}
+                      color={colors.textMuted}
                     />
                   </TouchableOpacity>
                 </View>
@@ -181,13 +181,15 @@ export function ChangePasswordModal({
 
               {/* New Password */}
               <View style={{ marginBottom: ds.spacing(16) }}>
-                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
+                <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8), fontWeight: '500', color: colors.textPrimary }}>
                   New Password
                 </Text>
                 <View
-                  className="flex-row items-center bg-gray-100"
                   style={{
-                    borderRadius: ds.radius(12),
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: colors.background,
+                    borderRadius: radii.stepper,
                     minHeight: Math.max(48, ds.buttonH),
                     paddingHorizontal: ds.spacing(14),
                   }}
@@ -197,9 +199,8 @@ export function ChangePasswordModal({
                     onChangeText={setNewPassword}
                     secureTextEntry={!showNewPassword}
                     placeholder="Enter new password"
-                    placeholderTextColor={colors.gray[400]}
-                    className="flex-1 text-gray-900"
-                    style={{ fontSize: ds.fontSize(15) }}
+                    placeholderTextColor={colors.textMuted}
+                    style={{ flex: 1, fontSize: ds.fontSize(15), color: colors.textPrimary }}
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
@@ -210,24 +211,26 @@ export function ChangePasswordModal({
                     <Ionicons
                       name={showNewPassword ? 'eye-off' : 'eye'}
                       size={ds.icon(22)}
-                      color={colors.gray[400]}
+                      color={colors.textMuted}
                     />
                   </TouchableOpacity>
                 </View>
-                <Text className="text-gray-400" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4) }}>
+                <Text style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4), color: colors.textMuted }}>
                   Must be at least 8 characters
                 </Text>
               </View>
 
               {/* Confirm Password */}
               <View style={{ marginBottom: ds.spacing(24) }}>
-                <Text className="font-medium text-gray-700" style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8) }}>
+                <Text style={{ fontSize: ds.fontSize(14), marginBottom: ds.spacing(8), fontWeight: '500', color: colors.textPrimary }}>
                   Confirm New Password
                 </Text>
                 <View
-                  className="flex-row items-center bg-gray-100"
                   style={{
-                    borderRadius: ds.radius(12),
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: colors.background,
+                    borderRadius: radii.stepper,
                     minHeight: Math.max(48, ds.buttonH),
                     paddingHorizontal: ds.spacing(14),
                   }}
@@ -237,9 +240,8 @@ export function ChangePasswordModal({
                     onChangeText={setConfirmPassword}
                     secureTextEntry={!showConfirmPassword}
                     placeholder="Confirm new password"
-                    placeholderTextColor={colors.gray[400]}
-                    className="flex-1 text-gray-900"
-                    style={{ fontSize: ds.fontSize(15) }}
+                    placeholderTextColor={colors.textMuted}
+                    style={{ flex: 1, fontSize: ds.fontSize(15), color: colors.textPrimary }}
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
@@ -250,7 +252,7 @@ export function ChangePasswordModal({
                     <Ionicons
                       name={showConfirmPassword ? 'eye-off' : 'eye'}
                       size={ds.icon(22)}
-                      color={colors.gray[400]}
+                      color={colors.textMuted}
                     />
                   </TouchableOpacity>
                 </View>
@@ -260,16 +262,19 @@ export function ChangePasswordModal({
               <TouchableOpacity
                 onPress={handleSubmit}
                 disabled={isLoading}
-                className={`rounded-xl items-center justify-center ${
-                  isLoading ? 'bg-primary-300' : 'bg-primary-500'
-                }`}
-                style={{ minHeight: Math.max(48, ds.buttonH), borderRadius: ds.radius(12) }}
+                style={{
+                  borderRadius: radii.submitButton,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: Math.max(48, ds.buttonH),
+                  backgroundColor: isLoading ? colors.primaryLight : colors.primary,
+                }}
                 activeOpacity={0.8}
               >
                 {isLoading ? (
-                  <ActivityIndicator color="white" />
+                  <ActivityIndicator color={colors.white} />
                 ) : (
-                  <Text className="text-white font-semibold" style={{ fontSize: ds.buttonFont }}>
+                  <Text style={{ fontSize: ds.buttonFont, fontWeight: '600', color: colors.white }}>
                     Update Password
                   </Text>
                 )}

@@ -414,6 +414,69 @@ const ORDER_ITEM_OPTIONAL_COLUMNS = [
 type OrderItemOptionalColumn = (typeof ORDER_ITEM_OPTIONAL_COLUMNS)[number];
 
 const missingOrderItemsColumns = new Set<OrderItemOptionalColumn>();
+const ORDER_WRITE_TIMEOUT_MS = 15_000;
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+
+  const err = error as { name?: unknown; message?: unknown };
+  const name = typeof err.name === 'string' ? err.name : '';
+  const message = typeof err.message === 'string' ? err.message.toLowerCase() : '';
+
+  return name === 'AbortError' || message.includes('aborted');
+}
+
+async function ensureOrderWriteConnectivity() {
+  try {
+    const networkState = await NetInfo.fetch();
+    const hasConnectivitySignal =
+      networkState.isConnected !== null || networkState.isInternetReachable !== null;
+    const online =
+      networkState.isConnected !== false && networkState.isInternetReachable !== false;
+
+    if (hasConnectivitySignal && !online) {
+      throw new Error('No internet connection. Reconnect and try submitting the order again.');
+    }
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+  }
+}
+
+async function runTimedOrderWrite<T>(
+  action: string,
+  request: (signal: AbortSignal) => Promise<T>,
+  meta?: Record<string, unknown>
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ORDER_WRITE_TIMEOUT_MS);
+  const startedAt = Date.now();
+
+  try {
+    return await request(controller.signal);
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    if (isAbortError(error)) {
+      console.error(`[OrderWrite] Timed out while ${action}.`, {
+        durationMs,
+        ...meta,
+      });
+      throw new Error(
+        `Timed out while ${action}. Check Supabase logs, database locks/triggers, and network connectivity.`
+      );
+    }
+
+    console.error(`[OrderWrite] Failed while ${action}.`, {
+      durationMs,
+      ...meta,
+      error,
+    });
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function toValidNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
@@ -687,15 +750,26 @@ async function insertOrderItemsWithFallback(
 
   while (attemptCount <= ORDER_ITEM_OPTIONAL_COLUMNS.length) {
     const payload = orderItems.map((item) => omitOrderItemColumns(item, omittedColumns));
-    let query = (supabase as any).from('order_items').insert(payload);
-    if (includeInventorySelect) {
-      query = query.select(`
-        *,
-        inventory_item:inventory_items(*)
-      `);
-    }
-
-    const attempt = await query;
+    const attempt = await runTimedOrderWrite(
+      'saving order items',
+      async (signal) => {
+        let query = (supabase as any).from('order_items').insert(payload);
+        if (includeInventorySelect) {
+          query = query.select(`
+            *,
+            inventory_item:inventory_items(*)
+          `);
+        }
+        if (typeof query.abortSignal === 'function') {
+          query = query.abortSignal(signal);
+        }
+        return query;
+      },
+      {
+        itemCount: orderItems.length,
+        omittedColumns: Array.from(omittedColumns),
+      }
+    );
     if (!attempt.error) {
       return attempt;
     }
@@ -2168,16 +2242,30 @@ export const useOrderStore = create<OrderState>()(
 
         set({ isLoading: true });
         try {
+          await ensureOrderWriteConnectivity();
+
           // Create order
-          const orderResponse = await (supabase as any)
-            .from('orders')
-            .insert({
-              location_id: locationId,
-              user_id: userId,
-              status: 'draft',
-            })
-            .select()
-            .single();
+          const orderResponse = await runTimedOrderWrite(
+            'creating the draft order record',
+            async (signal) => {
+              let query = (supabase as any)
+                .from('orders')
+                .insert({
+                  location_id: locationId,
+                  user_id: userId,
+                  status: 'draft',
+                })
+                .select()
+                .single();
+
+              if (typeof query.abortSignal === 'function') {
+                query = query.abortSignal(signal);
+              }
+
+              return query;
+            },
+            { locationId, userId, context: resolvedContext }
+          );
 
           const order = orderResponse.data as any;
           const orderError = orderResponse.error;
@@ -2216,19 +2304,33 @@ export const useOrderStore = create<OrderState>()(
 
         set({ isLoading: true });
         try {
+          await ensureOrderWriteConnectivity();
+
           // Create order with status 'submitted' directly
-          const orderResponse = await (supabase as any)
-            .from('orders')
-            .insert({
-              location_id: locationId,
-              user_id: userId,
-              status: 'submitted',
-            })
-            .select(`
-              *,
-              location:locations(*)
-            `)
-            .single();
+          const orderResponse = await runTimedOrderWrite(
+            'creating the submitted order record',
+            async (signal) => {
+              let query = (supabase as any)
+                .from('orders')
+                .insert({
+                  location_id: locationId,
+                  user_id: userId,
+                  status: 'submitted',
+                })
+                .select(`
+                  *,
+                  location:locations(*)
+                `)
+                .single();
+
+              if (typeof query.abortSignal === 'function') {
+                query = query.abortSignal(signal);
+              }
+
+              return query;
+            },
+            { locationId, userId, context: resolvedContext }
+          );
 
           const order = orderResponse.data as any;
           const orderError = orderResponse.error;
@@ -2282,19 +2384,38 @@ export const useOrderStore = create<OrderState>()(
 
         set({ isLoading: true });
         try {
+          await ensureOrderWriteConnectivity();
+
           // Submit to the selected location, but only with source-cart items.
-          const orderResponse = await (supabase as any)
-            .from('orders')
-            .insert({
-              location_id: submitLocationId,
-              user_id: userId,
-              status: 'submitted',
-            })
-            .select(`
-              *,
-              location:locations(*)
-            `)
-            .single();
+          const orderResponse = await runTimedOrderWrite(
+            'creating the submitted order record',
+            async (signal) => {
+              let query = (supabase as any)
+                .from('orders')
+                .insert({
+                  location_id: submitLocationId,
+                  user_id: userId,
+                  status: 'submitted',
+                })
+                .select(`
+                  *,
+                  location:locations(*)
+                `)
+                .single();
+
+              if (typeof query.abortSignal === 'function') {
+                query = query.abortSignal(signal);
+              }
+
+              return query;
+            },
+            {
+              sourceLocationId,
+              submitLocationId,
+              userId,
+              context: resolvedContext,
+            }
+          );
 
           const order = orderResponse.data as any;
           const orderError = orderResponse.error;
@@ -2328,10 +2449,24 @@ export const useOrderStore = create<OrderState>()(
       submitOrder: async (orderId) => {
         set({ isLoading: true });
         try {
-          const { error } = await (supabase as any)
-            .from('orders')
-            .update({ status: 'submitted' })
-            .eq('id', orderId);
+          await ensureOrderWriteConnectivity();
+
+          const { error } = await runTimedOrderWrite(
+            'updating the order status to submitted',
+            async (signal) => {
+              let query = (supabase as any)
+                .from('orders')
+                .update({ status: 'submitted' })
+                .eq('id', orderId);
+
+              if (typeof query.abortSignal === 'function') {
+                query = query.abortSignal(signal);
+              }
+
+              return query;
+            },
+            { orderId }
+          );
 
           if (error) throw error;
         } finally {
