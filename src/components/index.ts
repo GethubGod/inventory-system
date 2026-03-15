@@ -17,6 +17,8 @@ export { OrderLaterAddToSheet } from './OrderLaterAddToSheet';
 export type { OrderLaterSupplierOption } from './OrderLaterAddToSheet';
 export { ConfirmLocationBottomSheet } from './ConfirmLocationBottomSheet';
 export type { ConfirmLocationOption } from './ConfirmLocationBottomSheet';
+export { HeaderCartButton } from './HeaderCartButton';
+export { LocationSelectorButton } from './LocationSelectorButton';
 export * from './ui';
 
 // Settings components

@@ -66,6 +66,7 @@ export interface Profile {
 
 export type ReminderThreadStatus = 'active' | 'resolved' | 'cancelled';
 export type ReminderEventType = 'sent' | 'reminded_again' | 'auto_resolved' | 'cancelled';
+export type ReminderThreadScope = 'employee' | 'location_banner';
 export type RecurringReminderScope = 'employee' | 'location';
 export type RecurringReminderCondition = 'no_order_today' | 'days_since_last_order_gte';
 
@@ -81,10 +82,13 @@ export interface ReminderSystemSetting {
 
 export interface ReminderThread {
   id: string;
-  employee_id: string;
+  employee_id: string | null;
   manager_id: string | null;
   location_id: string | null;
+  scope: ReminderThreadScope;
   status: ReminderThreadStatus;
+  message: string | null;
+  sender_name: string | null;
   created_at: string;
   resolved_at: string | null;
   cancelled_at: string | null;

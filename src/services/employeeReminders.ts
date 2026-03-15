@@ -296,6 +296,7 @@ async function sendReminderDirect(params: {
   let activeQuery = db
     .from('reminders')
     .select('*')
+    .eq('scope', 'employee')
     .eq('employee_id', params.employeeId)
     .eq('status', 'active')
     .order('created_at', { ascending: false })
@@ -358,6 +359,7 @@ async function sendReminderDirect(params: {
     const { data: created, error: createError } = await db
       .from('reminders')
       .insert({
+        scope: 'employee',
         employee_id: params.employeeId,
         manager_id: managerId,
         location_id: locationId,

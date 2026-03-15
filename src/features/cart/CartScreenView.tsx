@@ -35,14 +35,16 @@ import type { ItemActionSheetSection } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { completePendingRemindersForUser } from '@/services/notificationService';
 import type { OrderingMode } from '@/features/ordering/types';
+import { type HistoricalOrderSummary } from '@/features/ordering/orderInsights';
+import { resolveActiveLocationReminders } from '@/services/locationReminderService';
 import { resolveLocationSwitchTarget } from './locationSwitch';
+import { EmptyCartReorderState } from './EmptyCartReorderState';
 import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
   glassSpacing,
   glassTabBarHeight,
-  glassTypography,
 } from '@/design/tokens';
 
 interface CartItemWithDetails extends CartItem {
@@ -72,7 +74,6 @@ export function CartScreenView({
     moveCartItem,
     moveLocationCartItems,
     clearLocationCart,
-    clearAllCarts,
     createAndSubmitOrder,
     createAndSubmitOrderFromSourceLocation,
     setCartItemNote,
@@ -85,7 +86,6 @@ export function CartScreenView({
     moveCartItem: state.moveCartItem,
     moveLocationCartItems: state.moveLocationCartItems,
     clearLocationCart: state.clearLocationCart,
-    clearAllCarts: state.clearAllCarts,
     createAndSubmitOrder: state.createAndSubmitOrder,
     createAndSubmitOrderFromSourceLocation: state.createAndSubmitOrderFromSourceLocation,
     setCartItemNote: state.setCartItemNote,
@@ -97,6 +97,7 @@ export function CartScreenView({
   const { user, locations } = useAuthStore(useShallow((state) => ({
     user: state.user,
     locations: state.locations,
+    location: state.location,
   })));
 
   // Track expanded items
@@ -122,6 +123,7 @@ export function CartScreenView({
   const [statusToast, setStatusToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
 
+  const selectedLocation = useAuthStore((state) => state.location);
   const cartLocationIds = useMemo(
     () =>
       Object.keys(activeCartByLocation).filter(
@@ -620,27 +622,6 @@ export function CartScreenView({
     );
   }, [clearLocationCart, context]);
 
-  // Handle clear all carts
-  const handleClearAll = useCallback(() => {
-    Alert.alert(
-      'Clear All Carts',
-      'Remove all items from all locations?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Clear All',
-          style: 'destructive',
-          onPress: () => {
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            }
-            clearAllCarts(context);
-          },
-        },
-      ]
-    );
-  }, [clearAllCarts, context]);
-
   // Track which location is currently submitting
   const [submittingLocation, setSubmittingLocation] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<{
@@ -652,6 +633,19 @@ export function CartScreenView({
   const handleCloseConfirmation = useCallback(() => {
     setConfirmation(null);
   }, []);
+
+  const handleReorderPastOrder = useCallback((order: HistoricalOrderSummary) => {
+    const targetLocationId = selectedLocation?.id ?? order.locationId;
+    order.items.forEach((item) => {
+      addToCart(targetLocationId, item.inventoryItemId, item.quantity, item.unitType, {
+        context,
+        inputMode: 'quantity',
+        quantityRequested: item.quantity,
+        note: item.note,
+      });
+    });
+    showStatusToast(`Added ${order.itemCount} items to cart`, 'success');
+  }, [addToCart, context, selectedLocation?.id, showStatusToast]);
 
   const submitOrderForLocation = useCallback(async (
     submitLocationId: string,
@@ -694,6 +688,7 @@ export function CartScreenView({
       showStatusToast(`Order submitted for ${locationName}`, 'success');
       // Mark pending reminders as completed client-side (DB trigger is primary)
       completePendingRemindersForUser(user.id).catch(() => {});
+      resolveActiveLocationReminders(submitLocationId).catch(() => {});
     } catch (error: any) {
       showStatusToast(error.message || 'Failed to submit order', 'error');
     } finally {
@@ -1238,52 +1233,13 @@ export function CartScreenView({
           ListHeaderComponent={null}
         />
       ) : (
-        <View style={{ padding: ds.spacing(32) }} className="flex-1 items-center justify-center">
-          <Ionicons name="cart-outline" size={ds.icon(64)} color={colors.gray[300]} />
-          <Text style={{ fontSize: ds.fontSize(18), color: glassColors.textPrimary }} className="mt-4 text-center">
-            Your cart is empty
-          </Text>
-          <Text style={{ fontSize: ds.fontSize(12), color: glassColors.textSecondary }} className="text-center mt-2">
-            Add items from Quick Order or browse inventory
-          </Text>
-          <View className="flex-row mt-6">
-            <TouchableOpacity
-              style={{
-                borderRadius: glassRadii.button,
-                paddingHorizontal: ds.spacing(20),
-                height: ds.buttonH,
-                marginRight: ds.spacing(12),
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: glassColors.accent[500],
-              }}
-              onPress={() => router.push(quickOrderRoute as any)}
-            >
-              <Ionicons name="flash" size={ds.icon(18)} color={colors.white} />
-              <Text style={{ fontSize: ds.buttonFont, color: glassColors.textOnPrimary, fontWeight: '600', marginLeft: ds.spacing(8) }}>
-                Quick Order
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{
-                borderRadius: glassRadii.button,
-                paddingHorizontal: ds.spacing(20),
-                height: ds.buttonH,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: glassColors.mediumFill,
-                borderWidth: glassHairlineWidth,
-                borderColor: glassColors.cardBorder,
-              }}
-              onPress={() => router.push(browseRoute as any)}
-            >
-              <Text style={{ fontSize: ds.buttonFont, color: glassColors.textPrimary, fontWeight: '600' }}>
-                Browse
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        <EmptyCartReorderState
+          browseRoute={browseRoute}
+          locationId={selectedLocation?.id ?? locations[0]?.id ?? null}
+          locationName={selectedLocation?.name ?? locations[0]?.name ?? 'Current location'}
+          onReorder={handleReorderPastOrder}
+          quickOrderRoute={quickOrderRoute}
+        />
       )}
 
       {/* Cart Location Modal */}

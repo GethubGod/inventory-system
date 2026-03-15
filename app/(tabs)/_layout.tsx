@@ -6,9 +6,8 @@ import {
   useAuthStore,
   useOrderStore,
   useDraftStore,
-  useDisplayStore,
 } from "@/store";
-import { colors, hairline, radii, spacing } from "@/theme/design";
+import { colors, hairline, spacing } from "@/theme/design";
 
 /**
  * Custom tab button: renders a soft rounded bubble enclosing both
@@ -60,8 +59,6 @@ export default function TabsLayout() {
     state.getTotalCartCount("employee"),
   );
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
-  const uiScale = useDisplayStore((state) => state.uiScale);
-  const scaledFontSize = useDisplayStore((state) => state.scaledFontSize);
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = Math.max(insets.bottom, spacing.tabBarBottom);
   const tabBarHeight = 60 + tabBarBottomInset;
@@ -121,9 +118,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: "Browse",
+          title: "Home",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="grid-outline" label="Browse" size={size} color={color} focused={focused} />
+            <TabButton name="grid-outline" label="Home" size={size} color={color} focused={focused} />
           ),
         }}
       />
@@ -157,9 +154,9 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="voice"
         options={{
-          title: "Voice",
+          title: "Smart",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="time-outline" label="Voice" size={size} color={color} focused={focused} />
+            <TabButton name="reader-outline" label="Smart" size={size} color={color} focused={focused} />
           ),
         }}
       />
