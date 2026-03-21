@@ -1,9 +1,11 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Platform } from 'react-native';
-import * as Haptics from 'expo-haptics';
-import { useDisplayStore } from '@/store';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { colors } from '@/constants';
+import {
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+} from '@/design/tokens';
 
 interface Option<T> {
   value: T;
@@ -26,18 +28,19 @@ export function MultiOptionToggle<T extends string | number>({
   disabled = false,
 }: MultiOptionToggleProps<T>) {
   const ds = useScaledStyles();
-  const { hapticFeedback } = useDisplayStore();
 
   const handleSelect = (optionValue: T, optionDisabled: boolean) => {
     if (disabled || optionDisabled) return;
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
     onValueChange(optionValue);
   };
 
   return (
-    <View className={`flex-row ${disabled ? 'opacity-50' : ''}`}>
+    <View
+      style={{
+        flexDirection: 'row',
+        opacity: disabled ? 0.5 : 1,
+      }}
+    >
       {options.map((option, index) => {
         const isSelected = value === option.value;
         const isOptionDisabled = disabled || Boolean(option.disabled);
@@ -46,29 +49,36 @@ export function MultiOptionToggle<T extends string | number>({
             key={String(option.value)}
             onPress={() => handleSelect(option.value, isOptionDisabled)}
             disabled={isOptionDisabled}
-            className={`flex-1 rounded-xl items-center justify-center border-2 ${
-              isSelected
-                ? 'border-primary-500 bg-primary-50'
-                : 'border-gray-200 bg-gray-50'
-            } ${isOptionDisabled && !isSelected ? 'opacity-60' : ''}`}
             style={{
+              flex: 1,
               marginRight: index < options.length - 1 ? ds.spacing(8) : 0,
-              minHeight: Math.max(44, ds.buttonH),
-              paddingHorizontal: ds.spacing(8),
-              paddingVertical: ds.spacing(6),
+              minHeight: Math.max(46, ds.buttonH),
+              paddingHorizontal: ds.spacing(10),
+              paddingVertical: ds.spacing(8),
+              borderRadius: glassRadii.button,
+              borderWidth: isSelected ? 1.5 : glassHairlineWidth,
+              borderColor: isSelected
+                ? glassColors.accent
+                : glassColors.controlBorder,
+              backgroundColor: isSelected
+                ? glassColors.accentSoft
+                : glassColors.mediumFill,
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: isOptionDisabled && !isSelected ? 0.6 : 1,
             }}
-            activeOpacity={0.7}
+            activeOpacity={0.82}
           >
             {option.preview && (
               <View style={{ marginBottom: ds.spacing(4) }}>{option.preview}</View>
             )}
             <Text
-              className={`font-medium ${
-                isSelected ? 'text-primary-600' : 'text-gray-600'
-              }`}
               style={{
                 fontSize: ds.fontSize(14),
-                color: isOptionDisabled && !isSelected ? colors.gray[400] : undefined,
+                fontWeight: '600',
+                color: isSelected
+                  ? glassColors.accent
+                  : glassColors.textSecondary,
               }}
               numberOfLines={1}
             >

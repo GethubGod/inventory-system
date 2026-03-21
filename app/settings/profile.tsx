@@ -1,50 +1,199 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Platform,
-  Alert,
-  ToastAndroid,
-  Image,
-  TextInput,
-  Modal,
   ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  Text,
+  TextInput,
+  ToastAndroid,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
-import { useAuthStore, useSettingsStore, useDisplayStore } from '@/store';
+import { ChangePasswordModal, SettingsGroup, SettingsScreenLayout, SettingsSectionLabel } from '@/components/settings';
+import { useAuthStore, useSettingsStore } from '@/store';
 import { colors } from '@/constants';
-import { ChangePasswordModal } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { glassColors, glassRadii, glassSpacing, glassTypography, glassHairlineWidth } from '@/design/tokens';
+import {
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+} from '@/design/tokens';
 
-
-function ProfileSection({
-  onChangePassword,
-  onDeleteAccount,
-  isDeletingAccount,
+function ProfileInfoRow({
+  label,
+  value,
+  icon,
+  right,
 }: {
-  onChangePassword: () => void;
-  onDeleteAccount: () => void;
-  isDeletingAccount: boolean;
+  label: string;
+  value: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  right?: React.ReactNode;
 }) {
-  const { user, location } = useAuthStore();
-  const { avatarUri, setAvatarUri } = useSettingsStore();
-  const { hapticFeedback } = useDisplayStore();
   const ds = useScaledStyles();
+
+  return (
+    <View
+      style={{
+        paddingHorizontal: ds.spacing(16),
+        paddingVertical: ds.spacing(14),
+        borderBottomWidth: glassHairlineWidth,
+        borderBottomColor: glassColors.divider,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: ds.fontSize(11),
+          fontWeight: '700',
+          color: glassColors.textSecondary,
+          letterSpacing: 0.4,
+          textTransform: 'uppercase',
+        }}
+      >
+        {label}
+      </Text>
+      <View
+        style={{
+          marginTop: ds.spacing(8),
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}
+      >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            flex: 1,
+            paddingRight: ds.spacing(10),
+          }}
+        >
+          <View
+            style={{
+              width: Math.max(36, ds.icon(34)),
+              height: Math.max(36, ds.icon(34)),
+              borderRadius: glassRadii.iconTile,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: glassColors.mediumFill,
+            }}
+          >
+            <Ionicons
+              name={icon}
+              size={ds.icon(17)}
+              color={glassColors.textSecondary}
+            />
+          </View>
+          <Text
+            style={{
+              flex: 1,
+              marginLeft: ds.spacing(10),
+              fontSize: ds.fontSize(15),
+              color: glassColors.textPrimary,
+              fontWeight: '600',
+            }}
+            numberOfLines={2}
+          >
+            {value}
+          </Text>
+        </View>
+        {right}
+      </View>
+    </View>
+  );
+}
+
+function ActionButton({
+  label,
+  icon,
+  onPress,
+  destructive = false,
+  disabled = false,
+  loading = false,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  destructive?: boolean;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const ds = useScaledStyles();
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled || loading}
+      activeOpacity={0.82}
+      style={{
+        minHeight: Math.max(48, ds.buttonH),
+        borderRadius: glassRadii.button,
+        borderWidth: glassHairlineWidth,
+        borderColor: destructive
+          ? 'rgba(239, 68, 68, 0.16)'
+          : glassColors.controlBorder,
+        backgroundColor: destructive
+          ? glassColors.dangerSoft
+          : glassColors.mediumFill,
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexDirection: 'row',
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {loading ? (
+        <ActivityIndicator
+          size="small"
+          color={destructive ? glassColors.dangerText : glassColors.accent}
+        />
+      ) : (
+        <Ionicons
+          name={icon}
+          size={ds.icon(18)}
+          color={destructive ? glassColors.dangerText : glassColors.accent}
+        />
+      )}
+      <Text
+        style={{
+          marginLeft: ds.spacing(8),
+          fontSize: ds.fontSize(15),
+          fontWeight: '700',
+          color: destructive ? glassColors.dangerText : glassColors.accent,
+        }}
+      >
+        {label}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
+export default function ProfileSettingsScreen() {
+  const ds = useScaledStyles();
+  const { user, location, deleteSelfAccount } = useAuthStore();
+  const { avatarUri, setAvatarUri } = useSettingsStore();
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(user?.name || '');
-  const avatarSize = Math.max(76, ds.icon(80));
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+
+  const firstName = useMemo(
+    () => user?.name?.trim().split(/\s+/)[0] || 'User',
+    [user?.name],
+  );
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission Needed', 'Please allow photo library access to change your avatar.');
+      Alert.alert(
+        'Permission needed',
+        'Allow photo library access to change your profile image.',
+      );
       return;
     }
 
@@ -56,156 +205,9 @@ function ProfileSection({
     });
 
     if (!result.canceled && result.assets[0]) {
-      if (hapticFeedback && Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
       setAvatarUri(result.assets[0].uri);
     }
   };
-
-  const handleSaveName = () => {
-    setIsEditingName(false);
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
-  };
-
-  const firstName = user?.name?.split(' ')[0] || 'User';
-
-  return (
-    <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(16) }}>
-      <TouchableOpacity onPress={pickImage} className="items-center" style={{ marginBottom: ds.spacing(16) }}>
-        <View
-          className="rounded-full overflow-hidden bg-primary-500 items-center justify-center"
-          style={{ width: avatarSize, height: avatarSize }}
-        >
-          {avatarUri ? (
-            <Image source={{ uri: avatarUri }} className="w-full h-full" />
-          ) : (
-            <Text className="text-white font-bold" style={{ fontSize: ds.fontSize(30) }}>
-              {firstName.charAt(0).toUpperCase()}
-            </Text>
-          )}
-        </View>
-        <Text className="text-primary-500 font-medium" style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(8) }}>Change Photo</Text>
-      </TouchableOpacity>
-
-      <View style={{ marginBottom: ds.spacing(16) }}>
-        <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11), marginBottom: ds.spacing(4) }}>Full Name</Text>
-        {isEditingName ? (
-          <View className="flex-row items-center">
-            <TextInput
-              value={tempName}
-              onChangeText={setTempName}
-              className="flex-1 bg-gray-100 text-gray-900"
-              style={{
-                borderRadius: ds.radius(12),
-                minHeight: Math.max(48, ds.buttonH),
-                paddingHorizontal: ds.spacing(14),
-                fontSize: ds.fontSize(16),
-              }}
-              autoFocus
-            />
-            <TouchableOpacity onPress={handleSaveName} style={{ marginLeft: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}>
-              <Ionicons name="checkmark" size={ds.icon(22)} color={colors.primary[500]} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setIsEditingName(false)} style={{ minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }}>
-              <Ionicons name="close" size={ds.icon(22)} color={colors.gray[400]} />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            onPress={() => {
-              setTempName(user?.name || '');
-              setIsEditingName(true);
-            }}
-            className="flex-row items-center justify-between bg-gray-50"
-            style={{
-              borderRadius: ds.radius(12),
-              minHeight: Math.max(48, ds.buttonH),
-              paddingHorizontal: ds.spacing(14),
-              paddingVertical: ds.spacing(10),
-            }}
-          >
-            <Text className="text-gray-900" style={{ fontSize: ds.fontSize(16) }}>{user?.name || 'Not set'}</Text>
-            <Ionicons name="pencil" size={ds.icon(18)} color={colors.gray[400]} />
-          </TouchableOpacity>
-        )}
-      </View>
-
-      <View style={{ marginBottom: ds.spacing(16) }}>
-        <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11), marginBottom: ds.spacing(4) }}>Email</Text>
-        <View
-          className="flex-row items-center justify-between bg-gray-50"
-          style={{ borderRadius: ds.radius(12), minHeight: Math.max(48, ds.buttonH), paddingHorizontal: ds.spacing(14), paddingVertical: ds.spacing(10) }}
-        >
-          <Text className="text-gray-500" style={{ fontSize: ds.fontSize(16) }}>{user?.email || 'Not set'}</Text>
-          <Ionicons name="lock-closed" size={ds.icon(16)} color={colors.gray[400]} />
-        </View>
-      </View>
-
-      <View style={{ marginBottom: ds.spacing(16) }}>
-        <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11), marginBottom: ds.spacing(4) }}>Role</Text>
-        <View
-          className="flex-row items-center justify-between bg-gray-50"
-          style={{ borderRadius: ds.radius(12), minHeight: Math.max(48, ds.buttonH), paddingHorizontal: ds.spacing(14), paddingVertical: ds.spacing(10) }}
-        >
-          <Text className="text-gray-500 capitalize" style={{ fontSize: ds.fontSize(16) }}>{user?.role || 'Employee'}</Text>
-          <Ionicons name="lock-closed" size={ds.icon(16)} color={colors.gray[400]} />
-        </View>
-      </View>
-
-      <View style={{ marginBottom: ds.spacing(16) }}>
-        <Text className="text-gray-500 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11), marginBottom: ds.spacing(4) }}>Location</Text>
-        <View
-          className="flex-row items-center justify-between bg-gray-50"
-          style={{ borderRadius: ds.radius(12), minHeight: Math.max(48, ds.buttonH), paddingHorizontal: ds.spacing(14), paddingVertical: ds.spacing(10) }}
-        >
-          <View className="flex-row items-center">
-            <Ionicons name="location" size={ds.icon(16)} color={colors.primary[500]} />
-            <Text className="text-gray-500" style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(16) }}>{location?.name || 'Not set'}</Text>
-          </View>
-          <Ionicons name="lock-closed" size={ds.icon(16)} color={colors.gray[400]} />
-        </View>
-      </View>
-
-      <TouchableOpacity
-        onPress={onChangePassword}
-        className="bg-gray-100 items-center flex-row justify-center"
-        style={{ borderRadius: ds.radius(12), minHeight: Math.max(48, ds.buttonH) }}
-        activeOpacity={0.7}
-      >
-        <Ionicons name="key-outline" size={ds.icon(18)} color={colors.primary[600]} />
-        <Text className="text-primary-600 font-semibold" style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(15) }}>Change Password</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={onDeleteAccount}
-        disabled={isDeletingAccount}
-        className={isDeletingAccount ? 'bg-gray-200 items-center flex-row justify-center' : 'bg-red-100 items-center flex-row justify-center'}
-        style={{ borderRadius: ds.radius(12), minHeight: Math.max(48, ds.buttonH), marginTop: ds.spacing(12) }}
-        activeOpacity={0.7}
-      >
-        {isDeletingAccount ? (
-          <ActivityIndicator size="small" color={colors.gray[400]} />
-        ) : (
-          <Ionicons name="trash-outline" size={ds.icon(18)} color={colors.error} />
-        )}
-        <Text className={isDeletingAccount ? 'text-gray-500 font-semibold' : 'text-red-700 font-semibold'} style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(15) }}>
-          {isDeletingAccount ? 'Deleting Account...' : 'Delete Account'}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-export default function ProfileSettingsScreen() {
-  const ds = useScaledStyles();
-  const { deleteSelfAccount } = useAuthStore();
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   const openDeleteConfirmation = () => {
     Alert.alert(
@@ -221,19 +223,22 @@ export default function ProfileSettingsScreen() {
             setShowDeleteModal(true);
           },
         },
-      ]
+      ],
     );
   };
 
   const handleDeleteAccount = async () => {
-    if (deleteConfirmText !== 'DELETE' || isDeletingAccount) return;
+    if (deleteConfirmText !== 'DELETE' || isDeletingAccount) {
+      return;
+    }
+
     setIsDeletingAccount(true);
 
     try {
       await deleteSelfAccount('DELETE');
       setShowDeleteModal(false);
       setDeleteConfirmText('');
-      if (Platform.OS === 'android') {
+      if (typeof ToastAndroid !== 'undefined') {
         ToastAndroid.show('Account deleted', ToastAndroid.SHORT);
       } else {
         Alert.alert('Account deleted');
@@ -242,7 +247,7 @@ export default function ProfileSettingsScreen() {
     } catch (error: any) {
       Alert.alert(
         'Unable to delete account',
-        error?.message || 'Please try again in a moment.'
+        error?.message || 'Please try again in a moment.',
       );
     } finally {
       setIsDeletingAccount(false);
@@ -250,33 +255,235 @@ export default function ProfileSettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
-      <View style={{ 
-        flexDirection: 'row', 
-        alignItems: 'center', 
-        paddingHorizontal: glassSpacing.screen, 
-        paddingVertical: ds.spacing(12),
-        backgroundColor: glassColors.background 
-      }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ width: 44, height: 44, borderRadius: glassRadii.round, backgroundColor: glassColors.mediumFill, alignItems: 'center', justifyContent: 'center', marginRight: ds.spacing(12) }}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="arrow-back" size={ds.icon(22)} color={glassColors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={{ fontSize: glassTypography.screenTitle, fontWeight: '700', color: glassColors.textPrimary }}>
-          Profile
-        </Text>
-      </View>
+    <SettingsScreenLayout title="Profile">
+      <SettingsSectionLabel
+        label="Identity"
+        description="Keep account details readable and intentional without drifting away from the refined Babytuna system."
+      />
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
-        <ProfileSection
-          onChangePassword={() => setShowPasswordModal(true)}
-          onDeleteAccount={openDeleteConfirmation}
-          isDeletingAccount={isDeletingAccount}
+      <SettingsGroup>
+        <View
+          style={{
+            paddingHorizontal: ds.spacing(16),
+            paddingTop: ds.spacing(18),
+            paddingBottom: ds.spacing(12),
+            alignItems: 'center',
+          }}
+        >
+          <TouchableOpacity
+            onPress={pickImage}
+            activeOpacity={0.82}
+            style={{ alignItems: 'center' }}
+          >
+            <View
+              style={{
+                width: Math.max(84, ds.icon(88)),
+                height: Math.max(84, ds.icon(88)),
+                borderRadius: glassRadii.round,
+                overflow: 'hidden',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: glassColors.accent,
+              }}
+            >
+              {avatarUri ? (
+                <Image source={{ uri: avatarUri }} style={{ width: '100%', height: '100%' }} />
+              ) : (
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(30),
+                    fontWeight: '800',
+                    color: glassColors.textOnPrimary,
+                  }}
+                >
+                  {firstName.charAt(0).toUpperCase()}
+                </Text>
+              )}
+            </View>
+            <Text
+              style={{
+                marginTop: ds.spacing(10),
+                fontSize: ds.fontSize(14),
+                fontWeight: '600',
+                color: glassColors.accent,
+              }}
+            >
+              Change Photo
+            </Text>
+          </TouchableOpacity>
+
+          <Text
+            style={{
+              marginTop: ds.spacing(14),
+              fontSize: ds.fontSize(22),
+              fontWeight: '700',
+              color: glassColors.textPrimary,
+            }}
+          >
+            {user?.name || 'Unnamed User'}
+          </Text>
+          <View
+            style={{
+              marginTop: ds.spacing(8),
+              paddingHorizontal: ds.spacing(12),
+              paddingVertical: ds.spacing(6),
+              borderRadius: glassRadii.pill,
+              backgroundColor: glassColors.mediumFill,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: ds.fontSize(12),
+                fontWeight: '700',
+                color: glassColors.textSecondary,
+                textTransform: 'capitalize',
+              }}
+            >
+              {user?.role || 'employee'}
+            </Text>
+          </View>
+        </View>
+
+        <ProfileInfoRow
+          label="Full Name"
+          value={isEditingName ? tempName || 'Not set' : user?.name || 'Not set'}
+          icon="person-outline"
+          right={
+            isEditingName ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TouchableOpacity
+                  onPress={() => setIsEditingName(false)}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name="close"
+                    size={ds.icon(18)}
+                    color={glassColors.textSecondary}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setIsEditingName(false)}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name="checkmark"
+                    size={ds.icon(18)}
+                    color={glassColors.accent}
+                  />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={() => {
+                  setTempName(user?.name || '');
+                  setIsEditingName(true);
+                }}
+                style={{
+                  width: 40,
+                  height: 40,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons
+                  name="pencil-outline"
+                  size={ds.icon(18)}
+                  color={glassColors.textSecondary}
+                />
+              </TouchableOpacity>
+            )
+          }
         />
-      </ScrollView>
+
+        {isEditingName ? (
+          <View
+            style={{
+              paddingHorizontal: ds.spacing(16),
+              paddingBottom: ds.spacing(16),
+            }}
+          >
+            <TextInput
+              value={tempName}
+              onChangeText={setTempName}
+              autoFocus
+              placeholder="Full name"
+              placeholderTextColor={glassColors.textMuted}
+              style={{
+                minHeight: Math.max(48, ds.buttonH),
+                borderRadius: glassRadii.button,
+                borderWidth: glassHairlineWidth,
+                borderColor: glassColors.controlBorder,
+                backgroundColor: glassColors.mediumFill,
+                paddingHorizontal: ds.spacing(14),
+                fontSize: ds.fontSize(15),
+                color: glassColors.textPrimary,
+              }}
+            />
+          </View>
+        ) : null}
+
+        <ProfileInfoRow
+          label="Email"
+          value={user?.email || 'Not set'}
+          icon="mail-outline"
+          right={
+            <Ionicons
+              name="lock-closed"
+              size={ds.icon(16)}
+              color={glassColors.textSecondary}
+            />
+          }
+        />
+        <ProfileInfoRow
+          label="Location"
+          value={location?.name || 'Not set'}
+          icon="location-outline"
+          right={
+            <Ionicons
+              name="lock-closed"
+              size={ds.icon(16)}
+              color={glassColors.textSecondary}
+            />
+          }
+        />
+        <View
+          style={{
+            paddingHorizontal: ds.spacing(16),
+            paddingTop: ds.spacing(16),
+            paddingBottom: ds.spacing(18),
+          }}
+        >
+          <View
+            style={{
+              gap: ds.spacing(12),
+            }}
+          >
+            <ActionButton
+              label="Change Password"
+              icon="key-outline"
+              onPress={() => setShowPasswordModal(true)}
+            />
+            <ActionButton
+              label={isDeletingAccount ? 'Deleting Account...' : 'Delete Account'}
+              icon="trash-outline"
+              onPress={openDeleteConfirmation}
+              destructive
+              disabled={isDeletingAccount}
+              loading={isDeletingAccount}
+            />
+          </View>
+        </View>
+      </SettingsGroup>
 
       <ChangePasswordModal
         visible={showPasswordModal}
@@ -293,15 +500,40 @@ export default function ProfileSettingsScreen() {
           }
         }}
       >
-        <View className="flex-1 items-center justify-center" style={{ padding: ds.spacing(20), backgroundColor: colors.scrimStrong }}>
+        <View
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: ds.spacing(20),
+            backgroundColor: colors.scrimStrong,
+          }}
+        >
           <View
-            className="bg-white w-full"
-            style={{ borderRadius: ds.radius(16), padding: ds.spacing(16), maxWidth: 420 }}
+            style={{
+              width: '100%',
+              maxWidth: 420,
+              borderRadius: glassRadii.surface,
+              padding: ds.spacing(16),
+              backgroundColor: glassColors.background,
+            }}
           >
-            <Text className="text-gray-900 font-bold" style={{ fontSize: ds.fontSize(18) }}>
+            <Text
+              style={{
+                fontSize: ds.fontSize(18),
+                fontWeight: '700',
+                color: glassColors.textPrimary,
+              }}
+            >
               Confirm permanent deletion
             </Text>
-            <Text className="text-gray-600" style={{ fontSize: ds.fontSize(14), marginTop: ds.spacing(8) }}>
+            <Text
+              style={{
+                marginTop: ds.spacing(8),
+                fontSize: ds.fontSize(14),
+                color: glassColors.textSecondary,
+              }}
+            >
               Type DELETE to permanently remove your account.
             </Text>
 
@@ -312,32 +544,48 @@ export default function ProfileSettingsScreen() {
               autoCapitalize="characters"
               autoCorrect={false}
               placeholder="Type DELETE"
-              placeholderTextColor={colors.gray[400]}
-              className="bg-gray-100 text-gray-900"
+              placeholderTextColor={glassColors.textMuted}
               style={{
                 marginTop: ds.spacing(12),
-                borderRadius: ds.radius(12),
+                borderRadius: glassRadii.button,
                 minHeight: Math.max(48, ds.buttonH),
                 paddingHorizontal: ds.spacing(14),
                 fontSize: ds.fontSize(16),
+                color: glassColors.textPrimary,
+                backgroundColor: glassColors.mediumFill,
               }}
             />
 
-            <View className="flex-row" style={{ marginTop: ds.spacing(14) }}>
+            <View
+              style={{
+                marginTop: ds.spacing(14),
+                flexDirection: 'row',
+              }}
+            >
               <TouchableOpacity
                 onPress={() => {
-                  if (isDeletingAccount) return;
-                  setShowDeleteModal(false);
+                  if (!isDeletingAccount) {
+                    setShowDeleteModal(false);
+                  }
                 }}
                 disabled={isDeletingAccount}
-                className="flex-1 bg-gray-100 items-center justify-center"
                 style={{
-                  borderRadius: ds.radius(12),
-                  minHeight: Math.max(44, ds.buttonH - 2),
+                  flex: 1,
                   marginRight: ds.spacing(10),
+                  minHeight: Math.max(44, ds.buttonH - 2),
+                  borderRadius: glassRadii.button,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: glassColors.mediumFill,
                 }}
               >
-                <Text className="text-gray-700 font-semibold" style={{ fontSize: ds.fontSize(15) }}>
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(15),
+                    fontWeight: '700',
+                    color: glassColors.textSecondary,
+                  }}
+                >
                   Cancel
                 </Text>
               </TouchableOpacity>
@@ -345,25 +593,31 @@ export default function ProfileSettingsScreen() {
               <TouchableOpacity
                 onPress={handleDeleteAccount}
                 disabled={deleteConfirmText !== 'DELETE' || isDeletingAccount}
-                className={
-                  deleteConfirmText !== 'DELETE' || isDeletingAccount
-                    ? 'flex-1 bg-gray-200 items-center justify-center'
-                    : 'flex-1 bg-red-600 items-center justify-center'
-                }
-                style={{ borderRadius: ds.radius(12), minHeight: Math.max(44, ds.buttonH - 2) }}
+                style={{
+                  flex: 1,
+                  minHeight: Math.max(44, ds.buttonH - 2),
+                  borderRadius: glassRadii.button,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: glassColors.dangerText,
+                  opacity:
+                    deleteConfirmText !== 'DELETE' || isDeletingAccount ? 0.45 : 1,
+                }}
               >
-                {isDeletingAccount ? (
-                  <ActivityIndicator size="small" color="white" />
-                ) : (
-                  <Text className={deleteConfirmText !== 'DELETE' ? 'text-gray-500 font-semibold' : 'text-white font-semibold'} style={{ fontSize: ds.fontSize(15) }}>
-                    Permanently Delete
-                  </Text>
-                )}
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(15),
+                    fontWeight: '700',
+                    color: glassColors.textOnPrimary,
+                  }}
+                >
+                  Delete
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </SettingsScreenLayout>
   );
 }

@@ -7,20 +7,21 @@ import React, {
 } from 'react';
 import {
   FlatList,
-  LayoutAnimation,
-  Platform,
   RefreshControl,
   Text,
   TouchableOpacity,
-  UIManager,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useShallow } from 'zustand/react/shallow';
-import { BrandLogo, GlassSurface, HeaderCartButton, LoadingIndicator, LocationSelectorButton } from '@/components';
+import {
+  EmptyStateCard,
+  GlassSurface,
+  IdentityHeader,
+  LoadingIndicator,
+} from '@/components';
 import {
   categoryGlassTints,
   glassColors,
@@ -29,6 +30,7 @@ import {
   glassSpacing,
   glassTabBarHeight,
 } from '@/design/tokens';
+import { useEmployeeCartActions } from '@/hooks/useEmployeeCartActions';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   fetchLocationOrderInsights,
@@ -39,15 +41,7 @@ import {
   type PredictedOrderItem,
 } from '@/features/ordering/orderInsights';
 import { useAuthStore, useOrderStore } from '@/store';
-import type { Location } from '@/types';
 import { GlassView } from '@/components/ui';
-
-if (
-  Platform.OS === 'android' &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 interface PredictedRowProps {
   item: PredictedOrderItem;
@@ -242,7 +236,6 @@ const RecentOrderCard = memo(function RecentOrderCard({
 
 export function SmartOrderScreen() {
   const ds = useScaledStyles();
-  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [recentOrders, setRecentOrders] = useState<HistoricalOrderSummary[]>([]);
@@ -262,16 +255,17 @@ export function SmartOrderScreen() {
     })),
   );
   const {
-    addToCart,
-    getLocationCartTotal,
     totalCartCount,
   } = useOrderStore(
     useShallow((state) => ({
-      addToCart: state.addToCart,
-      getLocationCartTotal: state.getLocationCartTotal,
       totalCartCount: state.getTotalCartCount('employee'),
     })),
   );
+  const {
+    activeLocationId,
+    addPredictedItem,
+    reorderHistoricalOrder,
+  } = useEmployeeCartActions();
 
   useEffect(() => {
     void fetchLocations();
@@ -284,7 +278,7 @@ export function SmartOrderScreen() {
   }, [location, locations, setLocation]);
 
   const loadSmartData = useCallback(async () => {
-    if (!location?.id) {
+    if (!activeLocationId) {
       setRecentOrders([]);
       setPredictedItems([]);
       setQuantitiesByKey({});
@@ -294,7 +288,7 @@ export function SmartOrderScreen() {
 
     setLoading(true);
     try {
-      const insights = await fetchLocationOrderInsights(location.id);
+      const insights = await fetchLocationOrderInsights(activeLocationId);
       setRecentOrders(insights.recentOrders);
       setPredictedItems(insights.predictedItems);
       setQuantitiesByKey(
@@ -311,7 +305,7 @@ export function SmartOrderScreen() {
     } finally {
       setLoading(false);
     }
-  }, [location?.id]);
+  }, [activeLocationId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -324,23 +318,6 @@ export function SmartOrderScreen() {
     await loadSmartData();
     setRefreshing(false);
   }, [loadSmartData]);
-
-  const toggleLocationDropdown = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setShowLocationDropdown((previous) => !previous);
-  }, []);
-
-  const handleSelectLocation = useCallback(
-    (selectedLocation: Location) => {
-      if (Platform.OS !== 'web') {
-        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
-      setLocation(selectedLocation);
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setShowLocationDropdown(false);
-    },
-    [setLocation],
-  );
 
   const handleIncrementPrediction = useCallback((itemKey: string) => {
     setQuantitiesByKey((previous) => ({
@@ -356,40 +333,13 @@ export function SmartOrderScreen() {
     }));
   }, []);
 
-  const handleReorderOrder = useCallback(
-    (order: HistoricalOrderSummary) => {
-      if (!location?.id) {
-        return;
-      }
-
-      order.items.forEach((item) => {
-        addToCart(location.id, item.inventoryItemId, item.quantity, item.unitType, {
-          context: 'employee',
-          inputMode: 'quantity',
-          quantityRequested: item.quantity,
-          note: item.note,
-        });
-      });
-    },
-    [addToCart, location?.id],
-  );
-
   const handleAddAllPredicted = useCallback(() => {
-    if (!location?.id) {
-      return;
-    }
-
     predictedItems.forEach((item) => {
       const itemKey = `${item.inventoryItemId}:${item.unitType}`;
       const quantity = Math.max(1, quantitiesByKey[itemKey] ?? item.quantity);
-      addToCart(location.id, item.inventoryItemId, quantity, item.unitType, {
-        context: 'employee',
-        inputMode: 'quantity',
-        quantityRequested: quantity,
-        note: item.note,
-      });
+      addPredictedItem(item, quantity);
     });
-  }, [addToCart, location?.id, predictedItems, quantitiesByKey]);
+  }, [addPredictedItem, predictedItems, quantitiesByKey]);
 
   const renderPredictedRow = useCallback(
     ({ item }: { item: PredictedOrderItem }) => {
@@ -408,9 +358,9 @@ export function SmartOrderScreen() {
 
   const renderRecentOrder = useCallback(
     ({ item }: { item: HistoricalOrderSummary }) => (
-      <RecentOrderCard order={item} onReorder={handleReorderOrder} />
+      <RecentOrderCard order={item} onReorder={reorderHistoricalOrder} />
     ),
-    [handleReorderOrder],
+    [reorderHistoricalOrder],
   );
 
   const predictedDayLabel = useMemo(
@@ -424,221 +374,126 @@ export function SmartOrderScreen() {
   const renderListHeader = useCallback(
     () => (
       <View>
-        <View style={{ paddingTop: ds.spacing(8), paddingBottom: ds.spacing(10) }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'flex-start',
-            }}
-          >
-            <View style={{ flex: 1, paddingRight: ds.spacing(12) }}>
+        <IdentityHeader
+          title="Smart order"
+          subtitle="Suggestions based on your order history"
+          cartCount={totalCartCount}
+          onPressCart={() => router.push('/cart')}
+        />
+
+        <View style={{ marginTop: ds.spacing(8), marginBottom: ds.spacing(20) }}>
+          <View className="flex-row items-start">
+            <View
+              style={{
+                width: ds.icon(34),
+                height: ds.icon(34),
+                borderRadius: glassRadii.iconTile,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: glassColors.accentSoft,
+                marginRight: ds.spacing(12),
+              }}
+            >
+              <Ionicons
+                name="time-outline"
+                size={ds.icon(18)}
+                color={glassColors.accent}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
               <Text
                 style={{
-                  fontSize: ds.fontSize(32),
-                  fontWeight: '800',
+                  fontSize: ds.fontSize(16),
+                  fontWeight: '600',
                   color: glassColors.textPrimary,
-                  letterSpacing: -0.5,
                 }}
               >
-                Smart order
+                Today&apos;s predicted order
               </Text>
               <Text
                 style={{
-                  marginTop: ds.spacing(6),
-                  fontSize: ds.fontSize(14),
+                  marginTop: ds.spacing(4),
+                  fontSize: ds.fontSize(12),
                   color: glassColors.textSecondary,
                 }}
               >
-                Suggestions based on your order history
+                You usually order these on {predictedDayLabel}
               </Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <View className="flex-row items-center" style={{ marginBottom: ds.spacing(10) }}>
-                <LocationSelectorButton
-                  label={location?.name || 'Select Location'}
-                  expanded={showLocationDropdown}
-                  onPress={toggleLocationDropdown}
-                />
-                <HeaderCartButton
-                  count={totalCartCount}
-                  onPress={() => router.push('/cart')}
-                />
-              </View>
             </View>
           </View>
 
-          {showLocationDropdown ? (
-            <GlassSurface
-              intensity="strong"
-              style={{
-                marginTop: ds.spacing(2),
-                borderRadius: glassRadii.surface,
-              }}
-            >
-              <View>
-                {locations.map((loc, index) => {
-                  const isSelected = location?.id === loc.id;
-                  const cartCount = getLocationCartTotal(loc.id);
-                  return (
-                    <TouchableOpacity
-                      key={loc.id}
-                      onPress={() => handleSelectLocation(loc)}
-                      activeOpacity={0.7}
-                      className="flex-row items-center justify-between"
-                      style={{
-                        minHeight: ds.rowH,
-                        paddingHorizontal: ds.spacing(16),
-                        paddingVertical: ds.spacing(12),
-                        borderTopWidth: index > 0 ? glassHairlineWidth : 0,
-                        borderTopColor: glassColors.divider,
-                      }}
-                    >
-                      <View className="flex-row items-center flex-1">
-                        <View
-                          style={{
-                            width: ds.icon(32),
-                            height: ds.icon(32),
-                            marginRight: ds.spacing(12),
-                            borderRadius: glassRadii.round,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: isSelected
-                              ? glassColors.accentSoft
-                              : glassColors.mediumFill,
-                          }}
-                        >
-                          <BrandLogo variant="inline" size={16} colorMode="light" />
-                        </View>
-                        <Text
-                          style={{
-                            fontSize: ds.fontSize(13),
-                            fontWeight: isSelected ? '500' : '400',
-                            color: isSelected ? glassColors.accent : glassColors.textPrimary,
-                          }}
-                        >
-                          {loc.name}
-                        </Text>
-                      </View>
-                      <View className="flex-row items-center">
-                        {cartCount > 0 ? (
-                          <Text
-                            style={{
-                              color: glassColors.textSecondary,
-                              fontSize: ds.fontSize(11),
-                              marginRight: ds.spacing(8),
-                            }}
-                          >
-                            {cartCount} items
-                          </Text>
-                        ) : null}
-                        {isSelected ? (
-                          <Ionicons
-                            name="checkmark"
-                            size={ds.icon(18)}
-                            color={glassColors.accent}
-                          />
-                        ) : null}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </GlassSurface>
-          ) : null}
-        </View>
-
-        {predictedItems.length > 0 ? (
-          <View style={{ marginTop: ds.spacing(8), marginBottom: ds.spacing(20) }}>
-            <View className="flex-row items-start">
-              <View
-                style={{
-                  width: ds.icon(34),
-                  height: ds.icon(34),
-                  borderRadius: glassRadii.iconTile,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: glassColors.accentSoft,
-                  marginRight: ds.spacing(12),
-                }}
-              >
-                <Ionicons
-                  name="time-outline"
-                  size={ds.icon(18)}
-                  color={glassColors.accent}
-                />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={{
-                    fontSize: ds.fontSize(16),
-                    fontWeight: '600',
-                    color: glassColors.textPrimary,
-                  }}
-                >
-                  Today&apos;s predicted order
-                </Text>
-                <Text
-                  style={{
-                    marginTop: ds.spacing(4),
-                    fontSize: ds.fontSize(12),
-                    color: glassColors.textSecondary,
-                  }}
-                >
-                  You usually order these on {predictedDayLabel}
-                </Text>
-              </View>
-            </View>
-
+          {loading ? (
             <GlassSurface
               intensity="subtle"
               style={{
                 marginTop: ds.spacing(12),
                 borderRadius: glassRadii.surface,
-                overflow: 'hidden',
+                paddingVertical: ds.spacing(18),
               }}
             >
-              <FlatList
-                data={predictedItems}
-                renderItem={renderPredictedRow}
-                keyExtractor={(item) => `${item.inventoryItemId}:${item.unitType}`}
-                scrollEnabled={false}
-                ItemSeparatorComponent={() => (
-                  <View
-                    style={{
-                      marginHorizontal: ds.spacing(14),
-                      borderTopWidth: glassHairlineWidth,
-                      borderTopColor: glassColors.divider,
-                    }}
-                  />
-                )}
-              />
+              <LoadingIndicator showText text="Loading smart suggestions..." />
             </GlassSurface>
-
-            <TouchableOpacity
-              onPress={handleAddAllPredicted}
-              style={{
-                marginTop: ds.spacing(12),
-                minHeight: ds.buttonH,
-                borderRadius: glassRadii.surface,
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: glassColors.accent,
-              }}
-              activeOpacity={0.85}
-            >
-              <Text
+          ) : predictedItems.length > 0 ? (
+            <>
+              <GlassSurface
+                intensity="subtle"
                 style={{
-                  color: glassColors.textOnPrimary,
-                  fontSize: ds.buttonFont,
-                  fontWeight: '700',
+                  marginTop: ds.spacing(12),
+                  borderRadius: glassRadii.surface,
+                  overflow: 'hidden',
                 }}
               >
-                Add all {predictedItems.length} to cart
-              </Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
+                <FlatList
+                  data={predictedItems}
+                  renderItem={renderPredictedRow}
+                  keyExtractor={(item) => `${item.inventoryItemId}:${item.unitType}`}
+                  scrollEnabled={false}
+                  ItemSeparatorComponent={() => (
+                    <View
+                      style={{
+                        marginHorizontal: ds.spacing(14),
+                        borderTopWidth: glassHairlineWidth,
+                        borderTopColor: glassColors.divider,
+                      }}
+                    />
+                  )}
+                />
+              </GlassSurface>
+
+              <TouchableOpacity
+                onPress={handleAddAllPredicted}
+                style={{
+                  marginTop: ds.spacing(12),
+                  minHeight: ds.buttonH,
+                  borderRadius: glassRadii.surface,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: glassColors.accent,
+                }}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={{
+                    color: glassColors.textOnPrimary,
+                    fontSize: ds.buttonFont,
+                    fontWeight: '700',
+                  }}
+                >
+                  Add all {predictedItems.length} to cart
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <View style={{ marginTop: ds.spacing(12) }}>
+              <EmptyStateCard
+                icon="time-outline"
+                title="Not enough data yet"
+                message="Place orders and smart suggestions will appear here."
+                alignment="leading"
+              />
+            </View>
+          )}
+        </View>
 
         <View style={{ marginBottom: ds.spacing(12) }}>
           <View className="flex-row items-start">
@@ -685,18 +540,12 @@ export function SmartOrderScreen() {
     ),
     [
       ds,
-      getLocationCartTotal,
       handleAddAllPredicted,
-      handleSelectLocation,
-      locations,
-      location?.id,
-      location?.name,
       predictedDayLabel,
       predictedItems,
       renderPredictedRow,
-      showLocationDropdown,
-      toggleLocationDropdown,
       totalCartCount,
+      loading,
     ],
   );
 
@@ -729,40 +578,11 @@ export function SmartOrderScreen() {
               <LoadingIndicator showText text="Loading smart order..." />
             </View>
           ) : (
-            <GlassSurface
-              intensity="subtle"
-              style={{
-                borderRadius: glassRadii.surface,
-                padding: ds.spacing(18),
-                alignItems: 'center',
-              }}
-            >
-              <Ionicons
-                name="reader-outline"
-                size={ds.icon(30)}
-                color={glassColors.textSecondary}
-              />
-              <Text
-                style={{
-                  marginTop: ds.spacing(12),
-                  fontSize: ds.fontSize(15),
-                  fontWeight: '600',
-                  color: glassColors.textPrimary,
-                }}
-              >
-                No recent orders yet
-              </Text>
-              <Text
-                style={{
-                  marginTop: ds.spacing(6),
-                  fontSize: ds.fontSize(12),
-                  color: glassColors.textSecondary,
-                  textAlign: 'center',
-                }}
-              >
-                Submit a few orders from this location to unlock smart suggestions.
-              </Text>
-            </GlassSurface>
+            <EmptyStateCard
+              icon="reader-outline"
+              title="No recent orders yet"
+              message="Submit a few orders from this location to unlock smart suggestions."
+            />
           )
         }
         contentContainerStyle={{

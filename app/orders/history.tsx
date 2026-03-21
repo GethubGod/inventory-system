@@ -7,7 +7,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, router } from 'expo-router';
+import { useFocusEffect, router, type Href, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useOrderStore, useAuthStore } from '@/store';
@@ -116,6 +116,7 @@ function OrderListCard({ order }: { order: OrderWithDetails }) {
 
 export default function OrdersScreen() {
   const ds = useScaledStyles();
+  const params = useLocalSearchParams<{ backTo?: string | string[] }>();
   const { user } = useAuthStore();
   const { orders, fetchUserOrders } = useOrderStore();
   const [selectedStatus, setSelectedStatus] = useState<OrderStatus | null>(null);
@@ -188,6 +189,10 @@ export default function OrdersScreen() {
     ? orders.filter((order) => order.status === selectedStatus)
     : orders;
 
+  const backTo = Array.isArray(params.backTo) ? params.backTo[0] : params.backTo;
+  const backTarget =
+    typeof backTo === 'string' && backTo.length > 0 ? (backTo as Href) : null;
+
   const renderItem = ({ item }: { item: OrderWithDetails }) => (
     <OrderListCard order={item} />
   );
@@ -204,7 +209,19 @@ export default function OrdersScreen() {
       }}>
         <View className="flex-row items-center flex-1">
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => {
+              if (backTarget) {
+                router.replace(backTarget);
+                return;
+              }
+
+              if (router.canGoBack()) {
+                router.back();
+                return;
+              }
+
+              router.replace('/(tabs)/settings');
+            }}
             style={{ width: 44, height: 44, borderRadius: glassRadii.round, backgroundColor: glassColors.mediumFill, alignItems: 'center', justifyContent: 'center', marginRight: ds.spacing(12) }}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >

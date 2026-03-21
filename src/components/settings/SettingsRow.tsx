@@ -1,9 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
-import { useDisplayStore } from '@/store';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { glassColors, glassHairlineWidth, glassRadii } from '@/design/tokens';
 
@@ -35,13 +33,9 @@ export function SettingsRow({
   showBorder = true,
 }: SettingsRowProps) {
   const ds = useScaledStyles();
-  const { hapticFeedback } = useDisplayStore();
 
   const handlePress = () => {
     if (disabled || !onPress) return;
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
     onPress();
   };
 
@@ -50,8 +44,8 @@ export function SettingsRow({
       className={`flex-row items-center ${disabled ? 'opacity-50' : ''}`}
       style={{
         paddingHorizontal: ds.spacing(16),
-        paddingVertical: ds.spacing(12),
-        minHeight: Math.max(ds.rowH, 56),
+        paddingVertical: ds.spacing(14),
+        minHeight: Math.max(ds.rowH, 60),
         borderBottomWidth: showBorder ? glassHairlineWidth : 0,
         borderBottomColor: glassColors.divider,
       }}
@@ -83,9 +77,10 @@ export function SettingsRow({
         {subtitle && (
           <Text
             style={{
-              fontSize: ds.fontSize(13),
+              fontSize: ds.fontSize(12),
               marginTop: ds.spacing(4),
               color: glassColors.textSecondary,
+              lineHeight: ds.fontSize(16),
             }}
           >
             {subtitle}
@@ -103,7 +98,7 @@ export function SettingsRow({
     return (
       <TouchableOpacity
         onPress={handlePress}
-        activeOpacity={0.7}
+        activeOpacity={0.82}
         disabled={disabled}
       >
         {content}

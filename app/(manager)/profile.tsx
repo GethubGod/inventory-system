@@ -1,13 +1,16 @@
 import React from 'react';
-import { View, Text, ScrollView, Platform, Alert } from 'react-native';
+import { View, Text, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
-import { useAuthStore, useDisplayStore } from '@/store';
+import { useAuthStore } from '@/store';
 import { SettingsRow, settingsIconPalettes } from '@/components/settings';
 import { BrandLogo, GlassSurface } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import {
+  buildSettingsPath,
+  MANAGER_SETTINGS_ROOT,
+} from '@/lib/settingsNavigation';
 import {
   glassColors,
   glassRadii,
@@ -19,13 +22,9 @@ import {
 export default function ManagerSettingsScreen() {
   const ds = useScaledStyles();
   const { user, signOut, setViewMode } = useAuthStore();
-  const { hapticFeedback } = useDisplayStore();
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   const handleSwitchToEmployee = () => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
     setViewMode('employee');
     router.replace('/(tabs)');
   };
@@ -37,9 +36,6 @@ export default function ManagerSettingsScreen() {
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
-          if (hapticFeedback && Platform.OS !== 'web') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          }
           await signOut();
           router.replace('/(auth)/login');
         },
@@ -77,7 +73,14 @@ export default function ManagerSettingsScreen() {
             iconBgColor={settingsIconPalettes.profile.background}
             title="Profile"
             subtitle="Manage account details and locations"
-            onPress={() => router.push('/(manager)/settings/profile')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/(manager)/settings/profile', {
+                  origin: 'manager',
+                  backTo: MANAGER_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -93,7 +96,14 @@ export default function ManagerSettingsScreen() {
             iconBgColor={settingsIconPalettes.display.background}
             title="Display & Accessibility"
             subtitle="Text size, button size, and interaction settings"
-            onPress={() => router.push('/settings/display-accessibility')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/settings/display-accessibility', {
+                  origin: 'manager',
+                  backTo: MANAGER_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -109,7 +119,14 @@ export default function ManagerSettingsScreen() {
             iconBgColor={settingsIconPalettes.notifications.background}
             title="Notifications"
             subtitle="Control alerts, sounds, and quiet hours"
-            onPress={() => router.push('/settings/notifications')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/settings/notifications', {
+                  origin: 'manager',
+                  backTo: MANAGER_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -125,7 +142,14 @@ export default function ManagerSettingsScreen() {
             iconBgColor={settingsIconPalettes.accessCodes.background}
             title="Access Codes"
             subtitle="Update employee and manager sign-up codes"
-            onPress={() => router.push('/(manager)/settings/access-codes')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/(manager)/settings/access-codes', {
+                  origin: 'manager',
+                  backTo: MANAGER_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -157,7 +181,14 @@ export default function ManagerSettingsScreen() {
             iconBgColor={settingsIconPalettes.support.background}
             title="About & Support"
             subtitle="Version info, support, and policies"
-            onPress={() => router.push('/settings/about-support')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/settings/about-support', {
+                  origin: 'manager',
+                  backTo: MANAGER_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -173,7 +204,14 @@ export default function ManagerSettingsScreen() {
             iconBgColor={settingsIconPalettes.users.background}
             title="User Management"
             subtitle="Suspend inactive users and delete accounts"
-            onPress={() => router.push('/(manager)/settings/user-management')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/(manager)/settings/user-management', {
+                  origin: 'manager',
+                  backTo: MANAGER_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>

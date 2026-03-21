@@ -220,6 +220,7 @@ export interface InventoryItem {
 export interface Order {
   id: string;
   order_number: number;
+  org_id?: string;
   user_id: string;
   location_id: string;
   status: OrderStatus;

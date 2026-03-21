@@ -120,7 +120,7 @@ export default function TabsLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="grid-outline" label="Home" size={size} color={color} focused={focused} />
+            <TabButton name="home-outline" label="Home" size={size} color={color} focused={focused} />
           ),
         }}
       />

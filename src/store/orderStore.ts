@@ -13,12 +13,20 @@ import {
   OrderWithDetails,
   UnitType,
 } from '@/types';
+import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
 import { perfMark, perfMeasure } from '@/lib/perf';
 import { getNotificationsModule } from '@/lib/notifications';
 import {
   loadPendingFulfillmentData,
 } from '@/services/fulfillmentDataSource';
+import {
+  submitOrder as submitOrderService,
+  syncProfileAfterOrder as syncProfileService,
+  generateUUID,
+  OrderSubmissionError,
+  type OrderItemPayload,
+} from '@/services/orderSubmission';
 
 export type OrderInputMode = 'quantity' | 'remaining';
 export type CartScope = 'employee' | 'manager';
@@ -401,81 +409,9 @@ let orderItemsStatusColumnAvailable: boolean | null = null;
 let pastOrderSyncListenerInitialized = false;
 const orderLaterMoveInFlightIds = new Set<string>();
 
-const ORDER_ITEM_OPTIONAL_COLUMNS = [
-  'input_mode',
-  'quantity_requested',
-  'remaining_reported',
-  'decided_quantity',
-  'decided_by',
-  'decided_at',
-  'note',
-] as const;
-
-type OrderItemOptionalColumn = (typeof ORDER_ITEM_OPTIONAL_COLUMNS)[number];
-
-const missingOrderItemsColumns = new Set<OrderItemOptionalColumn>();
-const ORDER_WRITE_TIMEOUT_MS = 15_000;
-
-function isAbortError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-
-  const err = error as { name?: unknown; message?: unknown };
-  const name = typeof err.name === 'string' ? err.name : '';
-  const message = typeof err.message === 'string' ? err.message.toLowerCase() : '';
-
-  return name === 'AbortError' || message.includes('aborted');
-}
-
-async function ensureOrderWriteConnectivity() {
-  try {
-    const networkState = await NetInfo.fetch();
-    const hasConnectivitySignal =
-      networkState.isConnected !== null || networkState.isInternetReachable !== null;
-    const online =
-      networkState.isConnected !== false && networkState.isInternetReachable !== false;
-
-    if (hasConnectivitySignal && !online) {
-      throw new Error('No internet connection. Reconnect and try submitting the order again.');
-    }
-  } catch (error) {
-    if (error instanceof Error) {
-      throw error;
-    }
-  }
-}
-
-async function runTimedOrderWrite<T>(
-  action: string,
-  request: (signal: AbortSignal) => Promise<T>,
-  meta?: Record<string, unknown>
-): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ORDER_WRITE_TIMEOUT_MS);
-  const startedAt = Date.now();
-
-  try {
-    return await request(controller.signal);
-  } catch (error) {
-    const durationMs = Date.now() - startedAt;
-    if (isAbortError(error)) {
-      console.error(`[OrderWrite] Timed out while ${action}.`, {
-        durationMs,
-        ...meta,
-      });
-      throw new Error(
-        `Timed out while ${action}. Check Supabase logs, database locks/triggers, and network connectivity.`
-      );
-    }
-
-    console.error(`[OrderWrite] Failed while ${action}.`, {
-      durationMs,
-      ...meta,
-      error,
-    });
-    throw error;
-  } finally {
-    clearTimeout(timer);
-  }
+function resolveCurrentOrgId(): string | null {
+  const orgId = useAuthStore.getState().orgId?.trim();
+  return orgId && orgId.length > 0 ? orgId : null;
 }
 
 function toValidNumber(value: unknown): number | null {
@@ -693,7 +629,8 @@ function findCartItemIndex(
   return locationCart.findIndex((item) => item.inventoryItemId === inventoryItemId);
 }
 
-function toOrderItemInsert(orderId: string, item: CartItem): Omit<OrderItem, 'id' | 'created_at'> {
+/** Convert a CartItem to the OrderItemPayload format expected by the RPC. */
+function cartItemToPayload(item: CartItem): OrderItemPayload {
   // For remaining-mode the employee hasn't specified an order quantity — the
   // manager will decide later. Use remainingReported as the DB quantity so it
   // satisfies any legacy `quantity > 0` constraint; fulfillment reads
@@ -704,7 +641,6 @@ function toOrderItemInsert(orderId: string, item: CartItem): Omit<OrderItem, 'id
       : getEffectiveQuantity(item);
 
   return {
-    order_id: orderId,
     inventory_item_id: item.inventoryItemId,
     quantity,
     unit_type: item.unitType,
@@ -716,83 +652,6 @@ function toOrderItemInsert(orderId: string, item: CartItem): Omit<OrderItem, 'id
     decided_at: item.decidedAt,
     note: item.note,
   };
-}
-
-function getMissingColumnFromSchemaCacheError(error: unknown): string | null {
-  if (!error || typeof error !== 'object') return null;
-  const err = error as { code?: string; message?: string };
-  if (err.code !== 'PGRST204') return null;
-  const message = typeof err.message === 'string' ? err.message : '';
-  const matches = Array.from(message.matchAll(/'([^']+)'/g)).map((match) => match[1]);
-  return matches.length > 0 ? matches[0] : null;
-}
-
-function omitOrderItemColumns(
-  item: Omit<OrderItem, 'id' | 'created_at'>,
-  omittedColumns: Set<OrderItemOptionalColumn>
-): Record<string, unknown> {
-  const row = { ...item } as Record<string, unknown>;
-  ORDER_ITEM_OPTIONAL_COLUMNS.forEach((column) => {
-    if (omittedColumns.has(column)) {
-      delete row[column];
-    }
-  });
-  return row;
-}
-
-async function insertOrderItemsWithFallback(
-  orderItems: Omit<OrderItem, 'id' | 'created_at'>[],
-  options?: { includeInventorySelect?: boolean }
-) {
-  const includeInventorySelect = options?.includeInventorySelect === true;
-  const omittedColumns = new Set<OrderItemOptionalColumn>(missingOrderItemsColumns);
-  let attemptCount = 0;
-
-  while (attemptCount <= ORDER_ITEM_OPTIONAL_COLUMNS.length) {
-    const payload = orderItems.map((item) => omitOrderItemColumns(item, omittedColumns));
-    const attempt = await runTimedOrderWrite(
-      'saving order items',
-      async (signal) => {
-        let query = (supabase as any).from('order_items').insert(payload);
-        if (includeInventorySelect) {
-          query = query.select(`
-            *,
-            inventory_item:inventory_items(*)
-          `);
-        }
-        if (typeof query.abortSignal === 'function') {
-          query = query.abortSignal(signal);
-        }
-        return query;
-      },
-      {
-        itemCount: orderItems.length,
-        omittedColumns: Array.from(omittedColumns),
-      }
-    );
-    if (!attempt.error) {
-      return attempt;
-    }
-
-    const missingColumn = getMissingColumnFromSchemaCacheError(attempt.error);
-    if (!missingColumn) {
-      throw attempt.error;
-    }
-
-    if (
-      !ORDER_ITEM_OPTIONAL_COLUMNS.includes(missingColumn as OrderItemOptionalColumn) ||
-      omittedColumns.has(missingColumn as OrderItemOptionalColumn)
-    ) {
-      throw attempt.error;
-    }
-
-    const optionalColumn = missingColumn as OrderItemOptionalColumn;
-    omittedColumns.add(optionalColumn);
-    missingOrderItemsColumns.add(optionalColumn);
-    attemptCount += 1;
-  }
-
-  throw new Error('Unable to insert order items due to missing schema columns.');
 }
 
 function createFulfillmentId(prefix: string) {
@@ -2242,46 +2101,18 @@ export const useOrderStore = create<OrderState>()(
 
         set({ isLoading: true });
         try {
-          await ensureOrderWriteConnectivity();
+          const result = await submitOrderService({
+            orderId: generateUUID(),
+            orgId: resolveCurrentOrgId(),
+            locationId,
+            userId,
+            status: 'draft',
+            items: cartItemsForInsert.map(cartItemToPayload),
+          });
 
-          // Create order
-          const orderResponse = await runTimedOrderWrite(
-            'creating the draft order record',
-            async (signal) => {
-              let query = (supabase as any)
-                .from('orders')
-                .insert({
-                  location_id: locationId,
-                  user_id: userId,
-                  status: 'draft',
-                })
-                .select()
-                .single();
-
-              if (typeof query.abortSignal === 'function') {
-                query = query.abortSignal(signal);
-              }
-
-              return query;
-            },
-            { locationId, userId, context: resolvedContext }
-          );
-
-          const order = orderResponse.data as any;
-          const orderError = orderResponse.error;
-
-          if (orderError) throw orderError;
-          if (!order?.id) throw new Error('Failed to create order');
-
-          // Create order items
-          const orderItems: Omit<OrderItem, 'id' | 'created_at'>[] = cartItemsForInsert.map((item) =>
-            toOrderItemInsert(order.id, item)
-          );
-
-          await insertOrderItemsWithFallback(orderItems);
-
+          syncProfileService(userId, result.order.created_at);
           clearLocationCart(locationId, resolvedContext);
-          return order;
+          return result.order;
         } finally {
           set({ isLoading: false });
         }
@@ -2304,59 +2135,19 @@ export const useOrderStore = create<OrderState>()(
 
         set({ isLoading: true });
         try {
-          await ensureOrderWriteConnectivity();
-
-          // Create order with status 'submitted' directly
-          const orderResponse = await runTimedOrderWrite(
-            'creating the submitted order record',
-            async (signal) => {
-              let query = (supabase as any)
-                .from('orders')
-                .insert({
-                  location_id: locationId,
-                  user_id: userId,
-                  status: 'submitted',
-                })
-                .select(`
-                  *,
-                  location:locations(*)
-                `)
-                .single();
-
-              if (typeof query.abortSignal === 'function') {
-                query = query.abortSignal(signal);
-              }
-
-              return query;
-            },
-            { locationId, userId, context: resolvedContext }
-          );
-
-          const order = orderResponse.data as any;
-          const orderError = orderResponse.error;
-
-          if (orderError) throw orderError;
-          if (!order?.id) throw new Error('Failed to create order');
-
-          // Create order items
-          const orderItemsToInsert: Omit<OrderItem, 'id' | 'created_at'>[] = cartItemsForInsert.map((item) =>
-            toOrderItemInsert(order.id, item)
-          );
-
-          const { data: createdItems } = await insertOrderItemsWithFallback(orderItemsToInsert, {
-            includeInventorySelect: true,
+          const result = await submitOrderService({
+            orderId: generateUUID(),
+            orgId: resolveCurrentOrgId(),
+            locationId,
+            userId,
+            status: 'submitted',
+            items: cartItemsForInsert.map(cartItemToPayload),
           });
 
-          // Build the full order with details
-          const orderWithDetails: OrderWithDetails = {
-            ...order,
-            user: { id: userId } as any, // User info not critical for confirmation
-            order_items: createdItems || [],
-          };
-
+          syncProfileService(userId, result.order.created_at);
           clearLocationCart(locationId, resolvedContext);
-          set({ currentOrder: orderWithDetails });
-          return orderWithDetails;
+          set({ currentOrder: result.order });
+          return result.order;
         } finally {
           set({ isLoading: false });
         }
@@ -2384,63 +2175,19 @@ export const useOrderStore = create<OrderState>()(
 
         set({ isLoading: true });
         try {
-          await ensureOrderWriteConnectivity();
-
-          // Submit to the selected location, but only with source-cart items.
-          const orderResponse = await runTimedOrderWrite(
-            'creating the submitted order record',
-            async (signal) => {
-              let query = (supabase as any)
-                .from('orders')
-                .insert({
-                  location_id: submitLocationId,
-                  user_id: userId,
-                  status: 'submitted',
-                })
-                .select(`
-                  *,
-                  location:locations(*)
-                `)
-                .single();
-
-              if (typeof query.abortSignal === 'function') {
-                query = query.abortSignal(signal);
-              }
-
-              return query;
-            },
-            {
-              sourceLocationId,
-              submitLocationId,
-              userId,
-              context: resolvedContext,
-            }
-          );
-
-          const order = orderResponse.data as any;
-          const orderError = orderResponse.error;
-
-          if (orderError) throw orderError;
-          if (!order?.id) throw new Error('Failed to create order');
-
-          const orderItemsToInsert: Omit<OrderItem, 'id' | 'created_at'>[] = cartItemsForInsert.map((item) =>
-            toOrderItemInsert(order.id, item)
-          );
-
-          const { data: createdItems } = await insertOrderItemsWithFallback(orderItemsToInsert, {
-            includeInventorySelect: true,
+          const result = await submitOrderService({
+            orderId: generateUUID(),
+            orgId: resolveCurrentOrgId(),
+            locationId: submitLocationId,
+            userId,
+            status: 'submitted',
+            items: cartItemsForInsert.map(cartItemToPayload),
           });
 
-          const orderWithDetails: OrderWithDetails = {
-            ...order,
-            user: { id: userId } as any,
-            order_items: createdItems || [],
-          };
-
-          // Clear only the source cart that was submitted.
+          syncProfileService(userId, result.order.created_at);
           clearLocationCart(sourceLocationId, resolvedContext);
-          set({ currentOrder: orderWithDetails });
-          return orderWithDetails;
+          set({ currentOrder: result.order });
+          return result.order;
         } finally {
           set({ isLoading: false });
         }
@@ -2449,24 +2196,10 @@ export const useOrderStore = create<OrderState>()(
       submitOrder: async (orderId) => {
         set({ isLoading: true });
         try {
-          await ensureOrderWriteConnectivity();
-
-          const { error } = await runTimedOrderWrite(
-            'updating the order status to submitted',
-            async (signal) => {
-              let query = (supabase as any)
-                .from('orders')
-                .update({ status: 'submitted' })
-                .eq('id', orderId);
-
-              if (typeof query.abortSignal === 'function') {
-                query = query.abortSignal(signal);
-              }
-
-              return query;
-            },
-            { orderId }
-          );
+          const { error } = await (supabase as any)
+            .from('orders')
+            .update({ status: 'submitted' })
+            .eq('id', orderId);
 
           if (error) throw error;
         } finally {

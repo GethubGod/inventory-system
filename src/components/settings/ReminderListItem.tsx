@@ -1,11 +1,14 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Switch, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { Reminder } from '@/types/settings';
-import { useDisplayStore } from '@/store';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import {
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+} from '@/design/tokens';
 
 interface ReminderListItemProps {
   reminder: Reminder;
@@ -23,7 +26,6 @@ function ReminderListItemInner({
   onEdit,
   onDelete,
 }: ReminderListItemProps) {
-  const { hapticFeedback } = useDisplayStore();
   const ds = useScaledStyles();
   const switchScale = ds.isLarge ? 1.15 : ds.isCompact ? 0.95 : 1;
 
@@ -46,55 +48,69 @@ function ReminderListItemInner({
     return `${days} at ${formatTime(reminder.time)}`;
   };
 
-  const handleToggle = (value: boolean) => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+  const handleToggle = () => {
     onToggle();
-  };
-
-  const handleEdit = () => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    onEdit();
-  };
-
-  const handleDelete = () => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
-    onDelete();
   };
 
   return (
     <View
-      className="bg-gray-50 rounded-xl"
-      style={{ padding: ds.cardPad, marginBottom: ds.spacing(12), borderRadius: ds.radius(12) }}
+      style={{
+        padding: ds.cardPad,
+        marginBottom: ds.spacing(12),
+        borderRadius: glassRadii.surface,
+        borderWidth: glassHairlineWidth,
+        borderColor: glassColors.cardBorder,
+        backgroundColor: glassColors.subtleFill,
+      }}
     >
-      <View className="flex-row items-start justify-between">
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+        }}
+      >
         <View className="flex-1" style={{ marginRight: ds.spacing(12) }}>
-          <View className="flex-row items-center" style={{ marginBottom: ds.spacing(4) }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginBottom: ds.spacing(4),
+            }}
+          >
             <Ionicons
               name="notifications"
               size={ds.icon(18)}
-              color={reminder.enabled ? colors.primary[500] : colors.gray[400]}
+              color={reminder.enabled ? glassColors.accent : glassColors.textMuted}
             />
             <Text
-              className={`font-semibold ${
-                reminder.enabled ? 'text-gray-900' : 'text-gray-500'
-              }`}
-              style={{ fontSize: ds.fontSize(16), marginLeft: ds.spacing(8) }}
+              style={{
+                fontSize: ds.fontSize(16),
+                marginLeft: ds.spacing(8),
+                fontWeight: '600',
+                color: reminder.enabled
+                  ? glassColors.textPrimary
+                  : glassColors.textSecondary,
+              }}
             >
               {reminder.name}
             </Text>
           </View>
-          <Text className="text-gray-500" style={{ fontSize: ds.fontSize(13), marginBottom: ds.spacing(4) }}>
+          <Text
+            style={{
+              fontSize: ds.fontSize(13),
+              marginBottom: ds.spacing(4),
+              color: glassColors.textSecondary,
+            }}
+          >
             {formatSchedule()}
           </Text>
           <Text
-            className="text-gray-400 italic"
-            style={{ fontSize: ds.fontSize(13) }}
+            style={{
+              fontSize: ds.fontSize(12),
+              color: glassColors.textSecondary,
+              fontStyle: 'italic',
+            }}
             numberOfLines={1}
           >
             {'"'}
@@ -103,32 +119,44 @@ function ReminderListItemInner({
           </Text>
         </View>
 
-        <View className="flex-row items-center">
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <TouchableOpacity
-            onPress={handleEdit}
+            onPress={onEdit}
             style={{
               width: Math.max(44, ds.icon(36)),
               height: Math.max(44, ds.icon(36)),
               marginRight: ds.spacing(4),
               alignItems: 'center',
               justifyContent: 'center',
+              borderRadius: glassRadii.stepper,
+              backgroundColor: glassColors.mediumFill,
             }}
-            activeOpacity={0.7}
+            activeOpacity={0.82}
           >
-            <Ionicons name="pencil" size={ds.icon(18)} color={colors.gray[400]} />
+            <Ionicons
+              name="pencil"
+              size={ds.icon(18)}
+              color={glassColors.textSecondary}
+            />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={handleDelete}
+            onPress={onDelete}
             style={{
               width: Math.max(44, ds.icon(36)),
               height: Math.max(44, ds.icon(36)),
               marginRight: ds.spacing(8),
               alignItems: 'center',
               justifyContent: 'center',
+              borderRadius: glassRadii.stepper,
+              backgroundColor: glassColors.dangerSoft,
             }}
-            activeOpacity={0.7}
+            activeOpacity={0.82}
           >
-            <Ionicons name="trash-outline" size={ds.icon(18)} color={colors.error} />
+            <Ionicons
+              name="trash-outline"
+              size={ds.icon(18)}
+              color={glassColors.dangerText}
+            />
           </TouchableOpacity>
           <Switch
             value={reminder.enabled}

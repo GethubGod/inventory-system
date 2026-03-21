@@ -1,11 +1,14 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { View, Text, Alert } from 'react-native';
 import Constants from 'expo-constants';
 import * as Linking from 'expo-linking';
-import { BrandLogo, GlassSurface, StackScreenHeader } from '@/components';
-import { SettingsRow, settingsIconPalettes } from '@/components/settings';
+import { BrandLogo, GlassSurface } from '@/components';
+import {
+  SettingsRow,
+  SettingsScreenLayout,
+  SettingsSectionLabel,
+  settingsIconPalettes,
+} from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { glassColors, glassRadii, glassSpacing } from '@/design/tokens';
 
@@ -91,14 +94,22 @@ function AboutSection() {
 export default function AboutSupportSettingsScreen() {
   const ds = useScaledStyles();
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
-      <StackScreenHeader title="About & Support" />
-      <ScrollView contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
-        <AboutSection />
-        <View className="items-center" style={{ paddingHorizontal: ds.spacing(24), paddingTop: ds.spacing(24), paddingBottom: ds.spacing(40) }}>
+    <SettingsScreenLayout title="About & Support">
+      <SettingsSectionLabel
+        label="Support"
+        description="Version details, support links, and policy access all stay inside the same polished settings shell."
+      />
+      <AboutSection />
+      <View
+        className="items-center"
+        style={{
+          paddingHorizontal: ds.spacing(24),
+          paddingTop: ds.spacing(24),
+          paddingBottom: ds.spacing(40),
+        }}
+      >
           <BrandLogo variant="footer" size={40} />
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+      </View>
+    </SettingsScreenLayout>
   );
 }

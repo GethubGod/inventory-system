@@ -1,12 +1,18 @@
 import React, { useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Linking } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, TouchableOpacity, Alert, Linking } from 'react-native';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { GlassSurface } from '@/components';
 import { useAuthStore, useSettingsStore } from '@/store';
 import { colors } from '@/constants';
-import { GlassSurface, StackScreenHeader } from '@/components';
-import { SettingToggle, TimePickerRow, settingsIconPalettes } from '@/components/settings';
+import {
+  SettingToggle,
+  SettingsGroup,
+  SettingsScreenLayout,
+  SettingsSectionLabel,
+  TimePickerRow,
+  settingsIconPalettes,
+} from '@/components/settings';
 import {
   deactivatePushTokensForUser,
   registerCurrentDevicePushToken,
@@ -14,6 +20,8 @@ import {
   syncNotificationPreference,
 } from '@/services/notificationService';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { buildSettingsPath } from '@/lib/settingsNavigation';
+import { useSettingsNavigationContext } from '@/hooks/useSettingsBackRoute';
 import { glassColors, glassHairlineWidth, glassRadii, glassSpacing } from '@/design/tokens';
 
 
@@ -194,41 +202,65 @@ function NotificationsSection() {
 
 export default function NotificationsSettingsScreen() {
   const ds = useScaledStyles();
+  const { origin, backTo } = useSettingsNavigationContext();
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
-      <StackScreenHeader title="Notifications" />
-      <ScrollView contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
-        <GlassSurface
-          intensity="subtle"
-          blurred={false}
-          style={{ marginHorizontal: glassSpacing.screen, borderRadius: glassRadii.surface }}
-        >
+    <SettingsScreenLayout title="Notifications">
+      <SettingsGroup>
+        <SettingsSectionLabel
+          label="Delivery"
+          description="Control the alerts and timing details you actually want to see."
+        />
+        <View
+          style={{
+            height: glassHairlineWidth,
+            backgroundColor: glassColors.divider,
+            marginHorizontal: ds.spacing(16),
+          }}
+        />
+        <View style={{ paddingTop: ds.spacing(4) }}>
           <NotificationsSection />
-        </GlassSurface>
+        </View>
+      </SettingsGroup>
 
-        {__DEV__ && (
-          <TouchableOpacity
-            onPress={() => router.push('/settings/notifications-debug')}
+      {__DEV__ && (
+        <TouchableOpacity
+          onPress={() =>
+            router.push(
+              buildSettingsPath('/settings/notifications-debug', {
+                origin,
+                backTo: buildSettingsPath('/settings/notifications', {
+                  origin,
+                  backTo,
+                }),
+              }),
+            )
+          }
+          style={{
+            marginHorizontal: glassSpacing.screen,
+            marginTop: ds.spacing(16),
+            minHeight: Math.max(44, 44),
+            borderRadius: glassRadii.surface,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'row',
+            backgroundColor: glassColors.mediumFill,
+            borderWidth: glassHairlineWidth,
+            borderColor: glassColors.cardBorder,
+          }}
+        >
+          <Ionicons name="bug-outline" size={16} color={colors.gray[500]} />
+          <Text
             style={{
-              marginHorizontal: glassSpacing.screen,
-              marginTop: ds.spacing(16),
-              minHeight: Math.max(44, 44),
-              borderRadius: glassRadii.surface,
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexDirection: 'row',
-              backgroundColor: glassColors.mediumFill,
-              borderWidth: glassHairlineWidth,
-              borderColor: glassColors.cardBorder,
+              fontSize: ds.fontSize(13),
+              marginLeft: ds.spacing(8),
+              color: glassColors.textSecondary,
+              fontWeight: '500',
             }}
           >
-            <Ionicons name="bug-outline" size={16} color={colors.gray[500]} />
-            <Text style={{ fontSize: ds.fontSize(13), marginLeft: ds.spacing(8), color: glassColors.textSecondary, fontWeight: '500' }}>
-              Notifications Debug (DEV)
-            </Text>
-          </TouchableOpacity>
-        )}
-      </ScrollView>
-    </SafeAreaView>
+            Notifications Debug (DEV)
+          </Text>
+        </TouchableOpacity>
+      )}
+    </SettingsScreenLayout>
   );
 }

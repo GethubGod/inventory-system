@@ -11,10 +11,8 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import * as Haptics from 'expo-haptics';
 import { colors, hairline, radii } from '@/theme/design';
 import { Reminder, RepeatType } from '@/types/settings';
-import { useDisplayStore } from '@/store';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { TimePickerRow } from './TimePickerRow';
 
@@ -40,7 +38,6 @@ export function ReminderModal({
   reminder,
   onSave,
 }: ReminderModalProps) {
-  const { hapticFeedback } = useDisplayStore();
   const ds = useScaledStyles();
 
   const [name, setName] = useState('');
@@ -73,9 +70,6 @@ export function ReminderModal({
   };
 
   const toggleDay = (day: number) => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
     if (selectedDays.includes(day)) {
       // Don't allow removing all days
       if (selectedDays.length > 1) {
@@ -87,9 +81,6 @@ export function ReminderModal({
   };
 
   const handleRepeatTypeChange = (type: RepeatType) => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
     setRepeatType(type);
     // Reset days when switching to daily
     if (type === 'daily') {
@@ -106,10 +97,6 @@ export function ReminderModal({
     if (!message.trim()) {
       Alert.alert('Error', 'Please enter a reminder message');
       return;
-    }
-
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
     onSave({

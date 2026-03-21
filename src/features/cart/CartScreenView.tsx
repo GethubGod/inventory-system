@@ -37,6 +37,7 @@ import { completePendingRemindersForUser } from '@/services/notificationService'
 import type { OrderingMode } from '@/features/ordering/types';
 import { type HistoricalOrderSummary } from '@/features/ordering/orderInsights';
 import { resolveActiveLocationReminders } from '@/services/locationReminderService';
+import { OrderSubmissionError } from '@/services/orderSubmission';
 import { resolveLocationSwitchTarget } from './locationSwitch';
 import { EmptyCartReorderState } from './EmptyCartReorderState';
 import {
@@ -53,6 +54,27 @@ interface CartItemWithDetails extends CartItem {
 
 interface CartScreenViewProps {
   mode: OrderingMode;
+}
+
+const ORDER_SUBMIT_UI_TIMEOUT_MS = 20_000;
+
+function withPromiseTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
 }
 
 export function CartScreenView({
@@ -668,14 +690,19 @@ export function CartScreenView({
     submitInFlightRef.current = true;
     setSubmittingLocation(sourceLocationId);
     try {
-      const order = sourceLocationId !== submitLocationId
-        ? await createAndSubmitOrderFromSourceLocation(
+      const submitPromise = sourceLocationId !== submitLocationId
+        ? createAndSubmitOrderFromSourceLocation(
           sourceLocationId,
           submitLocationId,
           user.id,
           context
         )
-        : await createAndSubmitOrder(submitLocationId, user.id, context);
+        : createAndSubmitOrder(submitLocationId, user.id, context);
+      const order = await withPromiseTimeout(
+        submitPromise,
+        ORDER_SUBMIT_UI_TIMEOUT_MS,
+        'Order submission timed out. Please check your connection and try again.'
+      );
       const normalizedOrderNumber =
         typeof order.order_number === 'number' || typeof order.order_number === 'string'
           ? String(order.order_number)
@@ -690,7 +717,10 @@ export function CartScreenView({
       completePendingRemindersForUser(user.id).catch(() => {});
       resolveActiveLocationReminders(submitLocationId).catch(() => {});
     } catch (error: any) {
-      showStatusToast(error.message || 'Failed to submit order', 'error');
+      const isRetryable = error instanceof OrderSubmissionError ? error.retryable : true;
+      const title = isRetryable ? 'Submit Order Failed' : 'Cannot Submit Order';
+      const message = error?.message || 'Something went wrong. Please try again.';
+      Alert.alert(title, message);
     } finally {
       submitInFlightRef.current = false;
       setSubmittingLocation(null);

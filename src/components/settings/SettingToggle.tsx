@@ -1,9 +1,7 @@
 import React from 'react';
 import { View, Text, Switch, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
-import { useDisplayStore } from '@/store';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { glassColors, glassHairlineWidth, glassRadii } from '@/design/tokens';
 
@@ -31,13 +29,9 @@ export function SettingToggle({
   showBorder = true,
 }: SettingToggleProps) {
   const ds = useScaledStyles();
-  const { hapticFeedback } = useDisplayStore();
   const switchScale = ds.isLarge ? 1.15 : ds.isCompact ? 0.95 : 1;
 
   const handleValueChange = (newValue: boolean) => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
     onValueChange(newValue);
   };
 
@@ -46,8 +40,8 @@ export function SettingToggle({
       className={`flex-row items-center ${disabled ? 'opacity-50' : ''}`}
       style={{
         paddingHorizontal: ds.spacing(16),
-        paddingVertical: ds.spacing(12),
-        minHeight: Math.max(ds.rowH, 56),
+        paddingVertical: ds.spacing(14),
+        minHeight: Math.max(ds.rowH, 60),
         borderBottomWidth: showBorder ? glassHairlineWidth : 0,
         borderBottomColor: glassColors.divider,
       }}
@@ -69,8 +63,8 @@ export function SettingToggle({
       <View className="flex-1">
         <Text
           style={{
-            fontSize: ds.fontSize(13),
-            fontWeight: '500',
+            fontSize: ds.fontSize(15),
+            fontWeight: '600',
             color: glassColors.textPrimary,
           }}
         >
@@ -79,9 +73,10 @@ export function SettingToggle({
         {subtitle && (
           <Text
             style={{
-              fontSize: ds.fontSize(11),
-              marginTop: ds.spacing(2),
+              fontSize: ds.fontSize(12),
+              marginTop: ds.spacing(4),
               color: glassColors.textSecondary,
+              lineHeight: ds.fontSize(16),
             }}
           >
             {subtitle}

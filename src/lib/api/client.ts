@@ -40,7 +40,24 @@ function getBaseUrl(): string {
 
 // ── Auth helpers ──────────────────────────────────────────
 
+// Synchronous session getter registered by authStore at module load.
+// Avoids supabase.auth.getSession() which deadlocks on React Native
+// due to an internal lock in auth-js.
+let _syncSessionGetter: (() => { access_token?: string } | null) | null = null;
+
+/** Called by authStore to provide deadlock-free token access. */
+export function registerSessionGetter(
+  getter: () => { access_token?: string } | null,
+) {
+  _syncSessionGetter = getter;
+}
+
 async function getAccessToken(): Promise<string | null> {
+  // Prefer synchronous Zustand read (deadlock-free on React Native)
+  if (_syncSessionGetter) {
+    const session = _syncSessionGetter();
+    if (session?.access_token) return session.access_token;
+  }
   try {
     const { data } = await supabase.auth.getSession();
     return data.session?.access_token ?? null;

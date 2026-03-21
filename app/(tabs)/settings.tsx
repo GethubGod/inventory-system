@@ -3,29 +3,29 @@ import {
   View,
   Text,
   ScrollView,
-  Platform,
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
-import { useAuthStore, useDisplayStore } from '@/store';
+import { useAuthStore } from '@/store';
 import { SettingsRow, settingsIconPalettes } from '@/components/settings';
 import { BrandLogo, GlassSurface } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import {
+  buildSettingsPath,
+  EMPLOYEE_SETTINGS_ROOT,
+} from '@/lib/settingsNavigation';
 import {
   glassColors,
   glassRadii,
   glassSpacing,
   glassTabBarHeight,
-  glassTypography,
 } from '@/design/tokens';
 
 export default function SettingsScreen() {
   const ds = useScaledStyles();
   const { user, profile, session, signOut, setViewMode } = useAuthStore();
-  const { hapticFeedback } = useDisplayStore();
 
   const metadataRole =
     typeof session?.user?.user_metadata?.role === 'string'
@@ -43,9 +43,6 @@ export default function SettingsScreen() {
         text: 'Sign Out',
         style: 'destructive',
         onPress: async () => {
-          if (hapticFeedback && Platform.OS !== 'web') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          }
           await signOut();
           router.replace('/(auth)/login');
         },
@@ -54,9 +51,6 @@ export default function SettingsScreen() {
   };
 
   const handleSwitchToManager = () => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    }
     setViewMode('manager');
     router.replace('/(manager)');
   };
@@ -95,7 +89,14 @@ export default function SettingsScreen() {
             iconBgColor={settingsIconPalettes.profile.background}
             title="Profile"
             subtitle="Manage your account details"
-            onPress={() => router.push('/settings/profile')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/settings/profile', {
+                  origin: 'employee',
+                  backTo: EMPLOYEE_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -111,7 +112,14 @@ export default function SettingsScreen() {
             iconBgColor={settingsIconPalettes.display.background}
             title="Display & Accessibility"
             subtitle="Text size, button size, and interaction settings"
-            onPress={() => router.push('/settings/display-accessibility')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/settings/display-accessibility', {
+                  origin: 'employee',
+                  backTo: EMPLOYEE_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -127,7 +135,14 @@ export default function SettingsScreen() {
             iconBgColor={settingsIconPalettes.notifications.background}
             title="Notifications"
             subtitle="Control alerts, sounds, and quiet hours"
-            onPress={() => router.push('/settings/notifications')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/settings/notifications', {
+                  origin: 'employee',
+                  backTo: EMPLOYEE_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -143,7 +158,14 @@ export default function SettingsScreen() {
             iconBgColor={settingsIconPalettes.reminders.background}
             title="Reminders"
             subtitle="Configure quick and custom reminders"
-            onPress={() => router.push('/settings/reminders')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/settings/reminders', {
+                  origin: 'employee',
+                  backTo: EMPLOYEE_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -159,7 +181,14 @@ export default function SettingsScreen() {
             iconBgColor={settingsIconPalettes.stock.background}
             title="Stock"
             subtitle="Tune stock warning preferences"
-            onPress={() => router.push('/settings/stock-settings')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/settings/stock-settings', {
+                  origin: 'employee',
+                  backTo: EMPLOYEE_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -175,7 +204,14 @@ export default function SettingsScreen() {
             iconBgColor={settingsIconPalettes.support.background}
             title="About & Support"
             subtitle="Version info, support, and policies"
-            onPress={() => router.push('/settings/about-support')}
+            onPress={() =>
+              router.push(
+                buildSettingsPath('/settings/about-support', {
+                  origin: 'employee',
+                  backTo: EMPLOYEE_SETTINGS_ROOT,
+                }),
+              )
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -191,7 +227,9 @@ export default function SettingsScreen() {
             iconBgColor={settingsIconPalettes.orders.background}
             title="My Orders"
             subtitle="View your order history"
-            onPress={() => router.push('/orders/history')}
+            onPress={() =>
+              router.push(`/orders/history?backTo=${encodeURIComponent(EMPLOYEE_SETTINGS_ROOT)}`)
+            }
             showBorder={false}
           />
         </GlassSurface>
@@ -202,14 +240,6 @@ export default function SettingsScreen() {
             blurred={false}
             style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
           >
-            <SettingsRow
-              icon="people-outline"
-              iconColor={settingsIconPalettes.users.icon}
-              iconBgColor={settingsIconPalettes.users.background}
-              title="User Management"
-              subtitle="Suspend inactive users and delete accounts"
-              onPress={() => router.push('/(manager)/settings/user-management')}
-            />
             <SettingsRow
               icon="swap-horizontal"
               iconColor={settingsIconPalettes.switchView.icon}

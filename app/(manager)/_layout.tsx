@@ -13,7 +13,7 @@ import { supabase } from "@/lib/supabase";
 import { colors, hairline, radii, spacing } from "@/theme/design";
 
 export default function ManagerLayout() {
-  const { session, profile, user } = useAuthStore();
+  const { session, profile, user, viewMode } = useAuthStore();
   const cartCount = useOrderStore((state) =>
     state.getTotalCartCount("manager"),
   );
@@ -156,6 +156,10 @@ export default function ManagerLayout() {
 
   if (resolvedRole !== "manager") {
     return <Redirect href="/(tabs)/settings" />;
+  }
+
+  if (viewMode !== 'manager') {
+    return <Redirect href="/(tabs)" />;
   }
 
   return (

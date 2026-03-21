@@ -16,9 +16,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { colors } from '@/constants';
+import { GlassSurface, StackScreenHeader } from '@/components';
 import { useAuthStore } from '@/store';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import {
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+  glassSpacing,
+} from '@/design/tokens';
 import { ManagedUser, listManagedUsers, setManagedUserSuspended } from '@/services/userManagement';
 
 type UserFilter = 'all' | 'employees' | 'managers' | 'active' | 'inactive' | 'suspended';
@@ -312,37 +319,41 @@ export default function UserManagementScreen() {
 
     return (
       <View
-        className="bg-white border border-gray-100"
         style={{
-          borderRadius: ds.radius(16),
-          marginBottom: ds.spacing(10),
+          borderRadius: glassRadii.surface,
+          marginBottom: ds.spacing(12),
           paddingHorizontal: ds.spacing(14),
           paddingVertical: ds.spacing(12),
+          borderWidth: glassHairlineWidth,
+          borderColor: glassColors.cardBorder,
+          backgroundColor: glassColors.subtleFill,
         }}
       >
         <View className="flex-row items-start">
           <View
-            className="items-center justify-center bg-gray-100"
             style={{
               width: ds.icon(42),
               height: ds.icon(42),
-              borderRadius: ds.radius(999),
+              borderRadius: glassRadii.round,
               marginRight: ds.spacing(10),
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: glassColors.mediumFill,
             }}
           >
-            <Text className="font-semibold text-gray-700" style={{ fontSize: ds.fontSize(13) }}>
+            <Text style={{ fontSize: ds.fontSize(13), fontWeight: '700', color: glassColors.textPrimary }}>
               {getInitials(item)}
             </Text>
           </View>
 
           <View className="flex-1" style={{ paddingRight: ds.spacing(8) }}>
-            <Text className="font-semibold text-gray-900" style={{ fontSize: ds.fontSize(16) }}>
+            <Text style={{ fontSize: ds.fontSize(16), fontWeight: '700', color: glassColors.textPrimary }}>
               {item.full_name || 'Unnamed User'}
             </Text>
-            <Text className="text-gray-500" style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(2) }}>
+            <Text style={{ fontSize: ds.fontSize(13), marginTop: ds.spacing(2), color: glassColors.textSecondary }}>
               {item.email || 'No email on file'}
             </Text>
-            <Text className="text-gray-500" style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4) }}>
+            <Text style={{ fontSize: ds.fontSize(12), marginTop: ds.spacing(4), color: glassColors.textSecondary }}>
               {formatLastActivity(item)}
             </Text>
           </View>
@@ -378,23 +389,29 @@ export default function UserManagementScreen() {
 
         {item.role === 'employee' ? (
           <TouchableOpacity
-            className={item.is_suspended ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'}
             style={{
               marginTop: ds.spacing(12),
-              borderRadius: ds.radius(12),
+              borderRadius: glassRadii.button,
               minHeight: Math.max(42, ds.buttonH - ds.spacing(6)),
               alignItems: 'center',
               justifyContent: 'center',
               opacity: isUpdating ? 0.7 : 1,
+              borderWidth: glassHairlineWidth,
+              borderColor: item.is_suspended
+                ? 'rgba(52, 168, 83, 0.16)'
+                : 'rgba(249, 115, 22, 0.18)',
+              backgroundColor: item.is_suspended
+                ? glassColors.successSoft
+                : colors.warningBg,
             }}
             disabled={isUpdating}
             onPress={() => handleSuspensionPress(item)}
-            activeOpacity={0.75}
+            activeOpacity={0.82}
           >
             <Text
-              className="font-semibold"
               style={{
                 fontSize: ds.fontSize(14),
+                fontWeight: '700',
                 color: item.is_suspended ? colors.success : colors.primary[700],
               }}
             >
@@ -403,14 +420,18 @@ export default function UserManagementScreen() {
           </TouchableOpacity>
         ) : (
           <View
-            className="bg-gray-50 border border-gray-200 items-center justify-center"
             style={{
               marginTop: ds.spacing(12),
-              borderRadius: ds.radius(12),
+              borderRadius: glassRadii.button,
               minHeight: Math.max(42, ds.buttonH - ds.spacing(6)),
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderWidth: glassHairlineWidth,
+              borderColor: glassColors.controlBorder,
+              backgroundColor: glassColors.mediumFill,
             }}
           >
-            <Text className="text-gray-500 font-medium" style={{ fontSize: ds.fontSize(13) }}>
+            <Text style={{ fontSize: ds.fontSize(13), fontWeight: '600', color: glassColors.textSecondary }}>
               Manager account
             </Text>
           </View>
@@ -421,9 +442,9 @@ export default function UserManagementScreen() {
 
   if (!isInitialized) {
     return (
-      <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
         <View className="flex-1 items-center justify-center">
-          <ActivityIndicator size="small" color={colors.primary[500]} />
+          <ActivityIndicator size="small" color={glassColors.accent} />
         </View>
       </SafeAreaView>
     );
@@ -434,56 +455,44 @@ export default function UserManagementScreen() {
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
       <ManagerScaleContainer>
-        <View
-          className="bg-white border-b border-gray-100 flex-row items-center"
-          style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
-        >
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={{
-              padding: ds.spacing(8),
-              marginRight: ds.spacing(8),
-              minWidth: 44,
-              minHeight: 44,
-              justifyContent: 'center',
-            }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
-          </TouchableOpacity>
-          <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>
-            User Management
-          </Text>
+        <View style={{ backgroundColor: glassColors.background }}>
+          <StackScreenHeader
+            title="User Management"
+            subtitle="Manager-only account oversight"
+          />
         </View>
 
-        <View style={{ paddingHorizontal: ds.spacing(16), paddingTop: ds.spacing(16) }}>
-          <View
-            className="bg-white border border-gray-200 flex-row items-center"
+        <View style={{ paddingHorizontal: glassSpacing.screen, paddingTop: ds.spacing(12) }}>
+          <GlassSurface
+            intensity="medium"
+            blurred={false}
             style={{
-              borderRadius: ds.radius(12),
-              minHeight: Math.max(46, ds.buttonH),
-              paddingHorizontal: ds.spacing(12),
+              borderRadius: glassRadii.search,
+              minHeight: Math.max(48, ds.buttonH),
+              paddingHorizontal: ds.spacing(14),
+              justifyContent: 'center',
             }}
           >
-            <Ionicons name="search-outline" size={ds.icon(18)} color={colors.gray[400]} />
-            <TextInput
-              className="flex-1 text-gray-900"
-              style={{ marginLeft: ds.spacing(8), fontSize: ds.fontSize(15) }}
-              placeholder="Search by name or email"
-              placeholderTextColor={colors.gray[400]}
-              value={searchInput}
-              onChangeText={setSearchInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            {searchInput.length > 0 ? (
-              <TouchableOpacity onPress={() => setSearchInput('')}>
-                <Ionicons name="close-circle" size={ds.icon(18)} color={colors.gray[400]} />
-              </TouchableOpacity>
-            ) : null}
-          </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons name="search-outline" size={ds.icon(18)} color={glassColors.textSecondary} />
+              <TextInput
+                style={{ flex: 1, marginLeft: ds.spacing(8), fontSize: ds.fontSize(15), color: glassColors.textPrimary }}
+                placeholder="Search by name or email"
+                placeholderTextColor={glassColors.textMuted}
+                value={searchInput}
+                onChangeText={setSearchInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {searchInput.length > 0 ? (
+                <TouchableOpacity onPress={() => setSearchInput('')}>
+                  <Ionicons name="close-circle" size={ds.icon(18)} color={glassColors.textSecondary} />
+                </TouchableOpacity>
+              ) : null}
+            </View>
+          </GlassSurface>
 
           <ScrollView
             horizontal
@@ -503,19 +512,19 @@ export default function UserManagementScreen() {
                   onPress={() => setSelectedFilter(option.key)}
                   style={{
                     marginRight: ds.spacing(8),
-                    borderRadius: ds.radius(999),
-                    borderWidth: 1,
-                    borderColor: selected ? colors.primary[500] : colors.gray[200],
-                    backgroundColor: selected ? colors.primary[500] : colors.white,
+                    borderRadius: glassRadii.pill,
+                    borderWidth: selected ? 1.5 : glassHairlineWidth,
+                    borderColor: selected ? glassColors.accent : glassColors.controlBorder,
+                    backgroundColor: selected ? glassColors.accentSoft : glassColors.mediumFill,
                     paddingHorizontal: ds.spacing(12),
                     paddingVertical: ds.spacing(6),
                   }}
                 >
                   <Text
-                    className="font-semibold"
                     style={{
                       fontSize: ds.fontSize(12),
-                      color: selected ? colors.white : colors.gray[600],
+                      fontWeight: '700',
+                      color: selected ? glassColors.accent : glassColors.textSecondary,
                     }}
                   >
                     {option.label}
@@ -528,16 +537,18 @@ export default function UserManagementScreen() {
 
         {noticeMessage ? (
           <View
-            className="bg-green-100"
             style={{
-              marginHorizontal: ds.spacing(16),
+              marginHorizontal: glassSpacing.screen,
               marginTop: ds.spacing(8),
-              borderRadius: ds.radius(12),
+              borderRadius: glassRadii.button,
               paddingHorizontal: ds.spacing(12),
               paddingVertical: ds.spacing(10),
+              borderWidth: glassHairlineWidth,
+              borderColor: 'rgba(52, 168, 83, 0.16)',
+              backgroundColor: glassColors.successSoft,
             }}
           >
-            <Text className="font-medium text-green-800" style={{ fontSize: ds.fontSize(13) }}>
+            <Text style={{ fontSize: ds.fontSize(13), fontWeight: '600', color: glassColors.successText }}>
               {noticeMessage}
             </Text>
           </View>
@@ -545,24 +556,25 @@ export default function UserManagementScreen() {
 
         {errorMessage ? (
           <View
-            className="bg-red-100"
             style={{
-              marginHorizontal: ds.spacing(16),
+              marginHorizontal: glassSpacing.screen,
               marginTop: ds.spacing(8),
-              borderRadius: ds.radius(12),
+              borderRadius: glassRadii.button,
               paddingHorizontal: ds.spacing(12),
               paddingVertical: ds.spacing(10),
+              borderWidth: glassHairlineWidth,
+              borderColor: 'rgba(239, 68, 68, 0.16)',
+              backgroundColor: glassColors.dangerSoft,
             }}
           >
-            <Text className="text-red-700" style={{ fontSize: ds.fontSize(13) }}>
+            <Text style={{ fontSize: ds.fontSize(13), color: glassColors.dangerText }}>
               {errorMessage}
             </Text>
             <TouchableOpacity
               onPress={() => loadUsers()}
-              className="self-start"
               style={{ marginTop: ds.spacing(8) }}
             >
-              <Text className="font-semibold text-red-700" style={{ fontSize: ds.fontSize(13) }}>
+              <Text style={{ fontSize: ds.fontSize(13), fontWeight: '700', color: glassColors.dangerText }}>
                 Retry
               </Text>
             </TouchableOpacity>
@@ -571,8 +583,8 @@ export default function UserManagementScreen() {
 
         {isLoading && users.length === 0 ? (
           <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: ds.spacing(16) }}>
-            <ActivityIndicator size="small" color={colors.primary[500]} />
-            <Text className="text-gray-500" style={{ marginTop: ds.spacing(10), fontSize: ds.fontSize(14) }}>
+            <ActivityIndicator size="small" color={glassColors.accent} />
+            <Text style={{ marginTop: ds.spacing(10), fontSize: ds.fontSize(14), color: glassColors.textSecondary }}>
               Loading users...
             </Text>
           </View>
@@ -582,7 +594,7 @@ export default function UserManagementScreen() {
             renderItem={renderRow}
             keyExtractor={(item) => item.id}
             contentContainerStyle={{
-              paddingHorizontal: ds.spacing(16),
+              paddingHorizontal: glassSpacing.screen,
               paddingTop: ds.spacing(10),
               paddingBottom: ds.spacing(24),
               flexGrow: 1,
@@ -596,13 +608,12 @@ export default function UserManagementScreen() {
             }
             ListEmptyComponent={
               <View className="items-center justify-center" style={{ paddingTop: ds.spacing(80) }}>
-                <Ionicons name="people-outline" size={ds.icon(34)} color={colors.gray[300]} />
-                <Text className="font-semibold text-gray-700" style={{ marginTop: ds.spacing(10), fontSize: ds.fontSize(15) }}>
+                <Ionicons name="people-outline" size={ds.icon(34)} color={glassColors.textMuted} />
+                <Text style={{ marginTop: ds.spacing(10), fontSize: ds.fontSize(15), fontWeight: '700', color: glassColors.textPrimary }}>
                   No users found
                 </Text>
                 <Text
-                  className="text-gray-500 text-center"
-                  style={{ marginTop: ds.spacing(4), fontSize: ds.fontSize(13) }}
+                  style={{ marginTop: ds.spacing(4), fontSize: ds.fontSize(13), color: glassColors.textSecondary, textAlign: 'center' }}
                 >
                   Try adjusting your search or filters.
                 </Text>

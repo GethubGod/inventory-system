@@ -8,3 +8,8 @@ export { ChangePasswordModal } from './ChangePasswordModal';
 export { settingsIconPalettes } from './iconPalettes';
 export { ReminderModal } from './ReminderModal';
 export { ReminderListItem } from './ReminderListItem';
+export {
+  SettingsGroup,
+  SettingsScreenLayout,
+  SettingsSectionLabel,
+} from './SettingsScreenLayout';

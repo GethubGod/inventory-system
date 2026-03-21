@@ -1,13 +1,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { Alert, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors } from '@/constants';
 import { useAuthStore, useSettingsStore } from '@/store';
 import { getNotificationsModule } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
+import {
+  SettingsGroup,
+  SettingsScreenLayout,
+  SettingsSectionLabel,
+} from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import {
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+  glassSpacing,
+} from '@/design/tokens';
 
 interface DebugInfo {
   permissionStatus: string;
@@ -46,6 +54,7 @@ export default function NotificationsDebugScreen() {
 
       let lastToken: string | null = null;
       let tokenCount = 0;
+
       if (user?.id) {
         const { data: tokens } = await (supabase as any)
           .from('device_push_tokens')
@@ -54,6 +63,7 @@ export default function NotificationsDebugScreen() {
           .eq('active', true)
           .order('updated_at', { ascending: false })
           .limit(5);
+
         tokenCount = tokens?.length ?? 0;
         lastToken = tokens?.[0]?.expo_push_token ?? null;
       }
@@ -66,15 +76,15 @@ export default function NotificationsDebugScreen() {
         profileNotificationsEnabled: profile?.notifications_enabled ?? null,
         localPushEnabled: notifications.pushEnabled,
       });
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to load debug info');
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to load debug info');
     } finally {
       setLoading(false);
     }
-  }, [user?.id, profile?.notifications_enabled, notifications.pushEnabled]);
+  }, [notifications.pushEnabled, profile?.notifications_enabled, user?.id]);
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
   const sendTestNotification = async () => {
@@ -95,32 +105,58 @@ export default function NotificationsDebugScreen() {
         trigger: null,
       });
       Alert.alert('Sent', 'Test local notification sent.');
-    } catch (e: any) {
-      Alert.alert('Error', e?.message || 'Failed to send test notification');
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'Failed to send test notification');
     }
   };
 
   const renderRow = (label: string, value: string | number | boolean | null) => {
     const display =
-      value === null ? 'null' : typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value);
+      value === null
+        ? 'null'
+        : typeof value === 'boolean'
+          ? value
+            ? 'true'
+            : 'false'
+          : String(value);
     const color =
       value === true || value === 'granted'
-        ? colors.success
+        ? glassColors.successText
         : value === false || value === 'denied'
-          ? colors.error
-          : colors.gray[700];
+          ? glassColors.dangerText
+          : glassColors.textPrimary;
 
     return (
       <View
         key={label}
-        className="flex-row items-start justify-between bg-white border-b border-gray-100"
-        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          paddingHorizontal: ds.spacing(16),
+          paddingVertical: ds.spacing(14),
+          borderBottomWidth: glassHairlineWidth,
+          borderBottomColor: glassColors.divider,
+        }}
       >
-        <Text className="text-gray-500 flex-1" style={{ fontSize: ds.fontSize(13) }}>
+        <Text
+          style={{
+            flex: 1,
+            paddingRight: ds.spacing(12),
+            fontSize: ds.fontSize(13),
+            color: glassColors.textSecondary,
+          }}
+        >
           {label}
         </Text>
         <Text
-          style={{ fontSize: ds.fontSize(13), color, maxWidth: '55%', textAlign: 'right' }}
+          style={{
+            maxWidth: '55%',
+            fontSize: ds.fontSize(13),
+            color,
+            textAlign: 'right',
+            fontWeight: '600',
+          }}
           selectable
           numberOfLines={2}
         >
@@ -131,33 +167,23 @@ export default function NotificationsDebugScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      <View
-        className="bg-white border-b border-gray-100 flex-row items-center"
-        style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(12) }}
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), minWidth: 44, minHeight: 44, justifyContent: 'center' }}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Ionicons name="arrow-back" size={ds.icon(20)} color={colors.gray[700]} />
-        </TouchableOpacity>
-        <Text className="font-bold text-gray-900" style={{ fontSize: ds.fontSize(18) }}>
-          Notifications Debug
-        </Text>
-      </View>
+    <SettingsScreenLayout title="Notifications Debug">
+      <SettingsSectionLabel
+        label="Diagnostics"
+        description="Development-only notification state and token visibility inside the same settings shell."
+      />
 
-      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
-        <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(10) }}>
-          <Text className="text-gray-400 uppercase tracking-wide" style={{ fontSize: ds.fontSize(11) }}>
-            Status
-          </Text>
-        </View>
-
+      <SettingsGroup>
         {loading ? (
-          <View style={{ padding: ds.spacing(16) }}>
-            <Text className="text-gray-400" style={{ fontSize: ds.fontSize(14) }}>Loading...</Text>
+          <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(18) }}>
+            <Text
+              style={{
+                fontSize: ds.fontSize(14),
+                color: glassColors.textSecondary,
+              }}
+            >
+              Loading...
+            </Text>
           </View>
         ) : info ? (
           <>
@@ -165,34 +191,78 @@ export default function NotificationsDebugScreen() {
             {renderRow('Local pushEnabled Toggle', info.localPushEnabled)}
             {renderRow('DB notifications_enabled', info.profileNotificationsEnabled)}
             {renderRow('Active DB Tokens', info.dbTokenCount)}
-            {renderRow('Last Push Token', info.lastPushToken ? `...${info.lastPushToken.slice(-20)}` : 'none')}
+            {renderRow(
+              'Last Push Token',
+              info.lastPushToken ? `...${info.lastPushToken.slice(-20)}` : 'none',
+            )}
             {renderRow('Scheduled Notifications', info.scheduledCount)}
             {renderRow('Platform', Platform.OS)}
           </>
         ) : null}
+      </SettingsGroup>
 
-        <View style={{ paddingHorizontal: ds.spacing(16), paddingTop: ds.spacing(20), gap: ds.spacing(10) }}>
-          <TouchableOpacity
-            onPress={sendTestNotification}
-            className="bg-primary-500 rounded-xl items-center justify-center"
-            style={{ minHeight: Math.max(48, ds.buttonH), borderRadius: ds.radius(12) }}
+      <View
+        style={{
+          paddingHorizontal: glassSpacing.screen,
+          paddingTop: ds.spacing(16),
+          gap: ds.spacing(10),
+        }}
+      >
+        <TouchableOpacity
+          onPress={sendTestNotification}
+          activeOpacity={0.82}
+          style={{
+            minHeight: Math.max(48, ds.buttonH),
+            borderRadius: glassRadii.button,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: glassColors.accent,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: ds.fontSize(15),
+              fontWeight: '700',
+              color: glassColors.textOnPrimary,
+            }}
           >
-            <Text className="text-white font-semibold" style={{ fontSize: ds.fontSize(15) }}>
-              Send Test Local Notification
-            </Text>
-          </TouchableOpacity>
+            Send Test Local Notification
+          </Text>
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={refresh}
-            className="bg-gray-200 rounded-xl items-center justify-center"
-            style={{ minHeight: Math.max(48, ds.buttonH), borderRadius: ds.radius(12) }}
+        <TouchableOpacity
+          onPress={() => {
+            void refresh();
+          }}
+          activeOpacity={0.82}
+          style={{
+            minHeight: Math.max(48, ds.buttonH),
+            borderRadius: glassRadii.button,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'row',
+            backgroundColor: glassColors.mediumFill,
+            borderWidth: glassHairlineWidth,
+            borderColor: glassColors.controlBorder,
+          }}
+        >
+          <Ionicons
+            name="refresh-outline"
+            size={ds.icon(18)}
+            color={glassColors.textSecondary}
+          />
+          <Text
+            style={{
+              marginLeft: ds.spacing(8),
+              fontSize: ds.fontSize(15),
+              fontWeight: '700',
+              color: glassColors.textSecondary,
+            }}
           >
-            <Text className="text-gray-700 font-semibold" style={{ fontSize: ds.fontSize(15) }}>
-              Refresh
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+            Refresh
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </SettingsScreenLayout>
   );
 }

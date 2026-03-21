@@ -18,7 +18,12 @@ export type { OrderLaterSupplierOption } from './OrderLaterAddToSheet';
 export { ConfirmLocationBottomSheet } from './ConfirmLocationBottomSheet';
 export type { ConfirmLocationOption } from './ConfirmLocationBottomSheet';
 export { HeaderCartButton } from './HeaderCartButton';
+export { AddButton } from './AddButton';
 export { LocationSelectorButton } from './LocationSelectorButton';
+export { IdentityHeader } from './IdentityHeader';
+export { SectionHeader } from './SectionHeader';
+export { EmptyStateCard } from './EmptyStateCard';
+export { BrowseCategoryScroller } from './BrowseCategoryScroller';
 export * from './ui';
 
 // Settings components

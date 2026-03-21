@@ -8,7 +8,6 @@ import {
   UIManager,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { colors } from '@/constants';
 import { useDisplayStore } from '@/store';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -38,13 +37,10 @@ export function ExpandableSection({
   defaultExpanded = false,
 }: ExpandableSectionProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const { reduceMotion, hapticFeedback } = useDisplayStore();
+  const { reduceMotion } = useDisplayStore();
   const ds = useScaledStyles();
 
   const toggle = () => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
     if (!reduceMotion) {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     }

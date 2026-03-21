@@ -6,7 +6,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { User, Location, UserRole, Profile, AuthProvider } from '@/types';
 import { supabase } from '@/lib/supabase';
-import { getUserContext } from '@/lib/api/client';
+import { getUserContext, registerSessionGetter } from '@/lib/api/client';
 import { validateAccessCode } from '@/services/accessCodes';
 
 type ViewMode = 'employee' | 'manager';
@@ -1035,3 +1035,7 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 );
+
+// Provide the API client with a synchronous token getter so it never calls
+// supabase.auth.getSession() (which deadlocks on React Native).
+registerSessionGetter(() => useAuthStore.getState().session);

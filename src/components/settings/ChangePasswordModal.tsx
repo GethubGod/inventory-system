@@ -13,9 +13,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { colors, hairline, radii } from '@/theme/design';
-import { useDisplayStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
@@ -28,7 +26,6 @@ export function ChangePasswordModal({
   visible,
   onClose,
 }: ChangePasswordModalProps) {
-  const { hapticFeedback } = useDisplayStore();
   const ds = useScaledStyles();
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -82,17 +79,10 @@ export function ChangePasswordModal({
         throw error;
       }
 
-      if (hapticFeedback && Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-
       Alert.alert('Success', 'Your password has been updated', [
         { text: 'OK', onPress: handleClose },
       ]);
     } catch (error: any) {
-      if (hapticFeedback && Platform.OS !== 'web') {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      }
       Alert.alert('Error', error.message || 'Failed to update password');
     } finally {
       setIsLoading(false);

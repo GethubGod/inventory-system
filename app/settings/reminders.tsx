@@ -1,16 +1,22 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Platform, Alert, Linking } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { View, Text, TouchableOpacity, Alert, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-import { useDisplayStore, useSettingsStore } from '@/store';
+import { GlassSurface } from '@/components';
+import { useSettingsStore } from '@/store';
 import { colors } from '@/constants';
 import { Reminder } from '@/types/settings';
-import { GlassSurface, StackScreenHeader } from '@/components';
-import { ReminderModal, ReminderListItem, SettingToggle, TimePickerRow, settingsIconPalettes } from '@/components/settings';
+import {
+  ReminderListItem,
+  ReminderModal,
+  SettingToggle,
+  SettingsGroup,
+  SettingsScreenLayout,
+  SettingsSectionLabel,
+  TimePickerRow,
+  settingsIconPalettes,
+} from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { glassColors, glassHairlineWidth, glassRadii, glassSpacing } from '@/design/tokens';
+import { glassColors, glassHairlineWidth, glassRadii } from '@/design/tokens';
 
 import {
   requestNotificationPermissions,
@@ -34,7 +40,6 @@ function RemindersSection({
     toggleReminder,
     deleteReminder,
   } = useSettingsStore();
-  const { hapticFeedback } = useDisplayStore();
 
   const ensureNotificationPermissions = async () => {
     const granted = await requestNotificationPermissions();
@@ -106,9 +111,6 @@ function RemindersSection({
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          if (hapticFeedback && Platform.OS !== 'web') {
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          }
           await cancelReminder(reminder.id);
           deleteReminder(reminder.id);
         },
@@ -263,15 +265,20 @@ export default function RemindersSettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
-      <StackScreenHeader title="Reminders" />
-
-      <ScrollView contentContainerStyle={{ paddingBottom: ds.spacing(32) }}>
-        <GlassSurface
-          intensity="subtle"
-          blurred={false}
-          style={{ marginHorizontal: glassSpacing.screen, borderRadius: glassRadii.surface }}
-        >
+    <SettingsScreenLayout title="Reminders">
+      <SettingsGroup>
+        <SettingsSectionLabel
+          label="Control Panel"
+          description="Keep quick reminders and custom schedules together in one quiet, editable workspace."
+        />
+        <View
+          style={{
+            height: glassHairlineWidth,
+            backgroundColor: glassColors.divider,
+            marginHorizontal: ds.spacing(16),
+          }}
+        />
+        <View style={{ paddingTop: ds.spacing(4) }}>
           <RemindersSection
             onAddReminder={() => {
               setEditingReminder(null);
@@ -282,8 +289,8 @@ export default function RemindersSettingsScreen() {
               setShowReminderModal(true);
             }}
           />
-        </GlassSurface>
-      </ScrollView>
+        </View>
+      </SettingsGroup>
 
       <ReminderModal
         visible={showReminderModal}
@@ -294,6 +301,6 @@ export default function RemindersSettingsScreen() {
         }}
         onSave={handleSaveReminder}
       />
-    </SafeAreaView>
+    </SettingsScreenLayout>
   );
 }
