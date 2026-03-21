@@ -33,3 +33,30 @@ export function buildSettingsPath(
   const query = params.toString();
   return (query ? `${pathname}?${query}` : pathname) as Href;
 }
+
+export function buildSettingsHref(
+  pathname: string,
+  options?: {
+    origin?: SettingsOrigin;
+    backTo?: string | Href;
+  },
+): Href {
+  const params: Record<string, string> = {};
+
+  if (options?.origin) {
+    params.origin = options.origin;
+  }
+
+  if (options?.backTo) {
+    params.backTo = String(options.backTo);
+  }
+
+  if (Object.keys(params).length === 0) {
+    return pathname as Href;
+  }
+
+  return {
+    pathname: pathname as never,
+    params,
+  } as Href;
+}

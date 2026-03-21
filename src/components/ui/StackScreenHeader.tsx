@@ -28,16 +28,11 @@ export function StackScreenHeader({
   style,
 }: StackScreenHeaderProps) {
   const ds = useScaledStyles();
-  const { backTo, hasExplicitBackTo } = useSettingsNavigationContext();
+  const { backTo } = useSettingsNavigationContext();
 
   const handleBackPress = () => {
     if (onBackPress) {
       onBackPress();
-      return;
-    }
-
-    if (hasExplicitBackTo) {
-      router.replace(backTo);
       return;
     }
 

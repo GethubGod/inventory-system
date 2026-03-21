@@ -19,6 +19,7 @@ export { ConfirmLocationBottomSheet } from './ConfirmLocationBottomSheet';
 export type { ConfirmLocationOption } from './ConfirmLocationBottomSheet';
 export { HeaderCartButton } from './HeaderCartButton';
 export { AddButton } from './AddButton';
+export { FloatingLocationSelector } from './FloatingLocationSelector';
 export { LocationSelectorButton } from './LocationSelectorButton';
 export { IdentityHeader } from './IdentityHeader';
 export { SectionHeader } from './SectionHeader';

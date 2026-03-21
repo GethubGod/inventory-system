@@ -8,7 +8,7 @@ import { SettingsRow, settingsIconPalettes } from '@/components/settings';
 import { BrandLogo, GlassSurface } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
-  buildSettingsPath,
+  buildSettingsHref,
   MANAGER_SETTINGS_ROOT,
 } from '@/lib/settingsNavigation';
 import {
@@ -75,7 +75,7 @@ export default function ManagerSettingsScreen() {
             subtitle="Manage account details and locations"
             onPress={() =>
               router.push(
-                buildSettingsPath('/(manager)/settings/profile', {
+                buildSettingsHref('/(manager)/manager-settings/profile', {
                   origin: 'manager',
                   backTo: MANAGER_SETTINGS_ROOT,
                 }),
@@ -98,7 +98,7 @@ export default function ManagerSettingsScreen() {
             subtitle="Text size, button size, and interaction settings"
             onPress={() =>
               router.push(
-                buildSettingsPath('/settings/display-accessibility', {
+                buildSettingsHref('/settings/display-accessibility', {
                   origin: 'manager',
                   backTo: MANAGER_SETTINGS_ROOT,
                 }),
@@ -121,7 +121,7 @@ export default function ManagerSettingsScreen() {
             subtitle="Control alerts, sounds, and quiet hours"
             onPress={() =>
               router.push(
-                buildSettingsPath('/settings/notifications', {
+                buildSettingsHref('/settings/notifications', {
                   origin: 'manager',
                   backTo: MANAGER_SETTINGS_ROOT,
                 }),
@@ -144,7 +144,7 @@ export default function ManagerSettingsScreen() {
             subtitle="Update employee and manager sign-up codes"
             onPress={() =>
               router.push(
-                buildSettingsPath('/(manager)/settings/access-codes', {
+                buildSettingsHref('/(manager)/manager-settings/access-codes', {
                   origin: 'manager',
                   backTo: MANAGER_SETTINGS_ROOT,
                 }),
@@ -183,7 +183,7 @@ export default function ManagerSettingsScreen() {
             subtitle="Version info, support, and policies"
             onPress={() =>
               router.push(
-                buildSettingsPath('/settings/about-support', {
+                buildSettingsHref('/settings/about-support', {
                   origin: 'manager',
                   backTo: MANAGER_SETTINGS_ROOT,
                 }),
@@ -206,7 +206,7 @@ export default function ManagerSettingsScreen() {
             subtitle="Suspend inactive users and delete accounts"
             onPress={() =>
               router.push(
-                buildSettingsPath('/(manager)/settings/user-management', {
+                buildSettingsHref('/(manager)/manager-settings/user-management', {
                   origin: 'manager',
                   backTo: MANAGER_SETTINGS_ROOT,
                 }),

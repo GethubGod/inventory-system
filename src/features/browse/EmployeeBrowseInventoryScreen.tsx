@@ -8,6 +8,7 @@ import React, {
 import {
   Alert,
   FlatList,
+  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -25,6 +26,7 @@ import { useShallow } from 'zustand/react/shallow';
 import {
   BrowseCategoryScroller,
   EmptyStateCard,
+  FloatingLocationSelector,
   GlassSurface,
   HeaderCartButton,
   LoadingIndicator,
@@ -39,10 +41,12 @@ import {
 } from '@/design/tokens';
 import { useEmployeeCartActions } from '@/hooks/useEmployeeCartActions';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { useResolvedActiveLocation } from '@/hooks/useResolvedActiveLocation';
 import { useAuthStore, useInventoryStore, useOrderStore } from '@/store';
 import type {
   InventoryItem,
   ItemCategory,
+  Location,
   SupplierCategory,
 } from '@/types';
 import { BrowseItemRow } from './BrowseItemRow';
@@ -51,15 +55,31 @@ import { CATEGORY_ORDER } from './config';
 interface EmployeeBrowseInventoryScreenProps {
   initialCategory?: ItemCategory | null;
   autoFocusSearch?: boolean;
+  initialFocusItemId?: string | null;
+  autoExpandFocusedItem?: boolean;
+  addFocusedItemOnArrival?: boolean;
+  focusRequestId?: string | null;
 }
 
 export function EmployeeBrowseInventoryScreen({
   initialCategory = null,
   autoFocusSearch = false,
+  initialFocusItemId = null,
+  autoExpandFocusedItem = false,
+  addFocusedItemOnArrival = false,
+  focusRequestId = null,
 }: EmployeeBrowseInventoryScreenProps) {
   const ds = useScaledStyles();
   const insets = useSafeAreaInsets();
   const searchInputRef = useRef<TextInput>(null);
+  const browseListRef = useRef<FlatList<InventoryItem>>(null);
+  const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastProcessedFocusRequestRef = useRef<string | null>(null);
+  const lastScrolledFocusRequestRef = useRef<string | null>(null);
+  const pendingScrollRequestRef = useRef<{
+    requestKey: string;
+    index: number;
+  } | null>(null);
   const [browseCategory, setBrowseCategory] = useState<ItemCategory | null>(initialCategory);
   const [browseCategoriesExpanded, setBrowseCategoriesExpanded] = useState(false);
   const [browseSearchQuery, setBrowseSearchQuery] = useState('');
@@ -73,17 +93,12 @@ export function EmployeeBrowseInventoryScreen({
   const [newItemPackSize, setNewItemPackSize] = useState('');
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
   const [activeEditingItemId, setActiveEditingItemId] = useState<string | null>(null);
+  const { location, locations, setLocation } = useResolvedActiveLocation();
   const {
-    location,
-    locations,
-    setLocation,
     fetchLocations,
     user,
   } = useAuthStore(
     useShallow((state) => ({
-      location: state.location,
-      locations: state.locations,
-      setLocation: state.setLocation,
       fetchLocations: state.fetchLocations,
       user: state.user,
     })),
@@ -109,17 +124,15 @@ export function EmployeeBrowseInventoryScreen({
     })),
   );
   const { activeLocationId, addInventoryItem } = useEmployeeCartActions();
+  const floatingSelectorBottomOffset =
+    Math.max(insets.bottom, ds.spacing(12)) + ds.spacing(12);
+  const floatingSelectorReservedSpace =
+    floatingSelectorBottomOffset + ds.spacing(96);
 
   useEffect(() => {
     void fetchItems();
     void fetchLocations();
   }, [fetchItems, fetchLocations]);
-
-  useEffect(() => {
-    if (locations.length > 0 && !location) {
-      setLocation(locations[0]);
-    }
-  }, [location, locations, setLocation]);
 
   useEffect(() => {
     setBrowseCategory(initialCategory);
@@ -141,6 +154,28 @@ export function EmployeeBrowseInventoryScreen({
     () => [...items].sort((left, right) => left.name.localeCompare(right.name)),
     [items],
   );
+  const focusRequestKey = useMemo(() => {
+    if (!initialFocusItemId) {
+      return null;
+    }
+
+    return (
+      focusRequestId ??
+      `${initialFocusItemId}:${autoExpandFocusedItem ? 'expand' : 'focus'}:${addFocusedItemOnArrival ? 'add' : 'view'}`
+    );
+  }, [
+    addFocusedItemOnArrival,
+    autoExpandFocusedItem,
+    focusRequestId,
+    initialFocusItemId,
+  ]);
+  const focusTargetItem = useMemo(
+    () =>
+      initialFocusItemId
+        ? allItemsSorted.find((item) => item.id === initialFocusItemId) ?? null
+        : null,
+    [allItemsSorted, initialFocusItemId],
+  );
 
   const filteredBrowseItems = useMemo(
     () =>
@@ -154,6 +189,13 @@ export function EmployeeBrowseInventoryScreen({
       }),
     [allItemsSorted, browseCategory, browseSearchQuery],
   );
+  const focusedBrowseItemIndex = useMemo(
+    () =>
+      initialFocusItemId
+        ? filteredBrowseItems.findIndex((item) => item.id === initialFocusItemId)
+        : -1,
+    [filteredBrowseItems, initialFocusItemId],
+  );
 
   useEffect(() => {
     if (
@@ -163,6 +205,10 @@ export function EmployeeBrowseInventoryScreen({
       setActiveEditingItemId(null);
     }
   }, [activeEditingItemId, filteredBrowseItems]);
+
+  useEffect(() => {
+    setActiveEditingItemId(null);
+  }, [activeLocationId]);
 
   const emptyBrowseResults =
     !itemsLoading &&
@@ -251,21 +297,168 @@ export function EmployeeBrowseInventoryScreen({
     setActiveEditingItemId(itemId);
   }, []);
 
-  const handleAddAndEdit = useCallback(
+  const addAndOpenEditorForItem = useCallback(
     (item: InventoryItem) => {
       const didAdd = addInventoryItem(item);
       if (!didAdd) {
-        return;
+        return false;
       }
 
       setActiveEditingItemId(item.id);
+      return true;
     },
     [addInventoryItem],
+  );
+
+  const handleAddAndEdit = useCallback(
+    (item: InventoryItem) => {
+      addAndOpenEditorForItem(item);
+    },
+    [addAndOpenEditorForItem],
   );
 
   const handleItemRemoved = useCallback((itemId: string) => {
     setActiveEditingItemId((current) => (current === itemId ? null : current));
   }, []);
+
+  const handleLocationChange = useCallback(
+    (selectedLocation: Location) => {
+      if (selectedLocation.id === location?.id) {
+        return;
+      }
+
+      setActiveEditingItemId(null);
+      setLocation(selectedLocation);
+    },
+    [location?.id, setLocation],
+  );
+
+  useEffect(() => {
+    if (!focusRequestKey) {
+      lastProcessedFocusRequestRef.current = null;
+      lastScrolledFocusRequestRef.current = null;
+      pendingScrollRequestRef.current = null;
+      return;
+    }
+
+    if (!focusTargetItem) {
+      return;
+    }
+
+    if (lastProcessedFocusRequestRef.current === focusRequestKey) {
+      return;
+    }
+
+    if (addFocusedItemOnArrival) {
+      addAndOpenEditorForItem(focusTargetItem);
+    } else if (autoExpandFocusedItem) {
+      setActiveEditingItemId(focusTargetItem.id);
+    }
+
+    lastProcessedFocusRequestRef.current = focusRequestKey;
+  }, [
+    addAndOpenEditorForItem,
+    addFocusedItemOnArrival,
+    autoExpandFocusedItem,
+    focusRequestKey,
+    focusTargetItem,
+  ]);
+
+  const scrollToFocusedItem = useCallback(
+    (index: number) => {
+      if (!focusRequestKey || index < 0) {
+        return;
+      }
+
+      pendingScrollRequestRef.current = {
+        requestKey: focusRequestKey,
+        index,
+      };
+      browseListRef.current?.scrollToIndex({
+        index,
+        animated: !ds.reduceMotion,
+        viewPosition: 0.16,
+      });
+    },
+    [ds.reduceMotion, focusRequestKey],
+  );
+
+  useEffect(() => {
+    if (!focusRequestKey || focusedBrowseItemIndex < 0) {
+      return;
+    }
+
+    if (lastScrolledFocusRequestRef.current === focusRequestKey) {
+      return;
+    }
+
+    let cancelled = false;
+    lastScrolledFocusRequestRef.current = focusRequestKey;
+    const interaction = InteractionManager.runAfterInteractions(() => {
+      if (cancelled) {
+        return;
+      }
+
+      requestAnimationFrame(() => {
+        if (cancelled) {
+          return;
+        }
+
+        scrollToFocusedItem(focusedBrowseItemIndex);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      interaction.cancel();
+    };
+  }, [focusRequestKey, focusedBrowseItemIndex, scrollToFocusedItem]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollRetryTimeoutRef.current) {
+        clearTimeout(scrollRetryTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleScrollToIndexFailed = useCallback(
+    (info: {
+      index: number;
+      averageItemLength: number;
+      highestMeasuredFrameIndex: number;
+    }) => {
+      const pendingRequest = pendingScrollRequestRef.current;
+      if (!pendingRequest) {
+        return;
+      }
+
+      browseListRef.current?.scrollToOffset({
+        offset: Math.max(0, info.averageItemLength * info.index - ds.spacing(32)),
+        animated: false,
+      });
+
+      if (scrollRetryTimeoutRef.current) {
+        clearTimeout(scrollRetryTimeoutRef.current);
+      }
+
+      scrollRetryTimeoutRef.current = setTimeout(() => {
+        if (
+          !pendingScrollRequestRef.current ||
+          pendingScrollRequestRef.current.requestKey !== pendingRequest.requestKey
+        ) {
+          return;
+        }
+
+        browseListRef.current?.scrollToIndex({
+          index: pendingRequest.index,
+          animated: !ds.reduceMotion,
+          viewPosition: 0.16,
+        });
+      }, ds.reduceMotion ? 0 : 120);
+    },
+    [ds],
+  );
 
   const renderExpandedBrowseItem = useCallback(
     ({ item }: { item: InventoryItem }) => (
@@ -414,7 +607,7 @@ export function EmployeeBrowseInventoryScreen({
             <View style={{ paddingTop: ds.spacing(2) }}>
               <HeaderCartButton
                 count={totalCartCount}
-                onPress={() => router.push('/cart')}
+                onPress={() => router.push('/(tabs)/cart')}
               />
             </View>
           </View>
@@ -479,14 +672,16 @@ export function EmployeeBrowseInventoryScreen({
         </View>
 
         <FlatList
+          ref={browseListRef}
           data={filteredBrowseItems}
           keyExtractor={(item) => item.id}
           renderItem={renderExpandedBrowseItem}
           ListEmptyComponent={renderListEmpty}
+          onScrollToIndexFailed={handleScrollToIndexFailed}
           contentContainerStyle={{
             paddingHorizontal: glassSpacing.screen,
             paddingTop: ds.spacing(8),
-            paddingBottom: Math.max(insets.bottom, ds.spacing(20)) + ds.spacing(12),
+            paddingBottom: floatingSelectorReservedSpace,
             gap: ds.spacing(12),
             flexGrow: filteredBrowseItems.length === 0 ? 1 : 0,
           }}
@@ -497,6 +692,14 @@ export function EmployeeBrowseInventoryScreen({
           windowSize={10}
         />
       </View>
+
+      <FloatingLocationSelector
+        locations={locations}
+        selectedLocation={location}
+        onSelectLocation={handleLocationChange}
+        cartContext="employee"
+        bottomOffset={floatingSelectorBottomOffset}
+      />
 
       <Modal
         visible={showAddItemModal}

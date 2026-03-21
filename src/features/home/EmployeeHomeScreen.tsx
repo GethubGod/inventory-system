@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import {
   FlatList,
+  GestureResponderEvent,
   RefreshControl,
   ScrollView,
   Text,
@@ -33,7 +34,12 @@ import {
   glassSpacing,
   glassTabBarHeight,
 } from '@/design/tokens';
-import { BROWSE_INVENTORY_ROUTE, CATEGORY_ORDER, CATEGORY_SHORT_LABELS } from '@/features/browse/config';
+import {
+  BROWSE_INVENTORY_ROUTE,
+  CATEGORY_ORDER,
+  CATEGORY_SHORT_LABELS,
+  createBrowseInventoryRouteParams,
+} from '@/features/browse/config';
 import { useEmployeeCartActions } from '@/hooks/useEmployeeCartActions';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { useAuthStore, useInventoryStore, useOrderStore } from '@/store';
@@ -204,6 +210,10 @@ function formatReminderDate(dateString: string): string {
   });
 }
 
+function createBrowseFocusRequestId(itemId: string): string {
+  return `${itemId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export function EmployeeHomeScreen() {
   const ds = useScaledStyles();
   const [refreshing, setRefreshing] = useState(false);
@@ -244,7 +254,6 @@ export function EmployeeHomeScreen() {
     })),
   );
   const {
-    addInventoryItem,
     addPredictedItem,
     reorderHistoricalOrder,
   } = useEmployeeCartActions();
@@ -326,17 +335,61 @@ export function EmployeeHomeScreen() {
   const moreCategoryCount = Math.max(CATEGORY_ORDER.length - visibleCollapsedCategories.length, 0);
 
   const openBrowse = useCallback(
-    (nextCategory: ItemCategory | null = browseCategory, focusSearch = false) => {
-      setBrowseCategory(nextCategory);
+    (
+      nextCategory: ItemCategory | null = browseCategory,
+      focusSearch = false,
+      options: {
+        routeCategory?: ItemCategory | null;
+        homeCategory?: ItemCategory | null;
+        focusItemId?: string | null;
+        expandItem?: boolean;
+        addItem?: boolean;
+        requestId?: string | null;
+      } = {},
+    ) => {
+      const homeCategory = options.homeCategory ?? nextCategory;
+      const routeCategory = options.routeCategory ?? nextCategory;
+
+      setBrowseCategory(homeCategory);
       router.push({
         pathname: BROWSE_INVENTORY_ROUTE,
-        params: {
-          ...(nextCategory ? { category: nextCategory } : {}),
-          ...(focusSearch ? { focusSearch: '1' } : {}),
-        },
+        params: createBrowseInventoryRouteParams({
+          category: routeCategory,
+          focusSearch,
+          focusItemId: options.focusItemId,
+          expandItem: options.expandItem,
+          addItem: options.addItem,
+          requestId: options.requestId,
+        }),
       });
     },
     [browseCategory],
+  );
+
+  const handleBrowseCardPress = useCallback(() => {
+    openBrowse(browseCategory, false);
+  }, [browseCategory, openBrowse]);
+
+  const handleBrowseCardActionPress = useCallback(
+    (onPress: () => void) => (event: GestureResponderEvent) => {
+      event.stopPropagation?.();
+      onPress();
+    },
+    [],
+  );
+
+  const handlePreviewAdd = useCallback(
+    (item: InventoryItem) => {
+      openBrowse(browseCategory, false, {
+        routeCategory: item.category,
+        homeCategory: browseCategory,
+        focusItemId: item.id,
+        expandItem: true,
+        addItem: true,
+        requestId: createBrowseFocusRequestId(item.id),
+      });
+    },
+    [browseCategory, openBrowse],
   );
 
   const handleAddAllPredicted = useCallback(() => {
@@ -622,226 +675,244 @@ export function EmployeeHomeScreen() {
               style={{ borderRadius: glassRadii.surface }}
             >
               <TouchableOpacity
-                onPress={() => openBrowse(null, false)}
-                activeOpacity={0.85}
+                accessibilityRole="button"
+                accessibilityLabel="Browse inventory"
+                accessibilityHint="Opens the full inventory browse screen"
+                onPress={handleBrowseCardPress}
+                activeOpacity={0.94}
                 style={{
-                  paddingHorizontal: ds.spacing(14),
-                  paddingTop: ds.spacing(14),
-                  paddingBottom: ds.spacing(12),
+                  borderRadius: glassRadii.surface,
+                  overflow: 'hidden',
                 }}
               >
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center flex-1">
-                    <View
-                      style={{
-                        width: ds.icon(36),
-                        height: ds.icon(36),
-                        borderRadius: glassRadii.iconTile,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        backgroundColor: colors.gray[100],
-                        marginRight: ds.spacing(12),
-                      }}
-                    >
-                      <Ionicons
-                        name="grid-outline"
-                        size={ds.icon(18)}
-                        color={glassColors.textPrimary}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text
-                        style={{
-                          fontSize: ds.fontSize(16),
-                          fontWeight: '600',
-                          color: glassColors.textPrimary,
-                        }}
-                      >
-                        Browse Inventory
-                      </Text>
-                      <Text
-                        style={{
-                          marginTop: ds.spacing(4),
-                          fontSize: ds.fontSize(13),
-                          color: glassColors.textSecondary,
-                        }}
-                      >
-                        {browseSubtitle}
-                      </Text>
-                    </View>
-                  </View>
-                  <View
-                    style={{
-                      paddingHorizontal: ds.spacing(12),
-                      paddingVertical: ds.spacing(7),
-                      borderRadius: glassRadii.pill,
-                      backgroundColor: colors.gray[100],
-                      borderWidth: glassHairlineWidth,
-                      borderColor: 'rgba(28, 28, 30, 0.08)',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: ds.fontSize(13),
-                        fontWeight: '600',
-                        color: glassColors.textPrimary,
-                      }}
-                    >
-                      Open
-                    </Text>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={ds.icon(15)}
-                      color={glassColors.textSecondary}
-                      style={{ marginLeft: ds.spacing(4) }}
-                    />
-                  </View>
-                </View>
-              </TouchableOpacity>
-
-              <View
-                style={{
-                  marginHorizontal: ds.spacing(14),
-                  borderTopWidth: glassHairlineWidth,
-                  borderTopColor: glassColors.divider,
-                }}
-              />
-
-              <View
-                style={{
-                  paddingHorizontal: ds.spacing(14),
-                  paddingTop: ds.spacing(12),
-                  flexDirection: 'row',
-                  flexWrap: 'wrap',
-                  gap: ds.spacing(8),
-                }}
-              >
-                <TouchableOpacity
-                  onPress={() => openBrowse(null, false)}
+                <View
                   style={{
-                    paddingHorizontal: ds.spacing(16),
-                    paddingVertical: ds.spacing(9),
-                    borderRadius: glassRadii.pill,
-                    backgroundColor:
-                      browseCategory === null
-                        ? colors.gray[200]
-                        : colors.gray[100],
-                    borderWidth: glassHairlineWidth,
-                    borderColor:
-                      browseCategory === null
-                        ? 'rgba(28, 28, 30, 0.18)'
-                        : glassColors.cardBorder,
+                    paddingHorizontal: ds.spacing(14),
+                    paddingTop: ds.spacing(14),
+                    paddingBottom: ds.spacing(12),
                   }}
                 >
-                  <Text
-                    style={{
-                      fontSize: ds.fontSize(13),
-                      fontWeight: browseCategory === null ? '700' : '600',
-                      color: glassColors.textPrimary,
-                    }}
-                  >
-                    All
-                  </Text>
-                </TouchableOpacity>
-                {visibleCollapsedCategories.map((category) => {
-                  const isSelected = browseCategory === category;
-                  return (
+                  <View className="flex-row items-center justify-between">
+                    <View className="flex-row items-center flex-1">
+                      <View
+                        style={{
+                          width: ds.icon(40),
+                          height: ds.icon(40),
+                          borderRadius: glassRadii.iconTile,
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          backgroundColor: colors.gray[100],
+                          marginRight: ds.spacing(12),
+                          borderWidth: glassHairlineWidth,
+                          borderColor: 'rgba(28, 28, 30, 0.08)',
+                        }}
+                      >
+                        <Ionicons
+                          name="grid-outline"
+                          size={ds.icon(20)}
+                          color={glassColors.textPrimary}
+                        />
+                      </View>
+                      <View style={{ flex: 1, paddingRight: ds.spacing(10) }}>
+                        <Text
+                          style={{
+                            fontSize: ds.fontSize(19),
+                            fontWeight: '700',
+                            color: glassColors.textPrimary,
+                            letterSpacing: -0.25,
+                          }}
+                        >
+                          Browse Inventory
+                        </Text>
+                        <Text
+                          style={{
+                            marginTop: ds.spacing(4),
+                            fontSize: ds.fontSize(13),
+                            color: glassColors.textSecondary,
+                          }}
+                        >
+                          {browseSubtitle}
+                        </Text>
+                      </View>
+                    </View>
                     <TouchableOpacity
-                      key={category}
-                      onPress={() => openBrowse(category, false)}
+                      onPress={handleBrowseCardActionPress(() => openBrowse(browseCategory, false))}
+                      activeOpacity={0.88}
                       style={{
-                        paddingHorizontal: ds.spacing(16),
-                        paddingVertical: ds.spacing(9),
+                        minHeight: Math.max(42, ds.buttonH),
+                        paddingHorizontal: ds.spacing(15),
+                        paddingVertical: ds.spacing(10),
                         borderRadius: glassRadii.pill,
-                        backgroundColor: isSelected
-                          ? colors.gray[200]
-                          : colors.gray[100],
-                        borderWidth: glassHairlineWidth,
-                        borderColor: isSelected
-                          ? 'rgba(28, 28, 30, 0.18)'
-                          : glassColors.cardBorder,
+                        backgroundColor: glassColors.accent,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        shadowColor: 'rgba(15, 23, 42, 0.22)',
+                        shadowOpacity: 0.12,
+                        shadowRadius: 12,
+                        shadowOffset: { width: 0, height: 6 },
+                        elevation: 2,
                       }}
                     >
                       <Text
                         style={{
-                          fontSize: ds.fontSize(13),
-                          fontWeight: isSelected ? '700' : '600',
-                          color: glassColors.textPrimary,
+                          fontSize: ds.fontSize(14),
+                          fontWeight: '700',
+                          color: glassColors.textOnPrimary,
                         }}
                       >
-                        {CATEGORY_SHORT_LABELS[category]}
+                        Open
                       </Text>
+                      <Ionicons
+                        name="chevron-forward"
+                        size={ds.icon(16)}
+                        color={glassColors.textOnPrimary}
+                        style={{ marginLeft: ds.spacing(4) }}
+                      />
                     </TouchableOpacity>
-                  );
-                })}
-                {moreCategoryCount > 0 ? (
+                  </View>
+                </View>
+
+                <View
+                  style={{
+                    marginHorizontal: ds.spacing(14),
+                    borderTopWidth: glassHairlineWidth,
+                    borderTopColor: glassColors.divider,
+                  }}
+                />
+
+                <View
+                  style={{
+                    paddingHorizontal: ds.spacing(14),
+                    paddingTop: ds.spacing(12),
+                    flexDirection: 'row',
+                    flexWrap: 'wrap',
+                    gap: ds.spacing(8),
+                  }}
+                >
                   <TouchableOpacity
-                    onPress={() => openBrowse(null, false)}
+                    onPress={handleBrowseCardActionPress(() => openBrowse(null, false))}
                     style={{
                       paddingHorizontal: ds.spacing(16),
                       paddingVertical: ds.spacing(9),
                       borderRadius: glassRadii.pill,
-                      backgroundColor: colors.gray[100],
+                      backgroundColor:
+                        browseCategory === null
+                          ? colors.gray[200]
+                          : colors.gray[100],
                       borderWidth: glassHairlineWidth,
-                      borderColor: glassColors.cardBorder,
+                      borderColor:
+                        browseCategory === null
+                          ? 'rgba(28, 28, 30, 0.18)'
+                          : glassColors.cardBorder,
                     }}
                   >
                     <Text
                       style={{
                         fontSize: ds.fontSize(13),
-                        fontWeight: '600',
+                        fontWeight: browseCategory === null ? '700' : '600',
                         color: glassColors.textPrimary,
                       }}
                     >
-                      +{moreCategoryCount} more
+                      All
                     </Text>
                   </TouchableOpacity>
-                ) : null}
-              </View>
+                  {visibleCollapsedCategories.map((category) => {
+                    const isSelected = browseCategory === category;
+                    return (
+                      <TouchableOpacity
+                        key={category}
+                        onPress={handleBrowseCardActionPress(() => openBrowse(category, false))}
+                        style={{
+                          paddingHorizontal: ds.spacing(16),
+                          paddingVertical: ds.spacing(9),
+                          borderRadius: glassRadii.pill,
+                          backgroundColor: isSelected
+                            ? colors.gray[200]
+                            : colors.gray[100],
+                          borderWidth: glassHairlineWidth,
+                          borderColor: isSelected
+                            ? 'rgba(28, 28, 30, 0.18)'
+                            : glassColors.cardBorder,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: ds.fontSize(13),
+                            fontWeight: isSelected ? '700' : '600',
+                            color: glassColors.textPrimary,
+                          }}
+                        >
+                          {CATEGORY_SHORT_LABELS[category]}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  {moreCategoryCount > 0 ? (
+                    <TouchableOpacity
+                      onPress={handleBrowseCardActionPress(() => openBrowse(null, false))}
+                      style={{
+                        paddingHorizontal: ds.spacing(16),
+                        paddingVertical: ds.spacing(9),
+                        borderRadius: glassRadii.pill,
+                        backgroundColor: colors.gray[100],
+                        borderWidth: glassHairlineWidth,
+                        borderColor: glassColors.cardBorder,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: ds.fontSize(13),
+                          fontWeight: '600',
+                          color: glassColors.textPrimary,
+                        }}
+                      >
+                        +{moreCategoryCount} more
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
 
-              <View
-                style={{
-                  paddingHorizontal: ds.spacing(14),
-                  paddingTop: ds.spacing(12),
-                  gap: ds.spacing(8),
-                }}
-              >
-                {previewItems.map((item) => (
-                  <BrowsePreviewRow
-                    key={item.id}
-                    item={item}
-                    onAdd={addInventoryItem}
-                  />
-                ))}
-              </View>
-
-              <TouchableOpacity
-                onPress={() => openBrowse(null, false)}
-                activeOpacity={0.8}
-                style={{
-                  alignItems: 'center',
-                  paddingTop: ds.spacing(12),
-                  paddingBottom: ds.spacing(14),
-                }}
-              >
-                <Text
+                <View
                   style={{
-                    fontSize: ds.fontSize(12),
-                    color: glassColors.textSecondary,
+                    paddingHorizontal: ds.spacing(14),
+                    paddingTop: ds.spacing(12),
+                    gap: ds.spacing(8),
                   }}
-                  >
-                  Showing {previewItems.length} of {filteredPreviewBrowseItems.length}{' '}
+                >
+                  {previewItems.map((item) => (
+                    <BrowsePreviewRow
+                      key={item.id}
+                      item={item}
+                      onAdd={handlePreviewAdd}
+                    />
+                  ))}
+                </View>
+
+                <View
+                  style={{
+                    alignItems: 'center',
+                    paddingTop: ds.spacing(12),
+                    paddingBottom: ds.spacing(14),
+                  }}
+                >
                   <Text
                     style={{
-                      color: glassColors.accent,
-                      fontWeight: '600',
+                      fontSize: ds.fontSize(12),
+                      color: glassColors.textSecondary,
                     }}
                   >
-                    View all
+                    Showing {previewItems.length} of {filteredPreviewBrowseItems.length}{' '}
+                    <Text
+                      style={{
+                        color: glassColors.accent,
+                        fontWeight: '600',
+                      }}
+                    >
+                      View all
+                    </Text>
                   </Text>
-                </Text>
+                </View>
               </TouchableOpacity>
             </GlassSurface>
           </View>

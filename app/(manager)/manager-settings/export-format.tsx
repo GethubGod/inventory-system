@@ -35,13 +35,13 @@ export default function ExportFormatSettingsScreen() {
   const [template, setTemplate] = useState(exportFormat.template);
 
   const navigateBack = () => {
-    if (hasExplicitBackTo) {
-      router.replace(backTo);
+    if (router.canGoBack()) {
+      router.back();
       return;
     }
 
-    if (router.canGoBack()) {
-      router.back();
+    if (hasExplicitBackTo) {
+      router.replace(backTo);
       return;
     }
 
@@ -112,7 +112,6 @@ export default function ExportFormatSettingsScreen() {
           <View style={{ flex: 1 }}>
             <SettingsSectionLabel
               label="Template"
-              description="Edit the supplier export text without dropping into a separate styling system."
             />
 
             <GlassSurface
@@ -133,18 +132,6 @@ export default function ExportFormatSettingsScreen() {
               >
                 Supplier message
               </Text>
-              <Text
-                style={{
-                  marginTop: ds.spacing(6),
-                  fontSize: ds.fontSize(13),
-                  lineHeight: ds.fontSize(18),
-                  color: glassColors.textSecondary,
-                }}
-              >
-                Use placeholders to keep exports consistent while still matching
-                the current Babytuna workflow.
-              </Text>
-
               <TextInput
                 value={template}
                 onChangeText={setTemplate}
@@ -171,7 +158,6 @@ export default function ExportFormatSettingsScreen() {
 
             <SettingsSectionLabel
               label="Placeholders"
-              description="These values are inserted automatically when the export message is generated."
             />
 
             <GlassSurface

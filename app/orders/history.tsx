@@ -210,13 +210,13 @@ export default function OrdersScreen() {
         <View className="flex-row items-center flex-1">
           <TouchableOpacity
             onPress={() => {
-              if (backTarget) {
-                router.replace(backTarget);
+              if (router.canGoBack()) {
+                router.back();
                 return;
               }
 
-              if (router.canGoBack()) {
-                router.back();
+              if (backTarget) {
+                router.replace(backTarget);
                 return;
               }
 

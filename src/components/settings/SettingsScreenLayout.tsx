@@ -93,7 +93,6 @@ export function SettingsGroup({ children, style }: SettingsGroupProps) {
 
 export function SettingsSectionLabel({
   label,
-  description,
 }: SettingsSectionLabelProps) {
   const ds = useScaledStyles();
 
@@ -102,55 +101,19 @@ export function SettingsSectionLabel({
       style={{
         paddingHorizontal: glassSpacing.screen,
         paddingTop: ds.spacing(18),
-        paddingBottom: ds.spacing(10),
+        paddingBottom: ds.spacing(12),
       }}
     >
-      <View
+      <Text
         style={{
-          flexDirection: 'row',
-          alignItems: 'center',
+          fontSize: ds.fontSize(18),
+          fontWeight: '700',
+          color: glassColors.textPrimary,
+          letterSpacing: -0.2,
         }}
       >
-        <View
-          style={{
-            width: ds.spacing(18),
-            height: 1,
-            marginRight: ds.spacing(8),
-            backgroundColor: glassColors.divider,
-          }}
-        />
-        <View
-          style={{
-            width: ds.spacing(6),
-            height: ds.spacing(6),
-            marginRight: ds.spacing(8),
-            borderRadius: glassRadii.round,
-            backgroundColor: glassColors.accentSoft,
-          }}
-        />
-        <Text
-          style={{
-            fontSize: ds.fontSize(11),
-            fontWeight: '700',
-            color: glassColors.textSecondary,
-            letterSpacing: 0.5,
-            textTransform: 'uppercase',
-          }}
-        >
-          {label}
-        </Text>
-      </View>
-      {description ? (
-        <Text
-          style={{
-            marginTop: ds.spacing(6),
-            fontSize: ds.fontSize(12),
-            color: glassColors.textSecondary,
-          }}
-        >
-          {description}
-        </Text>
-      ) : null}
+        {label}
+      </Text>
     </View>
   );
 }

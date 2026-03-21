@@ -21,7 +21,6 @@ import {
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import {
   ChangePasswordModal,
-  SettingsSectionLabel,
 } from '@/components/settings';
 import { useAuthStore, useSettingsStore } from '@/store';
 import { colors } from '@/constants';
@@ -52,25 +51,22 @@ function ProfileInfoRow({
     <View
       style={{
         paddingHorizontal: ds.spacing(16),
-        paddingVertical: ds.spacing(14),
-        borderBottomWidth: showBorder ? glassHairlineWidth : 0,
-        borderBottomColor: glassColors.divider,
+        paddingTop: ds.spacing(12),
+        paddingBottom: showBorder ? 0 : ds.spacing(4),
       }}
     >
-      <Text
-        style={{
-          fontSize: ds.fontSize(11),
-          fontWeight: '700',
-          color: glassColors.textSecondary,
-          letterSpacing: 0.4,
-          textTransform: 'uppercase',
-        }}
-      >
-        {label}
-      </Text>
       <View
         style={{
-          marginTop: ds.spacing(8),
+          paddingHorizontal: ds.spacing(14),
+          paddingVertical: ds.spacing(14),
+          borderWidth: 1,
+          borderColor: 'rgba(15, 23, 42, 0.1)',
+          borderRadius: glassRadii.button,
+          backgroundColor: glassColors.background,
+          shadowColor: 'rgba(15, 23, 42, 0.04)',
+          shadowOpacity: 1,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 2 },
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -84,34 +80,55 @@ function ProfileInfoRow({
             paddingRight: ds.spacing(10),
           }}
         >
-          <View
-            style={{
-              width: Math.max(36, ds.icon(34)),
-              height: Math.max(36, ds.icon(34)),
-              borderRadius: glassRadii.iconTile,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: glassColors.mediumFill,
-            }}
-          >
-            <Ionicons
-              name={icon}
-              size={ds.icon(17)}
-              color={glassColors.textSecondary}
-            />
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontSize: ds.fontSize(11),
+                fontWeight: '700',
+                color: glassColors.textSecondary,
+                letterSpacing: 0.4,
+                textTransform: 'uppercase',
+              }}
+            >
+              {label}
+            </Text>
+            <View
+              style={{
+                marginTop: ds.spacing(8),
+                flexDirection: 'row',
+                alignItems: 'center',
+              }}
+            >
+              <View
+                style={{
+                  width: Math.max(36, ds.icon(34)),
+                  height: Math.max(36, ds.icon(34)),
+                  borderRadius: glassRadii.iconTile,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: glassColors.mediumFill,
+                }}
+              >
+                <Ionicons
+                  name={icon}
+                  size={ds.icon(17)}
+                  color={glassColors.textSecondary}
+                />
+              </View>
+              <Text
+                style={{
+                  flex: 1,
+                  marginLeft: ds.spacing(10),
+                  fontSize: ds.fontSize(15),
+                  color: glassColors.textPrimary,
+                  fontWeight: '600',
+                }}
+                numberOfLines={2}
+              >
+                {value}
+              </Text>
+            </View>
           </View>
-          <Text
-            style={{
-              flex: 1,
-              marginLeft: ds.spacing(10),
-              fontSize: ds.fontSize(15),
-              color: glassColors.textPrimary,
-              fontWeight: '600',
-            }}
-            numberOfLines={2}
-          >
-            {value}
-          </Text>
         </View>
         {right}
       </View>
@@ -144,13 +161,13 @@ function ActionButton({
       style={{
         minHeight: Math.max(48, ds.buttonH),
         borderRadius: glassRadii.button,
-        borderWidth: glassHairlineWidth,
+        borderWidth: 1,
         borderColor: destructive
           ? 'rgba(239, 68, 68, 0.16)'
-          : glassColors.controlBorder,
+          : 'rgba(15, 23, 42, 0.12)',
         backgroundColor: destructive
           ? glassColors.dangerSoft
-          : glassColors.mediumFill,
+          : glassColors.background,
         alignItems: 'center',
         justifyContent: 'center',
         flexDirection: 'row',
@@ -280,16 +297,12 @@ export default function ManagerProfileSettingsScreen() {
         </View>
 
         <View style={{ flex: 1 }}>
-          <SettingsSectionLabel
-            label="Identity"
-            description="Keep manager account details readable and aligned with the rest of the polished Babytuna app."
-          />
-
           <GlassSurface
             intensity="subtle"
             blurred={false}
             style={{
               marginHorizontal: glassSpacing.screen,
+              marginTop: ds.spacing(18),
               borderRadius: glassRadii.surface,
               overflow: 'hidden',
             }}

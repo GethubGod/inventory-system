@@ -2,6 +2,25 @@ import type { ItemCategory } from '@/types';
 
 export const BROWSE_INVENTORY_ROUTE = '/inventory-browse' as const;
 
+export interface BrowseInventoryRouteParams {
+  [key: string]: string | undefined;
+  category?: string;
+  focusSearch?: '1';
+  focusItemId?: string;
+  expandItem?: '1';
+  addItem?: '1';
+  requestId?: string;
+}
+
+export interface BrowseInventoryNavigationOptions {
+  category?: ItemCategory | null;
+  focusSearch?: boolean;
+  focusItemId?: string | null;
+  expandItem?: boolean;
+  addItem?: boolean;
+  requestId?: string | null;
+}
+
 export const CATEGORY_ORDER: ItemCategory[] = [
   'fish',
   'protein',
@@ -32,4 +51,22 @@ export function isBrowseCategory(value: string | null | undefined): value is Ite
   }
 
   return CATEGORY_ORDER.includes(value as ItemCategory);
+}
+
+export function createBrowseInventoryRouteParams({
+  category = null,
+  focusSearch = false,
+  focusItemId = null,
+  expandItem = false,
+  addItem = false,
+  requestId = null,
+}: BrowseInventoryNavigationOptions = {}): BrowseInventoryRouteParams {
+  return {
+    ...(category ? { category } : {}),
+    ...(focusSearch ? { focusSearch: '1' } : {}),
+    ...(focusItemId ? { focusItemId } : {}),
+    ...(expandItem ? { expandItem: '1' } : {}),
+    ...(addItem ? { addItem: '1' } : {}),
+    ...(requestId ? { requestId } : {}),
+  };
 }

@@ -13,7 +13,7 @@ import { SettingsRow, settingsIconPalettes } from '@/components/settings';
 import { BrandLogo, GlassSurface } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
-  buildSettingsPath,
+  buildSettingsHref,
   EMPLOYEE_SETTINGS_ROOT,
 } from '@/lib/settingsNavigation';
 import {
@@ -91,7 +91,7 @@ export default function SettingsScreen() {
             subtitle="Manage your account details"
             onPress={() =>
               router.push(
-                buildSettingsPath('/settings/profile', {
+                buildSettingsHref('/settings/profile', {
                   origin: 'employee',
                   backTo: EMPLOYEE_SETTINGS_ROOT,
                 }),
@@ -114,7 +114,7 @@ export default function SettingsScreen() {
             subtitle="Text size, button size, and interaction settings"
             onPress={() =>
               router.push(
-                buildSettingsPath('/settings/display-accessibility', {
+                buildSettingsHref('/settings/display-accessibility', {
                   origin: 'employee',
                   backTo: EMPLOYEE_SETTINGS_ROOT,
                 }),
@@ -137,7 +137,7 @@ export default function SettingsScreen() {
             subtitle="Control alerts, sounds, and quiet hours"
             onPress={() =>
               router.push(
-                buildSettingsPath('/settings/notifications', {
+                buildSettingsHref('/settings/notifications', {
                   origin: 'employee',
                   backTo: EMPLOYEE_SETTINGS_ROOT,
                 }),
@@ -160,7 +160,7 @@ export default function SettingsScreen() {
             subtitle="Configure quick and custom reminders"
             onPress={() =>
               router.push(
-                buildSettingsPath('/settings/reminders', {
+                buildSettingsHref('/settings/reminders', {
                   origin: 'employee',
                   backTo: EMPLOYEE_SETTINGS_ROOT,
                 }),
@@ -183,7 +183,7 @@ export default function SettingsScreen() {
             subtitle="Tune stock warning preferences"
             onPress={() =>
               router.push(
-                buildSettingsPath('/settings/stock-settings', {
+                buildSettingsHref('/settings/stock-settings', {
                   origin: 'employee',
                   backTo: EMPLOYEE_SETTINGS_ROOT,
                 }),
@@ -206,7 +206,7 @@ export default function SettingsScreen() {
             subtitle="Version info, support, and policies"
             onPress={() =>
               router.push(
-                buildSettingsPath('/settings/about-support', {
+                buildSettingsHref('/settings/about-support', {
                   origin: 'employee',
                   backTo: EMPLOYEE_SETTINGS_ROOT,
                 }),

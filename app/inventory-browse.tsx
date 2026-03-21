@@ -19,9 +19,17 @@ export default function InventoryBrowseRoute() {
   const params = useLocalSearchParams<{
     category?: string | string[];
     focusSearch?: string | string[];
+    focusItemId?: string | string[];
+    expandItem?: string | string[];
+    addItem?: string | string[];
+    requestId?: string | string[];
   }>();
   const categoryParam = getParamValue(params.category);
   const focusSearchParam = getParamValue(params.focusSearch);
+  const focusItemIdParam = getParamValue(params.focusItemId);
+  const expandItemParam = getParamValue(params.expandItem);
+  const addItemParam = getParamValue(params.addItem);
+  const requestIdParam = getParamValue(params.requestId);
 
   if (!session) {
     return <Redirect href="/(auth)/login" />;
@@ -48,6 +56,10 @@ export default function InventoryBrowseRoute() {
       <EmployeeBrowseInventoryScreen
         initialCategory={isBrowseCategory(categoryParam) ? categoryParam : null}
         autoFocusSearch={focusSearchParam === '1'}
+        initialFocusItemId={focusItemIdParam ?? null}
+        autoExpandFocusedItem={expandItemParam === '1'}
+        addFocusedItemOnArrival={addItemParam === '1'}
+        focusRequestId={requestIdParam ?? null}
       />
     </>
   );

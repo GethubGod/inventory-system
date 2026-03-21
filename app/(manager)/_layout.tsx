@@ -368,28 +368,28 @@ export default function ManagerLayout() {
         }}
       />
       <Tabs.Screen
-        name="settings/export-format"
+        name="manager-settings/export-format"
         options={{
           href: null,
           tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
-        name="settings/user-management"
+        name="manager-settings/user-management"
         options={{
           href: null,
           tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
-        name="settings/profile"
+        name="manager-settings/profile"
         options={{
           href: null,
           tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
-        name="settings/access-codes"
+        name="manager-settings/access-codes"
         options={{
           href: null,
           tabBarStyle: { display: "none" },

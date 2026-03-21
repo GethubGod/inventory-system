@@ -144,8 +144,8 @@ function RemindersSection({
 
       {reminders.enabled && (
         <>
-          <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
-            <Text style={{ fontSize: ds.fontSize(11), color: glassColors.textSecondary }}>
+          <View style={{ paddingHorizontal: ds.spacing(16), paddingTop: ds.spacing(12), paddingBottom: ds.spacing(8) }}>
+            <Text style={{ fontSize: ds.fontSize(15), fontWeight: '600', color: glassColors.textPrimary }}>
               Quick Reminders
             </Text>
           </View>
@@ -189,8 +189,8 @@ function RemindersSection({
             }}
           />
 
-          <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
-            <Text style={{ fontSize: ds.fontSize(11), color: glassColors.textSecondary }}>
+          <View style={{ paddingHorizontal: ds.spacing(16), paddingTop: ds.spacing(12), paddingBottom: ds.spacing(8) }}>
+            <Text style={{ fontSize: ds.fontSize(15), fontWeight: '600', color: glassColors.textPrimary }}>
               Custom Reminders
             </Text>
           </View>
@@ -269,7 +269,6 @@ export default function RemindersSettingsScreen() {
       <SettingsGroup>
         <SettingsSectionLabel
           label="Control Panel"
-          description="Keep quick reminders and custom schedules together in one quiet, editable workspace."
         />
         <View
           style={{

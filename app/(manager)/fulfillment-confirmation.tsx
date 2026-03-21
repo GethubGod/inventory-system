@@ -2497,7 +2497,7 @@ export default function FulfillmentConfirmationScreen() {
               <Text className="text-xs text-gray-500">Review Order</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={() => router.push('/(manager)/settings/export-format')} className="p-2">
+          <TouchableOpacity onPress={() => router.push('/(manager)/manager-settings/export-format')} className="p-2">
             <Ionicons name="create-outline" size={18} color={colors.gray[600]} />
           </TouchableOpacity>
         </View>
@@ -2602,7 +2602,7 @@ export default function FulfillmentConfirmationScreen() {
                 <View className="flex-row items-center justify-between mb-2">
                   <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Message Preview</Text>
                   <TouchableOpacity
-                    onPress={() => router.push('/(manager)/settings/export-format')}
+                    onPress={() => router.push('/(manager)/manager-settings/export-format')}
                     className="flex-row items-center"
                   >
                     <Ionicons name="create-outline" size={14} color={colors.primary[500]} />

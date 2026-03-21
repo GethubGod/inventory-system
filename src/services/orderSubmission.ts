@@ -204,8 +204,13 @@ export async function submitOrder(req: SubmitOrderRequest): Promise<SubmitOrderR
       );
     }
 
+    // In dev, surface the DB detail for debugging; in prod, show a clean message
+    const userMessage = __DEV__
+      ? `Failed to submit order: ${detail}`
+      : 'Failed to submit order. Please try again.';
+
     throw new OrderSubmissionError(
-      `Failed to submit order: ${detail}`,
+      userMessage,
       response.status >= 500,
       `HTTP_${response.status}`,
     );

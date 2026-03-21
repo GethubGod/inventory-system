@@ -20,7 +20,7 @@ import {
   syncNotificationPreference,
 } from '@/services/notificationService';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { buildSettingsPath } from '@/lib/settingsNavigation';
+import { buildSettingsHref, buildSettingsPath } from '@/lib/settingsNavigation';
 import { useSettingsNavigationContext } from '@/hooks/useSettingsBackRoute';
 import { glassColors, glassHairlineWidth, glassRadii, glassSpacing } from '@/design/tokens';
 
@@ -96,8 +96,8 @@ function NotificationsSection() {
 
       {notifications.pushEnabled && (
         <>
-          <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
-            <Text style={{ fontSize: ds.fontSize(11), color: glassColors.textSecondary }}>
+          <View style={{ paddingHorizontal: ds.spacing(16), paddingTop: ds.spacing(12), paddingBottom: ds.spacing(8) }}>
+            <Text style={{ fontSize: ds.fontSize(15), fontWeight: '600', color: glassColors.textPrimary }}>
               Notification Types
             </Text>
           </View>
@@ -134,8 +134,8 @@ function NotificationsSection() {
             }}
           />
 
-          <View style={{ paddingHorizontal: ds.spacing(16), paddingVertical: ds.spacing(8) }}>
-            <Text style={{ fontSize: ds.fontSize(11), color: glassColors.textSecondary }}>
+          <View style={{ paddingHorizontal: ds.spacing(16), paddingTop: ds.spacing(12), paddingBottom: ds.spacing(8) }}>
+            <Text style={{ fontSize: ds.fontSize(15), fontWeight: '600', color: glassColors.textPrimary }}>
               Sound & Vibration
             </Text>
           </View>
@@ -208,7 +208,6 @@ export default function NotificationsSettingsScreen() {
       <SettingsGroup>
         <SettingsSectionLabel
           label="Delivery"
-          description="Control the alerts and timing details you actually want to see."
         />
         <View
           style={{
@@ -226,7 +225,7 @@ export default function NotificationsSettingsScreen() {
         <TouchableOpacity
           onPress={() =>
             router.push(
-              buildSettingsPath('/settings/notifications-debug', {
+              buildSettingsHref('/settings/notifications-debug', {
                 origin,
                 backTo: buildSettingsPath('/settings/notifications', {
                   origin,

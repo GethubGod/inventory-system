@@ -13,7 +13,7 @@ import {
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { ChangePasswordModal, SettingsGroup, SettingsScreenLayout, SettingsSectionLabel } from '@/components/settings';
+import { ChangePasswordModal, SettingsGroup, SettingsScreenLayout } from '@/components/settings';
 import { useAuthStore, useSettingsStore } from '@/store';
 import { colors } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -40,25 +40,21 @@ function ProfileInfoRow({
     <View
       style={{
         paddingHorizontal: ds.spacing(16),
-        paddingVertical: ds.spacing(14),
-        borderBottomWidth: glassHairlineWidth,
-        borderBottomColor: glassColors.divider,
+        paddingTop: ds.spacing(12),
       }}
     >
-      <Text
-        style={{
-          fontSize: ds.fontSize(11),
-          fontWeight: '700',
-          color: glassColors.textSecondary,
-          letterSpacing: 0.4,
-          textTransform: 'uppercase',
-        }}
-      >
-        {label}
-      </Text>
       <View
         style={{
-          marginTop: ds.spacing(8),
+          paddingHorizontal: ds.spacing(14),
+          paddingVertical: ds.spacing(14),
+          borderWidth: 1,
+          borderColor: 'rgba(15, 23, 42, 0.1)',
+          borderRadius: glassRadii.button,
+          backgroundColor: glassColors.background,
+          shadowColor: 'rgba(15, 23, 42, 0.04)',
+          shadowOpacity: 1,
+          shadowRadius: 8,
+          shadowOffset: { width: 0, height: 2 },
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -72,34 +68,55 @@ function ProfileInfoRow({
             paddingRight: ds.spacing(10),
           }}
         >
-          <View
-            style={{
-              width: Math.max(36, ds.icon(34)),
-              height: Math.max(36, ds.icon(34)),
-              borderRadius: glassRadii.iconTile,
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: glassColors.mediumFill,
-            }}
-          >
-            <Ionicons
-              name={icon}
-              size={ds.icon(17)}
-              color={glassColors.textSecondary}
-            />
+          <View style={{ flex: 1 }}>
+            <Text
+              style={{
+                fontSize: ds.fontSize(11),
+                fontWeight: '700',
+                color: glassColors.textSecondary,
+                letterSpacing: 0.4,
+                textTransform: 'uppercase',
+              }}
+            >
+              {label}
+            </Text>
+            <View
+              style={{
+                marginTop: ds.spacing(8),
+                flexDirection: 'row',
+                alignItems: 'center',
+              }}
+            >
+              <View
+                style={{
+                  width: Math.max(36, ds.icon(34)),
+                  height: Math.max(36, ds.icon(34)),
+                  borderRadius: glassRadii.iconTile,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: glassColors.mediumFill,
+                }}
+              >
+                <Ionicons
+                  name={icon}
+                  size={ds.icon(17)}
+                  color={glassColors.textSecondary}
+                />
+              </View>
+              <Text
+                style={{
+                  flex: 1,
+                  marginLeft: ds.spacing(10),
+                  fontSize: ds.fontSize(15),
+                  color: glassColors.textPrimary,
+                  fontWeight: '600',
+                }}
+                numberOfLines={2}
+              >
+                {value}
+              </Text>
+            </View>
           </View>
-          <Text
-            style={{
-              flex: 1,
-              marginLeft: ds.spacing(10),
-              fontSize: ds.fontSize(15),
-              color: glassColors.textPrimary,
-              fontWeight: '600',
-            }}
-            numberOfLines={2}
-          >
-            {value}
-          </Text>
         </View>
         {right}
       </View>
@@ -132,13 +149,13 @@ function ActionButton({
       style={{
         minHeight: Math.max(48, ds.buttonH),
         borderRadius: glassRadii.button,
-        borderWidth: glassHairlineWidth,
+        borderWidth: 1,
         borderColor: destructive
           ? 'rgba(239, 68, 68, 0.16)'
-          : glassColors.controlBorder,
+          : 'rgba(15, 23, 42, 0.12)',
         backgroundColor: destructive
           ? glassColors.dangerSoft
-          : glassColors.mediumFill,
+          : glassColors.background,
         alignItems: 'center',
         justifyContent: 'center',
         flexDirection: 'row',
@@ -256,12 +273,7 @@ export default function ProfileSettingsScreen() {
 
   return (
     <SettingsScreenLayout title="Profile">
-      <SettingsSectionLabel
-        label="Identity"
-        description="Keep account details readable and intentional without drifting away from the refined Babytuna system."
-      />
-
-      <SettingsGroup>
+      <SettingsGroup style={{ marginTop: ds.spacing(18) }}>
         <View
           style={{
             paddingHorizontal: ds.spacing(16),

@@ -1,8 +1,8 @@
 import { Alert, Platform } from 'react-native';
 import { useCallback } from 'react';
 import * as Haptics from 'expo-haptics';
-import { useShallow } from 'zustand/react/shallow';
-import { useAuthStore, useOrderStore } from '@/store';
+import { useOrderStore } from '@/store';
+import { useResolvedActiveLocation } from './useResolvedActiveLocation';
 import type { HistoricalOrderSummary, PredictedOrderItem } from '@/features/ordering/orderInsights';
 import type { InventoryItem, UnitType } from '@/types';
 import type { AddToCartOptions } from '@/store/orderStore';
@@ -14,33 +14,17 @@ function triggerLightHaptic() {
 }
 
 export function useEmployeeCartActions() {
-  const {
-    location,
-    locations,
-    setLocation,
-  } = useAuthStore(
-    useShallow((state) => ({
-      location: state.location,
-      locations: state.locations,
-      setLocation: state.setLocation,
-    })),
-  );
+  const { location } = useResolvedActiveLocation();
   const addToCart = useOrderStore((state) => state.addToCart);
 
   const resolveLocationId = useCallback(() => {
-    const activeLocation = location ?? locations[0] ?? null;
-
-    if (!activeLocation?.id) {
+    if (!location?.id) {
       Alert.alert('Select a location', 'Choose a location before adding items.');
       return null;
     }
 
-    if (!location) {
-      setLocation(activeLocation);
-    }
-
-    return activeLocation.id;
-  }, [location, locations, setLocation]);
+    return location.id;
+  }, [location]);
 
   const addLineItem = useCallback(
     (
@@ -107,7 +91,7 @@ export function useEmployeeCartActions() {
   );
 
   return {
-    activeLocationId: location?.id ?? locations[0]?.id ?? null,
+    activeLocationId: location?.id ?? null,
     addInventoryItem,
     addPredictedItem,
     addLineItem,

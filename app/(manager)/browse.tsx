@@ -7,11 +7,9 @@ import {
   TextInput,
   RefreshControl,
   ScrollView,
-  LayoutAnimation,
   Platform,
-  UIManager,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -19,25 +17,17 @@ import { useShallow } from "zustand/react/shallow";
 import { useInventoryStore, useAuthStore, useOrderStore } from "@/store";
 import { InventoryItem, ItemCategory, Location } from "@/types";
 import { CATEGORY_LABELS } from "@/constants";
-import { BrandLogo, GlassSurface } from "@/components";
+import { FloatingLocationSelector, GlassSurface } from "@/components";
 import { InventoryItemCard } from "@/components/InventoryItemCard";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
+import { useResolvedActiveLocation } from "@/hooks/useResolvedActiveLocation";
 import {
   categoryGlassTints,
   glassColors,
-  glassHairlineWidth,
   glassRadii,
   glassSpacing,
-  glassTabBarHeight,
   glassTypography,
 } from "@/design/tokens";
-
-if (
-  Platform.OS === "android" &&
-  UIManager.setLayoutAnimationEnabledExperimental
-) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 const categories: ItemCategory[] = [
   "fish",
@@ -70,11 +60,10 @@ const CATEGORY_ICON_THEMES: Record<
 
 export default function ManagerBrowseScreen() {
   const ds = useScaledStyles();
-  const { location, locations, setLocation, fetchLocations } = useAuthStore(
+  const insets = useSafeAreaInsets();
+  const { location, locations, setLocation } = useResolvedActiveLocation();
+  const { fetchLocations } = useAuthStore(
     useShallow((state) => ({
-      location: state.location,
-      locations: state.locations,
-      setLocation: state.setLocation,
       fetchLocations: state.fetchLocations,
     })),
   );
@@ -87,9 +76,6 @@ export default function ManagerBrowseScreen() {
   const totalCartCount = useOrderStore((state) =>
     state.getTotalCartCount("manager"),
   );
-  const getLocationCartTotal = useOrderStore(
-    (state) => state.getLocationCartTotal,
-  );
 
   // Local state for category/search — independent from employee browse
   const [selectedCategory, setSelectedCategory] = useState<ItemCategory | null>(
@@ -97,21 +83,20 @@ export default function ManagerBrowseScreen() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [refreshing, setRefreshing] = useState(false);
-  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
 
   const headerIconButtonSize = Math.max(44, ds.icon(40));
   const badgeSize = Math.max(18, ds.icon(20));
+  const managerTabBarHeight =
+    Math.round(58 * (ds.isLarge ? 1.1 : 1)) +
+    Math.max(insets.bottom, glassSpacing.tabBarBottom);
+  const floatingSelectorBottomOffset = managerTabBarHeight + ds.spacing(14);
+  const floatingSelectorReservedSpace =
+    floatingSelectorBottomOffset + ds.spacing(96);
 
   useEffect(() => {
     fetchItems();
     fetchLocations();
   }, [fetchItems, fetchLocations]);
-
-  useEffect(() => {
-    if (locations.length > 0 && !location) {
-      setLocation(locations[0]);
-    }
-  }, [locations, location, setLocation]);
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -132,21 +117,15 @@ export default function ManagerBrowseScreen() {
     setRefreshing(false);
   }, [fetchItems]);
 
-  const toggleLocationDropdown = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setShowLocationDropdown((prev) => !prev);
-  }, []);
-
   const handleSelectLocation = useCallback(
     (selectedLocation: Location) => {
-      if (Platform.OS !== "web") {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      if (selectedLocation.id === location?.id) {
+        return;
       }
+
       setLocation(selectedLocation);
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setShowLocationDropdown(false);
     },
-    [setLocation],
+    [location?.id, setLocation],
   );
 
   const handleSelectCategory = useCallback((category: ItemCategory) => {
@@ -166,7 +145,7 @@ export default function ManagerBrowseScreen() {
     ({ item }: { item: InventoryItem }) => (
       <InventoryItemCard
         item={item}
-        locationId={location?.id || ""}
+        locationId={location?.id ?? null}
         cartContext="manager"
       />
     ),
@@ -207,54 +186,34 @@ export default function ManagerBrowseScreen() {
             </TouchableOpacity>
           </GlassSurface>
 
-          <View className="flex-1" />
-
-          <GlassSurface
-            intensity="medium"
+          <View
             style={{
-              flexShrink: 1,
-              marginRight: glassSpacing.gap,
-              borderRadius: glassRadii.pill,
+              flex: 1,
+              marginLeft: ds.spacing(12),
+              paddingTop: ds.spacing(2),
             }}
           >
-            <TouchableOpacity
-              onPress={toggleLocationDropdown}
-              className="flex-row items-center"
+            <Text
               style={{
-                minHeight: headerIconButtonSize,
-                paddingHorizontal: ds.spacing(14),
+                fontSize: ds.fontSize(28),
+                fontWeight: "700",
+                color: glassColors.textPrimary,
+                letterSpacing: -0.5,
               }}
-              activeOpacity={0.7}
             >
-              <View
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: glassRadii.round,
-                  backgroundColor: glassColors.accent,
-                  marginRight: ds.spacing(8),
-                }}
-              />
-              <Text
-                style={{
-                  fontSize: ds.fontSize(13),
-                  fontWeight: "500",
-                  color: glassColors.textPrimary,
-                  marginRight: ds.spacing(6),
-                  maxWidth: ds.spacing(160),
-                }}
-                numberOfLines={1}
-                ellipsizeMode="tail"
-              >
-                {location?.name || "Select Location"}
-              </Text>
-              <Ionicons
-                name={showLocationDropdown ? "chevron-up" : "chevron-down"}
-                size={ds.icon(14)}
-                color={glassColors.textSecondary}
-              />
-            </TouchableOpacity>
-          </GlassSurface>
+              Browse
+            </Text>
+            <Text
+              style={{
+                marginTop: ds.spacing(4),
+                fontSize: ds.fontSize(12),
+                color: glassColors.textSecondary,
+              }}
+            >
+              {filteredItems.length} items
+              {selectedCategory ? "" : " · manager inventory"}
+            </Text>
+          </View>
 
           <GlassSurface
             intensity="medium"
@@ -303,92 +262,6 @@ export default function ManagerBrowseScreen() {
             </TouchableOpacity>
           </GlassSurface>
         </View>
-
-        {showLocationDropdown && (
-          <GlassSurface
-            intensity="strong"
-            style={{
-              marginTop: ds.spacing(10),
-              borderRadius: glassRadii.surface,
-            }}
-          >
-            <View>
-              {locations.map((loc, index) => {
-                const isSelected = location?.id === loc.id;
-                const cartCount = getLocationCartTotal(loc.id, "manager");
-
-                return (
-                  <TouchableOpacity
-                    key={loc.id}
-                    onPress={() => handleSelectLocation(loc)}
-                    activeOpacity={0.7}
-                    className="flex-row items-center justify-between"
-                    style={{
-                      minHeight: ds.rowH,
-                      paddingHorizontal: ds.spacing(16),
-                      paddingVertical: ds.spacing(12),
-                      borderTopWidth: index > 0 ? glassHairlineWidth : 0,
-                      borderTopColor: glassColors.divider,
-                    }}
-                  >
-                    <View className="flex-row items-center flex-1">
-                      <View
-                        style={{
-                          width: ds.icon(32),
-                          height: ds.icon(32),
-                          marginRight: ds.spacing(12),
-                          borderRadius: glassRadii.round,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: isSelected
-                            ? glassColors.accentSoft
-                            : glassColors.mediumFill,
-                        }}
-                      >
-                        <BrandLogo
-                          variant="inline"
-                          size={16}
-                          colorMode="light"
-                        />
-                      </View>
-                      <Text
-                        style={{
-                          fontSize: ds.fontSize(13),
-                          fontWeight: isSelected ? "500" : "400",
-                          color: isSelected
-                            ? glassColors.accent
-                            : glassColors.textPrimary,
-                        }}
-                      >
-                        {loc.name}
-                      </Text>
-                    </View>
-                    <View className="flex-row items-center">
-                      {cartCount > 0 && (
-                        <Text
-                          style={{
-                            color: glassColors.textSecondary,
-                            fontSize: ds.fontSize(11),
-                            marginRight: ds.spacing(8),
-                          }}
-                        >
-                          {cartCount} items
-                        </Text>
-                      )}
-                      {isSelected && (
-                        <Ionicons
-                          name="checkmark"
-                          size={ds.icon(18)}
-                          color={glassColors.accent}
-                        />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </GlassSurface>
-        )}
       </View>
 
       <View
@@ -445,7 +318,7 @@ export default function ManagerBrowseScreen() {
           contentContainerStyle={{
             paddingHorizontal: glassSpacing.screen,
             paddingTop: ds.spacing(4),
-            paddingBottom: glassTabBarHeight + ds.spacing(20),
+            paddingBottom: floatingSelectorReservedSpace,
           }}
           refreshControl={
             <RefreshControl
@@ -603,7 +476,7 @@ export default function ManagerBrowseScreen() {
             keyExtractor={(item) => item.id}
             contentContainerStyle={{
               paddingHorizontal: glassSpacing.screen,
-              paddingBottom: glassTabBarHeight + ds.spacing(20),
+              paddingBottom: floatingSelectorReservedSpace,
             }}
             ItemSeparatorComponent={() => (
               <View style={{ height: ds.spacing(12) }} />
@@ -642,6 +515,14 @@ export default function ManagerBrowseScreen() {
           />
         </>
       )}
+
+      <FloatingLocationSelector
+        locations={locations}
+        selectedLocation={location}
+        onSelectLocation={handleSelectLocation}
+        cartContext="manager"
+        bottomOffset={floatingSelectorBottomOffset}
+      />
     </SafeAreaView>
   );
 }

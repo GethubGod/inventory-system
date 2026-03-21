@@ -17,7 +17,7 @@ import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 interface InventoryItemCardProps {
   item: InventoryItem;
-  locationId: string;
+  locationId: string | null;
   cartContext?: CartContext;
   hideCategory?: boolean;
 }
@@ -41,7 +41,13 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
   const updateCartItem = useOrderStore((state) => state.updateCartItem);
   const removeFromCart = useOrderStore((state) => state.removeFromCart);
   const cartItem = useOrderStore(
-    useCallback((state) => state.getCartItem(locationId, item.id, cartContext), [locationId, item.id, cartContext])
+    useCallback(
+      (state) =>
+        locationId
+          ? state.getCartItem(locationId, item.id, cartContext)
+          : undefined,
+      [locationId, item.id, cartContext],
+    ),
   );
   const ds = useScaledStyles();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -66,6 +72,10 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
     }
   }, [cartItem]);
 
+  useEffect(() => {
+    setIsExpanded(false);
+  }, [locationId]);
+
   const categoryColor = categoryColors[item.category] || glassColors.textTertiary;
   const categoryTint = categoryGlassTints[item.category];
   const showControls = isExpanded || Boolean(cartItem);
@@ -81,6 +91,11 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
   const isRemainingValid = Number.isFinite(parsedRemaining) && parsedRemaining >= 0;
 
   const handleAddToCart = () => {
+    if (!locationId) {
+      Alert.alert('Select a location', 'Choose a location before adding items.');
+      return;
+    }
+
     if (inputMode === 'quantity') {
       const qty = Number.parseFloat(quantity);
       if (qty > 0) {
@@ -119,7 +134,7 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
     setQuantity(sanitized);
 
     const qty = Number.parseFloat(sanitized);
-    if (!sanitized || !Number.isFinite(qty) || qty <= 0 || !cartItem) {
+    if (!locationId || !sanitized || !Number.isFinite(qty) || qty <= 0 || !cartItem) {
       return;
     }
 
@@ -136,7 +151,7 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
     setRemaining(sanitized);
     const rem = Number.parseFloat(sanitized);
 
-    if (!sanitized || !Number.isFinite(rem) || rem < 0 || !cartItem) {
+    if (!locationId || !sanitized || !Number.isFinite(rem) || rem < 0 || !cartItem) {
       return;
     }
 
@@ -149,6 +164,11 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
   };
 
   const handleIncrement = () => {
+    if (!locationId) {
+      Alert.alert('Select a location', 'Choose a location before adding items.');
+      return;
+    }
+
     if (inputMode === 'quantity') {
       const current = Number.parseFloat(quantity) || 0;
       const next = current + 1;
@@ -182,6 +202,11 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
   };
 
   const handleDecrement = () => {
+    if (!locationId) {
+      Alert.alert('Select a location', 'Choose a location before adding items.');
+      return;
+    }
+
     if (inputMode === 'quantity') {
       const current = Number.parseFloat(quantity) || 0;
       const next = Math.max(0, current - 1);
@@ -219,6 +244,11 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
   };
 
   const toggleUnit = () => {
+    if (!locationId) {
+      Alert.alert('Select a location', 'Choose a location before adding items.');
+      return;
+    }
+
     const newUnit = unitType === 'base' ? 'pack' : 'base';
     setUnitType(newUnit);
 
@@ -249,6 +279,11 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
   };
 
   const handleModeChange = (mode: OrderInputMode) => {
+    if (!locationId) {
+      Alert.alert('Select a location', 'Choose a location before adding items.');
+      return;
+    }
+
     setInputMode(mode);
 
     if (!cartItem) return;
@@ -276,6 +311,11 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
   };
 
   const handleExpandToAdd = () => {
+    if (!locationId) {
+      Alert.alert('Select a location', 'Choose a location before adding items.');
+      return;
+    }
+
     setInputMode('quantity');
     setQuantity('1');
     setRemaining('0');
