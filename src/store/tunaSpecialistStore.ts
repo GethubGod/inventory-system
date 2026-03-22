@@ -1,8 +1,12 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
-import * as Haptics from 'expo-haptics';
+import {
+  triggerImpactHaptic,
+  triggerNotificationHaptic,
+  ImpactFeedbackStyle,
+  NotificationFeedbackType,
+} from '@/lib/haptics';
 import NetInfo, { NetInfoSubscription } from '@react-native-community/netinfo';
 import { supabase } from '@/lib/supabase';
 import type { EventSubscription } from 'expo-modules-core';
@@ -114,17 +118,7 @@ function generateId(): string {
   return `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function haptic(style: Haptics.ImpactFeedbackStyle) {
-  if (Platform.OS !== 'web') {
-    Haptics.impactAsync(style).catch(() => {});
-  }
-}
 
-function hapticNotification(type: Haptics.NotificationFeedbackType) {
-  if (Platform.OS !== 'web') {
-    Haptics.notificationAsync(type).catch(() => {});
-  }
-}
 
 async function invokeEdgeFunction(body: Record<string, unknown>, timeoutMs = 30_000) {
   const controller = new AbortController();
@@ -260,7 +254,7 @@ async function performSendToGemini(
     };
 
     if (parsedItems.length > 0) {
-      hapticNotification(Haptics.NotificationFeedbackType.Success);
+      triggerNotificationHaptic(NotificationFeedbackType.Success);
     }
 
     set((state: TunaSpecialistState) => ({
@@ -277,7 +271,7 @@ async function performSendToGemini(
       ? "I'm taking too long. Try again with a shorter order."
       : "Something went wrong. Try again.";
 
-    hapticNotification(Haptics.NotificationFeedbackType.Error);
+    triggerNotificationHaptic(NotificationFeedbackType.Error);
 
     set((state: TunaSpecialistState) => ({
       conversation: [
@@ -344,7 +338,7 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
             } else {
               message = 'I had trouble hearing you. Move to a quieter spot and try again.';
             }
-            hapticNotification(Haptics.NotificationFeedbackType.Error);
+            triggerNotificationHaptic(NotificationFeedbackType.Error);
             set({ error: message, isListening: false, currentSpeaker: null });
           }),
         );
@@ -387,7 +381,7 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
           }
 
           set({ liveTranscript: '', finalTranscript: null, error: null });
-          haptic(Haptics.ImpactFeedbackStyle.Light);
+          triggerImpactHaptic(ImpactFeedbackStyle.Light);
 
           ExpoSpeechRecognitionModule.start({
             lang: 'en-US',
@@ -408,7 +402,7 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
         } catch {
           // May already be stopped
         }
-        haptic(Haptics.ImpactFeedbackStyle.Medium);
+        triggerImpactHaptic(ImpactFeedbackStyle.Medium);
         set({ isListening: false });
       },
 
@@ -496,7 +490,7 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
       },
 
       clearCart: () => {
-        hapticNotifyWarn();
+        triggerNotificationHaptic(NotificationFeedbackType.Warning);
         set({ cartItems: [], conversation: [], geminiHistory: [], offlineQueue: [] });
       },
 
@@ -534,8 +528,4 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
   ),
 );
 
-function hapticNotifyWarn() {
-  if (Platform.OS !== 'web') {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
-  }
-}
+

@@ -18,6 +18,7 @@ import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { SUPPLIER_CATEGORY_LABELS, colors } from '@/constants';
 import { useAuthStore, useOrderStore, useSettingsStore } from '@/store';
+import { useShallow } from 'zustand/react/shallow';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { FulfillmentConfirmItemRow, QuantityExportSelector } from '@/features/fulfillment/components';
@@ -524,8 +525,11 @@ export default function FulfillmentConfirmationScreen() {
     from?: string;
     remaining?: string;
   }>();
-  const { user, locations } = useAuthStore();
-  const { exportFormat } = useSettingsStore();
+  const { user, locations } = useAuthStore(useShallow((state) => ({
+    user: state.user,
+    locations: state.locations,
+  })));
+  const exportFormat = useSettingsStore((state) => state.exportFormat);
   const {
     createOrderLaterItem,
     fetchPendingFulfillmentOrders,
@@ -536,7 +540,17 @@ export default function FulfillmentConfirmationScreen() {
     removeSupplierDraftItems,
     setSupplierOverride,
     updateSupplierDraftItemQuantity,
-  } = useOrderStore();
+  } = useOrderStore(useShallow((state) => ({
+    createOrderLaterItem: state.createOrderLaterItem,
+    fetchPendingFulfillmentOrders: state.fetchPendingFulfillmentOrders,
+    finalizeSupplierOrder: state.finalizeSupplierOrder,
+    getSupplierDraftItems: state.getSupplierDraftItems,
+    getLastOrderedQuantities: state.getLastOrderedQuantities,
+    markOrderItemsStatus: state.markOrderItemsStatus,
+    removeSupplierDraftItems: state.removeSupplierDraftItems,
+    setSupplierOverride: state.setSupplierOverride,
+    updateSupplierDraftItemQuantity: state.updateSupplierDraftItemQuantity,
+  })));
 
   const initialItems = useMemo(() => {
     return parseParamArray<ConfirmationItem>(params.items)

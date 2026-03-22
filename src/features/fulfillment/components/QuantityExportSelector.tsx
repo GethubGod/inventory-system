@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { triggerImpactHaptic, ImpactFeedbackStyle } from '@/lib/haptics';
 import { colors } from '@/constants';
 
 type UnitType = 'base' | 'pack';
@@ -23,9 +23,7 @@ function UnitPillToggle({
 }: QuantityExportSelectorProps) {
   const handlePress = () => {
     if (!canSwitchUnit) return;
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    triggerImpactHaptic(ImpactFeedbackStyle.Light);
     onUnitChange(exportUnitType === 'base' ? 'pack' : 'base');
   };
   const label = exportUnitType === 'base' ? baseUnitLabel : packUnitLabel;

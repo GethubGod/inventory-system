@@ -5,12 +5,16 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import * as Haptics from 'expo-haptics';
+import {
+  triggerImpactHaptic,
+  triggerNotificationHaptic,
+  ImpactFeedbackStyle,
+  NotificationFeedbackType,
+} from '@/lib/haptics';
 import { useAuthStore, useDraftStore, useOrderStore, DraftItem } from '@/store';
 import { colors } from '@/constants';
 import { Location } from '@/types';
@@ -53,9 +57,7 @@ export default function DraftScreen() {
 
   // Handle quantity change
   const handleQuantityChange = useCallback((locationId: string, itemId: string, newQuantity: number, currentUnit: 'base' | 'pack') => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    triggerImpactHaptic(ImpactFeedbackStyle.Light);
     updateItem(locationId, itemId, newQuantity, currentUnit);
   }, [updateItem]);
 
@@ -70,9 +72,7 @@ export default function DraftScreen() {
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            }
+            triggerNotificationHaptic(NotificationFeedbackType.Warning);
             removeItem(locationId, itemId);
           },
         },
@@ -91,9 +91,7 @@ export default function DraftScreen() {
           text: 'Clear',
           style: 'destructive',
           onPress: () => {
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            }
+            triggerNotificationHaptic(NotificationFeedbackType.Warning);
             clearLocationDraft(locationId);
           },
         },
@@ -112,9 +110,7 @@ export default function DraftScreen() {
           text: 'Clear All',
           style: 'destructive',
           onPress: () => {
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            }
+            triggerNotificationHaptic(NotificationFeedbackType.Warning);
             clearAllDrafts();
           },
         },
@@ -132,9 +128,7 @@ export default function DraftScreen() {
         {
           text: 'Add to Cart',
           onPress: () => {
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }
+            triggerNotificationHaptic(NotificationFeedbackType.Success);
 
             const items = getItems(locationId);
             items.forEach((item) => {
