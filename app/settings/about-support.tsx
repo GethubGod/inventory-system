@@ -10,7 +10,7 @@ import {
   settingsIconPalettes,
 } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { glassColors, glassRadii, glassSpacing } from '@/design/tokens';
+import { glassColors, glassRadii, glassSpacing } from '@/theme/design';
 
 const APPSTORE_COMPLIANCE_LINKS = {
   support: 'https://www.babytunasystems.com/support',

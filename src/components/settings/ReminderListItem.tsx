@@ -8,7 +8,7 @@ import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
-} from '@/design/tokens';
+} from '@/theme/design';
 
 interface ReminderListItemProps {
   reminder: Reminder;

@@ -2,7 +2,7 @@ import React from 'react';
 import { Redirect, Stack, useLocalSearchParams } from 'expo-router';
 import { EmployeeBrowseInventoryScreen } from '@/features/browse/EmployeeBrowseInventoryScreen';
 import { isBrowseCategory } from '@/features/browse/config';
-import { glassColors } from '@/design/tokens';
+import { glassColors } from '@/theme/design';
 import { useAuthStore, useDisplayStore } from '@/store';
 
 function getParamValue(value: string | string[] | undefined): string | undefined {

@@ -6,7 +6,7 @@ import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   glassColors,
   glassRadii,
-} from '@/design/tokens';
+} from '@/theme/design';
 
 interface HeaderCartButtonProps {
   count: number;

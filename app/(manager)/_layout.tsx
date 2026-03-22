@@ -1,62 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Redirect, Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import { View, Text } from "react-native";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  useAuthStore,
-  useOrderStore,
-  useDraftStore,
-} from "@/store";
+import { useAuthStore, useOrderStore, useDraftStore } from "@/store";
 import { supabase } from "@/lib/supabase";
-import { colors, hairline, spacing } from "@/theme/design";
-
-/**
- * Custom tab button matching the employee TabButton bubble style.
- */
-function TabButton({
-  name,
-  label,
-  color,
-  size,
-  focused,
-}: {
-  name: keyof typeof Ionicons.glyphMap;
-  label: string;
-  color: string;
-  size: number;
-  focused: boolean;
-}) {
-  return (
-    <View
-      style={{
-        width: 76,
-        height: 56,
-        borderRadius: 28,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: focused ? "rgba(232, 80, 58, 0.14)" : "transparent",
-      }}
-    >
-      <Ionicons name={name} size={size} color={color} />
-      <Text
-        style={{
-          fontSize: 10,
-          fontWeight: "600",
-          color,
-          marginTop: 2,
-        }}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-    </View>
-  );
-}
+import {
+  TabButton,
+  getTabBarScreenOptions,
+  getTabBarBottomInset,
+  tabBarBadgeStyle,
+} from "@/components/navigation";
 
 export default function ManagerLayout() {
-  const { session, profile, user, viewMode } = useAuthStore();
+  const session = useAuthStore((s) => s.session);
+  const profile = useAuthStore((s) => s.profile);
+  const user = useAuthStore((s) => s.user);
+  const viewMode = useAuthStore((s) => s.viewMode);
   const cartCount = useOrderStore((state) =>
     state.getTotalCartCount("manager"),
   );
@@ -67,9 +26,6 @@ export default function ManagerLayout() {
     null,
   );
   const badgeChannelRef = useRef<RealtimeChannel | null>(null);
-  const badgePollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
   const metadataRole =
     typeof session?.user?.user_metadata?.role === "string"
       ? session.user.user_metadata.role
@@ -77,20 +33,8 @@ export default function ManagerLayout() {
         ? session.user.app_metadata.role
         : null;
   const resolvedRole = user?.role ?? profile?.role ?? metadataRole;
-  const tabBarBottomInset = Math.max(insets.bottom, spacing.tabBarBottom);
-  const tabBarHeight = 60 + tabBarBottomInset;
-  const badgeStyle = {
-    backgroundColor: colors.primary,
-    color: colors.textOnPrimary,
-    fontSize: 10,
-    fontWeight: "700" as const,
-    minWidth: 18,
-    height: 18,
-    lineHeight: 16,
-    borderRadius: 9,
-    top: -4,
-    right: -6,
-  };
+  const tabBarBottomInset = getTabBarBottomInset(insets.bottom);
+
   const refreshPendingFulfillmentCount = useCallback(async () => {
     if (!session || resolvedRole !== "manager") {
       setPendingFulfillmentCount(0);
@@ -141,10 +85,6 @@ export default function ManagerLayout() {
         supabase.removeChannel(badgeChannelRef.current);
         badgeChannelRef.current = null;
       }
-      if (badgePollIntervalRef.current) {
-        clearInterval(badgePollIntervalRef.current);
-        badgePollIntervalRef.current = null;
-      }
       return;
     }
 
@@ -172,9 +112,6 @@ export default function ManagerLayout() {
       .subscribe();
 
     badgeChannelRef.current = channel;
-    badgePollIntervalRef.current = setInterval(() => {
-      void refreshPendingFulfillmentCount();
-    }, 15000);
 
     return () => {
       if (badgeRefreshTimeoutRef.current) {
@@ -184,10 +121,6 @@ export default function ManagerLayout() {
       if (badgeChannelRef.current) {
         supabase.removeChannel(badgeChannelRef.current);
         badgeChannelRef.current = null;
-      }
-      if (badgePollIntervalRef.current) {
-        clearInterval(badgePollIntervalRef.current);
-        badgePollIntervalRef.current = null;
       }
     };
   }, [refreshPendingFulfillmentCount, resolvedRole, session]);
@@ -213,32 +146,7 @@ export default function ManagerLayout() {
   }
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.textSecondary,
-        tabBarStyle: {
-          position: "absolute",
-          backgroundColor: colors.tabBarBg,
-          borderTopWidth: hairline,
-          borderTopColor: colors.glassBorder,
-          paddingTop: 6,
-          paddingBottom: tabBarBottomInset,
-          paddingHorizontal: spacing.tabBarHorizontal,
-          height: tabBarHeight,
-          elevation: 0,
-        },
-        tabBarLabelStyle: {
-          fontSize: 0, // hide default label — rendered inside TabButton
-          height: 0,
-          margin: 0,
-        },
-        tabBarItemStyle: {
-          paddingTop: 8,
-        },
-        headerShown: false,
-      }}
-    >
+    <Tabs screenOptions={getTabBarScreenOptions(tabBarBottomInset)}>
       {/* Home - Default Tab */}
       <Tabs.Screen
         name="index"
@@ -251,12 +159,7 @@ export default function ManagerLayout() {
       />
 
       {/* Browse (hidden — accessed from Home) */}
-      <Tabs.Screen
-        name="browse"
-        options={{
-          href: null,
-        }}
-      />
+      <Tabs.Screen name="browse" options={{ href: null }} />
 
       {/* Quick Order */}
       <Tabs.Screen
@@ -267,7 +170,7 @@ export default function ManagerLayout() {
             <TabButton name="flash-outline" label="Quick" size={size} color={color} focused={focused} />
           ),
           tabBarBadge: draftCount > 0 ? draftCount : undefined,
-          tabBarBadgeStyle: badgeStyle,
+          tabBarBadgeStyle: tabBarBadgeStyle,
         }}
       />
 
@@ -280,7 +183,7 @@ export default function ManagerLayout() {
             <TabButton name="clipboard-outline" label="Fulfill" size={size} color={color} focused={focused} />
           ),
           tabBarBadge: pendingFulfillmentCount > 0 ? pendingFulfillmentCount : undefined,
-          tabBarBadgeStyle: badgeStyle,
+          tabBarBadgeStyle: tabBarBadgeStyle,
         }}
       />
 
@@ -296,125 +199,24 @@ export default function ManagerLayout() {
       />
 
       {/* Hidden screens (accessible via navigation) */}
-      <Tabs.Screen
-        name="orders"
-        options={{
-          href: null, // Hide from tab bar but keep accessible
-        }}
-      />
-      <Tabs.Screen
-        name="inventory"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
-        }}
-      />
-      <Tabs.Screen
-        name="cart"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="voice"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="export-fish-order"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="fulfillment-confirmation"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="fulfillment-history"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="fulfillment-history-detail"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="past-orders/index"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
-        }}
-      />
-      <Tabs.Screen
-        name="past-orders/[id]"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
-        }}
-      />
-      <Tabs.Screen
-        name="manager-settings/export-format"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
-        }}
-      />
-      <Tabs.Screen
-        name="manager-settings/user-management"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
-        }}
-      />
-      <Tabs.Screen
-        name="manager-settings/profile"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
-        }}
-      />
-      <Tabs.Screen
-        name="manager-settings/access-codes"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
-        }}
-      />
-      <Tabs.Screen
-        name="employee-reminders"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
-        }}
-      />
-      <Tabs.Screen
-        name="employee-reminders-recurring"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
-        }}
-      />
-      <Tabs.Screen
-        name="employee-reminders-settings"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
-        }}
-      />
-      <Tabs.Screen
-        name="employee-reminders-delivery"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
-        }}
-      />
+      <Tabs.Screen name="orders" options={{ href: null }} />
+      <Tabs.Screen name="inventory" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="cart" options={{ href: null }} />
+      <Tabs.Screen name="voice" options={{ href: null }} />
+      <Tabs.Screen name="export-fish-order" options={{ href: null }} />
+      <Tabs.Screen name="fulfillment-confirmation" options={{ href: null }} />
+      <Tabs.Screen name="fulfillment-history" options={{ href: null }} />
+      <Tabs.Screen name="fulfillment-history-detail" options={{ href: null }} />
+      <Tabs.Screen name="past-orders/index" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="past-orders/[id]" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/export-format" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/user-management" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/profile" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/access-codes" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="employee-reminders" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="employee-reminders-recurring" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="employee-reminders-settings" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="employee-reminders-delivery" options={{ href: null, tabBarStyle: { display: "none" } }} />
     </Tabs>
   );
 }

@@ -45,7 +45,7 @@ import {
   glassHairlineWidth,
   glassRadii,
   glassSpacing,
-} from "@/design/tokens";
+} from "@/theme/design";
 import type { OrderingMode } from "./types";
 
 // Enable LayoutAnimation on Android

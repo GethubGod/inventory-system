@@ -15,7 +15,7 @@ import {
   glassHairlineWidth,
   glassRadii,
   glassSpacing,
-} from '@/design/tokens';
+} from '@/theme/design';
 
 interface DebugInfo {
   permissionStatus: string;

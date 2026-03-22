@@ -27,7 +27,7 @@ import {
   glassRadii,
   glassSpacing,
   glassTypography,
-} from "@/design/tokens";
+} from "@/theme/design";
 
 const categories: ItemCategory[] = [
   "fish",

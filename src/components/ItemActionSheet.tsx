@@ -12,7 +12,7 @@ import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { BottomSheetShell } from './BottomSheetShell';
 import { GlassSurface } from './ui/GlassSurface';

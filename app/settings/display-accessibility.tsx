@@ -17,7 +17,7 @@ import {
   glassHairlineWidth,
   glassRadii,
   glassSpacing,
-} from '@/design/tokens';
+} from '@/theme/design';
 
 function PreviewCard() {
   const ds = useScaledStyles();

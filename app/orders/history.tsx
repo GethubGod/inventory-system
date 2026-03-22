@@ -16,7 +16,7 @@ import { OrderWithDetails, OrderStatus } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS, colors } from '@/constants';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { glassColors, glassRadii, glassSpacing, glassTypography } from '@/design/tokens';
+import { glassColors, glassRadii, glassSpacing, glassTypography } from '@/theme/design';
 
 const statuses: (OrderStatus | null)[] = [null, 'submitted', 'fulfilled', 'cancelled'];
 

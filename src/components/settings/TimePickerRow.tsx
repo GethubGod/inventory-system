@@ -4,7 +4,7 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { glassColors, glassRadii } from '@/design/tokens';
+import { glassColors, glassRadii } from '@/theme/design';
 
 interface TimePickerRowProps {
   title: string;

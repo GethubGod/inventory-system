@@ -16,7 +16,7 @@ import {
   settingsIconPalettes,
 } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { glassColors, glassHairlineWidth, glassRadii } from '@/design/tokens';
+import { glassColors, glassHairlineWidth, glassRadii } from '@/theme/design';
 
 import {
   requestNotificationPermissions,

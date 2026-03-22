@@ -16,7 +16,7 @@ import {
   glassRadii,
   glassSpacing,
   glassTabBarHeight,
-} from '@/design/tokens';
+} from '@/theme/design';
 
 export default function ManagerSettingsScreen() {
   const ds = useScaledStyles();

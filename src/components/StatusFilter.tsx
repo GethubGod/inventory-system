@@ -1,7 +1,7 @@
 import { ScrollView, TouchableOpacity, Text } from 'react-native';
 import { OrderStatus } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS } from '@/constants';
-import { glassColors, glassHairlineWidth, glassRadii } from '@/design/tokens';
+import { glassColors, glassHairlineWidth, glassRadii } from '@/theme/design';
 
 interface StatusFilterProps {
   statuses: (OrderStatus | null)[];

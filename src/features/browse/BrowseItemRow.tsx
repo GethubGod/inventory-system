@@ -23,8 +23,8 @@ import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
-} from '@/design/tokens';
-import { segmentedControlColors } from '@/design/segmentedControls';
+} from '@/theme/design';
+import { segmentedControlColors } from '@/theme/segmentedControls';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { useOrderStore } from '@/store';
 import type { CartItem, OrderInputMode } from '@/store/orderStore';

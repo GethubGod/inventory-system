@@ -29,7 +29,7 @@ import {
   glassRadii,
   glassSpacing,
   glassTabBarHeight,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { useEmployeeCartActions } from '@/hooks/useEmployeeCartActions';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';

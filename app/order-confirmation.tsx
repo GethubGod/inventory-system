@@ -19,7 +19,7 @@ import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { useAuthStore, useDisplayStore, useOrderStore } from '@/store';
 
 function parseItemCount(value: string | null, fallback: number): number {

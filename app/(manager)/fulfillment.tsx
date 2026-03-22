@@ -23,9 +23,11 @@ import { CATEGORY_LABELS, colors } from '@/constants';
 import { InventoryItem, ItemCategory, OrderWithDetails, SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
-import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
-import { ItemActionSheet, OrderLaterAddToSheet } from '@/components';
-import type { ItemActionSheetSection, OrderLaterSupplierOption } from '@/components';
+import { OrderLaterScheduleModal } from '@/features/fulfillment/components/OrderLaterScheduleModal';
+import { OrderLaterAddToSheet } from '@/features/fulfillment/components/OrderLaterAddToSheet';
+import { ItemActionSheet } from '@/components';
+import type { ItemActionSheetSection } from '@/components';
+import type { OrderLaterSupplierOption } from '@/features/fulfillment/components';
 import { loadSupplierLookup, invalidateSupplierCache } from '@/services/supplierResolver';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 

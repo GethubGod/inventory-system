@@ -4,7 +4,7 @@ import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   glassColors,
   glassTypography,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { HeaderCartButton } from './HeaderCartButton';
 
 interface IdentityHeaderProps {

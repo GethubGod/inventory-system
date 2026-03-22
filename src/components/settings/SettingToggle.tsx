@@ -3,7 +3,7 @@ import { View, Text, Switch, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { glassColors, glassHairlineWidth, glassRadii } from '@/design/tokens';
+import { glassColors, glassHairlineWidth, glassRadii } from '@/theme/design';
 
 interface SettingToggleProps {
   icon?: keyof typeof Ionicons.glyphMap;

@@ -108,13 +108,6 @@ export const useOrderStore = create<OrderState>()(
       isFulfillmentLoading: false,
       isPastOrderSyncing: false,
 
-      // Legacy cart property - returns flattened cart for backward compatibility
-      get cart() {
-        const { cartByLocation } = get();
-        return Object.entries(cartByLocation).flatMap(([locationId, items]) =>
-          normalizeLocationCart(items, locationId)
-        );
-      },
 
       addToCart: (locationId, inventoryItemId, quantity, unitType, options) => {
         const resolvedContext = normalizeCartContext(options?.context);
@@ -379,8 +372,7 @@ export const useOrderStore = create<OrderState>()(
         set({ cartByLocation: {} });
       },
 
-      // Legacy clearCart - clears all carts
-      clearCart: () => set({ cartByLocation: {} }),
+
 
       setCartItemDecision: (locationId, cartItemId, decidedQuantity, decidedBy, context) => {
         const resolvedContext = normalizeCartContext(context);
@@ -502,14 +494,7 @@ export const useOrderStore = create<OrderState>()(
         );
       },
 
-      // Legacy getCartTotal - returns total across all locations
-      getCartTotal: () => {
-        const { cartByLocation } = get();
-        return Object.entries(cartByLocation).reduce((total, [locationId, rawItems]) => {
-          const items = normalizeLocationCart(rawItems, locationId);
-          return total + items.length;
-        }, 0);
-      },
+
 
       fetchOrders: async (locationId) => {
         set({ isLoading: true });

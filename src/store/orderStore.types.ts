@@ -307,11 +307,6 @@ export interface OrderState {
   hasUndecidedRemaining: (locationId: string, context?: CartContext) => boolean;
   getUndecidedRemainingItems: (locationId: string, context?: CartContext) => CartItem[];
 
-  // Legacy support - for backward compatibility
-  cart: CartItem[];
-  clearCart: () => void;
-  getCartTotal: () => number;
-
   // Order actions
   fetchOrders: (locationId: string) => Promise<void>;
   fetchUserOrders: (userId: string) => Promise<void>;

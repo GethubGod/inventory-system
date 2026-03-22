@@ -12,7 +12,7 @@ import {
   glassColors,
   glassRadii,
   glassSpacing,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { GlassSurface } from '@/components/ui';
 import { StackScreenHeader } from '@/components/ui/StackScreenHeader';

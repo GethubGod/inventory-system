@@ -12,7 +12,7 @@ import {
   glassHairlineWidth,
   glassRadii,
   glassStatusStyles,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerConfirmationHaptic } from '@/lib/haptics';
 

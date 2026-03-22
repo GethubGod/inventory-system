@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   ViewStyle,
 } from 'react-native';
-import { glassColors } from '@/design/tokens';
+import { glassColors } from '@/theme/design';
 
 interface AddButtonProps {
   onPress: () => void;

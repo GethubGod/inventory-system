@@ -26,7 +26,7 @@ import {
   glassHairlineWidth,
   glassRadii,
   glassSpacing,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { ManagedUser, listManagedUsers, setManagedUserSuspended } from '@/services/userManagement';
 
 type UserFilter = 'all' | 'employees' | 'managers' | 'active' | 'inactive' | 'suspended';

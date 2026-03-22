@@ -25,7 +25,7 @@ import {
   glassRadii,
   glassSpacing,
   glassTabBarHeight,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 

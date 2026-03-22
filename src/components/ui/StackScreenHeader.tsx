@@ -8,7 +8,7 @@ import {
   glassRadii,
   glassSpacing,
   glassTypography,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { useSettingsNavigationContext } from '@/hooks/useSettingsBackRoute';
 

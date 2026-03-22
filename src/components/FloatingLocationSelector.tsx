@@ -16,7 +16,7 @@ import type { CartContext, CartItem } from '@/store/orderStore';
 import { useOrderStore } from '@/store';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerConfirmationHaptic } from '@/lib/haptics';
-import { glassColors, glassHairlineWidth, glassSpacing } from '@/design/tokens';
+import { glassColors, glassHairlineWidth, glassSpacing } from '@/theme/design';
 import type { Location } from '@/types';
 
 const CLOSED_HEIGHT = 76;

@@ -1,5 +1,4 @@
-import { grayScale } from '@/theme/design';
-import { glassColors } from './tokens';
+import { grayScale, glassColors } from '@/theme/design';
 
 export const segmentedControlColors = {
   activeBackground: glassColors.accent,

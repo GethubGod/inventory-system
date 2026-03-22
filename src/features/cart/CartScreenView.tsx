@@ -51,8 +51,8 @@ import {
   glassRadii,
   glassSpacing,
   glassTabBarHeight,
-} from '@/design/tokens';
-import { segmentedControlColors } from '@/design/segmentedControls';
+} from '@/theme/design';
+import { segmentedControlColors } from '@/theme/segmentedControls';
 
 interface CartItemWithDetails extends CartItem {
   inventoryItem?: InventoryItem;

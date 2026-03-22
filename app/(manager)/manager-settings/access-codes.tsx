@@ -21,7 +21,7 @@ import {
   glassHairlineWidth,
   glassRadii,
   glassSpacing,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { updateAccessCodes } from '@/services';
 import { useAuthStore } from '@/store';
 

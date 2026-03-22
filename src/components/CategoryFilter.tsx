@@ -1,7 +1,7 @@
 import { ScrollView, TouchableOpacity, Text, View } from 'react-native';
 import { ItemCategory } from '@/types';
 import { CATEGORY_LABELS } from '@/constants';
-import { categoryGlassTints, glassColors, glassHairlineWidth, glassRadii } from '@/design/tokens';
+import { categoryGlassTints, glassColors, glassHairlineWidth, glassRadii } from '@/theme/design';
 
 // Shorter labels for compact display
 const SHORT_LABELS: Record<string, string> = {

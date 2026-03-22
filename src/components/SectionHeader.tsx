@@ -4,7 +4,7 @@ import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   glassColors,
   glassTypography,
-} from '@/design/tokens';
+} from '@/theme/design';
 
 interface SectionHeaderProps {
   title: string;

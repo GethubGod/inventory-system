@@ -26,7 +26,7 @@ import {
   glassHairlineWidth,
   glassRadii,
   glassSpacing,
-} from '@/design/tokens';
+} from '@/theme/design';
 
 export default function ExportFormatSettingsScreen() {
   const ds = useScaledStyles();

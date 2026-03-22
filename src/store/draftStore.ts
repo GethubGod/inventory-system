@@ -30,7 +30,6 @@ interface DraftState {
   getTotalItemCount: () => number;
   getItems: (locationId: string) => DraftItem[];
   getAllLocationIds: () => string[];
-  getLocationItemCount: (locationId: string) => number;
 }
 
 export const useDraftStore = create<DraftState>()(
@@ -165,11 +164,7 @@ export const useDraftStore = create<DraftState>()(
         );
       },
 
-      getLocationItemCount: (locationId) => {
-        const { itemsByLocation } = get();
-        const locationItems = itemsByLocation[locationId];
-        return locationItems ? Object.keys(locationItems).length : 0;
-      },
+
     }),
     {
       name: 'draft-storage',

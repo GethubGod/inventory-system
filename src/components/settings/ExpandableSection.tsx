@@ -12,7 +12,7 @@ import { colors } from '@/constants';
 import { useDisplayStore } from '@/store';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { GlassSurface } from '@/components/ui';
-import { glassColors, glassHairlineWidth, glassRadii } from '@/design/tokens';
+import { glassColors, glassHairlineWidth, glassRadii } from '@/theme/design';
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {

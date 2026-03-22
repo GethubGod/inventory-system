@@ -9,7 +9,7 @@ import {
   settingsIconPalettes,
 } from '@/components/settings';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { glassColors, glassHairlineWidth } from '@/design/tokens';
+import { glassColors, glassHairlineWidth } from '@/theme/design';
 
 
 function StockSection() {

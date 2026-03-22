@@ -31,7 +31,7 @@ import {
   glassRadii,
   glassSpacing,
   glassTabBarHeight,
-} from '@/design/tokens';
+} from '@/theme/design';
 import {
   BROWSE_INVENTORY_ROUTE,
   CATEGORY_ORDER,

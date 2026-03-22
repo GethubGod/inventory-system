@@ -22,7 +22,7 @@ import {
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { buildSettingsHref, buildSettingsPath } from '@/lib/settingsNavigation';
 import { useSettingsNavigationContext } from '@/hooks/useSettingsBackRoute';
-import { glassColors, glassHairlineWidth, glassRadii, glassSpacing } from '@/design/tokens';
+import { glassColors, glassHairlineWidth, glassRadii, glassSpacing } from '@/theme/design';
 
 
 function NotificationsSection() {

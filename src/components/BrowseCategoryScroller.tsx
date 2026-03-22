@@ -8,7 +8,7 @@ import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { GlassSurface } from '@/components/ui';
 
 function CategoryPill({

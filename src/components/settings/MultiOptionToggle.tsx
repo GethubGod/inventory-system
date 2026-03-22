@@ -5,7 +5,7 @@ import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
-} from '@/design/tokens';
+} from '@/theme/design';
 
 interface Option<T> {
   value: T;

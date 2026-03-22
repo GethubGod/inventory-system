@@ -38,7 +38,7 @@ import {
   glassHairlineWidth,
   glassRadii,
   glassSpacing,
-} from '@/design/tokens';
+} from '@/theme/design';
 import { useEmployeeCartActions } from '@/hooks/useEmployeeCartActions';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { useResolvedActiveLocation } from '@/hooks/useResolvedActiveLocation';

@@ -7,7 +7,7 @@ import {
   glassColors,
   glassRadii,
   glassSpacing,
-} from '@/design/tokens';
+} from '@/theme/design';
 
 interface LocationSelectorButtonProps {
   label: string;
