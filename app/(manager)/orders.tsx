@@ -19,6 +19,7 @@ import { Order, OrderStatus, Location } from '@/types';
 import {statusColors, ORDER_STATUS_LABELS, colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { BrandLogo } from '@/components';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 
 type FilterStatus = OrderStatus | 'all';
 
@@ -34,7 +35,6 @@ export default function ManagerOrdersScreen() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<FilterStatus>('submitted');
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
@@ -141,11 +141,11 @@ export default function ManagerOrdersScreen() {
     };
   }, [fetchOrders, fetchStatusCounts, selectedLocation?.id]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await Promise.all([fetchOrders(), fetchStatusCounts()]);
-    setRefreshing(false);
-  };
+  const { refreshing, onRefresh } = useManagedRefresh(
+    useCallback(async () => {
+      await Promise.all([fetchOrders(), fetchStatusCounts()]);
+    }, [fetchOrders, fetchStatusCounts]),
+  );
 
   const handleSelectLocation = (loc: Location | null) => {
     if (Platform.OS !== 'web') {

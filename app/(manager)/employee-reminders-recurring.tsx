@@ -15,6 +15,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { useAuthStore } from '@/store';
 import {
@@ -111,7 +112,6 @@ export default function EmployeeReminderRecurringScreen() {
   const [rules, setRules] = useState<RecurringReminderRule[]>([]);
   const [employees, setEmployees] = useState<EmployeeReminderStatusRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const [showEditor, setShowEditor] = useState(false);
@@ -129,7 +129,6 @@ export default function EmployeeReminderRecurringScreen() {
       Alert.alert('Unable to load recurring reminders', error?.message || 'Please try again.');
     } finally {
       setIsLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
@@ -143,10 +142,7 @@ export default function EmployeeReminderRecurringScreen() {
     }, [loadData])
   );
 
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadData();
-  }, [loadData]);
+  const { refreshing, onRefresh: handleRefresh } = useManagedRefresh(loadData);
 
   const locationById = useMemo(() => {
     const map = new Map<string, string>();

@@ -1,34 +1,22 @@
-import * as Haptics from 'expo-haptics';
-import { Platform } from 'react-native';
-import { useDisplayStore } from '@/store';
+import {
+  ImpactFeedbackStyle,
+  NotificationFeedbackType,
+  triggerImpactHaptic,
+  triggerNotificationHaptic,
+  triggerSelectionHaptic,
+} from '@/lib/haptics';
 
 export function useHaptics() {
-  const { hapticFeedback } = useDisplayStore();
-
-  const impact = (style = Haptics.ImpactFeedbackStyle.Light) => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.impactAsync(style);
-    }
-  };
-
-  const notification = (type = Haptics.NotificationFeedbackType.Success) => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.notificationAsync(type);
-    }
-  };
-
-  const selection = () => {
-    if (hapticFeedback && Platform.OS !== 'web') {
-      Haptics.selectionAsync();
-    }
-  };
+  const impact = (style = ImpactFeedbackStyle.Light) => triggerImpactHaptic(style);
+  const notification = (type = NotificationFeedbackType.Success) =>
+    triggerNotificationHaptic(type);
+  const selection = () => triggerSelectionHaptic();
 
   return {
     impact,
     notification,
     selection,
-    // Re-export types for convenience
-    ImpactFeedbackStyle: Haptics.ImpactFeedbackStyle,
-    NotificationFeedbackType: Haptics.NotificationFeedbackType,
+    ImpactFeedbackStyle,
+    NotificationFeedbackType,
   };
 }

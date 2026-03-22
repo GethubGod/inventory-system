@@ -24,6 +24,7 @@ import {
   glassHairlineWidth,
   glassRadii,
 } from '@/design/tokens';
+import { segmentedControlColors } from '@/design/segmentedControls';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { useOrderStore } from '@/store';
 import type { CartItem, OrderInputMode } from '@/store/orderStore';
@@ -653,7 +654,7 @@ function BrowseItemRowInner({
                 borderRadius: glassRadii.button,
                 borderWidth: glassHairlineWidth,
                 borderColor: glassColors.controlBorder,
-                backgroundColor: glassColors.mediumFill,
+                backgroundColor: segmentedControlColors.inactiveBackground,
                 overflow: 'hidden',
               }}
             >
@@ -668,7 +669,7 @@ function BrowseItemRowInner({
                   justifyContent: 'center',
                   backgroundColor:
                     inputMode === 'quantity'
-                      ? glassColors.accent
+                      ? segmentedControlColors.activeBackground
                       : 'transparent',
                 }}
               >
@@ -678,8 +679,8 @@ function BrowseItemRowInner({
                     fontWeight: '600',
                     color:
                       inputMode === 'quantity'
-                        ? glassColors.textOnPrimary
-                        : glassColors.textSecondary,
+                        ? segmentedControlColors.activeText
+                        : segmentedControlColors.inactiveText,
                   }}
                 >
                   Order Qty
@@ -696,7 +697,7 @@ function BrowseItemRowInner({
                   justifyContent: 'center',
                   backgroundColor:
                     inputMode === 'remaining'
-                      ? glassColors.accent
+                      ? segmentedControlColors.activeBackground
                       : 'transparent',
                 }}
               >
@@ -706,8 +707,8 @@ function BrowseItemRowInner({
                     fontWeight: '600',
                     color:
                       inputMode === 'remaining'
-                        ? glassColors.textOnPrimary
-                        : glassColors.textSecondary,
+                        ? segmentedControlColors.activeText
+                        : segmentedControlColors.inactiveText,
                   }}
                 >
                   Remaining
@@ -776,7 +777,7 @@ function BrowseItemRowInner({
                   borderRadius: glassRadii.button,
                   borderWidth: glassHairlineWidth,
                   borderColor: glassColors.controlBorder,
-                  backgroundColor: glassColors.mediumFill,
+                  backgroundColor: segmentedControlColors.inactiveBackground,
                   overflow: 'hidden',
                 }}
               >
@@ -790,7 +791,9 @@ function BrowseItemRowInner({
                     alignItems: 'center',
                     justifyContent: 'center',
                     backgroundColor:
-                      unitType === 'pack' ? glassColors.accent : 'transparent',
+                      unitType === 'pack'
+                        ? segmentedControlColors.activeBackground
+                        : 'transparent',
                   }}
                 >
                   <Text
@@ -800,8 +803,8 @@ function BrowseItemRowInner({
                       fontWeight: '600',
                       color:
                         unitType === 'pack'
-                          ? glassColors.textOnPrimary
-                          : glassColors.textSecondary,
+                          ? segmentedControlColors.activeText
+                          : segmentedControlColors.inactiveText,
                     }}
                   >
                     {item.pack_unit}
@@ -817,7 +820,9 @@ function BrowseItemRowInner({
                     alignItems: 'center',
                     justifyContent: 'center',
                     backgroundColor:
-                      unitType === 'base' ? glassColors.accent : 'transparent',
+                      unitType === 'base'
+                        ? segmentedControlColors.activeBackground
+                        : 'transparent',
                   }}
                 >
                   <Text
@@ -827,8 +832,8 @@ function BrowseItemRowInner({
                       fontWeight: '600',
                       color:
                         unitType === 'base'
-                          ? glassColors.textOnPrimary
-                          : glassColors.textSecondary,
+                          ? segmentedControlColors.activeText
+                          : segmentedControlColors.inactiveText,
                     }}
                   >
                     {item.base_unit}

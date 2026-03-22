@@ -16,7 +16,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useOrderStore, useInventoryStore, useAuthStore } from '@/store';
 import type { CartItem } from '@/store';
@@ -29,7 +28,6 @@ import {
   GlassSurface,
   ItemActionSheet,
   LoadingIndicator,
-  OrderConfirmationPopup,
 } from '@/components';
 import type { ItemActionSheetSection } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -38,8 +36,15 @@ import type { OrderingMode } from '@/features/ordering/types';
 import { type HistoricalOrderSummary } from '@/features/ordering/orderInsights';
 import { resolveActiveLocationReminders } from '@/services/locationReminderService';
 import { OrderSubmissionError } from '@/services/orderSubmission';
+import { BROWSE_INVENTORY_ROUTE } from '@/features/browse/config';
+import {
+  createOrderConfirmationParams,
+  formatOrderConfirmationSummary,
+  ORDER_CONFIRMATION_ROUTE,
+} from './orderConfirmation';
 import { resolveLocationSwitchTarget } from './locationSwitch';
 import { EmptyCartReorderState } from './EmptyCartReorderState';
+import { triggerConfirmationHaptic } from '@/lib/haptics';
 import {
   glassColors,
   glassHairlineWidth,
@@ -47,6 +52,7 @@ import {
   glassSpacing,
   glassTabBarHeight,
 } from '@/design/tokens';
+import { segmentedControlColors } from '@/design/segmentedControls';
 
 interface CartItemWithDetails extends CartItem {
   inventoryItem?: InventoryItem;
@@ -77,6 +83,28 @@ function withPromiseTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMe
   });
 }
 
+function formatActionValue(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return '0';
+  }
+
+  const rounded = Number(value.toFixed(2));
+  return Number.isInteger(rounded) ? rounded.toString() : rounded.toString();
+}
+
+function getItemActionSummary(item: CartItemWithDetails): string {
+  const unitLabel =
+    item.unitType === 'pack'
+      ? item.inventoryItem?.pack_unit ?? 'pack'
+      : item.inventoryItem?.base_unit ?? 'unit';
+  const valueText =
+    item.inputMode === 'remaining'
+      ? `Remaining ${formatActionValue(item.remainingReported ?? 0)} ${unitLabel}`
+      : `${formatActionValue(item.quantityRequested ?? item.quantity)} ${unitLabel}`;
+
+  return item.note ? `${valueText} • Note added` : valueText;
+}
+
 export function CartScreenView({
   mode,
 }: CartScreenViewProps) {
@@ -86,6 +114,7 @@ export function CartScreenView({
   const browseRoute = mode.browseRoute;
   const pastOrdersRoute = mode.pastOrdersRoute;
   const requiresLocationConfirm = mode.requireLocationConfirm ?? context === 'employee';
+  const emptyCartBrowseRoute = context === 'employee' ? BROWSE_INVENTORY_ROUTE : browseRoute;
 
   const {
     activeCartByLocation,
@@ -116,10 +145,10 @@ export function CartScreenView({
     items: state.items,
     fetchItems: state.fetchItems,
   })));
-  const { user, locations } = useAuthStore(useShallow((state) => ({
+  const { user, profile, locations } = useAuthStore(useShallow((state) => ({
     user: state.user,
+    profile: state.profile,
     locations: state.locations,
-    location: state.location,
   })));
 
   // Track expanded items
@@ -135,9 +164,9 @@ export function CartScreenView({
   const [showItemNoteModal, setShowItemNoteModal] = useState(false);
   const [itemLocationAction, setItemLocationAction] = useState<'add' | 'move' | null>(null);
   const [itemNoteDraft, setItemNoteDraft] = useState('');
-  const [menuItem, setMenuItem] = useState<{
+  const [menuTarget, setMenuTarget] = useState<{
     locationId: string;
-    item: CartItemWithDetails;
+    cartItemId: string;
   } | null>(null);
   const [showConfirmLocationSheet, setShowConfirmLocationSheet] = useState(false);
   const [confirmLocationId, setConfirmLocationId] = useState<string | null>(null);
@@ -218,11 +247,6 @@ export function CartScreenView({
     return next;
   }, [submitLocationOptions]);
 
-  const selectableItemLocations = useMemo(
-    () => availableLocations.filter((location) => location.id !== menuItem?.locationId),
-    [availableLocations, menuItem?.locationId]
-  );
-
   const inventoryItemsById = useMemo(() => {
     const map = new Map<string, InventoryItem>();
     items.forEach((item) => {
@@ -259,6 +283,43 @@ export function CartScreenView({
       inventoryItem: inventoryItemsById.get(cartItem.inventoryItemId),
     }));
   }, [context, getCartItems, inventoryItemsById]);
+
+  const menuItem = useMemo(() => {
+    if (!menuTarget) {
+      return null;
+    }
+
+    const cartItem = getCartItems(menuTarget.locationId, context).find(
+      (item) => item.id === menuTarget.cartItemId,
+    );
+    if (!cartItem) {
+      return null;
+    }
+
+    return {
+      locationId: menuTarget.locationId,
+      item: {
+        ...cartItem,
+        inventoryItem: inventoryItemsById.get(cartItem.inventoryItemId),
+      },
+    };
+  }, [context, getCartItems, inventoryItemsById, menuTarget]);
+
+  const selectableItemLocations = useMemo(
+    () => availableLocations.filter((location) => location.id !== menuItem?.locationId),
+    [availableLocations, menuItem?.locationId]
+  );
+
+  useEffect(() => {
+    if (menuTarget && !menuItem) {
+      setShowItemMenu(false);
+      setShowItemLocationModal(false);
+      setShowItemNoteModal(false);
+      setItemLocationAction(null);
+      setItemNoteDraft('');
+      setMenuTarget(null);
+    }
+  }, [menuItem, menuTarget]);
 
   // Toggle item expansion
   const toggleExpand = useCallback((locationId: string, itemId: string) => {
@@ -301,10 +362,6 @@ export function CartScreenView({
 
   const handleItemValueChange = useCallback(
     (locationId: string, item: CartItemWithDetails, nextValue: number, unitType: UnitType) => {
-      if (Platform.OS !== 'web') {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      }
-
       if (item.inputMode === 'quantity') {
         updateCartItem(locationId, item.inventoryItemId, nextValue, unitType, {
           cartItemId: item.id,
@@ -336,9 +393,6 @@ export function CartScreenView({
           text: 'Remove',
           style: 'destructive',
           onPress: () => {
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            }
             removeFromCart(locationId, itemId, cartItemId, context);
           },
         },
@@ -347,9 +401,6 @@ export function CartScreenView({
   }, [context, removeFromCart]);
 
   const handleOpenCartLocationModal = useCallback((location: Location) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
     setCartLocationToMove(location);
     setShowCartLocationModal(true);
   }, []);
@@ -369,9 +420,6 @@ export function CartScreenView({
         {
           text: 'Move',
           onPress: () => {
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }
             moveLocationCartItems(cartLocationToMove.id, toLocationId, context);
             setShowCartLocationModal(false);
             setCartLocationToMove(null);
@@ -382,10 +430,7 @@ export function CartScreenView({
   }, [cartLocationToMove, context, moveLocationCartItems]);
 
   const handleOpenItemMenu = useCallback((locationId: string, item: CartItemWithDetails) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    setMenuItem({ locationId, item });
+    setMenuTarget({ locationId, cartItemId: item.id });
     setShowItemMenu(true);
   }, []);
 
@@ -418,9 +463,6 @@ export function CartScreenView({
       });
     }
 
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
-    }
   }, [context, updateCartItem]);
 
   const handleDuplicateItem = useCallback(() => {
@@ -431,7 +473,7 @@ export function CartScreenView({
     if (item.inputMode === 'remaining') {
       Alert.alert('Not available', 'Remaining-mode items cannot be duplicated.');
       setShowItemMenu(false);
-      setMenuItem(null);
+      setMenuTarget(null);
       return;
     }
 
@@ -443,7 +485,7 @@ export function CartScreenView({
       context,
     });
     setShowItemMenu(false);
-    setMenuItem(null);
+    setMenuTarget(null);
   }, [context, menuItem, updateCartItem]);
 
   const handleToggleItemMode = useCallback(() => {
@@ -453,7 +495,7 @@ export function CartScreenView({
     const nextMode = item.inputMode === 'quantity' ? 'remaining' : 'quantity';
     applyItemModeChange(locationId, item, nextMode);
     setShowItemMenu(false);
-    setMenuItem(null);
+    setMenuTarget(null);
   }, [applyItemModeChange, menuItem]);
 
   const handleOpenItemNoteModal = useCallback(() => {
@@ -466,12 +508,9 @@ export function CartScreenView({
   const handleSaveItemNote = useCallback(() => {
     if (!menuItem) return;
     setCartItemNote(menuItem.locationId, menuItem.item.id, itemNoteDraft, context);
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    }
     setShowItemNoteModal(false);
     setItemNoteDraft('');
-    setMenuItem(null);
+    setMenuTarget(null);
   }, [context, menuItem, itemNoteDraft, setCartItemNote]);
 
   const applyItemLocationAction = useCallback((params: {
@@ -482,10 +521,6 @@ export function CartScreenView({
   }) => {
     if (params.sourceLocationId === params.toLocationId) {
       return;
-    }
-
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
 
     if (params.action === 'add') {
@@ -540,7 +575,7 @@ export function CartScreenView({
       });
       setItemLocationAction(null);
       setShowItemLocationModal(false);
-      setMenuItem(null);
+      setMenuTarget(null);
       return;
     }
 
@@ -553,7 +588,7 @@ export function CartScreenView({
     showStatusToast('No other location available', 'error');
     setItemLocationAction(null);
     setShowItemLocationModal(false);
-    setMenuItem(null);
+    setMenuTarget(null);
   }, [availableLocations, menuItem, applyItemLocationAction, showStatusToast]);
 
   const handleApplyItemLocation = useCallback((toLocationId: string) => {
@@ -568,48 +603,60 @@ export function CartScreenView({
 
     setShowItemLocationModal(false);
     setItemLocationAction(null);
-    setMenuItem(null);
+    setMenuTarget(null);
   }, [menuItem, itemLocationAction, applyItemLocationAction]);
 
   const itemActionSections = useMemo<ItemActionSheetSection[]>(() => [
     {
       id: 'item-basics',
+      title: 'Item',
       items: [
         {
           id: 'duplicate',
           label: 'Duplicate item',
           icon: 'copy-outline',
+          detail:
+            menuItem?.item.inputMode === 'remaining'
+              ? 'Only direct order quantities can be duplicated.'
+              : 'Add the same quantity to this cart.',
           onPress: handleDuplicateItem,
           disabled: menuItem?.item.inputMode === 'remaining',
         },
         {
           id: 'toggle-mode',
           label: menuItem?.item.inputMode === 'remaining' ? 'Change to Order' : 'Change to Remaining',
-          icon: menuItem?.item.inputMode === 'remaining' ? 'list-outline' : 'albums-outline',
+          icon: menuItem?.item.inputMode === 'remaining' ? 'receipt-outline' : 'albums-outline',
+          detail:
+            menuItem?.item.inputMode === 'remaining'
+              ? 'Switch back to a direct order quantity.'
+              : 'Track what is left and decide the final order later.',
           onPress: handleToggleItemMode,
         },
         {
           id: 'note',
           label: menuItem?.item.note ? 'Edit Note' : 'Add Note',
-          icon: 'create-outline',
+          icon: 'document-text-outline',
+          detail: 'Attach a note for the manager on this cart line.',
           onPress: handleOpenItemNoteModal,
         },
       ],
     },
     {
       id: 'cart-move',
-      title: 'Carts',
+      title: 'Other Carts',
       items: [
         {
           id: 'add-to-other',
           label: 'Add to other cart',
-          icon: 'add-circle-outline',
+          icon: 'bag-add-outline',
+          detail: 'Copy this line into another location cart.',
           onPress: () => handleOpenItemLocationModal('add'),
         },
         {
           id: 'move-to-other',
           label: 'Move to other cart',
-          icon: 'swap-horizontal',
+          icon: 'arrow-redo-outline',
+          detail: 'Move this line out of the current cart.',
           onPress: () => handleOpenItemLocationModal('move'),
         },
       ],
@@ -634,9 +681,6 @@ export function CartScreenView({
           text: 'Clear',
           style: 'destructive',
           onPress: () => {
-            if (Platform.OS !== 'web') {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            }
             clearLocationCart(locationId, context);
           },
         },
@@ -646,15 +690,26 @@ export function CartScreenView({
 
   // Track which location is currently submitting
   const [submittingLocation, setSubmittingLocation] = useState<string | null>(null);
-  const [confirmation, setConfirmation] = useState<{
-    orderNumber: string;
-    locationName: string;
-    itemCount: number;
-  } | null>(null);
   const submitInFlightRef = useRef(false);
-  const handleCloseConfirmation = useCallback(() => {
-    setConfirmation(null);
-  }, []);
+
+  const canSubmitLocation = useCallback((locationId: string) => {
+    if (submitInFlightRef.current || submittingLocation !== null) {
+      return false;
+    }
+
+    if (!user) {
+      showStatusToast('Please log in first', 'error');
+      return false;
+    }
+
+    const cartItems = getCartItems(locationId, context);
+    if (cartItems.length === 0) {
+      showStatusToast('Cart is empty for this location', 'error');
+      return false;
+    }
+
+    return true;
+  }, [context, getCartItems, showStatusToast, submittingLocation, user]);
 
   const handleReorderPastOrder = useCallback((order: HistoricalOrderSummary) => {
     const targetLocationId = selectedLocation?.id ?? order.locationId;
@@ -706,13 +761,29 @@ export function CartScreenView({
       const normalizedOrderNumber =
         typeof order.order_number === 'number' || typeof order.order_number === 'string'
           ? String(order.order_number)
-          : '---';
-      setConfirmation({
-        orderNumber: normalizedOrderNumber,
-        locationName,
-        itemCount: order.order_items?.length ?? cartItems.length,
+          : null;
+      const submittedBy =
+        profile?.full_name?.trim() ||
+        user.name?.trim() ||
+        user.email?.trim() ||
+        'Staff';
+      const itemCount = order.order_items?.length ?? cartItems.length;
+      const successBrowseRoute =
+        context === 'employee' ? BROWSE_INVENTORY_ROUTE : browseRoute;
+
+      router.replace({
+        pathname: ORDER_CONFIRMATION_ROUTE,
+        params: createOrderConfirmationParams({
+          orderId: order.id,
+          orderNumber: normalizedOrderNumber,
+          locationName,
+          itemCount,
+          summary: formatOrderConfirmationSummary(itemCount, locationName),
+          submittedBy,
+          submittedAt: order.created_at,
+          browseRoute: successBrowseRoute,
+        }),
       });
-      showStatusToast(`Order submitted for ${locationName}`, 'success');
       // Mark pending reminders as completed client-side (DB trigger is primary)
       completePendingRemindersForUser(user.id).catch(() => {});
       resolveActiveLocationReminders(submitLocationId).catch(() => {});
@@ -731,14 +802,15 @@ export function CartScreenView({
     getCartItems,
     createAndSubmitOrder,
     createAndSubmitOrderFromSourceLocation,
+    browseRoute,
+    profile?.full_name,
     showStatusToast,
   ]);
 
   const handleRequestSubmitOrder = useCallback(async (locationId: string) => {
-    if (submitInFlightRef.current || submittingLocation !== null) return;
+    if (!canSubmitLocation(locationId)) return;
 
-    const cartItems = getCartItems(locationId, context);
-    if (cartItems.length === 0) return;
+    void triggerConfirmationHaptic();
 
     const locationName = locationNameById.get(locationId) ?? 'Selected location';
 
@@ -750,24 +822,38 @@ export function CartScreenView({
     setConfirmSourceLocationId(locationId);
     setConfirmLocationId(locationId);
     setShowConfirmLocationSheet(true);
-  }, [context, getCartItems, locationNameById, requiresLocationConfirm, submittingLocation, submitOrderForLocation]);
+  }, [canSubmitLocation, locationNameById, requiresLocationConfirm, submitOrderForLocation]);
 
   const handleSelectSubmitLocation = useCallback((locationId: string) => {
+    if (confirmLocationId === locationId) {
+      return;
+    }
+
     setConfirmLocationId(locationId);
-  }, []);
+    void triggerConfirmationHaptic();
+  }, [confirmLocationId]);
 
   const handleConfirmSubmitOrder = useCallback(async () => {
     if (!confirmLocationId) return;
 
     const sourceLocationId = confirmSourceLocationId ?? confirmLocationId;
+    if (!canSubmitLocation(sourceLocationId)) {
+      setShowConfirmLocationSheet(false);
+      setConfirmSourceLocationId(null);
+      setConfirmLocationId(null);
+      return;
+    }
+
     const selectedLocationName = locationNameById.get(confirmLocationId) ?? 'Selected location';
 
+    void triggerConfirmationHaptic();
     setShowConfirmLocationSheet(false);
     setConfirmSourceLocationId(null);
     setConfirmLocationId(null);
 
     await submitOrderForLocation(confirmLocationId, selectedLocationName, sourceLocationId);
   }, [
+    canSubmitLocation,
     confirmSourceLocationId,
     confirmLocationId,
     locationNameById,
@@ -938,15 +1024,22 @@ export function CartScreenView({
           <View style={{ paddingBottom: ds.spacing(10), paddingHorizontal: ds.spacing(4) }}>
             {/* Mode selector row + action buttons */}
             <View className="flex-row items-center justify-between" style={{ marginBottom: ds.spacing(8) }}>
-              <View className="flex-row">
+              <View
+                className="flex-row"
+                style={{
+                  backgroundColor: segmentedControlColors.inactiveBackground,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                }}
+              >
                 <TouchableOpacity
                   onPress={() => applyItemModeChange(locationId, item, 'quantity')}
                   style={{
                     paddingHorizontal: ds.spacing(14),
                     paddingVertical: ds.spacing(7),
-                    borderTopLeftRadius: 12,
-                    borderBottomLeftRadius: 12,
-                    backgroundColor: !isRemainingMode ? glassColors.accent : '#EEEEEE',
+                    backgroundColor: !isRemainingMode
+                      ? segmentedControlColors.activeBackground
+                      : 'transparent',
                   }}
                   activeOpacity={0.75}
                 >
@@ -954,7 +1047,9 @@ export function CartScreenView({
                     style={{
                       fontSize: ds.fontSize(14),
                       fontWeight: '600',
-                      color: !isRemainingMode ? glassColors.textOnPrimary : glassColors.textSecondary,
+                      color: !isRemainingMode
+                        ? segmentedControlColors.activeText
+                        : segmentedControlColors.inactiveText,
                     }}
                   >
                     Order Qty
@@ -965,9 +1060,9 @@ export function CartScreenView({
                   style={{
                     paddingHorizontal: ds.spacing(14),
                     paddingVertical: ds.spacing(7),
-                    borderTopRightRadius: 12,
-                    borderBottomRightRadius: 12,
-                    backgroundColor: isRemainingMode ? glassColors.accent : '#EEEEEE',
+                    backgroundColor: isRemainingMode
+                      ? segmentedControlColors.activeBackground
+                      : 'transparent',
                   }}
                   activeOpacity={0.75}
                 >
@@ -975,7 +1070,9 @@ export function CartScreenView({
                     style={{
                       fontSize: ds.fontSize(14),
                       fontWeight: '600',
-                      color: isRemainingMode ? glassColors.textOnPrimary : glassColors.textSecondary,
+                      color: isRemainingMode
+                        ? segmentedControlColors.activeText
+                        : segmentedControlColors.inactiveText,
                     }}
                   >
                     Remaining
@@ -1019,15 +1116,22 @@ export function CartScreenView({
 
             {/* Unit toggle row */}
             <View className="flex-row items-center" style={{ marginBottom: ds.spacing(6) }}>
-              <View className="flex-row">
+              <View
+                className="flex-row"
+                style={{
+                  backgroundColor: segmentedControlColors.inactiveBackground,
+                  borderRadius: 12,
+                  overflow: 'hidden',
+                }}
+              >
                 <TouchableOpacity
                   onPress={() => handleItemValueChange(locationId, item, value, 'pack')}
                   style={{
                     paddingHorizontal: ds.spacing(14),
                     paddingVertical: ds.spacing(7),
-                    borderTopLeftRadius: 12,
-                    borderBottomLeftRadius: 12,
-                    backgroundColor: unitType === 'pack' ? glassColors.accent : '#EEEEEE',
+                    backgroundColor: unitType === 'pack'
+                      ? segmentedControlColors.activeBackground
+                      : 'transparent',
                   }}
                   activeOpacity={0.75}
                 >
@@ -1035,7 +1139,9 @@ export function CartScreenView({
                     style={{
                       fontSize: ds.fontSize(14),
                       fontWeight: '600',
-                      color: unitType === 'pack' ? glassColors.textOnPrimary : glassColors.textPrimary,
+                      color: unitType === 'pack'
+                        ? segmentedControlColors.activeText
+                        : segmentedControlColors.inactiveText,
                     }}
                   >
                     {packUnitLabel}
@@ -1046,9 +1152,9 @@ export function CartScreenView({
                   style={{
                     paddingHorizontal: ds.spacing(14),
                     paddingVertical: ds.spacing(7),
-                    borderTopRightRadius: 12,
-                    borderBottomRightRadius: 12,
-                    backgroundColor: unitType === 'base' ? glassColors.accent : '#EEEEEE',
+                    backgroundColor: unitType === 'base'
+                      ? segmentedControlColors.activeBackground
+                      : 'transparent',
                   }}
                   activeOpacity={0.75}
                 >
@@ -1056,7 +1162,9 @@ export function CartScreenView({
                     style={{
                       fontSize: ds.fontSize(14),
                       fontWeight: '600',
-                      color: unitType === 'base' ? glassColors.textOnPrimary : glassColors.textPrimary,
+                      color: unitType === 'base'
+                        ? segmentedControlColors.activeText
+                        : segmentedControlColors.inactiveText,
                     }}
                   >
                     {baseUnitLabel}
@@ -1264,7 +1372,7 @@ export function CartScreenView({
         />
       ) : (
         <EmptyCartReorderState
-          browseRoute={browseRoute}
+          browseRoute={emptyCartBrowseRoute}
           locationId={selectedLocation?.id ?? locations[0]?.id ?? null}
           locationName={selectedLocation?.name ?? locations[0]?.name ?? 'Current location'}
           onReorder={handleReorderPastOrder}
@@ -1380,14 +1488,6 @@ export function CartScreenView({
         </Pressable>
       </Modal>
 
-      <OrderConfirmationPopup
-        visible={!!confirmation}
-        orderNumber={confirmation?.orderNumber ?? '---'}
-        locationName={confirmation?.locationName ?? 'Location'}
-        itemCount={confirmation?.itemCount ?? 0}
-        onClose={handleCloseConfirmation}
-      />
-
       <ConfirmLocationBottomSheet
         visible={requiresLocationConfirm && showConfirmLocationSheet}
         selectedLocationId={confirmLocationId}
@@ -1404,14 +1504,14 @@ export function CartScreenView({
       />
 
       <ItemActionSheet
-        visible={showItemMenu}
-        title="Item Actions"
-        subtitle={menuItem?.item.inventoryItem?.name || 'Item'}
+        visible={showItemMenu && Boolean(menuItem)}
+        title={menuItem?.item.inventoryItem?.name || 'Item Actions'}
+        subtitle={menuItem ? getItemActionSummary(menuItem.item) : undefined}
         sections={itemActionSections}
         showCancelAction={false}
         onClose={() => {
           setShowItemMenu(false);
-          setMenuItem(null);
+          setMenuTarget(null);
         }}
       />
 
@@ -1423,7 +1523,7 @@ export function CartScreenView({
         onRequestClose={() => {
           setShowItemNoteModal(false);
           setItemNoteDraft('');
-          setMenuItem(null);
+          setMenuTarget(null);
         }}
       >
         <Pressable
@@ -1432,7 +1532,7 @@ export function CartScreenView({
           onPress={() => {
             setShowItemNoteModal(false);
             setItemNoteDraft('');
-            setMenuItem(null);
+            setMenuTarget(null);
           }}
         >
           <KeyboardAvoidingView
@@ -1495,7 +1595,7 @@ export function CartScreenView({
                     onPress={() => {
                       setShowItemNoteModal(false);
                       setItemNoteDraft('');
-                      setMenuItem(null);
+                      setMenuTarget(null);
                     }}
                     style={{
                       height: ds.buttonH,
@@ -1540,6 +1640,7 @@ export function CartScreenView({
         onRequestClose={() => {
           setShowItemLocationModal(false);
           setItemLocationAction(null);
+          setMenuTarget(null);
         }}
       >
         <Pressable
@@ -1548,6 +1649,7 @@ export function CartScreenView({
           onPress={() => {
             setShowItemLocationModal(false);
             setItemLocationAction(null);
+            setMenuTarget(null);
           }}
         >
           <Pressable
@@ -1630,6 +1732,7 @@ export function CartScreenView({
                 onPress={() => {
                   setShowItemLocationModal(false);
                   setItemLocationAction(null);
+                  setMenuTarget(null);
                 }}
                 className="py-4 mt-2"
               >

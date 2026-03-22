@@ -25,7 +25,6 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import * as Haptics from "expo-haptics";
 import { useShallow } from "zustand/react/shallow";
 import { useAuthStore, useInventoryStore, useOrderStore } from "@/store";
 import type { OrderInputMode } from "@/store";
@@ -38,13 +37,14 @@ import {
 } from "@/types";
 import { colors, CATEGORY_LABELS } from "@/constants";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
+import { useResolvedActiveLocation } from "@/hooks/useResolvedActiveLocation";
+import { triggerConfirmationHaptic } from "@/lib/haptics";
 import { BrandLogo, GlassSurface } from "@/components";
 import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
   glassSpacing,
-  glassTabBarHeight,
 } from "@/design/tokens";
 import type { OrderingMode } from "./types";
 
@@ -120,13 +120,16 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   const scope = mode.scope;
   const showSearchActionButton = mode.searchAction === "quick_create";
   const {
-    location: defaultLocation,
+    location: selectedLocation,
     locations,
+    setLocation,
+  } = useResolvedActiveLocation();
+  const {
+    fetchLocations,
     user,
   } = useAuthStore(
     useShallow((state) => ({
-      location: state.location,
-      locations: state.locations,
+      fetchLocations: state.fetchLocations,
       user: state.user,
     })),
   );
@@ -145,10 +148,6 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
     })),
   );
 
-  // Selected location for ordering
-  const [selectedLocation, setSelectedLocation] = useState<Location | null>(
-    defaultLocation,
-  );
   const [showLocationDropdown, setShowLocationDropdown] = useState(false);
 
   // Screen state
@@ -183,13 +182,6 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   // Debounced search
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
-  // Set default location on mount
-  useEffect(() => {
-    if (defaultLocation && !selectedLocation) {
-      setSelectedLocation(defaultLocation);
-    }
-  }, [defaultLocation, selectedLocation, setSelectedLocation]);
-
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedQuery(searchQuery);
@@ -201,6 +193,10 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   useEffect(() => {
     fetchItems();
   }, [fetchItems]);
+
+  useEffect(() => {
+    void fetchLocations();
+  }, [fetchLocations]);
 
   // Focus search input immediately on mount
   useEffect(() => {
@@ -235,18 +231,20 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
 
   // Total cart count
   const locationLabel = getLocationLabel(selectedLocation);
+  const addButtonLocationLabel = locationLabel || "Location";
+  const hasAvailableLocations = locations.length > 0;
   const headerIconButtonSize = Math.max(44, ds.icon(40));
-  const badgeSize = Math.max(18, ds.icon(20));
   const parsedQuantity = parseFloat(quantity);
   const parsedRemaining = parseFloat(remainingAmount);
   const canAddToCart =
-    inputMode === "quantity"
+    Boolean(selectedLocation?.id) &&
+    (inputMode === "quantity"
       ? Number.isFinite(parsedQuantity) && parsedQuantity > 0
-      : Number.isFinite(parsedRemaining) && parsedRemaining >= 0;
+      : Number.isFinite(parsedRemaining) && parsedRemaining >= 0);
   const addButtonText =
     inputMode === "quantity"
-      ? `Add Order Qty (${locationLabel})`
-      : `Add Remaining (${locationLabel})`;
+      ? `Add Order Qty (${addButtonLocationLabel})`
+      : `Add Remaining (${addButtonLocationLabel})`;
   const iosKeyboardOverlayInset =
     Platform.OS === "ios" && isKeyboardVisible ? keyboardHeight : 0;
   const searchHelperBottomInset = Math.max(
@@ -340,10 +338,6 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
         created_by: user?.id,
       });
 
-      if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-
       setShowQuickCreate(false);
       setSearchQuery(newItemName.trim());
     } catch (error: any) {
@@ -365,25 +359,25 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
 
   // Toggle location dropdown
   const toggleLocationDropdown = useCallback(() => {
+    if (!hasAvailableLocations) {
+      return;
+    }
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setShowLocationDropdown((prev) => !prev);
-  }, []);
+  }, [hasAvailableLocations]);
 
   // Handle location select
   const handleSelectLocation = useCallback((loc: Location) => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (selectedLocation?.id !== loc.id) {
+      setLocation(loc);
+      void triggerConfirmationHaptic();
     }
-    setSelectedLocation(loc);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setShowLocationDropdown(false);
-  }, []);
+  }, [selectedLocation?.id, setLocation]);
 
   // Handle item selection
   const handleSelectItem = useCallback((item: InventoryItem) => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
     setSelectedItem(item);
     setQuantity("1");
     setRemainingAmount("0");
@@ -411,28 +405,22 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
       const qty = parseFloat(quantity);
       if (!Number.isFinite(qty) || qty <= 0) return;
 
-      if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-
       addToCart(selectedLocation.id, selectedItem.id, qty, selectedUnit, {
         inputMode: "quantity",
         quantityRequested: qty,
         context: scope,
       });
+      void triggerConfirmationHaptic();
     } else {
       const remaining = parseFloat(remainingAmount);
       if (!Number.isFinite(remaining) || remaining < 0) return;
-
-      if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
 
       addToCart(selectedLocation.id, selectedItem.id, remaining, selectedUnit, {
         inputMode: "remaining",
         remainingReported: remaining,
         context: scope,
       });
+      void triggerConfirmationHaptic();
     }
 
     // Reset to search state
@@ -788,7 +776,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
         </View>
 
         {/* Location Dropdown Menu */}
-        {showLocationDropdown && (
+        {showLocationDropdown && hasAvailableLocations && (
           <GlassSurface
             intensity="strong"
             style={{ marginTop: ds.spacing(10), borderRadius: glassRadii.surface }}

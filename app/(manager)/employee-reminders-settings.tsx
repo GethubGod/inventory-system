@@ -13,6 +13,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   ReminderSystemSettings,
@@ -28,7 +29,6 @@ export default function EmployeeReminderSettingsScreen() {
   const [rateLimitMinutes, setRateLimitMinutes] = useState('15');
   const [recurringWindowMinutes, setRecurringWindowMinutes] = useState('15');
   const [isLoading, setIsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const loadSettings = useCallback(async () => {
@@ -44,7 +44,6 @@ export default function EmployeeReminderSettingsScreen() {
       Alert.alert('Unable to load settings', error?.message || 'Please try again.');
     } finally {
       setIsLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
@@ -54,10 +53,7 @@ export default function EmployeeReminderSettingsScreen() {
     }, [loadSettings])
   );
 
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadSettings();
-  }, [loadSettings]);
+  const { refreshing, onRefresh: handleRefresh } = useManagedRefresh(loadSettings);
 
   const handleSave = async () => {
     if (!settings?.id) {

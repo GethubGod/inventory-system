@@ -12,13 +12,13 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import * as Haptics from "expo-haptics";
 import { useShallow } from "zustand/react/shallow";
 import { useInventoryStore, useAuthStore, useOrderStore } from "@/store";
 import { InventoryItem, ItemCategory, Location } from "@/types";
 import { CATEGORY_LABELS } from "@/constants";
 import { FloatingLocationSelector, GlassSurface } from "@/components";
 import { InventoryItemCard } from "@/components/InventoryItemCard";
+import { useManagedRefresh } from "@/hooks/useManagedRefresh";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
 import { useResolvedActiveLocation } from "@/hooks/useResolvedActiveLocation";
 import {
@@ -53,11 +53,6 @@ const CATEGORY_ICONS: Record<ItemCategory, keyof typeof Ionicons.glyphMap> = {
   packaging: "archive-outline",
 };
 
-const CATEGORY_ICON_THEMES: Record<
-  ItemCategory,
-  { background: string; icon: string }
-> = categoryGlassTints;
-
 export default function ManagerBrowseScreen() {
   const ds = useScaledStyles();
   const insets = useSafeAreaInsets();
@@ -82,7 +77,6 @@ export default function ManagerBrowseScreen() {
     null,
   );
   const [searchQuery, setSearchQuery] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
 
   const headerIconButtonSize = Math.max(44, ds.icon(40));
   const badgeSize = Math.max(18, ds.icon(20));
@@ -111,11 +105,11 @@ export default function ManagerBrowseScreen() {
 
   const showCategoryGrid = !selectedCategory && !searchQuery.trim();
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchItems({ force: true });
-    setRefreshing(false);
-  }, [fetchItems]);
+  const { refreshing, onRefresh } = useManagedRefresh(
+    useCallback(async () => {
+      await fetchItems({ force: true });
+    }, [fetchItems]),
+  );
 
   const handleSelectLocation = useCallback(
     (selectedLocation: Location) => {
@@ -129,9 +123,6 @@ export default function ManagerBrowseScreen() {
   );
 
   const handleSelectCategory = useCallback((category: ItemCategory) => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
     setSelectedCategory(category);
     setSearchQuery("");
   }, []);

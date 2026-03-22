@@ -14,6 +14,7 @@ import { colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { useAuthStore, useOrderStore } from '@/store';
 import { supabase } from '@/lib/supabase';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 
 type DateFilter = 'all' | 'today' | '7d' | '30d';
 
@@ -86,7 +87,6 @@ function isInDateFilter(createdAt: string, filter: DateFilter) {
 export default function FulfillmentHistoryScreen() {
   const { user } = useAuthStore();
   const { pastOrders, fetchPastOrders, flushPendingPastOrderSync } = useOrderStore();
-  const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [supplierById, setSupplierById] = useState<Record<string, SupplierLookupRow>>({});
@@ -136,11 +136,7 @@ export default function FulfillmentHistoryScreen() {
     }, [refreshData])
   );
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await refreshData();
-    setRefreshing(false);
-  }, [refreshData]);
+  const { refreshing, onRefresh } = useManagedRefresh(refreshData);
 
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const filteredOrders = useMemo(() => {

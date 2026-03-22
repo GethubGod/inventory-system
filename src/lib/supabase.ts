@@ -4,6 +4,43 @@ import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
 const memoryStorage = new Map<string, string>();
+const SECURE_STORE_CHUNK_PREFIX = '__chunked__:';
+const SECURE_STORE_CHUNK_SIZE = 1024;
+
+function getChunkMetadata(value: string): { count: number } | null {
+  if (!value.startsWith(SECURE_STORE_CHUNK_PREFIX)) {
+    return null;
+  }
+
+  const count = Number.parseInt(value.slice(SECURE_STORE_CHUNK_PREFIX.length), 10);
+  if (!Number.isFinite(count) || count <= 0) {
+    return null;
+  }
+
+  return { count };
+}
+
+function getChunkKey(key: string, index: number): string {
+  return `${key}.chunk.${index}`;
+}
+
+function splitSecureStoreValue(value: string): string[] {
+  const chunks: string[] = [];
+
+  for (let start = 0; start < value.length; start += SECURE_STORE_CHUNK_SIZE) {
+    chunks.push(value.slice(start, start + SECURE_STORE_CHUNK_SIZE));
+  }
+
+  return chunks;
+}
+
+async function removeSecureStoreChunks(key: string, count: number) {
+  await Promise.all(
+    Array.from({ length: count }, (_, index) =>
+      SecureStore.deleteItemAsync(getChunkKey(key, index)),
+    ),
+  );
+}
 
 function getWebStorage():
   | {
@@ -52,7 +89,29 @@ const ExpoSecureStoreAdapter = {
       return memoryStorage.get(key) ?? null;
     }
 
-    return SecureStore.getItemAsync(key);
+    const storedValue = await SecureStore.getItemAsync(key);
+    if (!storedValue) {
+      return storedValue;
+    }
+
+    const metadata = getChunkMetadata(storedValue);
+    if (!metadata) {
+      return storedValue;
+    }
+
+    const chunkValues = await Promise.all(
+      Array.from({ length: metadata.count }, (_, index) =>
+        SecureStore.getItemAsync(getChunkKey(key, index)),
+      ),
+    );
+
+    if (chunkValues.some((value) => typeof value !== 'string')) {
+      await SecureStore.deleteItemAsync(key);
+      await removeSecureStoreChunks(key, metadata.count);
+      return null;
+    }
+
+    return chunkValues.join('');
   },
   setItem: async (key: string, value: string) => {
     if (Platform.OS === 'web') {
@@ -72,7 +131,24 @@ const ExpoSecureStoreAdapter = {
       return;
     }
 
-    await SecureStore.setItemAsync(key, value);
+    const existingValue = await SecureStore.getItemAsync(key);
+    const existingMetadata = existingValue ? getChunkMetadata(existingValue) : null;
+    if (existingMetadata) {
+      await removeSecureStoreChunks(key, existingMetadata.count);
+    }
+
+    if (value.length <= SECURE_STORE_CHUNK_SIZE) {
+      await SecureStore.setItemAsync(key, value);
+      return;
+    }
+
+    const chunks = splitSecureStoreValue(value);
+    await Promise.all(
+      chunks.map((chunk, index) =>
+        SecureStore.setItemAsync(getChunkKey(key, index), chunk),
+      ),
+    );
+    await SecureStore.setItemAsync(key, `${SECURE_STORE_CHUNK_PREFIX}${chunks.length}`);
   },
   removeItem: async (key: string) => {
     if (Platform.OS === 'web') {
@@ -92,7 +168,13 @@ const ExpoSecureStoreAdapter = {
       return;
     }
 
+    const storedValue = await SecureStore.getItemAsync(key);
+    const metadata = storedValue ? getChunkMetadata(storedValue) : null;
+
     await SecureStore.deleteItemAsync(key);
+    if (metadata) {
+      await removeSecureStoreChunks(key, metadata.count);
+    }
   },
 };
 

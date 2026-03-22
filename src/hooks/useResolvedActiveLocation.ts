@@ -3,9 +3,12 @@ import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from '@/store';
 import type { Location } from '@/types';
 
-function getAvailableLocations(locations: Location[]): Location[] {
-  const activeLocations = locations.filter((location) => location.active !== false);
-  return activeLocations.length > 0 ? activeLocations : locations;
+function getAvailableLocations(locations: Location[] | null | undefined): Location[] {
+  const safeLocations = Array.isArray(locations)
+    ? locations.filter((location): location is Location => Boolean(location?.id))
+    : [];
+  const activeLocations = safeLocations.filter((location) => location.active !== false);
+  return activeLocations.length > 0 ? activeLocations : safeLocations;
 }
 
 function resolveLocation(

@@ -14,6 +14,7 @@ import { useOrderStore, useAuthStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { OrderWithDetails, OrderStatus } from '@/types';
 import { statusColors, ORDER_STATUS_LABELS, colors } from '@/constants';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { glassColors, glassRadii, glassSpacing, glassTypography } from '@/design/tokens';
 
@@ -120,7 +121,6 @@ export default function OrdersScreen() {
   const { user } = useAuthStore();
   const { orders, fetchUserOrders } = useOrderStore();
   const [selectedStatus, setSelectedStatus] = useState<OrderStatus | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -177,13 +177,15 @@ export default function OrdersScreen() {
     };
   }, [fetchUserOrders, user?.id]);
 
-  const onRefresh = async () => {
-    if (user) {
-      setRefreshing(true);
+  const { refreshing, onRefresh } = useManagedRefresh(
+    useCallback(async () => {
+      if (!user) {
+        return;
+      }
+
       await fetchUserOrders(user.id);
-      setRefreshing(false);
-    }
-  };
+    }, [fetchUserOrders, user]),
+  );
 
   const filteredOrders = selectedStatus
     ? orders.filter((order) => order.status === selectedStatus)

@@ -1,16 +1,20 @@
-import { Alert, Platform } from 'react-native';
+import { Alert } from 'react-native';
 import { useCallback } from 'react';
-import * as Haptics from 'expo-haptics';
 import { useOrderStore } from '@/store';
+import { triggerConfirmationHaptic } from '@/lib/haptics';
 import { useResolvedActiveLocation } from './useResolvedActiveLocation';
 import type { HistoricalOrderSummary, PredictedOrderItem } from '@/features/ordering/orderInsights';
 import type { InventoryItem, UnitType } from '@/types';
 import type { AddToCartOptions } from '@/store/orderStore';
 
-function triggerLightHaptic() {
-  if (Platform.OS !== 'web') {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+function isAcceptedAdd(quantity: number, options?: Omit<AddToCartOptions, 'context'>) {
+  const inputMode = options?.inputMode ?? 'quantity';
+
+  if (inputMode === 'remaining') {
+    return Number.isFinite(quantity) && quantity >= 0;
   }
+
+  return Number.isFinite(quantity) && quantity > 0;
 }
 
 export function useEmployeeCartActions() {
@@ -37,12 +41,15 @@ export function useEmployeeCartActions() {
       if (!locationId) {
         return false;
       }
+      if (!isAcceptedAdd(quantity, options)) {
+        return false;
+      }
 
       addToCart(locationId, inventoryItemId, quantity, unitType, {
         ...options,
         context: 'employee',
       });
-      triggerLightHaptic();
+      void triggerConfirmationHaptic();
       return true;
     },
     [addToCart, resolveLocationId],
@@ -84,7 +91,6 @@ export function useEmployeeCartActions() {
           note: item.note,
         });
       });
-      triggerLightHaptic();
       return true;
     },
     [addToCart, resolveLocationId],

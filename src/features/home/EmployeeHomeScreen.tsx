@@ -20,11 +20,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useShallow } from 'zustand/react/shallow';
 import {
   AddButton,
-  EmptyStateCard,
   GlassSurface,
   IdentityHeader,
   LoadingIndicator,
-  SectionHeader,
 } from '@/components';
 import { colors } from '@/constants';
 import {
@@ -41,6 +39,7 @@ import {
   createBrowseInventoryRouteParams,
 } from '@/features/browse/config';
 import { useEmployeeCartActions } from '@/hooks/useEmployeeCartActions';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { useAuthStore, useInventoryStore, useOrderStore } from '@/store';
 import type {
@@ -56,6 +55,21 @@ import {
   type PredictedOrderItem,
 } from '@/features/ordering/orderInsights';
 import { fetchActiveLocationReminder, type LocationReminderBanner } from '@/services/locationReminderService';
+
+type HomeInsightsStatus = 'idle' | 'loading' | 'ready' | 'error';
+
+const HOME_INSIGHTS_TIMEOUT_MS = 8000;
+const HOME_REMINDER_TIMEOUT_MS = 6000;
+
+class HomeDataTimeoutError extends Error {
+  label: string;
+
+  constructor(label: string) {
+    super(`${label} timed out`);
+    this.name = 'HomeDataTimeoutError';
+    this.label = label;
+  }
+}
 
 interface SuggestedItemCardProps {
   item: PredictedOrderItem;
@@ -115,6 +129,177 @@ const SuggestedItemCard = memo(function SuggestedItemCard({
         />
       </View>
     </GlassSurface>
+  );
+});
+
+interface HomeModuleCardProps {
+  title: string;
+  actionLabel?: string;
+  onPressAction?: () => void;
+  children: React.ReactNode;
+}
+
+const HomeModuleCard = memo(function HomeModuleCard({
+  title,
+  actionLabel,
+  onPressAction,
+  children,
+}: HomeModuleCardProps) {
+  const ds = useScaledStyles();
+
+  return (
+    <GlassSurface
+      intensity="subtle"
+      style={{ borderRadius: glassRadii.surface }}
+    >
+      <View
+        style={{
+          paddingHorizontal: ds.spacing(14),
+          paddingTop: ds.spacing(14),
+          paddingBottom: ds.spacing(14),
+        }}
+      >
+        <View className="flex-row items-center justify-between">
+          <Text
+            style={{
+              fontSize: ds.fontSize(15),
+              fontWeight: '700',
+              color: glassColors.textPrimary,
+            }}
+          >
+            {title}
+          </Text>
+          {actionLabel && onPressAction ? (
+            <TouchableOpacity onPress={onPressAction} hitSlop={8}>
+              <Text
+                style={{
+                  fontSize: ds.fontSize(13),
+                  fontWeight: '700',
+                  color: glassColors.accent,
+                }}
+              >
+                {actionLabel}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <View style={{ marginTop: ds.spacing(12) }}>{children}</View>
+      </View>
+    </GlassSurface>
+  );
+});
+
+interface HomeModuleStateProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  message: string;
+  actionLabel?: string;
+  onPressAction?: () => void;
+  tone?: 'default' | 'error';
+}
+
+const HomeModuleState = memo(function HomeModuleState({
+  icon,
+  title,
+  message,
+  actionLabel,
+  onPressAction,
+  tone = 'default',
+}: HomeModuleStateProps) {
+  const ds = useScaledStyles();
+  const isError = tone === 'error';
+
+  return (
+    <View
+      style={{
+        minHeight: ds.spacing(124),
+        justifyContent: 'center',
+      }}
+    >
+      <View
+        style={{
+          width: ds.icon(36),
+          height: ds.icon(36),
+          borderRadius: glassRadii.iconTile,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: isError ? glassColors.dangerSoft : glassColors.mediumFill,
+        }}
+      >
+        <Ionicons
+          name={icon}
+          size={ds.icon(18)}
+          color={isError ? glassColors.dangerText : glassColors.textSecondary}
+        />
+      </View>
+      <Text
+        style={{
+          marginTop: ds.spacing(12),
+          fontSize: ds.fontSize(15),
+          fontWeight: '600',
+          color: glassColors.textPrimary,
+        }}
+      >
+        {title}
+      </Text>
+      <Text
+        style={{
+          marginTop: ds.spacing(6),
+          fontSize: ds.fontSize(12),
+          color: glassColors.textSecondary,
+          lineHeight: ds.fontSize(18),
+        }}
+      >
+        {message}
+      </Text>
+      {actionLabel && onPressAction ? (
+        <TouchableOpacity
+          onPress={onPressAction}
+          activeOpacity={0.85}
+          style={{
+            alignSelf: 'flex-start',
+            marginTop: ds.spacing(14),
+            minHeight: Math.max(38, ds.buttonH - ds.spacing(8)),
+            paddingHorizontal: ds.spacing(14),
+            borderRadius: glassRadii.pill,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: glassColors.accent,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: ds.fontSize(13),
+              fontWeight: '700',
+              color: glassColors.textOnPrimary,
+            }}
+          >
+            {actionLabel}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+    </View>
+  );
+});
+
+const HomeModuleLoading = memo(function HomeModuleLoading({
+  text,
+}: {
+  text: string;
+}) {
+  const ds = useScaledStyles();
+
+  return (
+    <View
+      style={{
+        minHeight: ds.spacing(124),
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <LoadingIndicator showText text={text} />
+    </View>
   );
 });
 
@@ -214,11 +399,38 @@ function createBrowseFocusRequestId(itemId: string): string {
   return `${itemId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new HomeDataTimeoutError(label));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+function isHomeDataTimeoutError(error: unknown): error is HomeDataTimeoutError {
+  return error instanceof HomeDataTimeoutError;
+}
+
 export function EmployeeHomeScreen() {
   const ds = useScaledStyles();
-  const [refreshing, setRefreshing] = useState(false);
   const [browseCategory, setBrowseCategory] = useState<ItemCategory | null>(null);
-  const [insightsLoading, setInsightsLoading] = useState(true);
+  const [orderInsightsStatus, setOrderInsightsStatus] =
+    useState<HomeInsightsStatus>('idle');
   const [predictedItems, setPredictedItems] = useState<PredictedOrderItem[]>([]);
   const [reorderOrder, setReorderOrder] = useState<HistoricalOrderSummary | null>(null);
   const [activeReminder, setActiveReminder] = useState<LocationReminderBanner | null>(null);
@@ -269,31 +481,60 @@ export function EmployeeHomeScreen() {
     }
   }, [location, locations, setLocation]);
 
+  useEffect(() => {
+    setPredictedItems([]);
+    setReorderOrder(null);
+    setActiveReminder(null);
+    setOrderInsightsStatus(location?.id ? 'loading' : 'ready');
+  }, [location?.id]);
+
   const loadHomeData = useCallback(async () => {
-    if (!location?.id) {
+    const locationId = location?.id ?? null;
+    if (!locationId) {
       setPredictedItems([]);
       setReorderOrder(null);
       setActiveReminder(null);
-      setInsightsLoading(false);
+      setOrderInsightsStatus('ready');
       return;
     }
 
-    setInsightsLoading(true);
-    try {
-      const [insights, reminder] = await Promise.all([
-        fetchLocationOrderInsights(location.id),
-        fetchActiveLocationReminder(location.id),
-      ]);
-      setPredictedItems(insights.predictedItems);
-      setReorderOrder(insights.reorderOrder);
-      setActiveReminder(reminder);
-    } catch (error) {
-      console.error('Unable to load home insights', error);
-      setPredictedItems([]);
-      setReorderOrder(null);
+    setOrderInsightsStatus('loading');
+
+    const [insightsResult, reminderResult] = await Promise.allSettled([
+      withTimeout(
+        fetchLocationOrderInsights(locationId),
+        HOME_INSIGHTS_TIMEOUT_MS,
+        'Home insights',
+      ),
+      withTimeout(
+        fetchActiveLocationReminder(locationId),
+        HOME_REMINDER_TIMEOUT_MS,
+        'Home reminder',
+      ),
+    ]);
+
+    if (useAuthStore.getState().location?.id !== locationId) {
+      return;
+    }
+
+    if (insightsResult.status === 'fulfilled') {
+      setPredictedItems(insightsResult.value.predictedItems);
+      setReorderOrder(insightsResult.value.reorderOrder);
+      setOrderInsightsStatus('ready');
+    } else if (isHomeDataTimeoutError(insightsResult.reason)) {
+      setOrderInsightsStatus('ready');
+    } else {
+      console.error('Unable to load order insights', insightsResult.reason);
+      setOrderInsightsStatus('error');
+    }
+
+    if (reminderResult.status === 'fulfilled') {
+      setActiveReminder(reminderResult.value);
+    } else if (isHomeDataTimeoutError(reminderResult.reason)) {
+      // Keep the current banner state on transient timeouts.
+    } else {
+      console.error('Unable to load home reminder', reminderResult.reason);
       setActiveReminder(null);
-    } finally {
-      setInsightsLoading(false);
     }
   }, [location?.id]);
 
@@ -303,12 +544,14 @@ export function EmployeeHomeScreen() {
     }, [loadHomeData]),
   );
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await fetchItems({ force: true });
-    await loadHomeData();
-    setRefreshing(false);
-  }, [fetchItems, loadHomeData]);
+  const { refreshing, onRefresh } = useManagedRefresh(
+    useCallback(async () => {
+      await Promise.allSettled([
+        fetchItems({ force: true }),
+        loadHomeData(),
+      ]);
+    }, [fetchItems, loadHomeData]),
+  );
 
   const allItemsSorted = useMemo(
     () => [...items].sort((left, right) => left.name.localeCompare(right.name)),
@@ -327,6 +570,12 @@ export function EmployeeHomeScreen() {
     () => filteredPreviewBrowseItems.slice(0, 2),
     [filteredPreviewBrowseItems],
   );
+  const hasSuggestedItems = predictedItems.length > 0;
+  const hasQuickAction = Boolean(reorderOrder);
+  const showSuggestedLoading =
+    orderInsightsStatus === 'loading' && !hasSuggestedItems;
+  const showQuickActionsLoading =
+    orderInsightsStatus === 'loading' && !hasQuickAction;
 
   const homeDate = useMemo(() => new Date(), []);
   const greeting = getGreeting(homeDate);
@@ -398,6 +647,19 @@ export function EmployeeHomeScreen() {
     });
   }, [addPredictedItem, predictedItems]);
 
+  const handleQuickActionPress = useCallback(() => {
+    if (!reorderOrder) {
+      return;
+    }
+
+    const didReorder = reorderHistoricalOrder(reorderOrder);
+    if (!didReorder) {
+      return;
+    }
+
+    router.push('/(tabs)/cart');
+  }, [reorderHistoricalOrder, reorderOrder]);
+
   const renderSuggestedItem = useCallback(
     ({ item }: { item: PredictedOrderItem }) => (
       <SuggestedItemCard item={item} onAdd={addPredictedItem} />
@@ -405,7 +667,7 @@ export function EmployeeHomeScreen() {
     [addPredictedItem],
   );
 
-  if ((itemsLoading && items.length === 0) || (insightsLoading && !location)) {
+  if (itemsLoading && items.length === 0) {
     return (
       <SafeAreaView
         style={{ flex: 1, backgroundColor: glassColors.background }}
@@ -442,7 +704,7 @@ export function EmployeeHomeScreen() {
           title={greeting}
           subtitle={formatHeaderDate(homeDate)}
           cartCount={totalCartCount}
-          onPressCart={() => router.push('/cart')}
+          onPressCart={() => router.push('/(tabs)/cart')}
         />
 
         {activeReminder ? (
@@ -545,70 +807,67 @@ export function EmployeeHomeScreen() {
           </TouchableOpacity>
 
           <View style={{ marginTop: ds.spacing(20) }}>
-            <SectionHeader
-              title="Suggested for Today"
+            <HomeModuleCard
+              title="Suggestions"
               actionLabel={predictedItems.length > 0 ? 'Add all' : undefined}
               onPressAction={predictedItems.length > 0 ? handleAddAllPredicted : undefined}
-            />
-            {insightsLoading && location?.id ? (
-              <GlassSurface
-                intensity="subtle"
-                style={{
-                  marginTop: ds.spacing(12),
-                  borderRadius: glassRadii.surface,
-                  paddingVertical: ds.spacing(18),
-                }}
-              >
-                <LoadingIndicator showText text="Loading suggestions..." />
-              </GlassSurface>
-            ) : predictedItems.length > 0 ? (
-              <FlatList
-                data={predictedItems}
-                renderItem={renderSuggestedItem}
-                keyExtractor={(item) => `${item.inventoryItemId}:${item.unitType}`}
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{
-                  paddingTop: ds.spacing(12),
-                  gap: ds.spacing(10),
-                }}
-              />
-            ) : (
-              <View style={{ marginTop: ds.spacing(12) }}>
-                <EmptyStateCard
-                  icon="sparkles-outline"
-                  title="Not enough data yet"
-                  message="Place orders for suggestions to show up."
-                  alignment="leading"
+            >
+              {showSuggestedLoading ? (
+                <HomeModuleLoading text="Loading suggestions..." />
+              ) : hasSuggestedItems ? (
+                <FlatList
+                  data={predictedItems}
+                  renderItem={renderSuggestedItem}
+                  keyExtractor={(item) => `${item.inventoryItemId}:${item.unitType}`}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{
+                    gap: ds.spacing(10),
+                  }}
                 />
-              </View>
-            )}
+              ) : orderInsightsStatus === 'error' ? (
+                <HomeModuleState
+                  icon="cloud-offline-outline"
+                  title="Suggestions unavailable"
+                  message="We couldn't load suggestions right now."
+                  actionLabel="Retry"
+                  onPressAction={() => {
+                    void loadHomeData();
+                  }}
+                  tone="error"
+                />
+              ) : (
+                <HomeModuleState
+                  icon="sparkles-outline"
+                  title={location?.id ? 'No suggestions yet' : 'Choose a location'}
+                  message={
+                    location?.id
+                      ? 'Recent ordering patterns will show up here when they are available.'
+                      : 'Select a location to see suggested items.'
+                  }
+                />
+              )}
+            </HomeModuleCard>
           </View>
 
           <View style={{ marginTop: ds.spacing(20) }}>
-            <SectionHeader title="Quick Actions" />
-            {insightsLoading && location?.id ? (
-              <GlassSurface
-                intensity="subtle"
-                style={{
-                  marginTop: ds.spacing(12),
-                  borderRadius: glassRadii.surface,
-                  paddingVertical: ds.spacing(18),
-                }}
-              >
-                <LoadingIndicator showText text="Loading quick actions..." />
-              </GlassSurface>
-            ) : reorderOrder ? (
-              <GlassSurface
-                intensity="subtle"
-                style={{ marginTop: ds.spacing(12), borderRadius: glassRadii.surface }}
-              >
+            <HomeModuleCard title="Quick Actions">
+              {showQuickActionsLoading ? (
+                <HomeModuleLoading text="Loading quick actions..." />
+              ) : reorderOrder ? (
                 <TouchableOpacity
-                  onPress={() => reorderHistoricalOrder(reorderOrder)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Reorder last ${formatOrderDayLabel(reorderOrder.createdAt)}`}
+                  accessibilityHint="Adds the recommended reorder items to your cart and opens the cart"
+                  onPress={handleQuickActionPress}
                   className="flex-row items-center"
                   style={{
                     paddingHorizontal: ds.spacing(14),
                     paddingVertical: ds.spacing(14),
+                    borderRadius: glassRadii.surface,
+                    backgroundColor: glassColors.background,
+                    borderWidth: glassHairlineWidth,
+                    borderColor: glassColors.cardBorder,
                   }}
                   activeOpacity={0.85}
                 >
@@ -656,17 +915,29 @@ export function EmployeeHomeScreen() {
                     color={glassColors.textSecondary}
                   />
                 </TouchableOpacity>
-              </GlassSurface>
-            ) : (
-              <View style={{ marginTop: ds.spacing(12) }}>
-                <EmptyStateCard
-                  icon="flash-outline"
-                  title="Not enough data yet"
-                  message="Use the app to place orders and quick actions will appear here."
-                  alignment="leading"
+              ) : orderInsightsStatus === 'error' ? (
+                <HomeModuleState
+                  icon="cloud-offline-outline"
+                  title="Quick actions unavailable"
+                  message="We couldn't load your latest shortcuts right now."
+                  actionLabel="Retry"
+                  onPressAction={() => {
+                    void loadHomeData();
+                  }}
+                  tone="error"
                 />
-              </View>
-            )}
+              ) : (
+                <HomeModuleState
+                  icon="flash-outline"
+                  title={location?.id ? 'No quick actions yet' : 'Choose a location'}
+                  message={
+                    location?.id
+                      ? 'Your latest reorder shortcuts will appear here once recent orders are available.'
+                      : 'Select a location to see quick actions.'
+                  }
+                />
+              )}
+            </HomeModuleCard>
           </View>
 
           <View style={{ marginTop: ds.spacing(20) }}>

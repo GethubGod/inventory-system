@@ -13,6 +13,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { ReminderDeliveryEvent, listReminderDeliveryEvents } from '@/services';
 
@@ -46,7 +47,6 @@ export default function EmployeeReminderDeliveryStatusScreen() {
   const [events, setEvents] = useState<ReminderDeliveryEvent[]>([]);
   const [query, setQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
   const loadEvents = useCallback(async () => {
     try {
@@ -56,7 +56,6 @@ export default function EmployeeReminderDeliveryStatusScreen() {
       Alert.alert('Unable to load delivery status', error?.message || 'Please try again.');
     } finally {
       setIsLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
@@ -66,10 +65,7 @@ export default function EmployeeReminderDeliveryStatusScreen() {
     }, [loadEvents])
   );
 
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadEvents();
-  }, [loadEvents]);
+  const { refreshing, onRefresh: handleRefresh } = useManagedRefresh(loadEvents);
 
   const filteredEvents = useMemo(() => {
     const term = query.trim().toLowerCase();

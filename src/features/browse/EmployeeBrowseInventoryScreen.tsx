@@ -76,6 +76,7 @@ export function EmployeeBrowseInventoryScreen({
   const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProcessedFocusRequestRef = useRef<string | null>(null);
   const lastScrolledFocusRequestRef = useRef<string | null>(null);
+  const previousActiveLocationIdRef = useRef<string | null>(null);
   const pendingScrollRequestRef = useRef<{
     requestKey: string;
     index: number;
@@ -207,7 +208,15 @@ export function EmployeeBrowseInventoryScreen({
   }, [activeEditingItemId, filteredBrowseItems]);
 
   useEffect(() => {
-    setActiveEditingItemId(null);
+    if (
+      previousActiveLocationIdRef.current &&
+      activeLocationId &&
+      previousActiveLocationIdRef.current !== activeLocationId
+    ) {
+      setActiveEditingItemId(null);
+    }
+
+    previousActiveLocationIdRef.current = activeLocationId;
   }, [activeLocationId]);
 
   const emptyBrowseResults =

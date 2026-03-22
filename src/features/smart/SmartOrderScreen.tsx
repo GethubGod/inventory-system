@@ -31,6 +31,7 @@ import {
   glassTabBarHeight,
 } from '@/design/tokens';
 import { useEmployeeCartActions } from '@/hooks/useEmployeeCartActions';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   fetchLocationOrderInsights,
@@ -236,7 +237,6 @@ const RecentOrderCard = memo(function RecentOrderCard({
 
 export function SmartOrderScreen() {
   const ds = useScaledStyles();
-  const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [recentOrders, setRecentOrders] = useState<HistoricalOrderSummary[]>([]);
   const [predictedItems, setPredictedItems] = useState<PredictedOrderItem[]>([]);
@@ -313,11 +313,7 @@ export function SmartOrderScreen() {
     }, [loadSmartData]),
   );
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadSmartData();
-    setRefreshing(false);
-  }, [loadSmartData]);
+  const { refreshing, onRefresh } = useManagedRefresh(loadSmartData);
 
   const handleIncrementPrediction = useCallback((itemKey: string) => {
     setQuantitiesByKey((previous) => ({

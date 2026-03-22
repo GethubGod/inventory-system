@@ -5,10 +5,17 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, hairline, radii } from '@/theme/design';
+import { colors, radii } from '@/theme/design';
+import {
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+} from '@/design/tokens';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { BottomSheetShell } from './BottomSheetShell';
+import { GlassSurface } from './ui/GlassSurface';
 
 export interface ItemActionSheetItem {
   id: string;
@@ -46,36 +53,114 @@ export function ItemActionSheet({
   showCancelAction = true,
 }: ItemActionSheetProps) {
   const ds = useScaledStyles();
+  const insets = useSafeAreaInsets();
   const hasActions = sections.some((section) => section.items.length > 0);
 
   return (
-    <BottomSheetShell visible={visible} onClose={onClose}>
-      <View style={{ paddingHorizontal: ds.spacing(6), paddingBottom: ds.spacing(10) }}>
-        <Text
+    <BottomSheetShell
+      visible={visible}
+      onClose={onClose}
+      bottomPadding={Math.max(ds.spacing(10), insets.bottom + ds.spacing(8))}
+    >
+      <View style={{ paddingHorizontal: ds.spacing(6), paddingBottom: ds.spacing(12) }}>
+        <View
           style={{
-            fontSize: ds.fontSize(18),
-            fontWeight: '700',
-            color: colors.textPrimary,
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
           }}
         >
-          {title}
-        </Text>
-        {subtitle ? (
-          <Text
+          <View style={{ flex: 1, paddingRight: ds.spacing(12) }}>
+            <Text
+              style={{
+                fontSize: ds.fontSize(20),
+                fontWeight: '700',
+                color: glassColors.textPrimary,
+                letterSpacing: -0.3,
+              }}
+            >
+              {title}
+            </Text>
+            {subtitle ? (
+              <GlassSurface
+                intensity="subtle"
+                style={{
+                  marginTop: ds.spacing(12),
+                  borderRadius: glassRadii.surface,
+                }}
+              >
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: ds.spacing(14),
+                    paddingVertical: ds.spacing(12),
+                  }}
+                >
+                  <View
+                    style={{
+                      width: ds.icon(38),
+                      height: ds.icon(38),
+                      borderRadius: ds.icon(19),
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: glassColors.accentSoft,
+                    }}
+                  >
+                    <Ionicons name="cube-outline" size={ds.icon(18)} color={glassColors.accent} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: ds.spacing(12) }}>
+                    <Text
+                      style={{
+                        fontSize: ds.fontSize(11),
+                        fontWeight: '700',
+                        letterSpacing: 0.7,
+                        textTransform: 'uppercase',
+                        color: glassColors.textSecondary,
+                      }}
+                    >
+                      Current Item
+                    </Text>
+                    <Text
+                      style={{
+                        marginTop: ds.spacing(4),
+                        fontSize: ds.fontSize(14),
+                        color: glassColors.textPrimary,
+                        lineHeight: ds.fontSize(19),
+                      }}
+                    >
+                      {subtitle}
+                    </Text>
+                  </View>
+                </View>
+              </GlassSurface>
+            ) : null}
+          </View>
+
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel="Close actions"
+            onPress={onClose}
+            activeOpacity={0.8}
             style={{
-              fontSize: ds.fontSize(13),
-              marginTop: ds.spacing(4),
-              color: colors.textSecondary,
+              width: ds.icon(36),
+              height: ds.icon(36),
+              borderRadius: ds.icon(18),
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: glassColors.mediumFill,
+              borderWidth: glassHairlineWidth,
+              borderColor: glassColors.cardBorder,
             }}
           >
-            {subtitle}
-          </Text>
-        ) : null}
+            <Ionicons name="close" size={ds.icon(18)} color={glassColors.textPrimary} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
-        style={{ maxHeight: ds.spacing(420) }}
-        contentContainerStyle={{ paddingHorizontal: ds.spacing(6), paddingBottom: ds.spacing(6) }}
+        style={{ maxHeight: ds.spacing(432) }}
+        contentContainerStyle={{ paddingHorizontal: ds.spacing(6), paddingBottom: ds.spacing(4) }}
         showsVerticalScrollIndicator={false}
       >
         {hasActions ? (
@@ -88,62 +173,82 @@ export function ItemActionSheet({
                 {section.title ? (
                   <Text
                     style={{
-                      fontSize: ds.fontSize(12),
-                      marginBottom: ds.spacing(6),
+                      fontSize: ds.fontSize(11),
+                      marginBottom: ds.spacing(8),
                       marginLeft: ds.spacing(6),
-                      fontWeight: '600',
-                      letterSpacing: 0.6,
+                      fontWeight: '700',
+                      letterSpacing: 0.8,
                       textTransform: 'uppercase',
-                      color: colors.textSecondary,
+                      color: glassColors.textSecondary,
                     }}
                   >
                     {section.title}
                   </Text>
                 ) : null}
 
-                <View
+                <GlassSurface
+                  intensity="subtle"
                   style={{
-                    borderRadius: radii.button,
-                    borderWidth: hairline,
-                    borderColor: colors.glassBorder,
-                    backgroundColor: colors.white,
+                    borderRadius: glassRadii.surface,
                     overflow: 'hidden',
                   }}
                 >
                   {visibleItems.map((item, itemIndex) => {
                     const disabled = item.disabled === true;
-                    const labelColor = item.destructive ? colors.primary : colors.textPrimary;
-                    const iconColor = item.destructive ? colors.primary : colors.textSecondary;
+                    const iconBackground = item.destructive
+                      ? glassColors.dangerSoft
+                      : sectionIndex === 0
+                        ? glassColors.accentSoft
+                        : glassColors.mediumFill;
+                    const iconColor = item.destructive
+                      ? glassColors.dangerText
+                      : sectionIndex === 0
+                        ? glassColors.accent
+                        : glassColors.textPrimary;
+                    const labelColor = item.destructive ? glassColors.dangerText : glassColors.textPrimary;
 
                     return (
                       <TouchableOpacity
                         key={item.id}
                         disabled={disabled}
                         onPress={item.onPress}
-                        activeOpacity={0.7}
+                        activeOpacity={0.78}
                         style={{
                           flexDirection: 'row',
-                          alignItems: 'center',
-                          minHeight: Math.max(56, ds.rowH),
+                          alignItems: 'flex-start',
+                          minHeight: Math.max(64, ds.rowH),
                           paddingHorizontal: ds.spacing(16),
-                          paddingVertical: ds.spacing(10),
+                          paddingVertical: ds.spacing(14),
                           opacity: disabled ? 0.45 : 1,
-                          borderBottomWidth: itemIndex < visibleItems.length - 1 ? hairline : 0,
-                          borderBottomColor: colors.divider,
+                          borderBottomWidth: itemIndex < visibleItems.length - 1 ? glassHairlineWidth : 0,
+                          borderBottomColor: glassColors.divider,
                         }}
                       >
                         {item.icon ? (
-                          <View style={{ width: ds.icon(28), alignItems: 'center' }}>
-                            <Ionicons name={item.icon as any} size={ds.icon(22)} color={iconColor} />
+                          <View
+                            style={{
+                              width: ds.icon(40),
+                              height: ds.icon(40),
+                              borderRadius: ds.icon(20),
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              backgroundColor: iconBackground,
+                              borderWidth: glassHairlineWidth,
+                              borderColor: item.destructive
+                                ? 'rgba(163, 45, 45, 0.12)'
+                                : glassColors.cardBorder,
+                            }}
+                          >
+                            <Ionicons name={item.icon as any} size={ds.icon(18)} color={iconColor} />
                           </View>
                         ) : (
-                          <View style={{ width: ds.icon(28) }} />
+                          <View style={{ width: ds.icon(40), height: ds.icon(40) }} />
                         )}
-                        <View style={{ flex: 1, marginLeft: ds.spacing(12) }}>
+                        <View style={{ flex: 1, marginLeft: ds.spacing(12), paddingTop: ds.spacing(2) }}>
                           <Text
                             style={{
-                              fontSize: ds.fontSize(16),
-                              fontWeight: '500',
+                              fontSize: ds.fontSize(15),
+                              fontWeight: '600',
                               color: labelColor,
                             }}
                           >
@@ -153,28 +258,35 @@ export function ItemActionSheet({
                             <Text
                               style={{
                                 fontSize: ds.fontSize(13),
-                                marginTop: ds.spacing(2),
-                                color: colors.textSecondary,
+                                marginTop: ds.spacing(4),
+                                color: glassColors.textSecondary,
+                                lineHeight: ds.fontSize(18),
                               }}
                             >
                               {item.detail}
                             </Text>
                           ) : null}
                         </View>
+
+                        <View style={{ paddingTop: ds.spacing(8), marginLeft: ds.spacing(8) }}>
+                          <Ionicons
+                            name="chevron-forward"
+                            size={ds.icon(16)}
+                            color={glassColors.textSecondary}
+                          />
+                        </View>
                       </TouchableOpacity>
                     );
                   })}
-                </View>
+                </GlassSurface>
               </View>
             );
           })
         ) : (
-          <View
+          <GlassSurface
+            intensity="subtle"
             style={{
-              borderRadius: radii.button,
-              borderWidth: hairline,
-              borderColor: colors.glassBorder,
-              backgroundColor: colors.background,
+              borderRadius: glassRadii.surface,
               paddingHorizontal: ds.spacing(16),
               paddingVertical: ds.spacing(24),
               alignItems: 'center',
@@ -189,25 +301,39 @@ export function ItemActionSheet({
             >
               No actions available.
             </Text>
-          </View>
+          </GlassSurface>
         )}
 
         {showCancelAction ? (
-          <TouchableOpacity
-            onPress={onClose}
-            style={{ paddingVertical: ds.spacing(16), marginTop: ds.spacing(4) }}
+          <GlassSurface
+            intensity="medium"
+            style={{
+              marginTop: ds.spacing(12),
+              borderRadius: radii.submitButton,
+            }}
           >
-            <Text
+            <TouchableOpacity
+              onPress={onClose}
+              activeOpacity={0.8}
               style={{
-                fontSize: ds.fontSize(15),
-                fontWeight: '600',
-                color: colors.textSecondary,
-                textAlign: 'center',
+                minHeight: ds.buttonH,
+                alignItems: 'center',
+                justifyContent: 'center',
+                paddingHorizontal: ds.spacing(16),
               }}
             >
-              {cancelLabel}
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={{
+                  fontSize: ds.fontSize(15),
+                  fontWeight: '600',
+                  color: colors.textPrimary,
+                  textAlign: 'center',
+                }}
+              >
+                {cancelLabel}
+              </Text>
+            </TouchableOpacity>
+          </GlassSurface>
         ) : null}
       </ScrollView>
     </BottomSheetShell>

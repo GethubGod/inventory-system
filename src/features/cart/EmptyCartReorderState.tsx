@@ -4,6 +4,7 @@ import {
   RefreshControl,
   Text,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
@@ -15,6 +16,7 @@ import {
   type LocationOrderInsights,
   fetchLocationOrderInsights,
 } from '@/features/ordering/orderInsights';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   glassColors,
@@ -179,9 +181,10 @@ export function EmptyCartReorderState({
   quickOrderRoute,
 }: EmptyCartReorderStateProps) {
   const ds = useScaledStyles();
+  const { height } = useWindowDimensions();
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [recentOrders, setRecentOrders] = useState<HistoricalOrderSummary[]>([]);
+  const heroMinHeight = Math.max(ds.spacing(280), Math.round(height * 0.46));
 
   const loadOrders = useCallback(async () => {
     if (!locationId) {
@@ -208,11 +211,7 @@ export function EmptyCartReorderState({
     }, [loadOrders]),
   );
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadOrders();
-    setRefreshing(false);
-  }, [loadOrders]);
+  const { refreshing, onRefresh } = useManagedRefresh(loadOrders);
 
   const renderOrderCard = useCallback(
     ({ item, index }: { item: HistoricalOrderSummary; index: number }) => (
@@ -239,7 +238,13 @@ export function EmptyCartReorderState({
       }}
       ListHeaderComponent={
         <View style={{ paddingTop: ds.spacing(12), paddingBottom: ds.spacing(12) }}>
-          <View className="items-center justify-center">
+          <View
+            className="items-center justify-center"
+            style={{
+              minHeight: heroMinHeight,
+              paddingBottom: ds.spacing(18),
+            }}
+          >
             <GlassSurface
               intensity="medium"
               style={{
@@ -266,16 +271,65 @@ export function EmptyCartReorderState({
             >
               No items in cart
             </Text>
-            <Text
+
+            <View
               style={{
-                marginTop: ds.spacing(6),
-                fontSize: ds.fontSize(12),
-                color: glassColors.textSecondary,
-                textAlign: 'center',
+                width: '100%',
+                flexDirection: 'row',
+                gap: ds.spacing(12),
+                marginTop: ds.spacing(24),
               }}
             >
-              Reorder from a past order or browse inventory
-            </Text>
+              <TouchableOpacity
+                onPress={() => router.push(browseRoute as never)}
+                style={{
+                  flex: 1,
+                  borderRadius: glassRadii.button,
+                  minHeight: ds.buttonH,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: colors.primary[500],
+                }}
+                activeOpacity={0.85}
+              >
+                <Text
+                  style={{
+                    fontSize: ds.buttonFont,
+                    fontWeight: '700',
+                    color: glassColors.textOnPrimary,
+                  }}
+                >
+                  Browse
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => router.push(quickOrderRoute as never)}
+                style={{
+                  flex: 1,
+                  borderRadius: glassRadii.button,
+                  minHeight: ds.buttonH,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  backgroundColor: glassColors.mediumFill,
+                  borderWidth: glassHairlineWidth,
+                  borderColor: glassColors.cardBorder,
+                }}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="flash" size={ds.icon(18)} color={glassColors.textPrimary} />
+                <Text
+                  style={{
+                    marginLeft: ds.spacing(8),
+                    fontSize: ds.buttonFont,
+                    fontWeight: '700',
+                    color: glassColors.textPrimary,
+                  }}
+                >
+                  Quick Order
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <Text
@@ -317,72 +371,7 @@ export function EmptyCartReorderState({
               >
                 No recent orders for this location
               </Text>
-              <Text
-                style={{
-                  marginTop: ds.spacing(6),
-                  fontSize: ds.fontSize(12),
-                  color: glassColors.textSecondary,
-                  textAlign: 'center',
-                }}
-              >
-                Start a new cart from Quick Order or browse inventory.
-              </Text>
             </GlassSurface>
-
-            <View
-              className="flex-row"
-              style={{ gap: ds.spacing(12), marginTop: ds.spacing(16) }}
-            >
-              <TouchableOpacity
-                onPress={() => router.push(quickOrderRoute as never)}
-                style={{
-                  flex: 1,
-                  borderRadius: glassRadii.button,
-                  minHeight: ds.buttonH,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexDirection: 'row',
-                  backgroundColor: colors.primary[500],
-                }}
-                activeOpacity={0.85}
-              >
-                <Ionicons name="flash" size={ds.icon(18)} color={colors.white} />
-                <Text
-                  style={{
-                    marginLeft: ds.spacing(8),
-                    fontSize: ds.buttonFont,
-                    fontWeight: '700',
-                    color: glassColors.textOnPrimary,
-                  }}
-                >
-                  Quick Order
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => router.push(browseRoute as never)}
-                style={{
-                  flex: 1,
-                  borderRadius: glassRadii.button,
-                  minHeight: ds.buttonH,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: glassColors.mediumFill,
-                  borderWidth: glassHairlineWidth,
-                  borderColor: glassColors.cardBorder,
-                }}
-                activeOpacity={0.85}
-              >
-                <Text
-                  style={{
-                    fontSize: ds.buttonFont,
-                    fontWeight: '700',
-                    color: glassColors.textPrimary,
-                  }}
-                >
-                  Browse
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
         )
       }

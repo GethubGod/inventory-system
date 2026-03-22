@@ -4,7 +4,6 @@ export { CategoryFilter } from './CategoryFilter';
 export { StatusFilter } from './StatusFilter';
 export { OrderCard } from './OrderCard';
 export { LoadingIndicator } from './LoadingIndicator';
-export { OrderConfirmationPopup } from './OrderConfirmationPopup';
 export { QrScannerModal } from './QrScannerModal';
 export { AuthLogoHeader } from './AuthLogoHeader';
 export { BrandLogo } from './BrandLogo';

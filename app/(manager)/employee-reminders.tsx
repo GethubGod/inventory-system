@@ -16,6 +16,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { colors } from '@/constants';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import {
@@ -98,7 +99,6 @@ export default function EmployeeRemindersScreen() {
 
   const [overview, setOverview] = useState<EmployeeReminderOverview | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
@@ -127,7 +127,6 @@ export default function EmployeeRemindersScreen() {
       });
     } finally {
       setIsLoading(false);
-      setRefreshing(false);
     }
   }, [selectedLocationId]);
 
@@ -194,10 +193,7 @@ export default function EmployeeRemindersScreen() {
     };
   }, [loadOverview, selectedLocationId]);
 
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadOverview();
-  }, [loadOverview]);
+  const { refreshing, onRefresh: handleRefresh } = useManagedRefresh(loadOverview);
 
   const executeReminder = useCallback(
     async (row: EmployeeReminderStatusRow, overrideRateLimit = false) => {

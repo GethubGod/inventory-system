@@ -29,6 +29,7 @@ import { getInventoryWithStock, InventoryWithStock } from '@/lib/api/stock';
 import { supabase } from '@/lib/supabase';
 import { getCheckStatus } from '@/store/stock.store';
 import { useStockNetworkStatus } from '@/hooks';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 
@@ -150,7 +151,6 @@ export default function ManagerInventoryScreen() {
   const headerIconSize = Math.max(44, ds.icon(40));
   const badgeSize = Math.max(18, ds.icon(20));
 
-  const [refreshing, setRefreshing] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBulkAddModal, setShowBulkAddModal] = useState(false);
   const [showLocationModal, setShowLocationModal] = useState(false);
@@ -289,12 +289,12 @@ export default function ManagerInventoryScreen() {
     fetchItems();
   }, [fetchItems]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchInventoryStock();
-    await fetchItems({ force: true });
-    setRefreshing(false);
-  };
+  const { refreshing, onRefresh } = useManagedRefresh(
+    useCallback(async () => {
+      await fetchInventoryStock();
+      await fetchItems({ force: true });
+    }, [fetchInventoryStock, fetchItems]),
+  );
 
   const stockWithStatus: InventoryStockItem[] = useMemo(() => {
     return stockItems.map((item) => {

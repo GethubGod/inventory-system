@@ -19,6 +19,7 @@ import { colors } from '@/constants';
 import { GlassSurface, StackScreenHeader } from '@/components';
 import { useAuthStore } from '@/store';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   glassColors,
@@ -119,7 +120,6 @@ export default function UserManagementScreen() {
 
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
@@ -167,7 +167,6 @@ export default function UserManagementScreen() {
     async (isRefresh = false) => {
       if (!isManager) {
         setIsLoading(false);
-        setRefreshing(false);
         return;
       }
 
@@ -185,7 +184,6 @@ export default function UserManagementScreen() {
         setErrorMessage(error?.message || 'Unable to load users.');
       } finally {
         setIsLoading(false);
-        setRefreshing(false);
       }
     },
     [isManager]
@@ -225,10 +223,11 @@ export default function UserManagementScreen() {
     });
   }, [debouncedSearch, selectedFilter, users]);
 
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    loadUsers(true);
-  }, [loadUsers]);
+  const { refreshing, onRefresh: handleRefresh } = useManagedRefresh(
+    useCallback(async () => {
+      await loadUsers(true);
+    }, [loadUsers]),
+  );
 
   const applySuspensionUpdate = useCallback(
     async (targetUser: ManagedUser, nextSuspended: boolean) => {

@@ -27,6 +27,7 @@ import { OrderLaterScheduleModal } from '@/components/OrderLaterScheduleModal';
 import { ItemActionSheet, OrderLaterAddToSheet } from '@/components';
 import type { ItemActionSheetSection, OrderLaterSupplierOption } from '@/components';
 import { loadSupplierLookup, invalidateSupplierCache } from '@/services/supplierResolver';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 
 interface AggregatedLocationBreakdown {
   locationId: string;
@@ -290,7 +291,6 @@ export default function FulfillmentScreen() {
     clearSupplierOverride: state.clearSupplierOverride,
     createOrderLaterItem: state.createOrderLaterItem,
   })));
-  const [refreshing, setRefreshing] = useState(false);
   const [dataReady, setDataReady] = useState(false);
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
   const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(new Set());
@@ -487,14 +487,7 @@ export default function FulfillmentScreen() {
     };
   }, [managerLocationIds, refreshAll]);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    try {
-      await refreshAll();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [refreshAll]);
+  const { refreshing, onRefresh } = useManagedRefresh(refreshAll);
 
   const pendingOrders = useMemo(() => {
     return (orders as OrderWithDetails[]).filter((order) => order.status === 'submitted');

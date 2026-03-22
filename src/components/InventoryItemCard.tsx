@@ -14,6 +14,7 @@ import {
   glassStatusStyles,
 } from '@/design/tokens';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { triggerConfirmationHaptic } from '@/lib/haptics';
 
 interface InventoryItemCardProps {
   item: InventoryItem;
@@ -80,7 +81,6 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
   const categoryTint = categoryGlassTints[item.category];
   const showControls = isExpanded || Boolean(cartItem);
 
-  const baseFontSize = ds.fontSize(16);
   const tinyFontSize = ds.fontSize(12);
   const modeToggleHeight = Math.max(44, ds.buttonH - ds.spacing(6));
   const controlButtonSize = Math.max(40, ds.icon(40));
@@ -104,6 +104,7 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
           quantityRequested: qty,
           context: cartContext,
         });
+        void triggerConfirmationHaptic();
         setIsExpanded(false);
       }
       return;
@@ -116,6 +117,7 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
         remainingReported: rem,
         context: cartContext,
       });
+      void triggerConfirmationHaptic();
       setIsExpanded(false);
     }
   };
@@ -669,6 +671,10 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
                           text: 'Remove',
                           style: 'destructive',
                           onPress: () => {
+                            if (!locationId) {
+                              return;
+                            }
+
                             removeFromCart(locationId, item.id, cartItem.id, cartContext);
                             setIsExpanded(false);
                             setQuantity('1');

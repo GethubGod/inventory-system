@@ -20,6 +20,7 @@ import type { Location } from '@/types';
 import { listEmployeesWithReminderStatus } from '@/services';
 import { BrandLogo } from '@/components';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { colors } from '@/constants';
 
@@ -73,7 +74,6 @@ export default function ManagerDashboard() {
     ...DEFAULT_REMINDER_STATS,
   });
   const [employeeActivity, setEmployeeActivity] = useState<EmployeeActivity[]>([]);
-  const [refreshing, setRefreshing] = useState(false);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
@@ -206,11 +206,7 @@ export default function ManagerDashboard() {
     };
   }, [fetchDashboardData, selectedLocation?.id]);
 
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchDashboardData();
-    setRefreshing(false);
-  };
+  const { refreshing, onRefresh } = useManagedRefresh(fetchDashboardData);
 
   const handleSelectLocation = (loc: Location | null) => {
     if (hapticFeedback && Platform.OS !== 'web') {
