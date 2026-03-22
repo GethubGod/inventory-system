@@ -193,3 +193,165 @@ export const statusStyles = {
 } as const;
 
 export const tabBarHeight = Platform.OS === 'ios' ? 84 : 76;
+
+/* ─── Derived aliases (previously in constants/theme.ts) ──────────── */
+
+export const borderRadius = {
+  sm: 4,
+  md: radii.stepper,
+  lg: radii.button,
+  xl: radii.card,
+  full: radii.circle,
+} as const;
+
+export const fontSize = {
+  xs: 12,
+  sm: 14,
+  base: 16,
+  lg: 18,
+  xl: 20,
+  '2xl': 24,
+  '3xl': 30,
+} as const;
+
+export const fontWeight = {
+  normal: '400',
+  medium: '500',
+  semibold: '600',
+  bold: '700',
+} as const;
+
+export const shadow = {
+  sm: {
+    shadowColor: colors.background,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  md: {
+    shadowColor: colors.background,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+  lg: {
+    shadowColor: colors.background,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    elevation: 0,
+  },
+} as const;
+
+export const categoryColors: Record<string, string> = {
+  fish: categoryTints.fish.icon,
+  protein: categoryTints.protein.icon,
+  produce: categoryTints.produce.icon,
+  dry: categoryTints.dry.icon,
+  dairy_cold: categoryTints.dairy_cold.icon,
+  frozen: categoryTints.frozen.icon,
+  sauces: categoryTints.sauces.icon,
+  packaging: categoryTints.packaging.icon,
+  alcohol: categoryTints.alcohol.icon,
+} as const;
+
+export const statusColors: Record<string, { bg: string; text: string }> = {
+  draft: { bg: colors.glassCircle, text: colors.textSecondary },
+  submitted: { bg: colors.statusAmberBg, text: colors.statusAmber },
+  processing: { bg: colors.tagBlueBg, text: colors.tagBlue },
+  fulfilled: { bg: colors.statusGreenBg, text: colors.statusGreen },
+  cancel_requested: { bg: colors.statusRedBg, text: colors.statusRed },
+  cancelled: { bg: colors.statusRedBg, text: colors.statusRed },
+} as const;
+
+/* ─── Glass design-system aliases (previously in design/tokens.ts) ── */
+
+export const glassColors = {
+  background: colors.background,
+  textPrimary: colors.textPrimary,
+  textSecondary: colors.textSecondary,
+  textMuted: colors.textSecondary,
+  textTertiary: colors.textMuted,
+  textOnPrimary: colors.textOnPrimary,
+  accent: colors.primary,
+  accentStrong: colors.primary,
+  accentSoft: colors.primaryLight,
+  accentBorder: 'rgba(232, 80, 58, 0.18)',
+  cardBorder: colors.glassBorder,
+  controlBorder: colors.glassBorder,
+  subtleFill: colors.glass,
+  mediumFill: colors.glassCircle,
+  strongFill: colors.glassStrong,
+  tabBarFill: colors.tabBarBg,
+  iosFallback: colors.glass,
+  androidFallbackSubtle: colors.glass,
+  androidFallbackMedium: colors.glassCircle,
+  androidFallbackStrong: colors.glassStrong,
+  divider: colors.divider,
+  successText: colors.statusGreen,
+  successSoft: colors.statusGreenBg,
+  warningText: colors.statusAmber,
+  warningSoft: colors.statusAmberBg,
+  dangerText: colors.statusRed,
+  dangerSoft: colors.statusRedBg,
+  infoText: colors.tagBlue,
+  infoSoft: colors.tagBlueBg,
+} as const;
+
+export const glassTypography = typography;
+export const glassSpacing = {
+  screen: spacing.screen,
+  card: spacing.card,
+  row: spacing.row,
+  gap: spacing.gap,
+  sectionGap: spacing.sectionGap,
+  tabBarHorizontal: spacing.tabBarHorizontal,
+  tabBarTop: spacing.tabBarTop,
+  tabBarBottom: spacing.tabBarBottom,
+} as const;
+
+export const glassRadii = {
+  surface: radii.card,
+  search: radii.card,
+  button: radii.button,
+  submitButton: radii.submitButton,
+  pill: radii.pill,
+  tabPill: radii.pill,
+  iconTile: radii.iconTile,
+  tag: radii.tag,
+  stepper: radii.stepper,
+  round: radii.circle,
+} as const;
+
+export const glassHairlineWidth = hairline;
+
+export const glassSurfacePresets = {
+  subtle: {
+    overlayColor: colors.glass,
+    blurIntensity: 0,
+    fallbackColor: colors.glass,
+  },
+  medium: {
+    overlayColor: colors.glassCircle,
+    blurIntensity: 0,
+    fallbackColor: colors.glassCircle,
+  },
+  strong: {
+    overlayColor: colors.glassStrong,
+    blurIntensity: 0,
+    fallbackColor: colors.glassStrong,
+  },
+} as const;
+
+export const categoryGlassTints = categoryTints;
+
+export const glassStatusStyles = {
+  success: statusStyles.success,
+  warning: statusStyles.warning,
+  danger: statusStyles.danger,
+  info: statusStyles.info,
+} as const;
+
+export const glassTabBarHeight = tabBarHeight;

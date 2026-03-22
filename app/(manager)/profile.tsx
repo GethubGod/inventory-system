@@ -16,7 +16,6 @@ import {
   glassRadii,
   glassSpacing,
   glassTabBarHeight,
-  glassTypography,
 } from '@/design/tokens';
 
 export default function ManagerSettingsScreen() {
@@ -51,13 +50,20 @@ export default function ManagerSettingsScreen() {
       >
         <View style={{ paddingHorizontal: glassSpacing.screen, paddingVertical: ds.spacing(16), flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: glassTypography.screenTitle, fontWeight: '600', color: glassColors.textPrimary }}>
+            <Text
+              style={{
+                fontSize: ds.fontSize(32),
+                fontWeight: '800',
+                color: glassColors.textPrimary,
+                letterSpacing: -0.5,
+              }}
+            >
               Settings
             </Text>
           </View>
           <GlassSurface intensity="medium" style={{ borderRadius: glassRadii.pill }}>
             <View style={{ paddingHorizontal: ds.spacing(12), paddingVertical: ds.spacing(6) }}>
-              <Text style={{ fontSize: ds.fontSize(11), fontWeight: '600', color: glassColors.textPrimary }}>Manager</Text>
+              <Text style={{ fontSize: ds.fontSize(11), fontWeight: '600', color: glassColors.accent }}>Manager</Text>
             </View>
           </GlassSurface>
         </View>

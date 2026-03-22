@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -18,11 +18,16 @@ import { useAuthStore, useOrderStore, useDisplayStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import type { Location } from '@/types';
 import { listEmployeesWithReminderStatus } from '@/services';
-import { BrandLogo } from '@/components';
-import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
+import { GlassSurface, IdentityHeader, LoadingIndicator } from '@/components';
+import {
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+  glassSpacing,
+  glassTabBarHeight,
+} from '@/design/tokens';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { colors } from '@/constants';
 
 interface EmployeeActivity {
   id: string;
@@ -55,14 +60,39 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+function getGreeting(now: Date): string {
+  const hour = now.getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function formatHeaderDate(now: Date): string {
+  return now.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function formatTimeAgo(date: Date) {
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return `${diffDays}d ago`;
+}
+
 export default function ManagerDashboard() {
   const ds = useScaledStyles();
   const { locations, fetchLocations, user, profile, session } = useAuthStore();
   const { hapticFeedback } = useDisplayStore();
   const cartCount = useOrderStore((state) => state.getTotalCartCount('manager'));
-  const headerIconButtonSize = Math.max(44, ds.icon(40));
-  const badgeSize = Math.max(18, ds.icon(20));
-  const headerLogoSize = Math.max(34, ds.icon(36));
   const profileName = profile?.full_name?.trim() || '';
   const userName = user?.name?.trim() || '';
   const metadataName =
@@ -76,8 +106,12 @@ export default function ManagerDashboard() {
   const [employeeActivity, setEmployeeActivity] = useState<EmployeeActivity[]>([]);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const realtimeChannelRef = useRef<RealtimeChannel | null>(null);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const homeDate = useMemo(() => new Date(), []);
+  const greeting = `${getGreeting(homeDate)}, ${greetingName}`;
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -116,8 +150,6 @@ export default function ManagerDashboard() {
           notificationsOff: reminderOverview.stats.notificationsOff,
         });
       } catch {
-        // Reminders backend can be unavailable in local/dev until Edge Functions are deployed.
-        // Keep dashboard usable with safe defaults instead of surfacing a runtime error overlay.
         setReminderStats(DEFAULT_REMINDER_STATS);
       }
 
@@ -145,6 +177,8 @@ export default function ManagerDashboard() {
       }
     } catch {
       setReminderStats(DEFAULT_REMINDER_STATS);
+    } finally {
+      setIsLoading(false);
     }
   }, [selectedLocation?.id]);
 
@@ -217,349 +251,635 @@ export default function ManagerDashboard() {
     setShowLocationPicker(false);
   };
 
-  const formatTimeAgo = (date: Date) => {
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-    if (diffMins < 1) return 'just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${diffDays}d ago`;
-  };
+  if (isLoading && employeeActivity.length === 0) {
+    return (
+      <SafeAreaView
+        style={{ flex: 1, backgroundColor: glassColors.background }}
+        edges={['top', 'left', 'right']}
+      >
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <LoadingIndicator showText text="Loading dashboard..." />
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
-      <View className="bg-white border-b border-gray-100">
-        <View
-          className="flex-row items-center justify-between"
-          style={{
-            paddingHorizontal: ds.spacing(12),
-            paddingVertical: ds.spacing(8),
-          }}
-        >
-          <View className="flex-row items-center">
-            <BrandLogo variant="header" size={headerLogoSize} />
-          </View>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: glassColors.background }}
+      edges={['top', 'left', 'right']}
+    >
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingHorizontal: glassSpacing.screen,
+          paddingBottom: glassTabBarHeight + ds.spacing(24),
+        }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={glassColors.accent}
+          />
+        }
+      >
+        <IdentityHeader
+          identity="Manager"
+          title={greeting}
+          subtitle={formatHeaderDate(homeDate)}
+          cartCount={cartCount}
+          onPressCart={() => router.push('/(manager)/cart')}
+        />
 
-          <View className="flex-row items-center">
-            <TouchableOpacity
-              className="bg-gray-100 flex-row items-center"
-              style={{
-                borderRadius: headerIconButtonSize / 2,
-                minHeight: headerIconButtonSize,
-                paddingHorizontal: ds.spacing(12),
-                marginRight: ds.spacing(8),
-              }}
-              onPress={() => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setShowLocationPicker((prev) => !prev);
-              }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="location" size={ds.icon(14)} color={colors.primary[500]} />
+        {/* Location Picker */}
+        <TouchableOpacity
+          onPress={() => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setShowLocationPicker((prev) => !prev);
+          }}
+          activeOpacity={0.85}
+        >
+          <GlassSurface
+            intensity="medium"
+            style={{
+              borderRadius: glassRadii.search,
+              paddingHorizontal: ds.spacing(20),
+              height: Math.max(50, ds.buttonH + 8),
+            }}
+          >
+            <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+              <Ionicons
+                name="location"
+                size={ds.icon(20)}
+                color={glassColors.accent}
+              />
               <Text
-                className="text-gray-900 font-medium"
                 style={{
-                  fontSize: ds.fontSize(15),
-                  marginLeft: ds.spacing(8),
-                  marginRight: ds.spacing(6),
-                  maxWidth: ds.spacing(160),
+                  marginLeft: ds.spacing(12),
+                  fontSize: ds.fontSize(16),
+                  fontWeight: '600',
+                  color: glassColors.textPrimary,
+                  flex: 1,
                 }}
                 numberOfLines={1}
-                ellipsizeMode="tail"
               >
                 {selectedLocation?.name || 'All Locations'}
               </Text>
               <Ionicons
                 name={showLocationPicker ? 'chevron-up' : 'chevron-down'}
-                size={ds.icon(14)}
-                color={colors.gray[600]}
+                size={ds.icon(18)}
+                color={glassColors.textSecondary}
               />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              className="bg-gray-100 rounded-full items-center justify-center"
-              style={{
-                width: headerIconButtonSize,
-                height: headerIconButtonSize,
-                marginRight: ds.spacing(8),
-              }}
-              onPress={() => router.push('/(manager)/browse')}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="grid-outline" size={ds.icon(20)} color={colors.gray[600]} />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              className="bg-gray-100 rounded-full items-center justify-center"
-              style={{
-                width: headerIconButtonSize,
-                height: headerIconButtonSize,
-              }}
-              onPress={() => router.push('/(manager)/cart')}
-              activeOpacity={0.8}
-            >
-              <Ionicons name="cart-outline" size={ds.icon(20)} color={colors.gray[600]} />
-              {cartCount > 0 && (
-                <View
-                  className="absolute bg-primary-500 rounded-full items-center justify-center"
-                  style={{
-                    top: -ds.spacing(2),
-                    right: -ds.spacing(2),
-                    minWidth: badgeSize,
-                    height: badgeSize,
-                    paddingHorizontal: ds.spacing(4),
-                  }}
-                >
-                  <Text className="text-white font-bold" style={{ fontSize: ds.fontSize(11) }}>
-                    {cartCount > 99 ? '99+' : cartCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          </View>
-        </View>
+            </View>
+          </GlassSurface>
+        </TouchableOpacity>
 
         {showLocationPicker && (
-          <View className="border-t border-gray-100" style={{ paddingHorizontal: ds.spacing(12), paddingBottom: ds.spacing(8) }}>
-            <View className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
-              <TouchableOpacity
-                className="flex-row items-center"
+          <GlassSurface
+            intensity="subtle"
+            style={{
+              borderRadius: glassRadii.surface,
+              marginTop: ds.spacing(8),
+              overflow: 'hidden',
+            }}
+          >
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingHorizontal: ds.spacing(16),
+                paddingVertical: ds.spacing(14),
+              }}
+              onPress={() => handleSelectLocation(null)}
+              activeOpacity={0.7}
+            >
+              <View
                 style={{
-                  minHeight: ds.rowH,
-                  paddingHorizontal: ds.spacing(16),
-                  paddingVertical: ds.spacing(12),
+                  width: ds.icon(32),
+                  height: ds.icon(32),
+                  borderRadius: glassRadii.iconTile,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: glassColors.accentSoft,
+                  marginRight: ds.spacing(12),
                 }}
-                onPress={() => handleSelectLocation(null)}
-                activeOpacity={0.7}
               >
-                <View
-                  className="rounded-full bg-primary-100 items-center justify-center"
-                  style={{ width: ds.icon(32), height: ds.icon(32), marginRight: ds.spacing(12) }}
-                >
-                  <Ionicons name="globe" size={ds.icon(16)} color={colors.primary[500]} />
-                </View>
-                <Text className="flex-1 text-gray-900 font-medium" style={{ fontSize: ds.fontSize(15) }}>
-                  All Locations
-                </Text>
-                {!selectedLocation && <Ionicons name="checkmark" size={ds.icon(18)} color={colors.primary[500]} />}
-              </TouchableOpacity>
-
-              {locations.map((loc) => {
-                const isSelected = selectedLocation?.id === loc.id;
-                return (
-                  <TouchableOpacity
-                    key={loc.id}
-                    className="flex-row items-center border-t border-gray-100"
-                    style={{
-                      minHeight: ds.rowH,
-                      paddingHorizontal: ds.spacing(16),
-                      paddingVertical: ds.spacing(12),
-                    }}
-                    onPress={() => handleSelectLocation(loc)}
-                    activeOpacity={0.7}
-                  >
-                    <View
-                      className={`rounded-full items-center justify-center ${
-                        isSelected ? 'bg-primary-500' : 'bg-gray-200'
-                      }`}
-                      style={{ width: ds.icon(32), height: ds.icon(32), marginRight: ds.spacing(12) }}
-                    >
-                      <BrandLogo variant="inline" size={16} colorMode={isSelected ? 'dark' : 'light'} />
-                    </View>
-                    <Text className="flex-1 text-gray-900 font-medium" style={{ fontSize: ds.fontSize(15) }}>
-                      {loc.name}
-                    </Text>
-                    {isSelected && <Ionicons name="checkmark" size={ds.icon(18)} color={colors.primary[500]} />}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-        )}
-      </View>
-
-      <ManagerScaleContainer>
-        <ScrollView
-          className="flex-1"
-          contentContainerStyle={{ padding: 16 }}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary[500]} />
-          }
-        >
-          <View
-            className="bg-white rounded-2xl p-4 mb-6 border border-gray-100"
-            style={{
-              backgroundColor: colors.card,
-              borderColor: colors.divider,
-              shadowColor: colors.background,
-              shadowOffset: { width: 0, height: 0 },
-              shadowOpacity: 0,
-              shadowRadius: 0,
-              elevation: 0,
-            }}
-          >
-            <Text className="text-gray-900 font-bold" style={{ fontSize: ds.fontSize(28) }}>
-              Hi, {greetingName}
-            </Text>
-            <Text className="text-gray-500 mt-1" style={{ fontSize: ds.fontSize(14) }}>
-              Here&apos;s what&apos;s happening at your locations.
-            </Text>
-          </View>
-
-          <View
-            className="bg-white rounded-2xl p-4 mb-6 border border-gray-100"
-            style={{
-              backgroundColor: colors.card,
-              borderColor: colors.divider,
-              shadowColor: colors.background,
-              shadowOffset: { width: 0, height: 0 },
-              shadowOpacity: 0,
-              shadowRadius: 0,
-              elevation: 0,
-            }}
-          >
-            <View className="flex-row items-center justify-between">
-              <View className="flex-1 pr-3">
-                <Text className="text-gray-900 font-bold text-lg">Employee Reminders</Text>
-                <Text className="text-gray-500 text-sm mt-1">
-                  Send and track reminders by employee
-                </Text>
+                <Ionicons name="globe" size={ds.icon(16)} color={glassColors.accent} />
               </View>
-              <TouchableOpacity
-                className="bg-primary-500 rounded-full px-4 py-2"
-                onPress={() => router.push('/(manager)/employee-reminders')}
-                activeOpacity={0.8}
+              <Text
+                style={{
+                  flex: 1,
+                  fontSize: ds.fontSize(15),
+                  fontWeight: '600',
+                  color: glassColors.textPrimary,
+                }}
               >
-                <Text className="text-white font-semibold text-sm">Manage</Text>
-              </TouchableOpacity>
-            </View>
+                All Locations
+              </Text>
+              {!selectedLocation && (
+                <Ionicons name="checkmark" size={ds.icon(18)} color={glassColors.accent} />
+              )}
+            </TouchableOpacity>
 
-            <View className="flex-row gap-3 mt-4">
-              <View className="flex-1 rounded-xl px-3 py-3 bg-orange-50">
-                <Text className="text-xs font-semibold text-orange-700">Pending</Text>
-                <Text className="text-2xl font-bold text-gray-900 mt-1">{reminderStats.pendingReminders}</Text>
-              </View>
-              <View className="flex-1 rounded-xl px-3 py-3 bg-red-50">
-                <Text className="text-xs font-semibold text-red-700">Overdue</Text>
-                <Text className="text-2xl font-bold text-gray-900 mt-1">{reminderStats.overdueEmployees}</Text>
-              </View>
-              <View className="flex-1 rounded-xl px-3 py-3 bg-slate-100">
-                <Text className="text-xs font-semibold text-slate-700">Notifications Off</Text>
-                <Text className="text-2xl font-bold text-gray-900 mt-1">{reminderStats.notificationsOff}</Text>
-              </View>
-            </View>
-          </View>
-
-          <View
-            className="bg-white rounded-2xl p-4 border border-gray-100"
-            style={{
-              backgroundColor: colors.card,
-              borderColor: colors.divider,
-              shadowColor: colors.background,
-              shadowOffset: { width: 0, height: 0 },
-              shadowOpacity: 0,
-              shadowRadius: 0,
-              elevation: 0,
-            }}
-          >
-            <View className="flex-row justify-between items-center mb-4">
-              <Text className="font-bold text-gray-900 text-lg">Employee Activity</Text>
-              <TouchableOpacity className="flex-row items-center" onPress={() => router.push('/(manager)/orders')}>
-                <Text className="text-primary-500 font-medium text-sm mr-1">See All</Text>
-                <Ionicons name="arrow-forward" size={14} color={colors.primary[500]} />
-              </TouchableOpacity>
-            </View>
-
-            {employeeActivity.length === 0 ? (
-              <View className="py-8 items-center">
-                <Ionicons name="people-outline" size={40} color={colors.gray[300]} />
-                <Text className="text-gray-400 mt-2">No recent activity</Text>
-              </View>
-            ) : (
-              employeeActivity.slice(0, 5).map((activity, index) => (
+            {locations.map((loc) => {
+              const isSelected = selectedLocation?.id === loc.id;
+              return (
                 <TouchableOpacity
-                  key={activity.id}
-                  className={`py-3 ${
-                    index < Math.min(employeeActivity.length, 5) - 1 ? 'border-b border-gray-100' : ''
-                  }`}
-                  onPress={() => activity.orderId && router.push(`/orders/${activity.orderId}`)}
+                  key={loc.id}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingHorizontal: ds.spacing(16),
+                    paddingVertical: ds.spacing(14),
+                    borderTopWidth: glassHairlineWidth,
+                    borderTopColor: glassColors.divider,
+                  }}
+                  onPress={() => handleSelectLocation(loc)}
                   activeOpacity={0.7}
                 >
-                  <View className="flex-row items-start">
-                    <View className="w-10 h-10 bg-primary-100 rounded-full items-center justify-center mr-3">
-                      <Text className="text-primary-700 font-bold">
-                        {activity.employeeName.charAt(0).toUpperCase()}
-                      </Text>
-                    </View>
-
-                    <View className="flex-1">
-                      <View className="flex-row items-center flex-wrap">
-                        <Text className="font-semibold text-gray-900">{activity.employeeName}</Text>
-                        <Text className="text-gray-500 ml-1">ordered</Text>
-                        {activity.itemName && (
-                          <Text className="font-medium text-primary-600 ml-1">
-                            {activity.itemName}
-                            {activity.itemCount && activity.itemCount > 1 && ` +${activity.itemCount - 1} more`}
-                          </Text>
-                        )}
-                      </View>
-
-                      <View className="flex-row items-center mt-1">
-                        <Ionicons name="location-outline" size={12} color={colors.gray[400]} />
-                        <Text className="text-gray-400 text-xs ml-1">{activity.locationName}</Text>
-                        <Text className="text-gray-300 mx-2">•</Text>
-                        <Ionicons name="time-outline" size={12} color={colors.gray[400]} />
-                        <Text className="text-gray-400 text-xs ml-1">{formatTimeAgo(activity.timestamp)}</Text>
-                      </View>
-                    </View>
-
-                    {activity.orderNumber && (
-                      <View className="bg-gray-100 px-2 py-1 rounded">
-                        <Text className="text-gray-500 text-xs font-medium">#{activity.orderNumber}</Text>
-                      </View>
-                    )}
+                  <View
+                    style={{
+                      width: ds.icon(32),
+                      height: ds.icon(32),
+                      borderRadius: glassRadii.iconTile,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isSelected
+                        ? glassColors.accent
+                        : glassColors.mediumFill,
+                      marginRight: ds.spacing(12),
+                    }}
+                  >
+                    <Ionicons
+                      name="business-outline"
+                      size={ds.icon(16)}
+                      color={isSelected ? glassColors.textOnPrimary : glassColors.textSecondary}
+                    />
                   </View>
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: ds.fontSize(15),
+                      fontWeight: '600',
+                      color: glassColors.textPrimary,
+                    }}
+                  >
+                    {loc.name}
+                  </Text>
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={ds.icon(18)} color={glassColors.accent} />
+                  )}
                 </TouchableOpacity>
-              ))
-            )}
-          </View>
+              );
+            })}
+          </GlassSurface>
+        )}
 
-          {/* Browse Inventory */}
-          <TouchableOpacity
-            className="bg-white rounded-2xl border border-gray-100 mt-6 flex-row items-center"
-            style={{
-              paddingHorizontal: 16,
-              paddingVertical: 16,
-              backgroundColor: colors.card,
-              borderColor: colors.divider,
-              shadowColor: colors.background,
-              shadowOffset: { width: 0, height: 0 },
-              shadowOpacity: 0,
-              shadowRadius: 0,
-              elevation: 0,
-            }}
-            onPress={() => router.push('/(manager)/browse')}
-            activeOpacity={0.7}
+        {/* Employee Reminders Card */}
+        <View style={{ marginTop: ds.spacing(20) }}>
+          <GlassSurface
+            intensity="subtle"
+            style={{ borderRadius: glassRadii.surface }}
           >
             <View
-              className="bg-primary-100 rounded-full items-center justify-center mr-3"
-              style={{ width: 40, height: 40 }}
+              style={{
+                paddingHorizontal: ds.spacing(14),
+                paddingTop: ds.spacing(14),
+                paddingBottom: ds.spacing(14),
+              }}
             >
-              <Ionicons name="search-outline" size={20} color={colors.primary[500]} />
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(15),
+                    fontWeight: '700',
+                    color: glassColors.textPrimary,
+                  }}
+                >
+                  Employee Reminders
+                </Text>
+                <TouchableOpacity
+                  onPress={() => router.push('/(manager)/employee-reminders')}
+                  hitSlop={8}
+                >
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(13),
+                      fontWeight: '700',
+                      color: glassColors.accent,
+                    }}
+                  >
+                    Manage
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ flexDirection: 'row', gap: ds.spacing(8), marginTop: ds.spacing(12) }}>
+                <View
+                  style={{
+                    flex: 1,
+                    borderRadius: glassRadii.button,
+                    paddingHorizontal: ds.spacing(12),
+                    paddingVertical: ds.spacing(12),
+                    backgroundColor: glassColors.warningSoft,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(11),
+                      fontWeight: '600',
+                      color: glassColors.warningText,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Pending
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(22),
+                      fontWeight: '800',
+                      color: glassColors.textPrimary,
+                      marginTop: ds.spacing(4),
+                    }}
+                  >
+                    {reminderStats.pendingReminders}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flex: 1,
+                    borderRadius: glassRadii.button,
+                    paddingHorizontal: ds.spacing(12),
+                    paddingVertical: ds.spacing(12),
+                    backgroundColor: glassColors.dangerSoft,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(11),
+                      fontWeight: '600',
+                      color: glassColors.dangerText,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Overdue
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(22),
+                      fontWeight: '800',
+                      color: glassColors.textPrimary,
+                      marginTop: ds.spacing(4),
+                    }}
+                  >
+                    {reminderStats.overdueEmployees}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flex: 1,
+                    borderRadius: glassRadii.button,
+                    paddingHorizontal: ds.spacing(12),
+                    paddingVertical: ds.spacing(12),
+                    backgroundColor: glassColors.subtleFill,
+                    borderWidth: glassHairlineWidth,
+                    borderColor: glassColors.cardBorder,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(11),
+                      fontWeight: '600',
+                      color: glassColors.textSecondary,
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Notifs off
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(22),
+                      fontWeight: '800',
+                      color: glassColors.textPrimary,
+                      marginTop: ds.spacing(4),
+                    }}
+                  >
+                    {reminderStats.notificationsOff}
+                  </Text>
+                </View>
+              </View>
             </View>
-            <View className="flex-1">
-              <Text className="font-bold text-gray-900 text-base">Browse Inventory</Text>
-              <Text className="text-gray-500 text-sm mt-0.5">Search and add items by category</Text>
+          </GlassSurface>
+        </View>
+
+        {/* Employee Activity Card */}
+        <View style={{ marginTop: ds.spacing(20) }}>
+          <GlassSurface
+            intensity="subtle"
+            style={{ borderRadius: glassRadii.surface }}
+          >
+            <View
+              style={{
+                paddingHorizontal: ds.spacing(14),
+                paddingTop: ds.spacing(14),
+                paddingBottom: ds.spacing(14),
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(15),
+                    fontWeight: '700',
+                    color: glassColors.textPrimary,
+                  }}
+                >
+                  Employee Activity
+                </Text>
+                <TouchableOpacity
+                  onPress={() => router.push('/(manager)/orders')}
+                  hitSlop={8}
+                >
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(13),
+                      fontWeight: '700',
+                      color: glassColors.accent,
+                    }}
+                  >
+                    See All
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ marginTop: ds.spacing(12) }}>
+                {employeeActivity.length === 0 ? (
+                  <View
+                    style={{
+                      minHeight: ds.spacing(124),
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: ds.icon(36),
+                        height: ds.icon(36),
+                        borderRadius: glassRadii.iconTile,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: glassColors.mediumFill,
+                      }}
+                    >
+                      <Ionicons
+                        name="people-outline"
+                        size={ds.icon(18)}
+                        color={glassColors.textSecondary}
+                      />
+                    </View>
+                    <Text
+                      style={{
+                        marginTop: ds.spacing(12),
+                        fontSize: ds.fontSize(15),
+                        fontWeight: '600',
+                        color: glassColors.textPrimary,
+                      }}
+                    >
+                      No recent activity
+                    </Text>
+                    <Text
+                      style={{
+                        marginTop: ds.spacing(6),
+                        fontSize: ds.fontSize(12),
+                        color: glassColors.textSecondary,
+                        lineHeight: ds.fontSize(18),
+                      }}
+                    >
+                      Employee orders will appear here as they come in.
+                    </Text>
+                  </View>
+                ) : (
+                  employeeActivity.slice(0, 5).map((activity, index) => (
+                    <TouchableOpacity
+                      key={activity.id}
+                      style={{
+                        paddingVertical: ds.spacing(12),
+                        borderTopWidth: index > 0 ? glassHairlineWidth : 0,
+                        borderTopColor: glassColors.divider,
+                      }}
+                      onPress={() => activity.orderId && router.push(`/orders/${activity.orderId}`)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                        <View
+                          style={{
+                            width: ds.icon(36),
+                            height: ds.icon(36),
+                            borderRadius: glassRadii.iconTile,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: glassColors.accentSoft,
+                            marginRight: ds.spacing(12),
+                          }}
+                        >
+                          <Text
+                            style={{
+                              fontSize: ds.fontSize(14),
+                              fontWeight: '700',
+                              color: glassColors.accent,
+                            }}
+                          >
+                            {activity.employeeName.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+
+                        <View style={{ flex: 1 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <Text
+                              style={{
+                                fontSize: ds.fontSize(14),
+                                fontWeight: '600',
+                                color: glassColors.textPrimary,
+                              }}
+                            >
+                              {activity.employeeName}
+                            </Text>
+                            <Text
+                              style={{
+                                fontSize: ds.fontSize(14),
+                                color: glassColors.textSecondary,
+                                marginLeft: ds.spacing(4),
+                              }}
+                            >
+                              ordered
+                            </Text>
+                            {activity.itemName && (
+                              <Text
+                                style={{
+                                  fontSize: ds.fontSize(14),
+                                  fontWeight: '600',
+                                  color: glassColors.accent,
+                                  marginLeft: ds.spacing(4),
+                                }}
+                                numberOfLines={1}
+                              >
+                                {activity.itemName}
+                                {activity.itemCount && activity.itemCount > 1
+                                  ? ` +${activity.itemCount - 1} more`
+                                  : ''}
+                              </Text>
+                            )}
+                          </View>
+
+                          <View
+                            style={{
+                              flexDirection: 'row',
+                              alignItems: 'center',
+                              marginTop: ds.spacing(4),
+                            }}
+                          >
+                            <Ionicons
+                              name="location-outline"
+                              size={ds.icon(12)}
+                              color={glassColors.textSecondary}
+                            />
+                            <Text
+                              style={{
+                                fontSize: ds.fontSize(12),
+                                color: glassColors.textSecondary,
+                                marginLeft: ds.spacing(4),
+                              }}
+                            >
+                              {activity.locationName}
+                            </Text>
+                            <Text
+                              style={{
+                                fontSize: ds.fontSize(12),
+                                color: glassColors.textMuted,
+                                marginHorizontal: ds.spacing(6),
+                              }}
+                            >
+                              ·
+                            </Text>
+                            <Ionicons
+                              name="time-outline"
+                              size={ds.icon(12)}
+                              color={glassColors.textSecondary}
+                            />
+                            <Text
+                              style={{
+                                fontSize: ds.fontSize(12),
+                                color: glassColors.textSecondary,
+                                marginLeft: ds.spacing(4),
+                              }}
+                            >
+                              {formatTimeAgo(activity.timestamp)}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {activity.orderNumber && (
+                          <View
+                            style={{
+                              backgroundColor: glassColors.subtleFill,
+                              borderWidth: glassHairlineWidth,
+                              borderColor: glassColors.cardBorder,
+                              paddingHorizontal: ds.spacing(8),
+                              paddingVertical: ds.spacing(4),
+                              borderRadius: glassRadii.tag,
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: ds.fontSize(11),
+                                fontWeight: '600',
+                                color: glassColors.textSecondary,
+                              }}
+                            >
+                              #{activity.orderNumber}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  ))
+                )}
+              </View>
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.gray[400]} />
-          </TouchableOpacity>
-        </ScrollView>
-      </ManagerScaleContainer>
+          </GlassSurface>
+        </View>
+
+        {/* Browse Inventory Card */}
+        <View style={{ marginTop: ds.spacing(20) }}>
+          <GlassSurface
+            intensity="subtle"
+            style={{ borderRadius: glassRadii.surface }}
+          >
+            <TouchableOpacity
+              onPress={() => router.push('/(manager)/browse')}
+              activeOpacity={0.94}
+              style={{
+                borderRadius: glassRadii.surface,
+                overflow: 'hidden',
+              }}
+            >
+              <View
+                style={{
+                  paddingHorizontal: ds.spacing(14),
+                  paddingVertical: ds.spacing(14),
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                }}
+              >
+                <View
+                  style={{
+                    width: ds.icon(40),
+                    height: ds.icon(40),
+                    borderRadius: glassRadii.iconTile,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: glassColors.accentSoft,
+                    marginRight: ds.spacing(12),
+                  }}
+                >
+                  <Ionicons
+                    name="search-outline"
+                    size={ds.icon(20)}
+                    color={glassColors.accent}
+                  />
+                </View>
+                <View style={{ flex: 1, paddingRight: ds.spacing(10) }}>
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(15),
+                      fontWeight: '700',
+                      color: glassColors.textPrimary,
+                    }}
+                  >
+                    Browse Inventory
+                  </Text>
+                  <Text
+                    style={{
+                      marginTop: ds.spacing(4),
+                      fontSize: ds.fontSize(13),
+                      color: glassColors.textSecondary,
+                    }}
+                  >
+                    Search and add items by category
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={ds.icon(18)}
+                  color={glassColors.textSecondary}
+                />
+              </View>
+            </TouchableOpacity>
+          </GlassSurface>
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }

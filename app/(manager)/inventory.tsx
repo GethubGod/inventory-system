@@ -27,7 +27,7 @@ import { CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS, categoryColors, colors } fro
 import { LoadingIndicator } from '@/components';
 import { getInventoryWithStock, InventoryWithStock } from '@/lib/api/stock';
 import { supabase } from '@/lib/supabase';
-import { getCheckStatus } from '@/store/stock.store';
+import { getCheckStatus } from '@/store/stockStore';
 import { useStockNetworkStatus } from '@/hooks';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';

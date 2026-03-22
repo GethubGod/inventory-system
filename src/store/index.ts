@@ -5,7 +5,7 @@ export { useDraftStore } from './draftStore';
 export { useFulfillmentStore } from './fulfillmentStore';
 export { useSettingsStore } from './settingsStore';
 export { useDisplayStore } from './displayStore';
-export { useStockStore } from './stock.store';
+export { useStockStore } from './stockStore';
 export type { DraftItem } from './draftStore';
 export type {
   CartItem,
@@ -18,6 +18,6 @@ export type {
   SupplierDraftItem,
   SupplierDraftItemInput,
 } from './orderStore';
-export type { PendingUpdate } from './stock.store';
+export type { PendingUpdate } from './stockStore';
 export { useTunaSpecialistStore } from './tunaSpecialistStore';
 export type { TunaCartItem, ConversationMessage } from './tunaSpecialistStore';

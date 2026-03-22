@@ -4,19 +4,13 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
-import { Platform } from 'react-native';
 import {
-  ItemCategory,
   Order,
-  OrderItem,
-  OrderStatus,
   OrderWithDetails,
   UnitType,
 } from '@/types';
-import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
 import { perfMark, perfMeasure } from '@/lib/perf';
-import { getNotificationsModule } from '@/lib/notifications';
 import {
   loadPendingFulfillmentData,
 } from '@/services/fulfillmentDataSource';
@@ -24,1488 +18,79 @@ import {
   submitOrder as submitOrderService,
   syncProfileAfterOrder as syncProfileService,
   generateUUID,
-  OrderSubmissionError,
-  type OrderItemPayload,
 } from '@/services/orderSubmission';
 
-export type OrderInputMode = 'quantity' | 'remaining';
-export type CartScope = 'employee' | 'manager';
-export type CartContext = CartScope;
-
-export interface CartItem {
-  id: string;
-  inventoryItemId: string;
-  quantity: number;
-  unitType: UnitType;
-  inputMode: OrderInputMode;
-  quantityRequested: number | null;
-  remainingReported: number | null;
-  decidedQuantity: number | null;
-  decidedBy: string | null;
-  decidedAt: string | null;
-  note: string | null;
-}
-
-export interface AddToCartOptions {
-  inputMode?: OrderInputMode;
-  quantityRequested?: number | null;
-  remainingReported?: number | null;
-  decidedQuantity?: number | null;
-  decidedBy?: string | null;
-  decidedAt?: string | null;
-  note?: string | null;
-  context?: CartContext;
-}
-
-interface UpdateCartItemOptions {
-  cartItemId?: string;
-  inputMode?: OrderInputMode;
-  quantityRequested?: number | null;
-  remainingReported?: number | null;
-  clearDecision?: boolean;
-  context?: CartContext;
-}
-
-// Cart items organized by location
-type CartByLocation = Record<string, CartItem[]>;
-
-export type FulfillmentLocationGroup = 'sushi' | 'poki';
-export type OrderLaterItemStatus = 'queued' | 'added' | 'cancelled';
-export type PastOrderShareMethod = 'share' | 'copy';
-export type PastOrderSyncStatus = 'synced' | 'pending_sync';
-export type OrderItemFulfillmentStatus = 'pending' | 'order_later' | 'sent' | 'cancelled';
-
-export interface SupplierDraftItem {
-  id: string;
-  supplierId: string;
-  inventoryItemId: string | null;
-  name: string;
-  category: ItemCategory | string;
-  quantity: number;
-  unitType: UnitType;
-  unitLabel: string;
-  locationGroup: FulfillmentLocationGroup;
-  locationId: string | null;
-  locationName: string | null;
-  note: string | null;
-  createdAt: string;
-  sourceOrderLaterItemId: string | null;
-}
-
-export interface SupplierDraftItemInput {
-  supplierId: string;
-  inventoryItemId?: string | null;
-  name: string;
-  category?: ItemCategory | string;
-  quantity: number;
-  unitType?: UnitType;
-  unitLabel?: string;
-  locationGroup: FulfillmentLocationGroup;
-  locationId?: string | null;
-  locationName?: string | null;
-  note?: string | null;
-  sourceOrderLaterItemId?: string | null;
-}
-
-export interface OrderLaterItem {
-  id: string;
-  createdBy: string;
-  createdAt: string;
-  scheduledAt: string;
-  quantity: number;
-  itemId: string | null;
-  itemName: string;
-  unit: string;
-  locationId: string | null;
-  locationName: string | null;
-  notes: string | null;
-  suggestedSupplierId: string | null;
-  preferredSupplierId: string | null;
-  preferredLocationGroup: FulfillmentLocationGroup | null;
-  sourceOrderItemId: string | null;
-  sourceOrderItemIds: string[];
-  sourceOrderId: string | null;
-  notificationId: string | null;
-  status: OrderLaterItemStatus;
-  payload: Record<string, unknown>;
-}
-
-export interface CreateOrderLaterItemInput {
-  createdBy: string;
-  scheduledAt: string;
-  quantity?: number;
-  itemId?: string | null;
-  itemName: string;
-  unit: string;
-  locationId?: string | null;
-  locationName?: string | null;
-  notes?: string | null;
-  suggestedSupplierId?: string | null;
-  preferredSupplierId?: string | null;
-  preferredLocationGroup?: FulfillmentLocationGroup | null;
-  sourceOrderItemId?: string | null;
-  sourceOrderItemIds?: string[];
-  sourceOrderId?: string | null;
-  payload?: Record<string, unknown>;
-}
-
-export interface PastOrder {
-  id: string;
-  supplierId: string | null;
-  supplierName: string;
-  createdBy: string | null;
-  createdAt: string;
-  payload: Record<string, unknown>;
-  messageText: string;
-  shareMethod: PastOrderShareMethod;
-  syncStatus: PastOrderSyncStatus;
-  pendingSyncJobId: string | null;
-  syncError: string | null;
-  itemCount: number;
-  remainingCount: number;
-}
-
-export interface PastOrderItem {
-  id: string;
-  pastOrderId: string;
-  supplierId: string | null;
-  createdBy: string | null;
-  itemId: string;
-  itemName: string;
-  unit: string;
-  quantity: number;
-  locationId: string | null;
-  locationName: string | null;
-  locationGroup: FulfillmentLocationGroup | null;
-  unitType: UnitType | null;
-  orderedAt: string;
-  createdAt: string;
-  note: string | null;
-}
-
-export interface PastOrderDetail {
-  order: PastOrder;
-  items: PastOrderItem[];
-}
-
-interface PendingPastOrderSyncJob {
-  id: string;
-  localPastOrderId: string;
-  existingPastOrderId: string | null;
-  queuedAt: string;
-  supplierId: string;
-  supplierName: string;
-  createdBy: string;
-  messageText: string;
-  shareMethod: PastOrderShareMethod;
-  payload: Record<string, unknown>;
-  lineItems: FinalizedPastOrderLineItemInput[];
-  consumedOrderItemIds: string[];
-  consumedDraftItemIds: string[];
-  retryCount: number;
-  lastError: string | null;
-}
-
-export interface FinalizeSupplierOrderInput {
-  supplierId: string;
-  supplierName: string;
-  createdBy: string;
-  messageText: string;
-  shareMethod: PastOrderShareMethod;
-  payload: Record<string, unknown>;
-  lineItems?: FinalizedPastOrderLineItemInput[];
-  consumedOrderItemIds?: string[];
-  consumedDraftItemIds?: string[];
-}
-
-export interface FinalizedPastOrderLineItemInput {
-  itemId: string;
-  itemName: string;
-  unit: string;
-  quantity: number;
-  locationId?: string | null;
-  locationName?: string | null;
-  locationGroup?: FulfillmentLocationGroup | null;
-  unitType?: UnitType | null;
-  note?: string | null;
-}
-
-export interface LastOrderedQuantityLookupInput {
-  key: string;
-  itemId: string;
-  unit: string;
-  locationId?: string | null;
-  locationGroup?: FulfillmentLocationGroup | null;
-}
-
-export interface LastOrderedQuantityLookupResult {
-  quantity: number;
-  orderedAt: string;
-  matchedBy: 'location' | 'supplier';
-}
-
-export interface LastOrderedQuantitiesResponse {
-  values: Record<string, LastOrderedQuantityLookupResult>;
-  fromCache: boolean;
-  historyUnavailableOffline: boolean;
-}
-
-type SupplierDraftsBySupplier = Record<string, SupplierDraftItem[]>;
-type LastOrderedCacheBySupplier = Record<string, Record<string, LastOrderedQuantityCacheValue>>;
-
-interface LastOrderedQuantityCacheValue {
-  quantity: number;
-  orderedAt: string;
-}
-
-interface OrderState {
-  cartByLocation: CartByLocation;
-  managerCartByLocation: CartByLocation;
-  orders: Order[];
-  currentOrder: OrderWithDetails | null;
-  isLoading: boolean;
-  supplierDrafts: SupplierDraftsBySupplier;
-  orderLaterQueue: OrderLaterItem[];
-  pastOrders: PastOrder[];
-  pendingPastOrderSyncQueue: PendingPastOrderSyncJob[];
-  lastOrderedCacheBySupplier: LastOrderedCacheBySupplier;
-  isFulfillmentLoading: boolean;
-  isPastOrderSyncing: boolean;
-
-  // Cart actions (location-aware)
-  addToCart: (
-    locationId: string,
-    inventoryItemId: string,
-    quantity: number,
-    unitType: UnitType,
-    options?: AddToCartOptions
-  ) => void;
-  updateCartItem: (
-    locationId: string,
-    inventoryItemId: string,
-    quantity: number,
-    unitType: UnitType,
-    options?: UpdateCartItemOptions
-  ) => void;
-  removeFromCart: (
-    locationId: string,
-    inventoryItemId: string,
-    cartItemId?: string,
-    context?: CartContext
-  ) => void;
-  moveCartItem: (
-    fromLocationId: string,
-    toLocationId: string,
-    inventoryItemId: string,
-    unitType: UnitType,
-    cartItemId?: string,
-    context?: CartContext
-  ) => void;
-  moveLocationCartItems: (fromLocationId: string, toLocationId: string, context?: CartContext) => void;
-  moveAllCartItemsToLocation: (toLocationId: string, context?: CartContext) => void;
-  clearLocationCart: (locationId: string, context?: CartContext) => void;
-  clearAllCarts: (context?: CartContext) => void;
-  setCartItemDecision: (
-    locationId: string,
-    cartItemId: string,
-    decidedQuantity: number,
-    decidedBy: string,
-    context?: CartContext
-  ) => void;
-  setCartItemNote: (
-    locationId: string,
-    cartItemId: string,
-    note: string | null,
-    context?: CartContext
-  ) => void;
-
-  // Cart getters
-  getCartItems: (locationId: string, context?: CartContext) => CartItem[];
-  getCartItem: (locationId: string, inventoryItemId: string, context?: CartContext) => CartItem | undefined;
-  getLocationCartTotal: (locationId: string, context?: CartContext) => number;
-  getTotalCartCount: (context?: CartContext) => number;
-  getCartLocationIds: (context?: CartContext) => string[];
-  hasUndecidedRemaining: (locationId: string, context?: CartContext) => boolean;
-  getUndecidedRemainingItems: (locationId: string, context?: CartContext) => CartItem[];
-
-  // Legacy support - for backward compatibility
-  cart: CartItem[];
-  clearCart: () => void;
-  getCartTotal: () => number;
-
-  // Order actions
-  fetchOrders: (locationId: string) => Promise<void>;
-  fetchUserOrders: (userId: string) => Promise<void>;
-  fetchManagerOrders: (locationId?: string | null, status?: OrderStatus | null) => Promise<void>;
-  fetchOrder: (orderId: string) => Promise<void>;
-  createOrder: (locationId: string, userId: string, context?: CartContext) => Promise<Order>;
-  createAndSubmitOrder: (
-    locationId: string,
-    userId: string,
-    context?: CartContext
-  ) => Promise<OrderWithDetails>;
-  createAndSubmitOrderFromSourceLocation: (
-    sourceLocationId: string,
-    submitLocationId: string,
-    userId: string,
-    context?: CartContext
-  ) => Promise<OrderWithDetails>;
-  submitOrder: (orderId: string) => Promise<void>;
-  updateOrderStatus: (orderId: string, status: OrderStatus, fulfilledBy?: string) => Promise<void>;
-  fulfillOrder: (orderId: string, fulfilledBy: string) => Promise<void>;
-  cancelOrder: (orderId: string) => Promise<void>;
-
-  // Fulfillment actions/state
-  loadFulfillmentData: (managerId?: string | null, locationIds?: string[]) => Promise<void>;
-  fetchPastOrders: (managerId?: string | null) => Promise<PastOrder[]>;
-  fetchPastOrderById: (
-    pastOrderId: string,
-    managerId?: string | null
-  ) => Promise<PastOrderDetail | null>;
-  flushPendingPastOrderSync: (managerId?: string | null) => Promise<void>;
-  createPastOrder: (input: FinalizeSupplierOrderInput) => Promise<PastOrder>;
-  fetchPendingFulfillmentOrders: (locationIds?: string[]) => Promise<void>;
-  addSupplierDraftItem: (input: SupplierDraftItemInput) => SupplierDraftItem;
-  updateSupplierDraftItemQuantity: (draftItemId: string, quantity: number) => void;
-  removeSupplierDraftItem: (draftItemId: string) => void;
-  removeSupplierDraftItems: (draftItemIds: string[]) => void;
-  getSupplierDraftItems: (supplierId: string) => SupplierDraftItem[];
-  createOrderLaterItem: (input: CreateOrderLaterItemInput) => Promise<OrderLaterItem>;
-  updateOrderLaterItemSchedule: (itemId: string, scheduledAt: string) => Promise<OrderLaterItem | null>;
-  removeOrderLaterItem: (itemId: string) => Promise<void>;
-  moveOrderLaterItemToSupplierDraft: (
-    itemId: string,
-    supplierId: string,
-    locationGroup: FulfillmentLocationGroup,
-    options?: {
-      locationId?: string | null;
-      locationName?: string | null;
-      quantity?: number;
-    }
-  ) => Promise<SupplierDraftItem | null>;
-  getLastOrderedQuantities: (params: {
-    supplierId: string;
-    managerId?: string | null;
-    items: LastOrderedQuantityLookupInput[];
-    forceRefresh?: boolean;
-  }) => Promise<LastOrderedQuantitiesResponse>;
-  finalizeSupplierOrder: (input: FinalizeSupplierOrderInput) => Promise<PastOrder>;
-  markOrderItemsStatus: (
-    orderItemIds: string[],
-    status: OrderItemFulfillmentStatus
-  ) => Promise<boolean>;
-  setSupplierOverride: (orderItemIds: string[], supplierId: string) => Promise<boolean>;
-  clearSupplierOverride: (orderItemIds: string[]) => Promise<boolean>;
-}
-
-const createCartItemId = () =>
-  `cart_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-
-let pastOrdersTableAvailable: boolean | null = null;
-let orderLaterItemsTableAvailable: boolean | null = null;
-let pastOrderItemsTableAvailable: boolean | null = null;
-let pastOrderItemsNoteColumnAvailable: boolean | null = null;
-let orderItemsStatusColumnAvailable: boolean | null = null;
-let pastOrderSyncListenerInitialized = false;
-const orderLaterMoveInFlightIds = new Set<string>();
-
-function resolveCurrentOrgId(): string | null {
-  const orgId = useAuthStore.getState().orgId?.trim();
-  return orgId && orgId.length > 0 ? orgId : null;
-}
-
-function toValidNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim().length > 0) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
-
-function normalizeNote(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function getEffectiveQuantity(item: CartItem): number {
-  if (item.inputMode === 'quantity') {
-    return item.quantityRequested ?? 0;
-  }
-  return item.decidedQuantity ?? 0;
-}
-
-/** Whether a cart item is valid for submission (non-zero quantity OR remaining-mode report). */
-function isSubmittableCartItem(item: CartItem): boolean {
-  if (item.inputMode === 'remaining') {
-    // Remaining-mode: employee reports how much is left; manager decides
-    // order quantity later. Valid as long as remainingReported is set.
-    return (item.remainingReported ?? 0) >= 0;
-  }
-  return getEffectiveQuantity(item) > 0;
-}
-
-function createLegacyCartItemId(
-  locationId: string,
-  inventoryItemId: string,
-  inputMode: OrderInputMode,
-  unitType: UnitType,
-  index: number
-): string {
-  return `legacy_cart_${locationId}_${inventoryItemId}_${inputMode}_${unitType}_${index}`;
-}
-
-function normalizeCartItem(
-  raw: any,
-  options?: {
-    locationId?: string;
-    index?: number;
-  }
-): CartItem | null {
-  const inputMode: OrderInputMode = raw?.inputMode === 'remaining' ? 'remaining' : 'quantity';
-  const unitType: UnitType = raw?.unitType === 'base' ? 'base' : 'pack';
-  const inventoryItemId =
-    typeof raw?.inventoryItemId === 'string' && raw.inventoryItemId ? raw.inventoryItemId : null;
-
-  if (!inventoryItemId) return null;
-
-  const rawId = typeof raw?.id === 'string' ? raw.id.trim() : '';
-  const id =
-    rawId.length > 0
-      ? rawId
-      : createLegacyCartItemId(
-        options?.locationId ?? 'unknown',
-        inventoryItemId,
-        inputMode,
-        unitType,
-        options?.index ?? 0
-      );
-
-  if (inputMode === 'quantity') {
-    const legacyQuantity = toValidNumber(raw?.quantity);
-    const quantityRequested = toValidNumber(raw?.quantityRequested ?? legacyQuantity);
-    if (quantityRequested === null || quantityRequested <= 0) return null;
-
-    const decidedQuantityRaw = toValidNumber(raw?.decidedQuantity);
-    const decidedQuantity = decidedQuantityRaw !== null && decidedQuantityRaw >= 0 ? decidedQuantityRaw : null;
-
-    const item: CartItem = {
-      id,
-      inventoryItemId,
-      quantity: quantityRequested,
-      unitType,
-      inputMode,
-      quantityRequested,
-      remainingReported: null,
-      decidedQuantity,
-      decidedBy: typeof raw?.decidedBy === 'string' ? raw.decidedBy : null,
-      decidedAt: typeof raw?.decidedAt === 'string' ? raw.decidedAt : null,
-      note: normalizeNote(raw?.note),
-    };
-    return item;
-  }
-
-  const remainingLegacy = toValidNumber(raw?.remainingReported ?? raw?.quantity);
-  if (remainingLegacy === null || remainingLegacy < 0) return null;
-
-  const decidedQuantityRaw = toValidNumber(raw?.decidedQuantity);
-  const decidedQuantity = decidedQuantityRaw !== null && decidedQuantityRaw >= 0 ? decidedQuantityRaw : null;
-
-  const item: CartItem = {
-    id,
-    inventoryItemId,
-    quantity: decidedQuantity ?? 0,
-    unitType,
-    inputMode,
-    quantityRequested: null,
-    remainingReported: remainingLegacy,
-    decidedQuantity,
-    decidedBy: typeof raw?.decidedBy === 'string' ? raw.decidedBy : null,
-    decidedAt: typeof raw?.decidedAt === 'string' ? raw.decidedAt : null,
-    note: normalizeNote(raw?.note),
-  };
-  return item;
-}
-
-function normalizeLocationCart(rawCart: unknown, locationId = 'unknown'): CartItem[] {
-  if (!Array.isArray(rawCart)) return [];
-  return rawCart
-    .map((item, index) => normalizeCartItem(item, { locationId, index }))
-    .filter((item): item is CartItem => Boolean(item));
-}
-
-function getLocationCart(cartByLocation: CartByLocation, locationId: string): CartItem[] {
-  return normalizeLocationCart(cartByLocation[locationId] || [], locationId);
-}
-
-function normalizeCartByLocation(rawCartByLocation: unknown): CartByLocation {
-  if (!rawCartByLocation || typeof rawCartByLocation !== 'object') return {};
-
-  const source = rawCartByLocation as Record<string, unknown>;
-  const next: CartByLocation = {};
-
-  Object.entries(source).forEach(([locationId, rawCart]) => {
-    const normalized = normalizeLocationCart(rawCart, locationId);
-    if (normalized.length > 0) {
-      next[locationId] = normalized;
-    }
-  });
-
-  return next;
-}
-
-function normalizeCartContext(context?: CartContext): CartContext {
-  return context === 'manager' ? 'manager' : 'employee';
-}
-
-function getCartByContext(
-  state: Pick<OrderState, 'cartByLocation' | 'managerCartByLocation'>,
-  context?: CartContext
-): CartByLocation {
-  const resolved = normalizeCartContext(context);
-  return resolved === 'manager' ? state.managerCartByLocation : state.cartByLocation;
-}
-
-function mergeCartItem(
-  destination: CartItem[],
-  incoming: CartItem
-): CartItem[] {
-  if (incoming.inputMode === 'quantity') {
-    const existingIndex = destination.findIndex(
-      (item) =>
-        item.inventoryItemId === incoming.inventoryItemId &&
-        item.unitType === incoming.unitType &&
-        item.inputMode === 'quantity'
-    );
-
-    if (existingIndex >= 0) {
-      const existing = destination[existingIndex];
-      const nextQuantity = (existing.quantityRequested ?? 0) + (incoming.quantityRequested ?? 0);
-      const merged: CartItem = {
-        ...existing,
-        unitType: incoming.unitType,
-        quantityRequested: nextQuantity,
-        quantity: nextQuantity,
-        note: existing.note ?? incoming.note ?? null,
-      };
-      return destination.map((item, idx) => (idx === existingIndex ? merged : item));
-    }
-
-    return [...destination, incoming];
-  }
-
-  // Remaining-mode merge rule: replace existing remaining row for same item+unit.
-  const existingRemainingIndex = destination.findIndex(
-    (item) =>
-      item.inventoryItemId === incoming.inventoryItemId &&
-      item.unitType === incoming.unitType &&
-      item.inputMode === 'remaining'
-  );
-
-  if (existingRemainingIndex >= 0) {
-    return destination.map((item, idx) => (idx === existingRemainingIndex ? incoming : item));
-  }
-
-  return [...destination, incoming];
-}
-
-function findCartItemIndex(
-  locationCart: CartItem[],
-  inventoryItemId: string,
-  unitType: UnitType,
-  cartItemId?: string
-): number {
-  if (cartItemId) {
-    const byId = locationCart.findIndex((item) => item.id === cartItemId);
-    if (byId >= 0) return byId;
-  }
-
-  const byInventoryAndUnit = locationCart.findIndex(
-    (item) => item.inventoryItemId === inventoryItemId && item.unitType === unitType
-  );
-  if (byInventoryAndUnit >= 0) return byInventoryAndUnit;
-
-  return locationCart.findIndex((item) => item.inventoryItemId === inventoryItemId);
-}
-
-/** Convert a CartItem to the OrderItemPayload format expected by the RPC. */
-function cartItemToPayload(item: CartItem): OrderItemPayload {
-  // For remaining-mode the employee hasn't specified an order quantity — the
-  // manager will decide later. Use remainingReported as the DB quantity so it
-  // satisfies any legacy `quantity > 0` constraint; fulfillment reads
-  // remaining_reported / decided_quantity directly, not this field.
-  const quantity =
-    item.inputMode === 'remaining'
-      ? Math.max(item.remainingReported ?? 0, 1)
-      : getEffectiveQuantity(item);
-
-  return {
-    inventory_item_id: item.inventoryItemId,
-    quantity,
-    unit_type: item.unitType,
-    input_mode: item.inputMode,
-    quantity_requested: item.quantityRequested,
-    remaining_reported: item.remainingReported,
-    decided_quantity: item.decidedQuantity,
-    decided_by: item.decidedBy,
-    decided_at: item.decidedAt,
-    note: item.note,
-  };
-}
-
-function createFulfillmentId(prefix: string) {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function toIsoString(value: unknown, fallback = new Date().toISOString()): string {
-  if (typeof value === 'string') {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString();
-  }
-
-  return fallback;
-}
-
-function toJsonObject(value: unknown): Record<string, unknown> {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return value as Record<string, unknown>;
-  }
-  return {};
-}
-
-function normalizeSupplierId(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function normalizeLocationGroup(value: unknown): FulfillmentLocationGroup | null {
-  if (value === 'sushi' || value === 'poki') return value;
-  return null;
-}
-
-function toStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
-    .filter((entry) => entry.length > 0);
-}
-
-function normalizeHistoryLookupUnit(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim().toLowerCase();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function createLastOrderedAnyKey(itemId: string, unit: string): string {
-  return `${itemId}::${unit}::any`;
-}
-
-function createLastOrderedLocationIdKey(itemId: string, unit: string, locationId: string): string {
-  return `${itemId}::${unit}::loc:${locationId}`;
-}
-
-function createLastOrderedLocationGroupKey(
-  itemId: string,
-  unit: string,
-  locationGroup: FulfillmentLocationGroup
-): string {
-  return `${itemId}::${unit}::group:${locationGroup}`;
-}
-
-function normalizeLastOrderedLookupInput(
-  input: LastOrderedQuantityLookupInput
-): LastOrderedQuantityLookupInput | null {
-  const key = typeof input.key === 'string' ? input.key.trim() : '';
-  const itemId = typeof input.itemId === 'string' ? input.itemId.trim() : '';
-  const unit = normalizeHistoryLookupUnit(input.unit);
-  if (!key || !itemId || !unit) return null;
-
-  return {
-    key,
-    itemId,
-    unit,
-    locationId:
-      typeof input.locationId === 'string' && input.locationId.trim().length > 0
-        ? input.locationId.trim()
-        : null,
-    locationGroup: normalizeLocationGroup(input.locationGroup),
-  };
-}
-
-function resolveLastOrderedFromCache(
-  cache: Record<string, LastOrderedQuantityCacheValue>,
-  input: LastOrderedQuantityLookupInput
-): LastOrderedQuantityLookupResult | null {
-  const lookupOrder: { key: string; matchedBy: LastOrderedQuantityLookupResult['matchedBy'] }[] = [];
-  if (input.locationId) {
-    lookupOrder.push({
-      key: createLastOrderedLocationIdKey(input.itemId, input.unit, input.locationId),
-      matchedBy: 'location',
-    });
-  }
-  if (input.locationGroup) {
-    lookupOrder.push({
-      key: createLastOrderedLocationGroupKey(input.itemId, input.unit, input.locationGroup),
-      matchedBy: 'location',
-    });
-  }
-  lookupOrder.push({
-    key: createLastOrderedAnyKey(input.itemId, input.unit),
-    matchedBy: 'supplier',
-  });
-
-  for (const lookup of lookupOrder) {
-    const found = cache[lookup.key];
-    if (!found || !Number.isFinite(found.quantity) || found.quantity <= 0) continue;
-    return {
-      quantity: found.quantity,
-      orderedAt: found.orderedAt,
-      matchedBy: lookup.matchedBy,
-    };
-  }
-
-  return null;
-}
-
-function upsertLastOrderedCacheValue(
-  cache: Record<string, LastOrderedQuantityCacheValue>,
-  key: string,
-  next: LastOrderedQuantityCacheValue
-) {
-  const existing = cache[key];
-  if (!existing) {
-    cache[key] = next;
-    return;
-  }
-
-  const existingAt = new Date(existing.orderedAt).getTime();
-  const nextAt = new Date(next.orderedAt).getTime();
-  if (Number.isFinite(nextAt) && (!Number.isFinite(existingAt) || nextAt > existingAt)) {
-    cache[key] = next;
-  }
-}
-
-function isNetworkLikeError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const err = error as { message?: string; details?: string };
-  const text = `${err.message || ''} ${err.details || ''}`.toLowerCase();
-  return (
-    text.includes('network') ||
-    text.includes('offline') ||
-    text.includes('failed to fetch') ||
-    text.includes('connection') ||
-    text.includes('timed out')
-  );
-}
-
-function isMissingTableError(error: unknown, tableName: string): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const err = error as { code?: string; message?: string; details?: string };
-  const message = `${err.message || ''} ${err.details || ''}`.toLowerCase();
-  if (!message.includes(tableName.toLowerCase())) return false;
-  return (
-    err.code === 'PGRST205' ||
-    err.code === 'PGRST204' ||
-    err.code === '42P01' ||
-    message.includes('does not exist') ||
-    message.includes('could not find')
-  );
-}
-
-function isMissingColumnError(error: unknown, columnName: string): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const err = error as { code?: string; message?: string; details?: string; hint?: string };
-  const text = `${err.message || ''} ${err.details || ''} ${err.hint || ''}`.toLowerCase();
-  if (!text.includes(columnName.toLowerCase())) return false;
-  return (
-    err.code === '42703' ||
-    err.code === 'PGRST204' ||
-    text.includes('column') && text.includes('does not exist')
-  );
-}
-
-function normalizeSupplierDraftItem(raw: unknown): SupplierDraftItem | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const value = raw as Record<string, unknown>;
-  const supplierId = normalizeSupplierId(value.supplierId);
-  const name = typeof value.name === 'string' ? value.name.trim() : '';
-  if (!supplierId || name.length === 0) return null;
-
-  const unitType: UnitType = value.unitType === 'pack' ? 'pack' : 'base';
-  const quantity = toValidNumber(value.quantity);
-  if (quantity === null || quantity <= 0) return null;
-
-  return {
-    id:
-      typeof value.id === 'string' && value.id.trim().length > 0
-        ? value.id
-        : createFulfillmentId('draft'),
-    supplierId,
-    inventoryItemId:
-      typeof value.inventoryItemId === 'string' && value.inventoryItemId.trim().length > 0
-        ? value.inventoryItemId
-        : null,
-    name,
-    category:
-      typeof value.category === 'string' && value.category.trim().length > 0
-        ? value.category
-        : 'dry',
-    quantity: Math.max(0, quantity),
-    unitType,
-    unitLabel:
-      typeof value.unitLabel === 'string' && value.unitLabel.trim().length > 0
-        ? value.unitLabel
-        : unitType === 'pack'
-          ? 'pack'
-          : 'unit',
-    locationGroup: normalizeLocationGroup(value.locationGroup) ?? 'sushi',
-    locationId:
-      typeof value.locationId === 'string' && value.locationId.trim().length > 0
-        ? value.locationId
-        : null,
-    locationName:
-      typeof value.locationName === 'string' && value.locationName.trim().length > 0
-        ? value.locationName
-        : null,
-    note: normalizeNote(value.note),
-    createdAt: toIsoString(value.createdAt),
-    sourceOrderLaterItemId:
-      typeof value.sourceOrderLaterItemId === 'string' && value.sourceOrderLaterItemId.trim().length > 0
-        ? value.sourceOrderLaterItemId
-        : null,
-  };
-}
-
-function normalizeSupplierDrafts(raw: unknown): SupplierDraftsBySupplier {
-  if (!raw || typeof raw !== 'object') return {};
-  const source = raw as Record<string, unknown>;
-  const next: SupplierDraftsBySupplier = {};
-
-  Object.entries(source).forEach(([supplierId, rows]) => {
-    const normalizedSupplierId = normalizeSupplierId(supplierId);
-    if (!normalizedSupplierId || !Array.isArray(rows)) return;
-    const normalizedRows = rows
-      .map((row) => normalizeSupplierDraftItem(row))
-      .filter((row): row is SupplierDraftItem => Boolean(row));
-    if (normalizedRows.length > 0) {
-      next[normalizedSupplierId] = normalizedRows;
-    }
-  });
-
-  return next;
-}
-
-function normalizeOrderLaterItem(raw: unknown): OrderLaterItem | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const value = raw as Record<string, unknown>;
-  const itemName = typeof value.item_name === 'string'
-    ? value.item_name.trim()
-    : typeof value.itemName === 'string'
-      ? value.itemName.trim()
-      : '';
-  const createdBy = typeof value.created_by === 'string'
-    ? value.created_by
-    : typeof value.createdBy === 'string'
-      ? value.createdBy
-      : '';
-  if (!itemName || !createdBy) return null;
-
-  const statusValue =
-    value.status === 'added' || value.status === 'cancelled' ? value.status : 'queued';
-
-  return {
-    id:
-      typeof value.id === 'string' && value.id.trim().length > 0
-        ? value.id
-        : createFulfillmentId('later'),
-    createdBy,
-    createdAt: toIsoString(value.created_at ?? value.createdAt),
-    scheduledAt: toIsoString(value.scheduled_at ?? value.scheduledAt),
-    quantity: Math.max(
-      0,
-      toValidNumber(value.qty ?? value.quantity ?? (toJsonObject(value.payload).quantity as unknown) ?? 1) ?? 1
-    ),
-    itemId:
-      typeof value.item_id === 'string' && value.item_id.trim().length > 0
-        ? value.item_id
-        : typeof value.itemId === 'string' && value.itemId.trim().length > 0
-          ? value.itemId
-          : null,
-    itemName,
-    unit:
-      typeof value.unit === 'string' && value.unit.trim().length > 0
-        ? value.unit.trim()
-        : 'unit',
-    locationId:
-      typeof value.location_id === 'string' && value.location_id.trim().length > 0
-        ? value.location_id
-        : typeof value.locationId === 'string' && value.locationId.trim().length > 0
-          ? value.locationId
-          : null,
-    locationName:
-      typeof value.location_name === 'string' && value.location_name.trim().length > 0
-        ? value.location_name.trim()
-        : typeof value.locationName === 'string' && value.locationName.trim().length > 0
-          ? value.locationName.trim()
-          : null,
-    notes: normalizeNote(value.notes),
-    suggestedSupplierId: normalizeSupplierId(
-      value.suggested_supplier_id ?? value.suggestedSupplierId
-    ),
-    preferredSupplierId: normalizeSupplierId(value.preferred_supplier_id ?? value.preferredSupplierId),
-    preferredLocationGroup: normalizeLocationGroup(
-      value.preferred_location_group ?? value.preferredLocationGroup
-    ),
-    sourceOrderItemId:
-      typeof value.source_order_item_id === 'string' && value.source_order_item_id.trim().length > 0
-        ? value.source_order_item_id
-        : typeof value.sourceOrderItemId === 'string' && value.sourceOrderItemId.trim().length > 0
-          ? value.sourceOrderItemId
-          : null,
-    sourceOrderItemIds: (() => {
-      const fromArray = Array.isArray(value.original_order_item_ids)
-        ? toStringArray(value.original_order_item_ids)
-        : Array.isArray(value.sourceOrderItemIds)
-          ? toStringArray(value.sourceOrderItemIds)
-          : [];
-      if (fromArray.length > 0) return fromArray;
-      const single =
-        typeof value.source_order_item_id === 'string' && value.source_order_item_id.trim().length > 0
-          ? value.source_order_item_id
-          : typeof value.sourceOrderItemId === 'string' && value.sourceOrderItemId.trim().length > 0
-            ? value.sourceOrderItemId
-            : null;
-      return single ? [single] : [];
-    })(),
-    sourceOrderId:
-      typeof value.source_order_id === 'string' && value.source_order_id.trim().length > 0
-        ? value.source_order_id
-        : typeof value.sourceOrderId === 'string' && value.sourceOrderId.trim().length > 0
-          ? value.sourceOrderId
-          : null,
-    notificationId:
-      typeof value.notification_id === 'string' && value.notification_id.trim().length > 0
-        ? value.notification_id
-        : typeof value.notificationId === 'string' && value.notificationId.trim().length > 0
-          ? value.notificationId
-          : null,
-    status: statusValue,
-    payload: toJsonObject(value.payload),
-  };
-}
-
-function normalizeOrderLaterQueue(raw: unknown): OrderLaterItem[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item) => normalizeOrderLaterItem(item))
-    .filter((item): item is OrderLaterItem => Boolean(item))
-    .filter((item) => item.status === 'queued')
-    .sort((a, b) => {
-      const aTime = new Date(a.scheduledAt).getTime();
-      const bTime = new Date(b.scheduledAt).getTime();
-      return aTime - bTime;
-    });
-}
-
-function getPastOrderCountsFromPayload(payload: Record<string, unknown>): {
-  itemCount: number;
-  remainingCount: number;
-} {
-  const regularItems = Array.isArray(payload.regularItems)
-    ? payload.regularItems
-    : Array.isArray(payload.regular_items)
-      ? payload.regular_items
-      : [];
-  const remainingItems = Array.isArray(payload.remainingItems)
-    ? payload.remainingItems
-    : Array.isArray(payload.remaining_items)
-      ? payload.remaining_items
-      : [];
-  const totalRaw =
-    typeof payload.totalItemCount === 'number'
-      ? payload.totalItemCount
-      : typeof payload.total_item_count === 'number'
-        ? payload.total_item_count
-        : regularItems.length + remainingItems.length;
-  const remainingRaw =
-    typeof payload.remainingCount === 'number'
-      ? payload.remainingCount
-      : typeof payload.remaining_count === 'number'
-        ? payload.remaining_count
-        : remainingItems.length;
-
-  const itemCount = Number.isFinite(totalRaw) ? Math.max(0, Number(totalRaw)) : 0;
-  const remainingCount = Number.isFinite(remainingRaw) ? Math.max(0, Number(remainingRaw)) : 0;
-  return { itemCount, remainingCount };
-}
-
-function normalizePastOrder(raw: unknown): PastOrder | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const value = raw as Record<string, unknown>;
-  const supplierName = typeof value.supplier_name === 'string'
-    ? value.supplier_name.trim()
-    : typeof value.supplierName === 'string'
-      ? value.supplierName.trim()
-      : '';
-  const messageText = typeof value.message_text === 'string'
-    ? value.message_text
-    : typeof value.messageText === 'string'
-      ? value.messageText
-      : '';
-  if (!supplierName || !messageText) return null;
-
-  const shareMethod: PastOrderShareMethod =
-    value.share_method === 'copy' || value.shareMethod === 'copy' ? 'copy' : 'share';
-  const payload = toJsonObject(value.payload);
-  const counts = getPastOrderCountsFromPayload(payload);
-  const syncStatus: PastOrderSyncStatus =
-    value.sync_status === 'pending_sync' || value.syncStatus === 'pending_sync'
-      ? 'pending_sync'
-      : 'synced';
-
-  return {
-    id:
-      typeof value.id === 'string' && value.id.trim().length > 0
-        ? value.id
-        : createFulfillmentId('past'),
-    supplierId:
-      typeof value.supplier_id === 'string' && value.supplier_id.trim().length > 0
-        ? value.supplier_id
-        : typeof value.supplierId === 'string' && value.supplierId.trim().length > 0
-          ? value.supplierId
-          : null,
-    supplierName,
-    createdBy:
-      typeof value.created_by === 'string' && value.created_by.trim().length > 0
-        ? value.created_by
-        : typeof value.createdBy === 'string' && value.createdBy.trim().length > 0
-          ? value.createdBy
-          : null,
-    createdAt: toIsoString(value.created_at ?? value.createdAt),
-    payload,
-    messageText,
-    shareMethod,
-    syncStatus,
-    pendingSyncJobId:
-      typeof value.pendingSyncJobId === 'string' && value.pendingSyncJobId.trim().length > 0
-        ? value.pendingSyncJobId
-        : null,
-    syncError:
-      typeof value.syncError === 'string' && value.syncError.trim().length > 0
-        ? value.syncError
-        : null,
-    itemCount:
-      typeof value.itemCount === 'number' && Number.isFinite(value.itemCount)
-        ? Math.max(0, value.itemCount)
-        : counts.itemCount,
-    remainingCount:
-      typeof value.remainingCount === 'number' && Number.isFinite(value.remainingCount)
-        ? Math.max(0, value.remainingCount)
-        : counts.remainingCount,
-  };
-}
-
-function normalizePastOrders(raw: unknown): PastOrder[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item) => normalizePastOrder(item))
-    .filter((item): item is PastOrder => Boolean(item))
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-}
-
-function normalizePastOrderItem(raw: unknown): PastOrderItem | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const value = raw as Record<string, unknown>;
-  const pastOrderId =
-    typeof value.past_order_id === 'string'
-      ? value.past_order_id.trim()
-      : typeof value.pastOrderId === 'string'
-        ? value.pastOrderId.trim()
-        : '';
-  const itemId =
-    typeof value.item_id === 'string'
-      ? value.item_id.trim()
-      : typeof value.itemId === 'string'
-        ? value.itemId.trim()
-        : '';
-  const itemName =
-    typeof value.item_name === 'string'
-      ? value.item_name.trim()
-      : typeof value.itemName === 'string'
-        ? value.itemName.trim()
-        : '';
-  const unit = normalizeHistoryLookupUnit(value.unit);
-  const quantity = toValidNumber(value.quantity);
-  if (!pastOrderId || !itemId || !itemName || !unit || quantity === null || quantity <= 0) return null;
-
-  const id =
-    typeof value.id === 'string' && value.id.trim().length > 0
-      ? value.id
-      : createFulfillmentId('past_item');
-  const locationGroup = normalizeLocationGroup(value.location_group ?? value.locationGroup);
-
-  return {
-    id,
-    pastOrderId,
-    supplierId:
-      typeof value.supplier_id === 'string' && value.supplier_id.trim().length > 0
-        ? value.supplier_id
-        : typeof value.supplierId === 'string' && value.supplierId.trim().length > 0
-          ? value.supplierId
-          : null,
-    createdBy:
-      typeof value.created_by === 'string' && value.created_by.trim().length > 0
-        ? value.created_by
-        : typeof value.createdBy === 'string' && value.createdBy.trim().length > 0
-          ? value.createdBy
-          : null,
-    itemId,
-    itemName,
-    unit,
-    quantity: Math.max(0, quantity),
-    locationId:
-      typeof value.location_id === 'string' && value.location_id.trim().length > 0
-        ? value.location_id
-        : typeof value.locationId === 'string' && value.locationId.trim().length > 0
-          ? value.locationId
-          : null,
-    locationName:
-      typeof value.location_name === 'string' && value.location_name.trim().length > 0
-        ? value.location_name
-        : typeof value.locationName === 'string' && value.locationName.trim().length > 0
-          ? value.locationName
-          : null,
-    locationGroup,
-    unitType: value.unit_type === 'base' || value.unit_type === 'pack'
-      ? value.unit_type
-      : value.unitType === 'base' || value.unitType === 'pack'
-        ? value.unitType
-        : null,
-    orderedAt: toIsoString(value.ordered_at ?? value.orderedAt),
-    createdAt: toIsoString(value.created_at ?? value.createdAt),
-    note: normalizeNote(value.note),
-  };
-}
-
-function normalizePastOrderItems(raw: unknown): PastOrderItem[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((item) => normalizePastOrderItem(item))
-    .filter((item): item is PastOrderItem => Boolean(item))
-    .sort((a, b) => new Date(a.orderedAt).getTime() - new Date(b.orderedAt).getTime());
-}
-
-function createPastOrderSyncJobId() {
-  return `past_sync_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function normalizePendingPastOrderSyncJob(raw: unknown): PendingPastOrderSyncJob | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const value = raw as Record<string, unknown>;
-  const id =
-    typeof value.id === 'string' && value.id.trim().length > 0
-      ? value.id
-      : createPastOrderSyncJobId();
-  const localPastOrderId =
-    typeof value.localPastOrderId === 'string' && value.localPastOrderId.trim().length > 0
-      ? value.localPastOrderId
-      : '';
-  const supplierId =
-    typeof value.supplierId === 'string' && value.supplierId.trim().length > 0
-      ? value.supplierId
-      : '';
-  const supplierName =
-    typeof value.supplierName === 'string' && value.supplierName.trim().length > 0
-      ? value.supplierName
-      : '';
-  const createdBy =
-    typeof value.createdBy === 'string' && value.createdBy.trim().length > 0
-      ? value.createdBy
-      : '';
-  const messageText =
-    typeof value.messageText === 'string' && value.messageText.trim().length > 0
-      ? value.messageText
-      : '';
-  if (!localPastOrderId || !supplierId || !supplierName || !createdBy || !messageText) return null;
-
-  const shareMethod: PastOrderShareMethod = value.shareMethod === 'copy' ? 'copy' : 'share';
-  const lineItems: FinalizedPastOrderLineItemInput[] = Array.isArray(value.lineItems)
-    ? value.lineItems.reduce<FinalizedPastOrderLineItemInput[]>((acc, rawLine) => {
-        const line = rawLine as Record<string, unknown>;
-        const itemId = typeof line.itemId === 'string' ? line.itemId.trim() : '';
-        const itemName = typeof line.itemName === 'string' ? line.itemName.trim() : '';
-        const unit = normalizeHistoryLookupUnit(line.unit);
-        const quantity = toValidNumber(line.quantity);
-        if (!itemId || !itemName || !unit || quantity === null || quantity <= 0) {
-          return acc;
-        }
-
-        acc.push({
-          itemId,
-          itemName,
-          unit,
-          quantity: Math.max(0, quantity),
-          locationId:
-            typeof line.locationId === 'string' && line.locationId.trim().length > 0
-              ? line.locationId.trim()
-              : null,
-          locationName:
-            typeof line.locationName === 'string' && line.locationName.trim().length > 0
-              ? line.locationName.trim()
-              : null,
-          locationGroup: normalizeLocationGroup(line.locationGroup),
-          unitType: line.unitType === 'base' || line.unitType === 'pack' ? line.unitType : null,
-          note: normalizeNote(line.note),
-        });
-
-        return acc;
-      }, [])
-    : [];
-
-  return {
-    id,
-    localPastOrderId,
-    existingPastOrderId:
-      typeof value.existingPastOrderId === 'string' && value.existingPastOrderId.trim().length > 0
-        ? value.existingPastOrderId
-        : null,
-    queuedAt: toIsoString(value.queuedAt),
-    supplierId,
-    supplierName,
-    createdBy,
-    messageText,
-    shareMethod,
-    payload: toJsonObject(value.payload),
-    lineItems,
-    consumedOrderItemIds: toStringArray(value.consumedOrderItemIds),
-    consumedDraftItemIds: toStringArray(value.consumedDraftItemIds),
-    retryCount:
-      typeof value.retryCount === 'number' && Number.isFinite(value.retryCount)
-        ? Math.max(0, Math.floor(value.retryCount))
-        : 0,
-    lastError:
-      typeof value.lastError === 'string' && value.lastError.trim().length > 0
-        ? value.lastError.trim()
-        : null,
-  };
-}
-
-function normalizePendingPastOrderSyncQueue(raw: unknown): PendingPastOrderSyncJob[] {
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((entry) => normalizePendingPastOrderSyncJob(entry))
-    .filter((entry): entry is PendingPastOrderSyncJob => Boolean(entry))
-    .sort((a, b) => new Date(a.queuedAt).getTime() - new Date(b.queuedAt).getTime());
-}
-
-function mergeRemoteAndPendingPastOrders(
-  remote: PastOrder[],
-  local: PastOrder[],
-  queue: PendingPastOrderSyncJob[]
-): PastOrder[] {
-  const remoteById = new Set(remote.map((row) => row.id));
-  const queueByOrderId = new Set(queue.map((job) => job.localPastOrderId));
-  const pendingLocal = local.filter(
-    (row) => row.syncStatus === 'pending_sync' || queueByOrderId.has(row.id)
-  );
-  const unsyncedOnly = pendingLocal.filter((row) => !remoteById.has(row.id));
-  return [...unsyncedOnly, ...remote].sort(
-    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
-}
-
-function extractPastOrderItemsFromPayload(order: PastOrder): PastOrderItem[] {
-  const payload = toJsonObject(order.payload);
-  const regularItems = Array.isArray(payload.regularItems)
-    ? payload.regularItems
-    : Array.isArray(payload.regular_items)
-      ? payload.regular_items
-      : [];
-  const remainingItems = Array.isArray(payload.remainingItems)
-    ? payload.remainingItems
-    : Array.isArray(payload.remaining_items)
-      ? payload.remaining_items
-      : [];
-  const rows = [...regularItems, ...remainingItems];
-
-  return rows
-    .map((row, index) => {
-      if (!row || typeof row !== 'object') return null;
-      const value = row as Record<string, unknown>;
-      const itemId =
-        typeof value.inventoryItemId === 'string'
-          ? value.inventoryItemId.trim()
-          : typeof value.itemId === 'string'
-            ? value.itemId.trim()
-            : '';
-      const itemName =
-        typeof value.name === 'string'
-          ? value.name.trim()
-          : typeof value.itemName === 'string'
-            ? value.itemName.trim()
-            : '';
-      const unit = normalizeHistoryLookupUnit(value.unitLabel ?? value.unit);
-      const quantity = toValidNumber(value.quantity ?? value.decidedQuantity ?? value.decided_quantity);
-      if (!itemId || !itemName || !unit || quantity === null || quantity <= 0) return null;
-
-      const itemIdForRow = `payload_item_${order.id}_${index}`;
-      const locationGroup = normalizeLocationGroup(value.locationGroup ?? value.location_group);
-      const note = normalizeNote(value.note);
-      return {
-        id: itemIdForRow,
-        pastOrderId: order.id,
-        supplierId: order.supplierId,
-        createdBy: order.createdBy,
-        itemId,
-        itemName,
-        unit,
-        quantity: Math.max(0, quantity),
-        locationId:
-          typeof value.locationId === 'string' && value.locationId.trim().length > 0
-            ? value.locationId.trim()
-            : typeof value.location_id === 'string' && value.location_id.trim().length > 0
-              ? value.location_id.trim()
-              : null,
-        locationName:
-          typeof value.locationName === 'string' && value.locationName.trim().length > 0
-            ? value.locationName.trim()
-            : typeof value.location_name === 'string' && value.location_name.trim().length > 0
-              ? value.location_name.trim()
-              : null,
-        locationGroup,
-        unitType: value.unitType === 'base' || value.unitType === 'pack'
-          ? value.unitType
-          : value.unit_type === 'base' || value.unit_type === 'pack'
-            ? value.unit_type
-            : null,
-        orderedAt: order.createdAt,
-        createdAt: order.createdAt,
-        note,
-      } satisfies PastOrderItem;
-    })
-    .filter((row): row is PastOrderItem => Boolean(row));
-}
-
-function extractConsumedOrderItemIds(pastOrders: PastOrder[]): Set<string> {
-  const ids = new Set<string>();
-
-  pastOrders.forEach((row) => {
-    const payload = toJsonObject(row.payload);
-    const camel = toStringArray(payload.sourceOrderItemIds);
-    const snake = toStringArray(payload.source_order_item_ids);
-    [...camel, ...snake].forEach((id) => ids.add(id));
-  });
-
-  return ids;
-}
-
-function removeConsumedOrderItems(
-  orders: Order[],
-  consumedOrderItemIds: Set<string>
-): Order[] {
-  if (consumedOrderItemIds.size === 0) return orders;
-
-  return (orders as any[])
-    .map((order) => {
-      if (!Array.isArray(order?.order_items)) return order;
-      const nextItems = order.order_items.filter(
-        (item: any) => !consumedOrderItemIds.has(item?.id)
-      );
-      return { ...order, order_items: nextItems };
-    })
-    .filter((order) => {
-      if (!Array.isArray((order as any)?.order_items)) return true;
-      return (order as any).order_items.length > 0;
-    });
-}
-
-async function ensureNotificationPermission(): Promise<boolean> {
-  const Notifications = await getNotificationsModule();
-  if (!Notifications || Platform.OS === 'web') {
-    return false;
-  }
-
-  const current = await Notifications.getPermissionsAsync();
-  if (current.status === 'granted') return true;
-  const requested = await Notifications.requestPermissionsAsync();
-  return requested.status === 'granted';
-}
-
-async function cancelOrderLaterNotification(notificationId: string | null) {
-  if (!notificationId) return;
-  try {
-    const Notifications = await getNotificationsModule();
-    if (!Notifications) return;
-
-    await Notifications.cancelScheduledNotificationAsync(notificationId);
-  } catch {
-    // Ignore stale notification identifiers.
-  }
-}
-
-async function scheduleOrderLaterNotification(input: {
-  orderLaterItemId: string;
-  itemName: string;
-  scheduledAt: string;
-}): Promise<string | null> {
-  const targetDate = new Date(input.scheduledAt);
-  if (Number.isNaN(targetDate.getTime())) return null;
-
-  const granted = await ensureNotificationPermission().catch(() => false);
-  if (!granted) return null;
-
-  const minimum = Date.now() + 2_000;
-  const safeTarget = targetDate.getTime() < minimum ? new Date(minimum) : targetDate;
-
-  try {
-    const Notifications = await getNotificationsModule();
-    if (!Notifications) return null;
-
-    return await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `Order later reminder: ${input.itemName}`,
-        body: 'Tap to add this item to a supplier order.',
-        data: {
-          type: 'order-later-reminder',
-          orderLaterItemId: input.orderLaterItemId,
-        },
-        sound: true,
-      },
-      trigger: safeTarget as any,
-    });
-  } catch {
-    return null;
-  }
-}
-
-async function createOrderLaterInAppNotification(params: {
-  userId: string;
-  itemName: string;
-  scheduledAt: string;
-}) {
-  try {
-    await (supabase as any).from('notifications').insert({
-      user_id: params.userId,
-      title: `Order later scheduled: ${params.itemName}`,
-      body: `Reminder set for ${new Date(params.scheduledAt).toLocaleString()}.`,
-      notification_type: 'order_later_scheduled',
-      payload: {
-        itemName: params.itemName,
-        scheduledAt: params.scheduledAt,
-      },
-    });
-  } catch {
-    // Best-effort signal only.
-  }
-}
+export * from './orderStore.types';
+import type {
+  CartByLocation,
+  CartContext,
+  CartItem,
+  FulfillmentLocationGroup,
+  LastOrderedQuantityCacheValue,
+  LastOrderedQuantityLookupInput,
+  LastOrderedQuantityLookupResult,
+  OrderInputMode,
+  OrderLaterItem,
+  OrderLaterItemStatus,
+  OrderState,
+  PastOrder,
+  PastOrderItem,
+  PendingPastOrderSyncJob,
+  SupplierDraftItem,
+  SupplierDraftsBySupplier,
+} from './orderStore.types';
+
+import {
+  tableFlags,
+  orderLaterMoveInFlightIds,
+  createCartItemId,
+  resolveCurrentOrgId,
+  toValidNumber,
+  normalizeNote,
+  getEffectiveQuantity,
+  isSubmittableCartItem,
+  normalizeCartItem,
+  normalizeLocationCart,
+  getLocationCart,
+  normalizeCartByLocation,
+  normalizeCartContext,
+  getCartByContext,
+  mergeCartItem,
+  findCartItemIndex,
+  cartItemToPayload,
+  createFulfillmentId,
+  toIsoString,
+  toJsonObject,
+  normalizeSupplierId,
+  normalizeLocationGroup,
+  toStringArray,
+  normalizeHistoryLookupUnit,
+  createLastOrderedAnyKey,
+  createLastOrderedLocationIdKey,
+  createLastOrderedLocationGroupKey,
+  normalizeLastOrderedLookupInput,
+  resolveLastOrderedFromCache,
+  upsertLastOrderedCacheValue,
+  isNetworkLikeError,
+  isMissingTableError,
+  isMissingColumnError,
+  normalizeSupplierDrafts,
+  normalizeOrderLaterItem,
+  normalizeOrderLaterQueue,
+  getPastOrderCountsFromPayload,
+  normalizePastOrder,
+  normalizePastOrders,
+  normalizePastOrderItems,
+  createPastOrderSyncJobId,
+  normalizePendingPastOrderSyncQueue,
+  mergeRemoteAndPendingPastOrders,
+  extractPastOrderItemsFromPayload,
+  extractConsumedOrderItemIds,
+  removeConsumedOrderItems,
+  cancelOrderLaterNotification,
+  scheduleOrderLaterNotification,
+  createOrderLaterInAppNotification,
+} from './orderStore.helpers';
 
 export const useOrderStore = create<OrderState>()(
   persist(
@@ -1567,11 +152,8 @@ export const useOrderStore = create<OrderState>()(
             ...cartByLocation,
             [locationId]: mergedCart,
           };
-          if (resolvedContext === 'manager') {
-            set({ managerCartByLocation: nextCartByLocation });
-          } else {
-            set({ cartByLocation: nextCartByLocation });
-          }
+          // Unified cart: always write to cartByLocation for cross-mode sync
+          set({ cartByLocation: nextCartByLocation });
           return;
         }
 
@@ -1601,11 +183,8 @@ export const useOrderStore = create<OrderState>()(
           ...cartByLocation,
           [locationId]: mergedCart,
         };
-        if (resolvedContext === 'manager') {
-          set({ managerCartByLocation: nextCartByLocation });
-        } else {
-          set({ cartByLocation: nextCartByLocation });
-        }
+        // Unified cart: always write to cartByLocation for cross-mode sync
+        set({ cartByLocation: nextCartByLocation });
       },
 
       updateCartItem: (locationId, inventoryItemId, quantity, unitType, options) => {
@@ -1635,11 +214,8 @@ export const useOrderStore = create<OrderState>()(
               ...cartByLocation,
               [locationId]: nextCart,
             };
-            if (resolvedContext === 'manager') {
-              set({ managerCartByLocation: nextCartByLocation });
-            } else {
-              set({ cartByLocation: nextCartByLocation });
-            }
+            // Unified cart: always write to cartByLocation for cross-mode sync
+            set({ cartByLocation: nextCartByLocation });
             return;
           }
 
@@ -1660,11 +236,8 @@ export const useOrderStore = create<OrderState>()(
             ...cartByLocation,
             [locationId]: nextCart,
           };
-          if (resolvedContext === 'manager') {
-            set({ managerCartByLocation: nextCartByLocation });
-          } else {
-            set({ cartByLocation: nextCartByLocation });
-          }
+          // Unified cart: always write to cartByLocation for cross-mode sync
+          set({ cartByLocation: nextCartByLocation });
           return;
         }
 
@@ -1675,11 +248,8 @@ export const useOrderStore = create<OrderState>()(
             ...cartByLocation,
             [locationId]: nextCart,
           };
-          if (resolvedContext === 'manager') {
-            set({ managerCartByLocation: nextCartByLocation });
-          } else {
-            set({ cartByLocation: nextCartByLocation });
-          }
+          // Unified cart: always write to cartByLocation for cross-mode sync
+          set({ cartByLocation: nextCartByLocation });
           return;
         }
 
@@ -1700,11 +270,8 @@ export const useOrderStore = create<OrderState>()(
           ...cartByLocation,
           [locationId]: nextCart,
         };
-        if (resolvedContext === 'manager') {
-          set({ managerCartByLocation: nextCartByLocation });
-        } else {
-          set({ cartByLocation: nextCartByLocation });
-        }
+        // Unified cart: always write to cartByLocation for cross-mode sync
+        set({ cartByLocation: nextCartByLocation });
       },
 
       removeFromCart: (locationId, inventoryItemId, cartItemId, context) => {
@@ -1721,11 +288,8 @@ export const useOrderStore = create<OrderState>()(
           ...cartByLocation,
           [locationId]: nextCart,
         };
-        if (resolvedContext === 'manager') {
-          set({ managerCartByLocation: nextCartByLocation });
-        } else {
-          set({ cartByLocation: nextCartByLocation });
-        }
+        // Unified cart: always write to cartByLocation for cross-mode sync
+        set({ cartByLocation: nextCartByLocation });
       },
 
       moveCartItem: (fromLocationId, toLocationId, inventoryItemId, unitType, cartItemId, context) => {
@@ -1749,11 +313,8 @@ export const useOrderStore = create<OrderState>()(
           [fromLocationId]: newFromCart,
           [toLocationId]: newToCart,
         };
-        if (resolvedContext === 'manager') {
-          set({ managerCartByLocation: nextCartByLocation });
-        } else {
-          set({ cartByLocation: nextCartByLocation });
-        }
+        // Unified cart: always write to cartByLocation for cross-mode sync
+        set({ cartByLocation: nextCartByLocation });
       },
 
       moveLocationCartItems: (fromLocationId, toLocationId, context) => {
@@ -1776,11 +337,8 @@ export const useOrderStore = create<OrderState>()(
         delete nextCartByLocation[fromLocationId];
         nextCartByLocation[toLocationId] = merged;
 
-        if (resolvedContext === 'manager') {
-          set({ managerCartByLocation: nextCartByLocation });
-        } else {
-          set({ cartByLocation: nextCartByLocation });
-        }
+        // Unified cart: always write to cartByLocation for cross-mode sync
+        set({ cartByLocation: nextCartByLocation });
       },
 
       moveAllCartItemsToLocation: (toLocationId, context) => {
@@ -1800,40 +358,25 @@ export const useOrderStore = create<OrderState>()(
           merged = mergeCartItem(merged, { ...item });
         });
 
-        if (resolvedContext === 'manager') {
-          set({
-            managerCartByLocation: {
-              [toLocationId]: merged,
-            },
-          });
-        } else {
-          set({
-            cartByLocation: {
-              [toLocationId]: merged,
-            },
-          });
-        }
+        // Unified cart: always write to cartByLocation for cross-mode sync
+        set({
+          cartByLocation: {
+            [toLocationId]: merged,
+          },
+        });
       },
 
       clearLocationCart: (locationId, context) => {
-        const resolvedContext = normalizeCartContext(context);
         const state = get();
-        const cartByLocation = getCartByContext(state, resolvedContext);
+        const cartByLocation = getCartByContext(state, context);
         const { [locationId]: _, ...rest } = cartByLocation;
-        if (resolvedContext === 'manager') {
-          set({ managerCartByLocation: rest });
-        } else {
-          set({ cartByLocation: rest });
-        }
+        // Unified cart: always write to cartByLocation for cross-mode sync
+        set({ cartByLocation: rest });
       },
 
-      clearAllCarts: (context) => {
-        const resolvedContext = normalizeCartContext(context);
-        if (resolvedContext === 'manager') {
-          set({ managerCartByLocation: {} });
-        } else {
-          set({ cartByLocation: {} });
-        }
+      clearAllCarts: () => {
+        // Unified cart: always write to cartByLocation for cross-mode sync
+        set({ cartByLocation: {} });
       },
 
       // Legacy clearCart - clears all carts
@@ -1864,11 +407,8 @@ export const useOrderStore = create<OrderState>()(
           ...cartByLocation,
           [locationId]: nextCart,
         };
-        if (resolvedContext === 'manager') {
-          set({ managerCartByLocation: nextCartByLocation });
-        } else {
-          set({ cartByLocation: nextCartByLocation });
-        }
+        // Unified cart: always write to cartByLocation for cross-mode sync
+        set({ cartByLocation: nextCartByLocation });
       },
 
       setCartItemNote: (locationId, cartItemId, note, context) => {
@@ -1890,11 +430,8 @@ export const useOrderStore = create<OrderState>()(
           ...cartByLocation,
           [locationId]: nextCart,
         };
-        if (resolvedContext === 'manager') {
-          set({ managerCartByLocation: nextCartByLocation });
-        } else {
-          set({ cartByLocation: nextCartByLocation });
-        }
+        // Unified cart: always write to cartByLocation for cross-mode sync
+        set({ cartByLocation: nextCartByLocation });
       },
 
       getCartItems: (locationId, context) => {
@@ -2392,7 +929,7 @@ export const useOrderStore = create<OrderState>()(
           };
         };
 
-        if (pastOrdersTableAvailable !== false) {
+        if (tableFlags.pastOrdersTableAvailable !== false) {
           const { data, error } = await (supabase as any)
             .from('past_orders')
             .insert({
@@ -2408,7 +945,7 @@ export const useOrderStore = create<OrderState>()(
 
           if (error) {
             if (isMissingTableError(error, 'past_orders')) {
-              pastOrdersTableAvailable = false;
+              tableFlags.pastOrdersTableAvailable = false;
             }
             if (isNetworkLikeError(error) || isMissingTableError(error, 'past_orders')) {
               queueForSync(error?.message || 'Pending sync while offline.', null);
@@ -2416,7 +953,7 @@ export const useOrderStore = create<OrderState>()(
               throw error;
             }
           } else {
-            pastOrdersTableAvailable = true;
+            tableFlags.pastOrdersTableAvailable = true;
             if (typeof data?.id === 'string' && data.id.trim().length > 0) {
               persistedPastOrderId = data.id;
             }
@@ -2438,7 +975,7 @@ export const useOrderStore = create<OrderState>()(
         if (
           persistedPastOrderId &&
           normalizedLineItems.length > 0 &&
-          pastOrderItemsTableAvailable !== false
+          tableFlags.pastOrderItemsTableAvailable !== false
         ) {
           const buildRows = (includeNote: boolean) =>
             normalizedLineItems.map((line) => ({
@@ -2457,13 +994,13 @@ export const useOrderStore = create<OrderState>()(
               ...(includeNote ? { note: line.note } : {}),
             }));
 
-          let includeNote = pastOrderItemsNoteColumnAvailable !== false;
+          let includeNote = tableFlags.pastOrderItemsNoteColumnAvailable !== false;
           let { error } = await (supabase as any)
             .from('past_order_items')
             .insert(buildRows(includeNote));
 
           if (error && includeNote && isMissingColumnError(error, 'note')) {
-            pastOrderItemsNoteColumnAvailable = false;
+            tableFlags.pastOrderItemsNoteColumnAvailable = false;
             includeNote = false;
             ({ error } = await (supabase as any)
               .from('past_order_items')
@@ -2472,7 +1009,7 @@ export const useOrderStore = create<OrderState>()(
 
           if (error) {
             if (isMissingTableError(error, 'past_order_items')) {
-              pastOrderItemsTableAvailable = false;
+              tableFlags.pastOrderItemsTableAvailable = false;
             }
             if (isNetworkLikeError(error) || isMissingTableError(error, 'past_order_items')) {
               queueForSync(
@@ -2483,9 +1020,9 @@ export const useOrderStore = create<OrderState>()(
               throw error;
             }
           } else {
-            pastOrderItemsTableAvailable = true;
+            tableFlags.pastOrderItemsTableAvailable = true;
             if (includeNote) {
-              pastOrderItemsNoteColumnAvailable = true;
+              tableFlags.pastOrderItemsNoteColumnAvailable = true;
             }
           }
         }
@@ -2577,7 +1114,7 @@ export const useOrderStore = create<OrderState>()(
 
             try {
               if (!persistedPastOrderId) {
-                if (pastOrdersTableAvailable === false) {
+                if (tableFlags.pastOrdersTableAvailable === false) {
                   throw new Error('past_orders table unavailable');
                 }
 
@@ -2595,7 +1132,7 @@ export const useOrderStore = create<OrderState>()(
                   .single();
 
                 if (error) throw error;
-                pastOrdersTableAvailable = true;
+                tableFlags.pastOrdersTableAvailable = true;
                 const parsed = normalizePastOrder(data);
                 if (parsed) {
                   syncedOrder = parsed;
@@ -2606,7 +1143,7 @@ export const useOrderStore = create<OrderState>()(
               }
 
               if (persistedPastOrderId && job.lineItems.length > 0) {
-                if (pastOrderItemsTableAvailable === false) {
+                if (tableFlags.pastOrderItemsTableAvailable === false) {
                   throw new Error('past_order_items table unavailable');
                 }
 
@@ -2634,13 +1171,13 @@ export const useOrderStore = create<OrderState>()(
                     ...(includeNote ? { note: line.note ?? null } : {}),
                   }));
 
-                let includeNote = pastOrderItemsNoteColumnAvailable !== false;
+                let includeNote = tableFlags.pastOrderItemsNoteColumnAvailable !== false;
                 let { error } = await (supabase as any)
                   .from('past_order_items')
                   .insert(buildRows(includeNote));
 
                 if (error && includeNote && isMissingColumnError(error, 'note')) {
-                  pastOrderItemsNoteColumnAvailable = false;
+                  tableFlags.pastOrderItemsNoteColumnAvailable = false;
                   includeNote = false;
                   ({ error } = await (supabase as any)
                     .from('past_order_items')
@@ -2648,9 +1185,9 @@ export const useOrderStore = create<OrderState>()(
                 }
 
                 if (error) throw error;
-                pastOrderItemsTableAvailable = true;
+                tableFlags.pastOrderItemsTableAvailable = true;
                 if (includeNote) {
-                  pastOrderItemsNoteColumnAvailable = true;
+                  tableFlags.pastOrderItemsNoteColumnAvailable = true;
                 }
               }
 
@@ -2699,8 +1236,8 @@ export const useOrderStore = create<OrderState>()(
                 ),
               ]);
             } catch (error: any) {
-              if (isMissingTableError(error, 'past_orders')) pastOrdersTableAvailable = false;
-              if (isMissingTableError(error, 'past_order_items')) pastOrderItemsTableAvailable = false;
+              if (isMissingTableError(error, 'past_orders')) tableFlags.pastOrdersTableAvailable = false;
+              if (isMissingTableError(error, 'past_order_items')) tableFlags.pastOrderItemsTableAvailable = false;
               retryError = error?.message || 'Pending sync failed.';
             }
 
@@ -2743,7 +1280,7 @@ export const useOrderStore = create<OrderState>()(
 
       fetchPastOrders: async (managerId) => {
         let remotePastOrders: PastOrder[] | null = null;
-        if (pastOrdersTableAvailable !== false) {
+        if (tableFlags.pastOrdersTableAvailable !== false) {
           const { data, error } = await (supabase as any)
             .from('past_orders')
             .select('id,supplier_id,supplier_name,created_by,created_at,payload,message_text,share_method')
@@ -2752,17 +1289,17 @@ export const useOrderStore = create<OrderState>()(
 
           if (error) {
             if (isMissingTableError(error, 'past_orders')) {
-              pastOrdersTableAvailable = false;
+              tableFlags.pastOrdersTableAvailable = false;
             } else {
               console.warn('Unable to load past_orders, using local fallback.', error);
             }
           } else {
-            pastOrdersTableAvailable = true;
+            tableFlags.pastOrdersTableAvailable = true;
             remotePastOrders = normalizePastOrders(data || []);
           }
         }
 
-        if (remotePastOrders && remotePastOrders.length > 0 && pastOrderItemsTableAvailable !== false) {
+        if (remotePastOrders && remotePastOrders.length > 0 && tableFlags.pastOrderItemsTableAvailable !== false) {
           const ids = remotePastOrders.map((row) => row.id);
           const { data, error } = await (supabase as any)
             .from('past_order_items')
@@ -2772,12 +1309,12 @@ export const useOrderStore = create<OrderState>()(
 
           if (error) {
             if (isMissingTableError(error, 'past_order_items')) {
-              pastOrderItemsTableAvailable = false;
+              tableFlags.pastOrderItemsTableAvailable = false;
             } else {
               console.warn('Unable to load past_order_items counts.', error);
             }
           } else {
-            pastOrderItemsTableAvailable = true;
+            tableFlags.pastOrderItemsTableAvailable = true;
             const countsByPastOrderId = new Map<string, number>();
             (data || []).forEach((row: any) => {
               const pastOrderId =
@@ -2813,7 +1350,7 @@ export const useOrderStore = create<OrderState>()(
         if (!normalizedPastOrderId) return null;
 
         let order = get().pastOrders.find((row) => row.id === normalizedPastOrderId) || null;
-        if (pastOrdersTableAvailable !== false) {
+        if (tableFlags.pastOrdersTableAvailable !== false) {
           const { data, error } = await (supabase as any)
             .from('past_orders')
             .select('*')
@@ -2822,12 +1359,12 @@ export const useOrderStore = create<OrderState>()(
 
           if (error) {
             if (isMissingTableError(error, 'past_orders')) {
-              pastOrdersTableAvailable = false;
+              tableFlags.pastOrdersTableAvailable = false;
             } else {
               console.warn('Unable to load past_orders detail.', error);
             }
           } else if (data) {
-            pastOrdersTableAvailable = true;
+            tableFlags.pastOrdersTableAvailable = true;
             const parsed = normalizePastOrder(data);
             if (parsed) {
               const existingPending = get().pastOrders.find((row) => row.id === parsed.id);
@@ -2846,7 +1383,7 @@ export const useOrderStore = create<OrderState>()(
         if (!order) return null;
 
         let items: PastOrderItem[] = [];
-        if (pastOrderItemsTableAvailable !== false) {
+        if (tableFlags.pastOrderItemsTableAvailable !== false) {
           const { data, error } = await (supabase as any)
             .from('past_order_items')
             .select('*')
@@ -2855,12 +1392,12 @@ export const useOrderStore = create<OrderState>()(
 
           if (error) {
             if (isMissingTableError(error, 'past_order_items')) {
-              pastOrderItemsTableAvailable = false;
+              tableFlags.pastOrderItemsTableAvailable = false;
             } else {
               console.warn('Unable to load past_order_items detail.', error);
             }
           } else {
-            pastOrderItemsTableAvailable = true;
+            tableFlags.pastOrderItemsTableAvailable = true;
             items = normalizePastOrderItems(data || []);
           }
         }
@@ -2894,7 +1431,7 @@ export const useOrderStore = create<OrderState>()(
           const nextPastOrders = await get().fetchPastOrders(userId);
           let nextOrderLaterQueue = get().orderLaterQueue;
 
-          if (orderLaterItemsTableAvailable !== false) {
+          if (tableFlags.orderLaterItemsTableAvailable !== false) {
             const baseQuery = () =>
               (supabase as any)
                 .from('order_later_items')
@@ -2921,13 +1458,13 @@ export const useOrderStore = create<OrderState>()(
               if (error) {
                 hadError = true;
                 if (isMissingTableError(error, 'order_later_items')) {
-                  orderLaterItemsTableAvailable = false;
+                  tableFlags.orderLaterItemsTableAvailable = false;
                 } else {
                   console.warn('Unable to load shared order_later_items rows.', error);
                 }
               } else {
                 hadSuccess = true;
-                orderLaterItemsTableAvailable = true;
+                tableFlags.orderLaterItemsTableAvailable = true;
                 mergeRows(data);
               }
 
@@ -2943,7 +1480,7 @@ export const useOrderStore = create<OrderState>()(
                   }
                 } else {
                   hadSuccess = true;
-                  orderLaterItemsTableAvailable = true;
+                  tableFlags.orderLaterItemsTableAvailable = true;
                   mergeRows(unassignedRows);
                 }
               }
@@ -2954,20 +1491,20 @@ export const useOrderStore = create<OrderState>()(
               if (error) {
                 hadError = true;
                 if (isMissingTableError(error, 'order_later_items')) {
-                  orderLaterItemsTableAvailable = false;
+                  tableFlags.orderLaterItemsTableAvailable = false;
                 } else {
                   console.warn('Unable to load order_later_items, using local fallback.', error);
                 }
               } else {
                 hadSuccess = true;
-                orderLaterItemsTableAvailable = true;
+                tableFlags.orderLaterItemsTableAvailable = true;
                 mergeRows(data);
               }
             }
 
             if (hadSuccess) {
               nextOrderLaterQueue = normalizeOrderLaterQueue(Array.from(rowsById.values()));
-            } else if (hadError && orderLaterItemsTableAvailable !== false) {
+            } else if (hadError && tableFlags.orderLaterItemsTableAvailable !== false) {
               console.warn('Falling back to local order-later queue.');
             }
           }
@@ -3000,7 +1537,7 @@ export const useOrderStore = create<OrderState>()(
             queueChanged = true;
             row.notificationId = notificationId;
 
-            if (orderLaterItemsTableAvailable !== false) {
+            if (tableFlags.orderLaterItemsTableAvailable !== false) {
               try {
                 await (supabase as any)
                   .from('order_later_items')
@@ -3270,7 +1807,7 @@ export const useOrderStore = create<OrderState>()(
             return localExisting;
           }
 
-          if (orderLaterItemsTableAvailable !== false) {
+          if (tableFlags.orderLaterItemsTableAvailable !== false) {
             let remoteRows: any[] = [];
 
             const { data: sourceOrderItemRows, error: sourceOrderItemError } = await (supabase as any)
@@ -3283,16 +1820,16 @@ export const useOrderStore = create<OrderState>()(
 
             if (sourceOrderItemError) {
               if (isMissingTableError(sourceOrderItemError, 'order_later_items')) {
-                orderLaterItemsTableAvailable = false;
+                tableFlags.orderLaterItemsTableAvailable = false;
               } else {
                 console.warn('Unable to check order_later_items duplicates (source_order_item_id).', sourceOrderItemError);
               }
             } else {
-              orderLaterItemsTableAvailable = true;
+              tableFlags.orderLaterItemsTableAvailable = true;
               remoteRows = Array.isArray(sourceOrderItemRows) ? sourceOrderItemRows : [];
             }
 
-            if (remoteRows.length === 0 && orderLaterItemsTableAvailable !== false) {
+            if (remoteRows.length === 0 && tableFlags.orderLaterItemsTableAvailable !== false) {
               const { data: overlapRows, error: overlapError } = await (supabase as any)
                 .from('order_later_items')
                 .select('*')
@@ -3303,12 +1840,12 @@ export const useOrderStore = create<OrderState>()(
 
               if (overlapError) {
                 if (isMissingTableError(overlapError, 'order_later_items')) {
-                  orderLaterItemsTableAvailable = false;
+                  tableFlags.orderLaterItemsTableAvailable = false;
                 } else if (!isMissingColumnError(overlapError, 'original_order_item_ids')) {
                   console.warn('Unable to check order_later_items duplicates (original_order_item_ids).', overlapError);
                 }
               } else {
-                orderLaterItemsTableAvailable = true;
+                tableFlags.orderLaterItemsTableAvailable = true;
                 remoteRows = Array.isArray(overlapRows) ? overlapRows : [];
               }
             }
@@ -3328,7 +1865,7 @@ export const useOrderStore = create<OrderState>()(
 
         let orderLaterItem: OrderLaterItem | null = null;
 
-        if (orderLaterItemsTableAvailable !== false) {
+        if (tableFlags.orderLaterItemsTableAvailable !== false) {
           const insertPayloadWithExtended: Record<string, unknown> = {
             created_by: normalizedInput.createdBy,
             scheduled_at: scheduledAt,
@@ -3392,12 +1929,12 @@ export const useOrderStore = create<OrderState>()(
 
           if (error) {
             if (isMissingTableError(error, 'order_later_items')) {
-              orderLaterItemsTableAvailable = false;
+              tableFlags.orderLaterItemsTableAvailable = false;
             } else {
               console.warn('Unable to persist order_later_items row; using local fallback.', error);
             }
           } else {
-            orderLaterItemsTableAvailable = true;
+            tableFlags.orderLaterItemsTableAvailable = true;
             orderLaterItem = normalizeOrderLaterItem(data);
           }
         }
@@ -3441,7 +1978,7 @@ export const useOrderStore = create<OrderState>()(
         if (notificationId) {
           orderLaterItem = { ...orderLaterItem, notificationId };
 
-          if (orderLaterItemsTableAvailable !== false) {
+          if (tableFlags.orderLaterItemsTableAvailable !== false) {
             try {
               await (supabase as any)
                 .from('order_later_items')
@@ -3490,7 +2027,7 @@ export const useOrderStore = create<OrderState>()(
           ),
         }));
 
-        if (orderLaterItemsTableAvailable !== false) {
+        if (tableFlags.orderLaterItemsTableAvailable !== false) {
           const { error } = await (supabase as any)
             .from('order_later_items')
             .update({
@@ -3501,12 +2038,12 @@ export const useOrderStore = create<OrderState>()(
 
           if (error) {
             if (isMissingTableError(error, 'order_later_items')) {
-              orderLaterItemsTableAvailable = false;
+              tableFlags.orderLaterItemsTableAvailable = false;
             } else {
               console.warn('Unable to update order_later_items schedule.', error);
             }
           } else {
-            orderLaterItemsTableAvailable = true;
+            tableFlags.orderLaterItemsTableAvailable = true;
           }
         }
 
@@ -3529,7 +2066,7 @@ export const useOrderStore = create<OrderState>()(
           orderLaterQueue: state.orderLaterQueue.filter((item) => item.id !== itemId),
         }));
 
-        if (orderLaterItemsTableAvailable !== false) {
+        if (tableFlags.orderLaterItemsTableAvailable !== false) {
           const { error } = await (supabase as any)
             .from('order_later_items')
             .update({
@@ -3541,12 +2078,12 @@ export const useOrderStore = create<OrderState>()(
 
           if (error) {
             if (isMissingTableError(error, 'order_later_items')) {
-              orderLaterItemsTableAvailable = false;
+              tableFlags.orderLaterItemsTableAvailable = false;
             } else {
               console.warn('Unable to update order_later_items status.', error);
             }
           } else {
-            orderLaterItemsTableAvailable = true;
+            tableFlags.orderLaterItemsTableAvailable = true;
           }
         }
       },
@@ -3648,7 +2185,7 @@ export const useOrderStore = create<OrderState>()(
             orderLaterQueue: state.orderLaterQueue.filter((item) => item.id !== normalizedItemId),
           }));
 
-          if (orderLaterItemsTableAvailable !== false) {
+          if (tableFlags.orderLaterItemsTableAvailable !== false) {
             const { error } = await (supabase as any)
               .from('order_later_items')
               .update({
@@ -3663,12 +2200,12 @@ export const useOrderStore = create<OrderState>()(
 
             if (error) {
               if (isMissingTableError(error, 'order_later_items')) {
-                orderLaterItemsTableAvailable = false;
+                tableFlags.orderLaterItemsTableAvailable = false;
               } else {
                 console.warn('Unable to update order_later_items add-back status.', error);
               }
             } else {
-              orderLaterItemsTableAvailable = true;
+              tableFlags.orderLaterItemsTableAvailable = true;
             }
           }
 
@@ -3716,7 +2253,7 @@ export const useOrderStore = create<OrderState>()(
           };
         }
 
-        if (!managerId || pastOrderItemsTableAvailable === false) {
+        if (!managerId || tableFlags.pastOrderItemsTableAvailable === false) {
           return {
             values: cachedValues,
             fromCache: true,
@@ -3740,7 +2277,7 @@ export const useOrderStore = create<OrderState>()(
 
         if (error) {
           if (isMissingTableError(error, 'past_order_items')) {
-            pastOrderItemsTableAvailable = false;
+            tableFlags.pastOrderItemsTableAvailable = false;
           } else {
             console.warn('Unable to load past_order_items history.', error);
           }
@@ -3751,7 +2288,7 @@ export const useOrderStore = create<OrderState>()(
           };
         }
 
-        pastOrderItemsTableAvailable = true;
+        tableFlags.pastOrderItemsTableAvailable = true;
         nextCache = { ...existingCache };
         (data || []).forEach((rawRow: any) => {
           const itemId =
@@ -3818,7 +2355,7 @@ export const useOrderStore = create<OrderState>()(
         let conflictDetected = false;
 
         try {
-          if (orderItemsStatusColumnAvailable !== false) {
+          if (tableFlags.orderItemsStatusColumnAvailable !== false) {
             let updateQuery = supabase
               .from('order_items')
               .update({ status } as any)
@@ -3831,12 +2368,12 @@ export const useOrderStore = create<OrderState>()(
 
             if (error) {
               if (isMissingColumnError(error, 'status')) {
-                orderItemsStatusColumnAvailable = false;
+                tableFlags.orderItemsStatusColumnAvailable = false;
               } else {
                 throw error;
               }
             } else {
-              orderItemsStatusColumnAvailable = true;
+              tableFlags.orderItemsStatusColumnAvailable = true;
               if (Array.isArray(data)) {
                 updatedIds = data
                   .map((row: any) => (typeof row?.id === 'string' ? row.id.trim() : ''))
@@ -3848,7 +2385,7 @@ export const useOrderStore = create<OrderState>()(
             }
           }
 
-          if (orderItemsStatusColumnAvailable === false) {
+          if (tableFlags.orderItemsStatusColumnAvailable === false) {
             if (__DEV__) {
               console.warn(
                 '[OrderStore] markOrderItemsStatus skipped: order_items.status column is missing. Apply fulfillment status migration first.'
@@ -4016,11 +2553,31 @@ export const useOrderStore = create<OrderState>()(
       }),
       merge: (persistedState, currentState) => {
         const persisted = (persistedState || {}) as Partial<OrderState>;
+        // Migrate: merge any leftover managerCartByLocation items into
+        // cartByLocation so the unified cart picks them up on upgrade.
+        const normalizedMain = normalizeCartByLocation(persisted.cartByLocation);
+        const normalizedManager = normalizeCartByLocation(persisted.managerCartByLocation);
+        const mergedCart: CartByLocation = { ...normalizedMain };
+        for (const [locId, managerItems] of Object.entries(normalizedManager)) {
+          if (!mergedCart[locId] || mergedCart[locId].length === 0) {
+            mergedCart[locId] = managerItems;
+          } else {
+            // Merge items, avoiding duplicates by inventoryItemId+unitType
+            const existing = new Set(
+              mergedCart[locId].map((i) => `${i.inventoryItemId}:${i.unitType}`)
+            );
+            for (const item of managerItems) {
+              if (!existing.has(`${item.inventoryItemId}:${item.unitType}`)) {
+                mergedCart[locId].push(item);
+              }
+            }
+          }
+        }
         return {
           ...currentState,
           ...persisted,
-          cartByLocation: normalizeCartByLocation(persisted.cartByLocation),
-          managerCartByLocation: normalizeCartByLocation(persisted.managerCartByLocation),
+          cartByLocation: mergedCart,
+          managerCartByLocation: {},
           supplierDrafts: normalizeSupplierDrafts((persistedState as any)?.supplierDrafts),
           orderLaterQueue: normalizeOrderLaterQueue((persistedState as any)?.orderLaterQueue),
           pastOrders: normalizePastOrders((persistedState as any)?.pastOrders),
@@ -4033,8 +2590,8 @@ export const useOrderStore = create<OrderState>()(
   )
 );
 
-if (!pastOrderSyncListenerInitialized) {
-  pastOrderSyncListenerInitialized = true;
+if (!tableFlags.pastOrderSyncListenerInitialized) {
+  tableFlags.pastOrderSyncListenerInitialized = true;
   NetInfo.addEventListener((state) => {
     const online = Boolean(state.isConnected) && state.isInternetReachable !== false;
     if (!online) return;

@@ -279,7 +279,7 @@ async function clearUserScopedClientState() {
       import('./orderStore'),
       import('./draftStore'),
       import('./inventoryStore'),
-      import('./stock.store'),
+      import('./stockStore'),
       import('./fulfillmentStore'),
       import('./tunaSpecialistStore'),
     ]);

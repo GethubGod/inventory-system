@@ -7,18 +7,60 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useAuthStore,
   useOrderStore,
-  useDisplayStore,
+  useDraftStore,
 } from "@/store";
 import { supabase } from "@/lib/supabase";
-import { colors, hairline, radii, spacing } from "@/theme/design";
+import { colors, hairline, spacing } from "@/theme/design";
+
+/**
+ * Custom tab button matching the employee TabButton bubble style.
+ */
+function TabButton({
+  name,
+  label,
+  color,
+  size,
+  focused,
+}: {
+  name: keyof typeof Ionicons.glyphMap;
+  label: string;
+  color: string;
+  size: number;
+  focused: boolean;
+}) {
+  return (
+    <View
+      style={{
+        width: 76,
+        height: 56,
+        borderRadius: 28,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: focused ? "rgba(232, 80, 58, 0.14)" : "transparent",
+      }}
+    >
+      <Ionicons name={name} size={size} color={color} />
+      <Text
+        style={{
+          fontSize: 10,
+          fontWeight: "600",
+          color,
+          marginTop: 2,
+        }}
+        numberOfLines={1}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
 
 export default function ManagerLayout() {
   const { session, profile, user, viewMode } = useAuthStore();
   const cartCount = useOrderStore((state) =>
     state.getTotalCartCount("manager"),
   );
-  const uiScale = useDisplayStore((state) => state.uiScale);
-  const scaledFontSize = useDisplayStore((state) => state.scaledFontSize);
+  const draftCount = useDraftStore((state) => state.getTotalItemCount());
   const insets = useSafeAreaInsets();
   const [pendingFulfillmentCount, setPendingFulfillmentCount] = useState(0);
   const badgeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -28,8 +70,6 @@ export default function ManagerLayout() {
   const badgePollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
-  const isLarge = uiScale === "large";
-  const isCompact = uiScale === "compact";
   const metadataRole =
     typeof session?.user?.user_metadata?.role === "string"
       ? session.user.user_metadata.role
@@ -37,10 +77,20 @@ export default function ManagerLayout() {
         ? session.user.app_metadata.role
         : null;
   const resolvedRole = user?.role ?? profile?.role ?? metadataRole;
-  const tabBarScale = isLarge ? 1.1 : 1;
-  const badgeSize = Math.max(18, Math.round(18 * tabBarScale));
   const tabBarBottomInset = Math.max(insets.bottom, spacing.tabBarBottom);
-  const tabBarHeight = Math.round(58 * tabBarScale) + tabBarBottomInset;
+  const tabBarHeight = 60 + tabBarBottomInset;
+  const badgeStyle = {
+    backgroundColor: colors.primary,
+    color: colors.textOnPrimary,
+    fontSize: 10,
+    fontWeight: "700" as const,
+    minWidth: 18,
+    height: 18,
+    lineHeight: 16,
+    borderRadius: 9,
+    top: -4,
+    right: -6,
+  };
   const refreshPendingFulfillmentCount = useCallback(async () => {
     if (!session || resolvedRole !== "manager") {
       setPendingFulfillmentCount(0);
@@ -167,44 +217,40 @@ export default function ManagerLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
-        tabBarActiveBackgroundColor: colors.primaryLight,
         tabBarStyle: {
+          position: "absolute",
           backgroundColor: colors.tabBarBg,
           borderTopWidth: hairline,
           borderTopColor: colors.glassBorder,
-          paddingTop: Math.round(spacing.tabBarTop * tabBarScale),
+          paddingTop: 6,
           paddingBottom: tabBarBottomInset,
           paddingHorizontal: spacing.tabBarHorizontal,
           height: tabBarHeight,
+          elevation: 0,
         },
         tabBarLabelStyle: {
-          fontSize: Math.max(10, scaledFontSize(10)),
-          fontWeight: "600",
-          marginTop: Math.round(4 * tabBarScale),
+          fontSize: 0, // hide default label — rendered inside TabButton
+          height: 0,
+          margin: 0,
         },
         tabBarItemStyle: {
-          borderRadius: radii.pill,
-          marginHorizontal: 4,
-          marginVertical: 2,
-        },
-        tabBarIconStyle: {
-          transform: [{ scale: isLarge ? 1.15 : isCompact ? 0.95 : 1 }],
+          paddingTop: 8,
         },
         headerShown: false,
       }}
     >
-      {/* Dashboard - Default Tab */}
+      {/* Home - Default Tab */}
       <Tabs.Screen
         name="index"
         options={{
-          title: "Dashboard",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="grid-outline" size={size} color={color} />
+          title: "Home",
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabButton name="home-outline" label="Home" size={size} color={color} focused={focused} />
           ),
         }}
       />
 
-      {/* Browse (hidden — accessed from Dashboard) */}
+      {/* Browse (hidden — accessed from Home) */}
       <Tabs.Screen
         name="browse"
         options={{
@@ -212,83 +258,29 @@ export default function ManagerLayout() {
         }}
       />
 
-      {/* Quick Order - Replaces Orders */}
+      {/* Quick Order */}
       <Tabs.Screen
         name="quick-order"
         options={{
           title: "Quick",
-          tabBarIcon: ({ color, size }) => (
-            <View>
-              <Ionicons name="flash-outline" size={size} color={color} />
-              {cartCount > 0 && (
-                <View
-                  style={{
-                    position: "absolute",
-                    top: -Math.round(4 * tabBarScale),
-                    right: -Math.round(8 * tabBarScale),
-                    backgroundColor: colors.primary,
-                    borderRadius: badgeSize / 2,
-                    minWidth: badgeSize,
-                    height: badgeSize,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingHorizontal: Math.round(4 * tabBarScale),
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.textOnPrimary,
-                      fontSize: Math.max(9, scaledFontSize(9)),
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {cartCount > 99 ? "99+" : cartCount}
-                  </Text>
-                </View>
-              )}
-            </View>
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabButton name="flash-outline" label="Quick" size={size} color={color} focused={focused} />
           ),
+          tabBarBadge: draftCount > 0 ? draftCount : undefined,
+          tabBarBadgeStyle: badgeStyle,
         }}
       />
 
-      {/* Fulfillment */}
+      {/* Fulfillment (replaces Cart in manager mode) */}
       <Tabs.Screen
         name="fulfillment"
         options={{
           title: "Fulfillment",
-          tabBarIcon: ({ color, size }) => (
-            <View>
-              <Ionicons name="clipboard-outline" size={size} color={color} />
-              {pendingFulfillmentCount > 0 && (
-                <View
-                  style={{
-                    position: "absolute",
-                    top: -Math.round(4 * tabBarScale),
-                    right: -Math.round(8 * tabBarScale),
-                    backgroundColor: colors.primary,
-                    borderRadius: badgeSize / 2,
-                    minWidth: badgeSize,
-                    height: badgeSize,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingHorizontal: Math.round(4 * tabBarScale),
-                  }}
-                >
-                  <Text
-                    style={{
-                      color: colors.textOnPrimary,
-                      fontSize: Math.max(9, scaledFontSize(9)),
-                      fontWeight: "bold",
-                    }}
-                  >
-                    {pendingFulfillmentCount > 99
-                      ? "99+"
-                      : pendingFulfillmentCount}
-                  </Text>
-                </View>
-              )}
-            </View>
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabButton name="clipboard-outline" label="Fulfill" size={size} color={color} focused={focused} />
           ),
+          tabBarBadge: pendingFulfillmentCount > 0 ? pendingFulfillmentCount : undefined,
+          tabBarBadgeStyle: badgeStyle,
         }}
       />
 
@@ -297,8 +289,8 @@ export default function ManagerLayout() {
         name="profile"
         options={{
           title: "Settings",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-circle-outline" size={size} color={color} />
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabButton name="person-circle-outline" label="Settings" size={size} color={color} focused={focused} />
           ),
         }}
       />

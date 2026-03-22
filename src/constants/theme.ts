@@ -1,13 +1,29 @@
-import {
-  categoryTints,
-  colors as designColors,
-  grayScale,
+/**
+ * Re-exports from the canonical design file.
+ * New code should import directly from '@/theme/design'.
+ */
+export {
+  borderRadius,
+  categoryColors,
+  fontSize,
+  fontWeight,
   primaryScale,
+  grayScale,
   radii,
-  spacing as designSpacing,
+  shadow,
+  statusColors,
   uiTints,
 } from '@/theme/design';
 
+import {
+  colors as designColors,
+  primaryScale,
+  grayScale,
+  uiTints,
+  spacing as designSpacing,
+} from '@/theme/design';
+
+/** Convenience alias with flattened semantic names */
 export const colors = {
   primary: primaryScale,
   gray: grayScale,
@@ -54,76 +70,4 @@ export const spacing = {
   xl: designSpacing.xl,
   '2xl': designSpacing['2xl'],
   '3xl': designSpacing['3xl'],
-} as const;
-
-export const borderRadius = {
-  sm: 4,
-  md: radii.stepper,
-  lg: radii.button,
-  xl: radii.card,
-  full: radii.circle,
-} as const;
-
-export const fontSize = {
-  xs: 12,
-  sm: 14,
-  base: 16,
-  lg: 18,
-  xl: 20,
-  '2xl': 24,
-  '3xl': 30,
-} as const;
-
-export const fontWeight = {
-  normal: '400',
-  medium: '500',
-  semibold: '600',
-  bold: '700',
-} as const;
-
-export const shadow = {
-  sm: {
-    shadowColor: designColors.background,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
-  },
-  md: {
-    shadowColor: designColors.background,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
-  },
-  lg: {
-    shadowColor: designColors.background,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-    elevation: 0,
-  },
-} as const;
-
-// Category colors for inventory items
-export const categoryColors: Record<string, string> = {
-  fish: categoryTints.fish.icon,
-  protein: categoryTints.protein.icon,
-  produce: categoryTints.produce.icon,
-  dry: categoryTints.dry.icon,
-  dairy_cold: categoryTints.dairy_cold.icon,
-  frozen: categoryTints.frozen.icon,
-  sauces: categoryTints.sauces.icon,
-  packaging: categoryTints.packaging.icon,
-  alcohol: categoryTints.alcohol.icon,
-} as const;
-
-// Status colors for orders
-export const statusColors: Record<string, { bg: string; text: string }> = {
-  draft: { bg: designColors.glassCircle, text: designColors.textSecondary },
-  submitted: { bg: designColors.statusAmberBg, text: designColors.statusAmber },
-  processing: { bg: designColors.tagBlueBg, text: designColors.tagBlue },
-  fulfilled: { bg: designColors.statusGreenBg, text: designColors.statusGreen },
-  cancel_requested: { bg: designColors.statusRedBg, text: designColors.statusRed },
-  cancelled: { bg: designColors.statusRedBg, text: designColors.statusRed },
 } as const;
