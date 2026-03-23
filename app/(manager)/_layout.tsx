@@ -180,10 +180,21 @@ export default function ManagerLayout() {
         options={{
           title: "Fulfillment",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="clipboard-outline" label="Fulfill" size={size} color={color} focused={focused} />
+            <TabButton name="clipboard-outline" label="Fulfillment" size={size} color={color} focused={focused} />
           ),
           tabBarBadge: pendingFulfillmentCount > 0 ? pendingFulfillmentCount : undefined,
           tabBarBadgeStyle: tabBarBadgeStyle,
+        }}
+      />
+
+      {/* Smart */}
+      <Tabs.Screen
+        name="voice"
+        options={{
+          title: "Smart",
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabButton name="reader-outline" label="Smart" size={size} color={color} focused={focused} />
+          ),
         }}
       />
 
@@ -202,7 +213,6 @@ export default function ManagerLayout() {
       <Tabs.Screen name="orders" options={{ href: null }} />
       <Tabs.Screen name="inventory" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="cart" options={{ href: null }} />
-      <Tabs.Screen name="voice" options={{ href: null }} />
       <Tabs.Screen name="export-fish-order" options={{ href: null }} />
       <Tabs.Screen name="fulfillment-confirmation" options={{ href: null }} />
       <Tabs.Screen name="fulfillment-history" options={{ href: null }} />

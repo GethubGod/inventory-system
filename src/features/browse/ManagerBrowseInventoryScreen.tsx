@@ -1,22 +1,22 @@
 import React from 'react';
-import { EMPLOYEE_ORDERING_MODE } from '@/features/ordering/modes';
+import { MANAGER_ORDERING_MODE } from '@/features/ordering/modes';
 import {
   BrowseInventoryScreenView,
   type BrowseInventoryScreenViewProps,
 } from './BrowseInventoryScreenView';
 
-type EmployeeBrowseInventoryScreenProps = Omit<
+type ManagerBrowseInventoryScreenProps = Omit<
   BrowseInventoryScreenViewProps,
   'mode' | 'fallbackRoute'
 >;
 
-export function EmployeeBrowseInventoryScreen(
-  props: EmployeeBrowseInventoryScreenProps,
+export function ManagerBrowseInventoryScreen(
+  props: ManagerBrowseInventoryScreenProps,
 ) {
   return (
     <BrowseInventoryScreenView
-      mode={EMPLOYEE_ORDERING_MODE}
-      fallbackRoute="/(tabs)"
+      mode={MANAGER_ORDERING_MODE}
+      fallbackRoute="/(manager)"
       {...props}
     />
   );

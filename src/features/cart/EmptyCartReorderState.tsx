@@ -1,6 +1,5 @@
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useMemo } from 'react';
 import {
-  Alert,
   FlatList,
   RefreshControl,
   Text,
@@ -10,13 +9,12 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { GlassSurface } from '@/components';
+import { GlassSurface, LoadingIndicator } from '@/components';
 import {
-  type HistoricalOrderItem,
-  type HistoricalOrderSummary,
-  type LocationOrderInsights,
-  fetchLocationOrderInsights,
-} from '@/features/ordering/orderInsights';
+  type RecentOrder,
+  type RecentOrderItem,
+} from '@/features/ordering/dailySuggestions';
+import { useDailySuggestions } from '@/features/smart/useDailySuggestions';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
@@ -32,8 +30,7 @@ interface EmptyCartReorderStateProps {
   browseRoute: string;
   locationName: string;
   locationId: string | null;
-  onReorder: (order: HistoricalOrderSummary) => void;
-  quickOrderRoute: string;
+  onReorder: (order: RecentOrder) => void;
 }
 
 interface ReorderCardModel {
@@ -42,114 +39,38 @@ interface ReorderCardModel {
   subtitle: string;
   itemCount: number;
   chips: string[];
-  order: HistoricalOrderSummary | null;
+  isPrimary: boolean;
+  order: RecentOrder;
 }
 
 interface ReorderCardProps {
   card: ReorderCardModel;
-  onReorder: (order: HistoricalOrderSummary) => void;
+  onReorder: (order: RecentOrder) => void;
 }
 
-const MOCK_REORDER_CARDS: ReorderCardModel[] = [
-  {
-    id: 'mock-order-last-tuesday',
-    title: 'Last Tuesday',
-    subtitle: 'Mar 11 · Babytuna Sushi',
-    itemCount: 3,
-    chips: ['Salmon 5lb', 'Hamachi 3lb', 'Sapporo 2cs'],
-    order: null,
-  },
-  {
-    id: 'mock-order-last-friday',
-    title: 'Last Friday',
-    subtitle: 'Mar 7 · Babytuna Poki & Pho',
-    itemCount: 5,
-    chips: ['Salmon 5lb', 'Unagi 2cs', '+3 more'],
-    order: null,
-  },
-  {
-    id: 'mock-order-mar-4',
-    title: 'Tuesday, Mar 4',
-    subtitle: 'Babytuna Sushi',
-    itemCount: 2,
-    chips: ['Albacore 1cs', 'Ebi 2cs'],
-    order: null,
-  },
-];
-
-function formatShortDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  });
+function truncateItemName(item: RecentOrderItem): string {
+  return item.item_name.length > 15
+    ? `${item.item_name.substring(0, 15)}...`
+    : item.item_name;
 }
 
-function formatRelativeOrderTitle(dateString: string): string {
-  const orderDate = new Date(dateString);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const orderDay = new Date(orderDate.getFullYear(), orderDate.getMonth(), orderDate.getDate());
-  const dayDelta = Math.round((today.getTime() - orderDay.getTime()) / 86_400_000);
-  const weekday = orderDate.toLocaleDateString('en-US', { weekday: 'long' });
-
-  if (dayDelta === 0) {
-    return 'Today';
+function buildReorderCard(
+  order: RecentOrder,
+  locationName: string,
+  index: number,
+): ReorderCardModel {
+  const chips = order.items.slice(0, 3).map(truncateItemName);
+  if (order.items.length > 3) {
+    chips.push(`+${order.items.length - 3} more`);
   }
-
-  if (dayDelta === 1) {
-    return 'Yesterday';
-  }
-
-  if (dayDelta > 1 && dayDelta < 7) {
-    return `Last ${weekday}`;
-  }
-
-  return `${weekday}, ${formatShortDate(dateString)}`;
-}
-
-function formatOrderSubtitle(dateString: string, locationName: string): string {
-  const orderDate = new Date(dateString);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const orderDay = new Date(orderDate.getFullYear(), orderDate.getMonth(), orderDate.getDate());
-  const dayDelta = Math.round((today.getTime() - orderDay.getTime()) / 86_400_000);
-
-  if (dayDelta > 1 && dayDelta < 7) {
-    return `${formatShortDate(dateString)} · ${locationName}`;
-  }
-
-  return locationName;
-}
-
-function formatItemQuantity(quantity: number): string {
-  const normalized = Number(quantity.toFixed(2));
-  return Number.isInteger(normalized) ? normalized.toString() : normalized.toString();
-}
-
-function formatOrderItemChip(item: HistoricalOrderItem): string {
-  const unitLabel = item.unitType === 'base' ? item.baseUnit : item.packUnit;
-  const quantityLabel = formatItemQuantity(item.quantity);
-  return unitLabel
-    ? `${item.name} ${quantityLabel}${unitLabel}`
-    : `${item.name} ${quantityLabel}`;
-}
-
-function buildReorderCard(order: HistoricalOrderSummary, locationName: string): ReorderCardModel {
-  const previewLabels = Array.from(
-    new Set(order.items.map((item) => formatOrderItemChip(item))),
-  );
-  const visibleLabels = previewLabels.slice(0, 3);
-  const remainingCount = Math.max(previewLabels.length - visibleLabels.length, 0);
 
   return {
     id: order.id,
-    title: formatRelativeOrderTitle(order.createdAt),
-    subtitle: formatOrderSubtitle(order.createdAt, locationName),
-    itemCount: order.itemCount,
-    chips:
-      remainingCount > 0
-        ? [...visibleLabels.slice(0, 2), `+${remainingCount} more`]
-        : visibleLabels,
+    title: order.display_date,
+    subtitle: order.suppliers.filter(Boolean).join(', ') || locationName,
+    itemCount: order.item_count,
+    chips,
+    isPrimary: index === 0,
     order,
   };
 }
@@ -159,15 +80,15 @@ const ReorderCard = memo(function ReorderCard({
   onReorder,
 }: ReorderCardProps) {
   const ds = useScaledStyles();
-  const cardRadius = ds.radius(20);
   const buttonHeight = Math.max(40, Math.min(ds.buttonH, 48) - 4);
+  const buttonBackground = card.isPrimary ? colors.primary[500] : glassColors.background;
+  const buttonBorderColor = card.isPrimary ? colors.primary[500] : glassColors.cardBorder;
+  const buttonTextColor = card.isPrimary ? glassColors.textOnPrimary : glassColors.textPrimary;
 
   return (
     <GlassSurface
       intensity="subtle"
-      style={{
-        borderRadius: cardRadius,
-      }}
+      style={{ borderRadius: ds.radius(20) }}
     >
       <View style={{ padding: ds.spacing(16) }}>
         <View className="flex-row items-start justify-between">
@@ -199,6 +120,7 @@ const ReorderCard = memo(function ReorderCard({
             fontSize: ds.fontSize(13),
             color: glassColors.textSecondary,
           }}
+          numberOfLines={1}
         >
           {card.subtitle}
         </Text>
@@ -237,26 +159,16 @@ const ReorderCard = memo(function ReorderCard({
         </View>
 
         <TouchableOpacity
-          onPress={() => {
-            if (card.order) {
-              onReorder(card.order);
-              return;
-            }
-
-            Alert.alert(
-              'No past orders yet',
-              'Place an order to enable one-tap reordering from your cart.',
-            );
-          }}
+          onPress={() => onReorder(card.order)}
           style={{
             marginTop: ds.spacing(14),
             minHeight: buttonHeight,
             borderRadius: ds.radius(14),
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: glassColors.background,
+            backgroundColor: buttonBackground,
             borderWidth: glassHairlineWidth,
-            borderColor: glassColors.cardBorder,
+            borderColor: buttonBorderColor,
           }}
           activeOpacity={0.85}
         >
@@ -264,7 +176,7 @@ const ReorderCard = memo(function ReorderCard({
             style={{
               fontSize: ds.fontSize(13),
               fontWeight: '700',
-              color: glassColors.textPrimary,
+              color: buttonTextColor,
             }}
           >
             Reorder all {card.itemCount} {card.itemCount === 1 ? 'item' : 'items'}
@@ -280,29 +192,23 @@ export function EmptyCartReorderState({
   locationId,
   locationName,
   onReorder,
-  quickOrderRoute,
 }: EmptyCartReorderStateProps) {
   const ds = useScaledStyles();
   const { height } = useWindowDimensions();
-  const [recentOrders, setRecentOrders] = useState<HistoricalOrderSummary[]>([]);
-
-  useEffect(() => {
-    setRecentOrders([]);
-  }, [locationId]);
+  const {
+    recentOrders,
+    loading,
+    error,
+    reload,
+  } = useDailySuggestions(locationId);
 
   const loadOrders = useCallback(async () => {
-    if (!locationId) {
-      setRecentOrders([]);
-      return;
-    }
-
     try {
-      const insights: LocationOrderInsights = await fetchLocationOrderInsights(locationId);
-      setRecentOrders(insights.recentOrders);
+      await reload();
     } catch (error) {
       console.error('Unable to load empty cart reorder suggestions', error);
     }
-  }, [locationId]);
+  }, [reload]);
 
   useFocusEffect(
     useCallback(() => {
@@ -318,14 +224,13 @@ export function EmptyCartReorderState({
   const actionButtonHeight = Math.max(40, Math.min(ds.buttonH, 42));
   const actionButtonRadius = ds.radius(14);
   const actionButtonHorizontalPadding = ds.spacing(10);
-  const actionButtonGap = ds.spacing(12);
   const actionIconSize = ds.icon(15);
   const supportTextMaxWidth = ds.spacing(280);
   const reorderCards = useMemo(
     () =>
-      recentOrders.length > 0
-        ? recentOrders.map((order) => buildReorderCard(order, locationName))
-        : MOCK_REORDER_CARDS,
+      recentOrders
+        .slice(0, 5)
+        .map((order, index) => buildReorderCard(order, locationName, index)),
     [locationName, recentOrders],
   );
 
@@ -346,6 +251,7 @@ export function EmptyCartReorderState({
         paddingHorizontal: glassSpacing.screen,
         paddingTop: ds.spacing(8),
         paddingBottom: glassTabBarHeight + ds.spacing(20),
+        flexGrow: reorderCards.length === 0 ? 1 : 0,
       }}
       ItemSeparatorComponent={() => <View style={{ height: ds.spacing(10) }} />}
       ListHeaderComponent={
@@ -387,7 +293,7 @@ export function EmptyCartReorderState({
                 textAlign: 'center',
               }}
             >
-              Your cart is empty
+              No items in cart
             </Text>
 
             <Text
@@ -400,23 +306,20 @@ export function EmptyCartReorderState({
                 textAlign: 'center',
               }}
             >
-              Browse inventory or place a quick order to get started.
+              Reorder from a past order or browse inventory.
             </Text>
 
             <View
               style={{
                 width: '100%',
-                maxWidth: ds.spacing(320),
+                maxWidth: ds.spacing(220),
                 alignSelf: 'center',
-                flexDirection: 'row',
-                gap: actionButtonGap,
                 marginTop: ds.spacing(24),
               }}
             >
               <TouchableOpacity
                 onPress={() => router.push(browseRoute as never)}
                 style={{
-                  flex: 1,
                   minHeight: actionButtonHeight,
                   borderRadius: actionButtonRadius,
                   alignItems: 'center',
@@ -440,40 +343,7 @@ export function EmptyCartReorderState({
                     color: glassColors.textOnPrimary,
                   }}
                 >
-                  Browse
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={() => router.push(quickOrderRoute as never)}
-                style={{
-                  flex: 1,
-                  minHeight: actionButtonHeight,
-                  borderRadius: actionButtonRadius,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flexDirection: 'row',
-                  backgroundColor: colors.white,
-                  borderWidth: glassHairlineWidth,
-                  borderColor: glassColors.cardBorder,
-                  paddingHorizontal: actionButtonHorizontalPadding,
-                }}
-                activeOpacity={0.85}
-              >
-                <Ionicons
-                  name="flash-outline"
-                  size={actionIconSize}
-                  color={glassColors.textPrimary}
-                />
-                <Text
-                  style={{
-                    marginLeft: ds.spacing(6),
-                    fontSize: ds.fontSize(12),
-                    fontWeight: '700',
-                    color: glassColors.textPrimary,
-                  }}
-                >
-                  Quick Order
+                  Browse inventory
                 </Text>
               </TouchableOpacity>
             </View>
@@ -492,6 +362,75 @@ export function EmptyCartReorderState({
             REORDER A PAST ORDER
           </Text>
         </View>
+      }
+      ListEmptyComponent={
+        loading ? (
+          <GlassSurface
+            intensity="subtle"
+            style={{
+              borderRadius: ds.radius(18),
+              paddingVertical: ds.spacing(18),
+            }}
+          >
+            <LoadingIndicator showText text="Loading past orders..." />
+          </GlassSurface>
+        ) : error ? (
+          <GlassSurface
+            intensity="subtle"
+            style={{
+              borderRadius: ds.radius(18),
+              paddingHorizontal: ds.spacing(16),
+              paddingVertical: ds.spacing(16),
+            }}
+          >
+            <Text
+              style={{
+                fontSize: ds.fontSize(14),
+                fontWeight: '600',
+                color: glassColors.textPrimary,
+              }}
+            >
+              Past orders unavailable
+            </Text>
+            <Text
+              style={{
+                marginTop: ds.spacing(6),
+                fontSize: ds.fontSize(12),
+                color: glassColors.textSecondary,
+              }}
+            >
+              {error}
+            </Text>
+          </GlassSurface>
+        ) : (
+          <GlassSurface
+            intensity="subtle"
+            style={{
+              borderRadius: ds.radius(18),
+              paddingHorizontal: ds.spacing(16),
+              paddingVertical: ds.spacing(16),
+            }}
+          >
+            <Text
+              style={{
+                fontSize: ds.fontSize(14),
+                fontWeight: '600',
+                color: glassColors.textPrimary,
+              }}
+            >
+              No past orders yet
+            </Text>
+            <Text
+              style={{
+                marginTop: ds.spacing(6),
+                fontSize: ds.fontSize(12),
+                color: glassColors.textSecondary,
+              }}
+            >
+              Place your first order and it&apos;ll show up here.
+            </Text>
+          </GlassSurface>
+        )
       }
       refreshControl={
         <RefreshControl

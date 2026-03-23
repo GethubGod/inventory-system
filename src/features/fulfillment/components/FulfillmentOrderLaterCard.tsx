@@ -121,7 +121,7 @@ export function FulfillmentOrderLaterCard({
               marginRight: ds.spacing(8),
             }}
           >
-            {count} item{count === 1 ? '' : 's'}
+            {count} Item{count === 1 ? '' : 's'}
           </Text>
 
           <Animated.View style={disabled ? undefined : chevronStyle}>

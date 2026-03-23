@@ -6,6 +6,7 @@ import React, {
   useState,
 } from 'react';
 import {
+  Alert,
   FlatList,
   RefreshControl,
   Text,
@@ -33,33 +34,34 @@ import {
 import { useOrderingCartActions } from '@/hooks/useOrderingCartActions';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import {
-  fetchLocationOrderInsights,
-  formatOrderDateLabel,
-  getItemSupplierLabel,
-  summarizeOrderItems,
-  type HistoricalOrderSummary,
-  type PredictedOrderItem,
-} from '@/features/ordering/orderInsights';
+import type {
+  RecentOrder,
+  SuggestionItem,
+} from '@/features/ordering/dailySuggestions';
 import type { OrderingMode } from '@/features/ordering/types';
 import { useAuthStore, useOrderStore } from '@/store';
 import { GlassView } from '@/components/ui';
+import { useDailySuggestions } from './useDailySuggestions';
 
-interface PredictedRowProps {
-  item: PredictedOrderItem;
+function getSuggestionKey(item: SuggestionItem): string {
+  return `${item.item_id}:${item.unit_type}`;
+}
+
+interface SuggestionRowProps {
+  item: SuggestionItem;
   quantity: number;
   onIncrement: (key: string) => void;
   onDecrement: (key: string) => void;
 }
 
-const PredictedRow = memo(function PredictedRow({
+const SuggestionRow = memo(function SuggestionRow({
   item,
   quantity,
   onIncrement,
   onDecrement,
-}: PredictedRowProps) {
+}: SuggestionRowProps) {
   const ds = useScaledStyles();
-  const itemKey = `${item.inventoryItemId}:${item.unitType}`;
+  const itemKey = getSuggestionKey(item);
 
   return (
     <View
@@ -80,7 +82,7 @@ const PredictedRow = memo(function PredictedRow({
           }}
           numberOfLines={2}
         >
-          {item.name}
+          {item.item_name}
         </Text>
         <Text
           style={{
@@ -90,7 +92,7 @@ const PredictedRow = memo(function PredictedRow({
           }}
           numberOfLines={1}
         >
-          {getItemSupplierLabel(item)}
+          {item.supplier_name ?? 'Supplier unavailable'}
         </Text>
       </View>
       <View className="items-end">
@@ -151,7 +153,7 @@ const PredictedRow = memo(function PredictedRow({
             color: glassColors.textSecondary,
           }}
         >
-          {item.unitType === 'base' ? item.baseUnit : item.packUnit}
+          {item.unit ?? 'unit'}
         </Text>
       </View>
     </View>
@@ -159,8 +161,8 @@ const PredictedRow = memo(function PredictedRow({
 });
 
 interface RecentOrderCardProps {
-  order: HistoricalOrderSummary;
-  onReorder: (order: HistoricalOrderSummary) => void;
+  order: RecentOrder;
+  onReorder: (order: RecentOrder) => void;
 }
 
 const RecentOrderCard = memo(function RecentOrderCard({
@@ -168,6 +170,7 @@ const RecentOrderCard = memo(function RecentOrderCard({
   onReorder,
 }: RecentOrderCardProps) {
   const ds = useScaledStyles();
+  const supplierText = order.suppliers.filter(Boolean).join(', ') || 'No supplier';
 
   return (
     <GlassSurface
@@ -193,7 +196,7 @@ const RecentOrderCard = memo(function RecentOrderCard({
               color: glassColors.textPrimary,
             }}
           >
-            {formatOrderDateLabel(order.createdAt)}
+            {order.display_date}
           </Text>
           <Text
             style={{
@@ -203,7 +206,7 @@ const RecentOrderCard = memo(function RecentOrderCard({
             }}
             numberOfLines={1}
           >
-            {order.itemCount} items · {summarizeOrderItems(order)}
+            {order.item_count} {order.item_count === 1 ? 'item' : 'items'} · {supplierText}
           </Text>
         </View>
         <GlassSurface
@@ -250,9 +253,6 @@ export function SmartOrderScreen({
   subtitle = 'Suggestions based on your order history',
 }: SmartOrderScreenProps) {
   const ds = useScaledStyles();
-  const [loading, setLoading] = useState(true);
-  const [recentOrders, setRecentOrders] = useState<HistoricalOrderSummary[]>([]);
-  const [predictedItems, setPredictedItems] = useState<PredictedOrderItem[]>([]);
   const [quantitiesByKey, setQuantitiesByKey] = useState<Record<string, number>>({});
   const {
     location,
@@ -276,9 +276,19 @@ export function SmartOrderScreen({
   );
   const {
     activeLocationId,
-    addPredictedItem,
+    addSuggestedItem,
     reorderHistoricalOrder,
   } = useOrderingCartActions(mode.scope);
+  const locationCart = useOrderStore((state) =>
+    activeLocationId ? state.getCartItems(activeLocationId, mode.scope) : []
+  );
+  const {
+    suggestions,
+    recentOrders,
+    loading: smartOrderLoading,
+    error: smartOrderError,
+    reload: reloadSuggestions,
+  } = useDailySuggestions(activeLocationId);
 
   useEffect(() => {
     void fetchLocations();
@@ -292,33 +302,14 @@ export function SmartOrderScreen({
 
   const loadSmartData = useCallback(async () => {
     if (!activeLocationId) {
-      setRecentOrders([]);
-      setPredictedItems([]);
       setQuantitiesByKey({});
-      setLoading(false);
-      return;
     }
-
-    setLoading(true);
     try {
-      const insights = await fetchLocationOrderInsights(activeLocationId);
-      setRecentOrders(insights.recentOrders);
-      setPredictedItems(insights.predictedItems);
-      setQuantitiesByKey(
-        insights.predictedItems.reduce<Record<string, number>>((accumulator, item) => {
-          accumulator[`${item.inventoryItemId}:${item.unitType}`] = item.quantity;
-          return accumulator;
-        }, {}),
-      );
+      await reloadSuggestions();
     } catch (error) {
-      console.error('Unable to load smart order insights', error);
-      setRecentOrders([]);
-      setPredictedItems([]);
-      setQuantitiesByKey({});
-    } finally {
-      setLoading(false);
+      console.error('Unable to load smart order data', error);
     }
-  }, [activeLocationId]);
+  }, [activeLocationId, reloadSuggestions]);
 
   useFocusEffect(
     useCallback(() => {
@@ -328,56 +319,93 @@ export function SmartOrderScreen({
 
   const { refreshing, onRefresh } = useManagedRefresh(loadSmartData);
 
-  const handleIncrementPrediction = useCallback((itemKey: string) => {
+  useEffect(() => {
+    setQuantitiesByKey(
+      suggestions.items.reduce<Record<string, number>>((accumulator, item) => {
+        accumulator[getSuggestionKey(item)] = Math.max(1, item.suggested_qty);
+        return accumulator;
+      }, {}),
+    );
+  }, [suggestions.items]);
+
+  const handleIncrementSuggestion = useCallback((itemKey: string) => {
     setQuantitiesByKey((previous) => ({
       ...previous,
       [itemKey]: Math.max(1, (previous[itemKey] ?? 0) + 1),
     }));
   }, []);
 
-  const handleDecrementPrediction = useCallback((itemKey: string) => {
+  const handleDecrementSuggestion = useCallback((itemKey: string) => {
     setQuantitiesByKey((previous) => ({
       ...previous,
       [itemKey]: Math.max(1, (previous[itemKey] ?? 1) - 1),
     }));
   }, []);
 
-  const handleAddAllPredicted = useCallback(() => {
-    predictedItems.forEach((item) => {
-      const itemKey = `${item.inventoryItemId}:${item.unitType}`;
-      const quantity = Math.max(1, quantitiesByKey[itemKey] ?? item.quantity);
-      addPredictedItem(item, quantity);
+  const handleAddAllSuggestions = useCallback(() => {
+    suggestions.items.forEach((item) => {
+      const itemKey = getSuggestionKey(item);
+      const quantity = Math.max(1, quantitiesByKey[itemKey] ?? item.suggested_qty);
+      addSuggestedItem(item, quantity);
     });
-  }, [addPredictedItem, predictedItems, quantitiesByKey]);
+  }, [addSuggestedItem, quantitiesByKey, suggestions.items]);
 
-  const renderPredictedRow = useCallback(
-    ({ item }: { item: PredictedOrderItem }) => {
-      const itemKey = `${item.inventoryItemId}:${item.unitType}`;
+  const renderSuggestionRow = useCallback(
+    ({ item }: { item: SuggestionItem }) => {
+      const itemKey = getSuggestionKey(item);
       return (
-        <PredictedRow
+        <SuggestionRow
           item={item}
-          quantity={Math.max(1, quantitiesByKey[itemKey] ?? item.quantity)}
-          onIncrement={handleIncrementPrediction}
-          onDecrement={handleDecrementPrediction}
+          quantity={Math.max(1, quantitiesByKey[itemKey] ?? item.suggested_qty)}
+          onIncrement={handleIncrementSuggestion}
+          onDecrement={handleDecrementSuggestion}
         />
       );
     },
-    [handleDecrementPrediction, handleIncrementPrediction, quantitiesByKey],
+    [handleDecrementSuggestion, handleIncrementSuggestion, quantitiesByKey],
   );
+
+  const handleReorderOrder = useCallback((order: RecentOrder) => {
+    const didReorder = reorderHistoricalOrder(order);
+    if (!didReorder) {
+      return;
+    }
+
+    Alert.alert(
+      'Added to cart',
+      `Added ${order.item_count} ${order.item_count === 1 ? 'item' : 'items'} from ${order.display_date}.`,
+    );
+  }, [reorderHistoricalOrder]);
 
   const renderRecentOrder = useCallback(
-    ({ item }: { item: HistoricalOrderSummary }) => (
-      <RecentOrderCard order={item} onReorder={reorderHistoricalOrder} />
+    ({ item }: { item: RecentOrder }) => (
+      <RecentOrderCard order={item} onReorder={handleReorderOrder} />
     ),
-    [reorderHistoricalOrder],
+    [handleReorderOrder],
   );
 
-  const predictedDayLabel = useMemo(
+  const allSuggestionsAdded = useMemo(
     () =>
-      new Date().toLocaleDateString('en-US', {
-        weekday: 'long',
+      suggestions.items.length > 0 &&
+      suggestions.items.every((item) => {
+        const desiredQuantity = Math.max(
+          1,
+          quantitiesByKey[getSuggestionKey(item)] ?? item.suggested_qty,
+        );
+        const existing = locationCart.find(
+          (cartItem) =>
+            cartItem.inventoryItemId === item.item_id &&
+            cartItem.unitType === item.unit_type &&
+            cartItem.inputMode === 'quantity',
+        );
+
+        if (!existing) {
+          return false;
+        }
+
+        return (existing.quantityRequested ?? existing.quantity) >= desiredQuantity;
       }),
-    [],
+    [locationCart, quantitiesByKey, suggestions.items],
   );
 
   const renderListHeader = useCallback(
@@ -418,7 +446,7 @@ export function SmartOrderScreen({
                   color: glassColors.textPrimary,
                 }}
               >
-                Today&apos;s predicted order
+                Usually ordered on {suggestions.day_label}
               </Text>
               <Text
                 style={{
@@ -427,12 +455,12 @@ export function SmartOrderScreen({
                   color: glassColors.textSecondary,
                 }}
               >
-                You usually order these on {predictedDayLabel}
+                Based on your past {suggestions.day_label} orders
               </Text>
             </View>
           </View>
 
-          {loading ? (
+          {smartOrderLoading && suggestions.items.length === 0 ? (
             <GlassSurface
               intensity="subtle"
               style={{
@@ -441,9 +469,22 @@ export function SmartOrderScreen({
                 paddingVertical: ds.spacing(18),
               }}
             >
-              <LoadingIndicator showText text="Loading smart suggestions..." />
+              <LoadingIndicator showText text="Loading daily suggestions..." />
             </GlassSurface>
-          ) : predictedItems.length > 0 ? (
+          ) : smartOrderError ? (
+            <View style={{ marginTop: ds.spacing(12) }}>
+              <EmptyStateCard
+                icon="cloud-offline-outline"
+                title="Suggestions unavailable"
+                message={smartOrderError}
+                alignment="leading"
+                actionLabel="Retry"
+                onPressAction={() => {
+                  void loadSmartData();
+                }}
+              />
+            </View>
+          ) : suggestions.items.length > 0 ? (
             <>
               <GlassSurface
                 intensity="subtle"
@@ -454,9 +495,9 @@ export function SmartOrderScreen({
                 }}
               >
                 <FlatList
-                  data={predictedItems}
-                  renderItem={renderPredictedRow}
-                  keyExtractor={(item) => `${item.inventoryItemId}:${item.unitType}`}
+                  data={suggestions.items}
+                  renderItem={renderSuggestionRow}
+                  keyExtractor={getSuggestionKey}
                   scrollEnabled={false}
                   ItemSeparatorComponent={() => (
                     <View
@@ -471,25 +512,32 @@ export function SmartOrderScreen({
               </GlassSurface>
 
               <TouchableOpacity
-                onPress={handleAddAllPredicted}
+                onPress={handleAddAllSuggestions}
+                disabled={allSuggestionsAdded}
                 style={{
                   marginTop: ds.spacing(12),
                   minHeight: ds.buttonH,
                   borderRadius: glassRadii.surface,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  backgroundColor: glassColors.accent,
+                  backgroundColor: allSuggestionsAdded
+                    ? glassColors.accentSoft
+                    : glassColors.accent,
                 }}
                 activeOpacity={0.85}
               >
                 <Text
                   style={{
-                    color: glassColors.textOnPrimary,
+                    color: allSuggestionsAdded
+                      ? glassColors.accent
+                      : glassColors.textOnPrimary,
                     fontSize: ds.buttonFont,
                     fontWeight: '700',
                   }}
                 >
-                  Add all {predictedItems.length} to cart
+                  {allSuggestionsAdded
+                    ? 'Added to cart'
+                    : `Add all ${suggestions.items.length} to cart`}
                 </Text>
               </TouchableOpacity>
             </>
@@ -497,8 +545,8 @@ export function SmartOrderScreen({
             <View style={{ marginTop: ds.spacing(12) }}>
               <EmptyStateCard
                 icon="time-outline"
-                title="Not enough data yet"
-                message="Place orders and smart suggestions will appear here."
+                title={`Usually ordered on ${suggestions.day_label}`}
+                message={`Not enough ${suggestions.day_label} order history yet. Keep ordering through the app and suggestions will appear.`}
                 alignment="leading"
               />
             </View>
@@ -549,21 +597,24 @@ export function SmartOrderScreen({
       </View>
     ),
     [
+      allSuggestionsAdded,
       ds,
-      handleAddAllPredicted,
+      handleAddAllSuggestions,
       identity,
-      predictedDayLabel,
-      predictedItems,
-      renderPredictedRow,
+      loadSmartData,
       mode.cartRoute,
+      renderSuggestionRow,
+      suggestions.day_label,
+      suggestions.items,
+      smartOrderError,
+      smartOrderLoading,
       totalCartCount,
-      loading,
       subtitle,
       title,
     ],
   );
 
-  if (loading && !location) {
+  if (!location && locations.length === 0) {
     return (
       <SafeAreaView
         style={{ flex: 1, backgroundColor: glassColors.background }}
@@ -587,7 +638,7 @@ export function SmartOrderScreen({
         keyExtractor={(item) => item.id}
         ListHeaderComponent={renderListHeader}
         ListEmptyComponent={
-          loading ? (
+          smartOrderLoading ? (
             <View style={{ paddingTop: ds.spacing(24) }}>
               <LoadingIndicator showText text="Loading smart order..." />
             </View>
@@ -595,7 +646,7 @@ export function SmartOrderScreen({
             <EmptyStateCard
               icon="reader-outline"
               title="No recent orders yet"
-              message="Submit a few orders from this location to unlock smart suggestions."
+              message="No past orders yet. Place your first order and it'll show up here."
             />
           )
         }

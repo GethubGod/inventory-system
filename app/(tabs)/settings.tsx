@@ -3,12 +3,12 @@ import {
   View,
   Text,
   ScrollView,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import { useAuthStore } from '@/store';
+import { useSignOutAction } from '@/hooks/useSignOutAction';
 import { SettingsRow, settingsIconPalettes } from '@/components/settings';
 import { BrandLogo, GlassSurface } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -25,7 +25,8 @@ import {
 
 export default function SettingsScreen() {
   const ds = useScaledStyles();
-  const { user, profile, session, signOut, setViewMode } = useAuthStore();
+  const { user, profile, session, setViewMode } = useAuthStore();
+  const { requestSignOut } = useSignOutAction();
 
   const metadataRole =
     typeof session?.user?.user_metadata?.role === 'string'
@@ -35,20 +36,6 @@ export default function SettingsScreen() {
         : null;
   const isManager = (user?.role ?? profile?.role ?? metadataRole) === 'manager';
   const appVersion = Constants.expoConfig?.version || '1.0.0';
-
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          await signOut();
-          router.replace('/(auth)/login');
-        },
-      },
-    ]);
-  };
 
   const handleSwitchToManager = () => {
     setViewMode('manager');
@@ -262,7 +249,7 @@ export default function SettingsScreen() {
             iconColor={settingsIconPalettes.danger.icon}
             iconBgColor={settingsIconPalettes.danger.background}
             title="Sign Out"
-            onPress={handleSignOut}
+            onPress={requestSignOut}
             showChevron={false}
             destructive
             showBorder={false}

@@ -119,8 +119,8 @@ export function FulfillmentExpandedSupplierItems({
         activeOpacity={0.88}
         style={{
           marginTop: ds.spacing(14),
-          minHeight: 66,
-          borderRadius: 18,
+          minHeight: 56,
+          borderRadius: 16,
           backgroundColor: glassColors.accent,
           alignItems: 'center',
           justifyContent: 'center',

@@ -452,14 +452,38 @@ export default function FulfillmentScreen() {
   }, [managerLocationIds]);
 
   const runRefreshCycle = useCallback(async () => {
+    const raceTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T | void> =>
+      Promise.race([
+        promise,
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            console.warn(`[Fulfillment] ${label} timed out after ${ms}ms, proceeding.`);
+            resolve();
+          }, ms)
+        ),
+      ]);
+
     try {
-      // loadFulfillmentData syncs past-order queue, then fetchPendingFulfillmentOrders
-      // re-fetches submitted orders and filters out consumed items.
-      // Run them sequentially so past orders are synced before the filter runs.
+      // loadFulfillmentData syncs past-order queue so fetchPendingFulfillmentOrders
+      // can filter out consumed items. Run it first, but with a timeout so a
+      // Supabase client deadlock doesn't block the entire screen forever.
       if (user?.id) {
-        await loadFulfillmentData(user.id, managerLocationIds);
+        await raceTimeout(
+          loadFulfillmentData(user.id, managerLocationIds).catch((e) =>
+            console.warn('[Fulfillment] Past-order sync failed.', e)
+          ),
+          15_000,
+          'loadFulfillmentData'
+        );
       }
-      await Promise.all([fetchPendingOrders(), fetchSuppliers(), fetchReminderOverview()]);
+      // Each fetch has its own try/catch so individual failures don't block
+      // the others. Timeouts prevent Supabase client hangs from stalling
+      // the entire screen.
+      await Promise.all([
+        raceTimeout(fetchPendingOrders(), 15_000, 'fetchPendingOrders'),
+        raceTimeout(fetchSuppliers(), 15_000, 'fetchSuppliers'),
+        raceTimeout(fetchReminderOverview(), 15_000, 'fetchReminderOverview'),
+      ]);
     } catch (error) {
       console.error('Error refreshing fulfillment data:', error);
     } finally {
@@ -1038,7 +1062,14 @@ export default function FulfillmentScreen() {
 
     // Drop unknown/unresolved suppliers — these are items whose supplier
     // couldn't be matched to a real suppliers row and can't be ordered.
-    return groups.filter((g) => !g.isUnknown);
+    // Exception: if ALL groups are unknown (e.g., supplier lookup failed),
+    // keep them so the user still sees pending orders rather than an empty
+    // screen.
+    const knownGroups = groups.filter((g) => !g.isUnknown);
+    if (knownGroups.length > 0 || groups.length === 0) {
+      return knownGroups;
+    }
+    return groups;
   }, [
     getSupplierDraftItems,
     getOrderItemSupplierResolution,
@@ -2341,7 +2372,7 @@ export default function FulfillmentScreen() {
         badgeToneIndex: (people[0] || item.locationBreakdown[0]?.shortCode || item.key)
           .split('')
           .reduce((total, character) => total + character.charCodeAt(0), 0),
-        badgeLabel: people[0] ? getInitials(people[0]) : item.sourceOrderItemIds.length === 0 ? 'OL' : null,
+        badgeLabel: people[0] ? (people[0].trim()[0] || '').toUpperCase() : item.sourceOrderItemIds.length === 0 ? 'OL' : null,
         badgeOverflowCount: Math.max(0, people.length - 1),
         isRemaining: item.isRemainingMode,
         onPress: hasMenuActions ? () => handleItemOverflowMenu(item) : null,

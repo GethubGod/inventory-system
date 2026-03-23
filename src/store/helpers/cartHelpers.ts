@@ -88,6 +88,11 @@ export function normalizeCartItem(
         options?.index ?? 0
       );
 
+  const wasSuggested = raw?.wasSuggested === true || raw?.was_suggested === true;
+  const originalSuggestedQty = toValidNumber(
+    raw?.originalSuggestedQty ?? raw?.original_suggested_qty
+  );
+
   if (inputMode === 'quantity') {
     const legacyQuantity = toValidNumber(raw?.quantity);
     const quantityRequested = toValidNumber(raw?.quantityRequested ?? legacyQuantity);
@@ -108,6 +113,8 @@ export function normalizeCartItem(
       decidedBy: typeof raw?.decidedBy === 'string' ? raw.decidedBy : null,
       decidedAt: typeof raw?.decidedAt === 'string' ? raw.decidedAt : null,
       note: normalizeNote(raw?.note),
+      wasSuggested,
+      originalSuggestedQty,
     };
   }
 
@@ -129,6 +136,8 @@ export function normalizeCartItem(
     decidedBy: typeof raw?.decidedBy === 'string' ? raw.decidedBy : null,
     decidedAt: typeof raw?.decidedAt === 'string' ? raw.decidedAt : null,
     note: normalizeNote(raw?.note),
+    wasSuggested,
+    originalSuggestedQty,
   };
 }
 
@@ -194,6 +203,9 @@ export function mergeCartItem(
         quantityRequested: nextQuantity,
         quantity: nextQuantity,
         note: existing.note ?? incoming.note ?? null,
+        wasSuggested: existing.wasSuggested || incoming.wasSuggested,
+        originalSuggestedQty:
+          existing.originalSuggestedQty ?? incoming.originalSuggestedQty ?? null,
       };
       return destination.map((item, idx) => (idx === existingIndex ? merged : item));
     }
@@ -252,5 +264,7 @@ export function cartItemToPayload(item: CartItem): OrderItemPayload {
     decided_by: item.decidedBy,
     decided_at: item.decidedAt,
     note: item.note,
+    was_suggested: item.wasSuggested,
+    original_suggested_qty: item.originalSuggestedQty,
   };
 }

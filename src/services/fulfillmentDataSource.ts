@@ -244,38 +244,65 @@ export async function loadPendingFulfillmentData(options?: {
     )
   );
 
-  const [supplierLookup, orderLaterSourceOrderItemIds] = await Promise.all([
-    loadSupplierLookup(),
-    loadOrderLaterSourceOrderItemIds(),
-  ]);
+  let supplierLookup: SupplierLookupMaps;
+  let orderLaterSourceOrderItemIds: Set<string>;
 
-  // Select only the columns actually consumed by fulfillment grouping and
-  // confirmation screens.  Reduces payload size significantly for locations
-  // with many submitted orders.
-  let query = supabase
-    .from('orders')
-    .select(`
-      id,status,location_id,created_at,
-      user:users!orders_user_id_fkey(id,name),
-      location:locations(id,name,short_code),
-      order_items(
-        id,order_id,quantity,unit_type,input_mode,
-        remaining_reported,decided_quantity,decided_by,decided_at,
-        note,supplier_override_id,status,inventory_item_id,
-        inventory_item:inventory_items(
-          id,name,category,base_unit,pack_unit,pack_size,
-          supplier_category,default_supplier,secondary_supplier,
-          supplier_id,active
-        )
-      )
-    `)
-    .eq('status', 'submitted');
-
-  if (locationIds.length > 0) {
-    query = query.in('location_id', locationIds);
+  try {
+    [supplierLookup, orderLaterSourceOrderItemIds] = await Promise.all([
+      loadSupplierLookup(),
+      loadOrderLaterSourceOrderItemIds(),
+    ]);
+  } catch (lookupError) {
+    // If supplier lookup fails entirely, proceed with empty maps so orders
+    // still appear (items will be grouped under "unresolved" suppliers).
+    console.warn('[Fulfillment] Supplier lookup failed, proceeding with empty lookup.', lookupError);
+    supplierLookup = { suppliers: [], supplierById: new Map(), supplierByNameNormalized: new Map() };
+    orderLaterSourceOrderItemIds = new Set<string>();
   }
 
-  const { data, error } = await query.order('created_at', { ascending: false });
+  // Select columns consumed by fulfillment grouping and confirmation screens.
+  // Use inventory_items(*) because optional columns (default_supplier,
+  // secondary_supplier, secondary_supplier_id) may not exist on every
+  // database — a missing column causes PostgREST to return a 400 error
+  // that silently breaks the entire query.
+  const buildQuery = (inventorySelect: string) => {
+    let q = supabase
+      .from('orders')
+      .select(`
+        id,status,location_id,created_at,
+        user:users!orders_user_id_fkey(id,name),
+        location:locations(id,name,short_code),
+        order_items(
+          id,order_id,quantity,unit_type,input_mode,
+          remaining_reported,decided_quantity,decided_by,decided_at,
+          note,supplier_override_id,status,inventory_item_id,
+          inventory_item:inventory_items(${inventorySelect})
+        )
+      `)
+      .eq('status', 'submitted');
+
+    if (locationIds.length > 0) {
+      q = q.in('location_id', locationIds);
+    }
+
+    return q.order('created_at', { ascending: false });
+  };
+
+  // Try with all columns first (best supplier resolution), fall back to
+  // core columns if any are missing (error 42703 = undefined_column).
+  let { data, error } = await buildQuery(
+    'id,name,category,base_unit,pack_unit,pack_size,supplier_category,default_supplier,secondary_supplier,supplier_id,active'
+  );
+
+  if (error && (error as any).code === '42703') {
+    ({ data, error } = await buildQuery(
+      'id,name,category,base_unit,pack_unit,pack_size,supplier_category,supplier_id,active'
+    ));
+  }
+
+  if (error && (error as any).code === '42703') {
+    ({ data, error } = await buildQuery('*'));
+  }
 
   if (error) {
     throw error;

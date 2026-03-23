@@ -2,6 +2,8 @@ import { supabase } from '@/lib/supabase';
 import { cachedFetch, invalidateCachePrefix } from '@/lib/queryCache';
 import { listSuppliers } from '@/lib/api/client';
 
+let _warnedEdgeFunctionFallback = false;
+
 export interface SupplierLookupRow {
   id: string;
   name: string;
@@ -162,14 +164,7 @@ export function invalidateSupplierCache(): void {
   invalidateCachePrefix('supplier-lookup');
 }
 
-async function _loadSupplierLookupImpl(): Promise<SupplierLookupMaps> {
-  const result = await listSuppliers({ limit: 5000 });
-  if (result.error) throw new Error(result.error);
-
-  const suppliers = (result.data ?? []).filter(
-    (row): row is SupplierLookupRow => Boolean(row.id && row.name)
-  );
-
+function buildLookupMaps(suppliers: SupplierLookupRow[]): SupplierLookupMaps {
   const supplierById = new Map<string, SupplierLookupRow>();
   const supplierByNameNormalized = new Map<string, SupplierLookupRow>();
 
@@ -182,11 +177,46 @@ async function _loadSupplierLookupImpl(): Promise<SupplierLookupMaps> {
     supplierByNameNormalized.set(key, supplier);
   });
 
-  return {
-    suppliers,
-    supplierById,
-    supplierByNameNormalized,
-  };
+  return { suppliers, supplierById, supplierByNameNormalized };
+}
+
+async function _loadSuppliersViaDirectQuery(): Promise<SupplierLookupRow[]> {
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select('*')
+    .order('name')
+    .limit(5000);
+
+  if (error) throw error;
+  if (!Array.isArray(data) || data.length === 0) return [];
+
+  return data
+    .map((row: Record<string, unknown>) => normalizeSupplierRow(row))
+    .filter((row): row is SupplierLookupRow => row !== null);
+}
+
+async function _loadSupplierLookupImpl(): Promise<SupplierLookupMaps> {
+  // Try the edge function first.
+  const result = await listSuppliers({ limit: 5000 });
+
+  if (!result.error && Array.isArray(result.data) && result.data.length > 0) {
+    const suppliers = result.data.filter(
+      (row): row is SupplierLookupRow => Boolean(row.id && row.name)
+    );
+    return buildLookupMaps(suppliers);
+  }
+
+  // Edge function failed or returned empty — fall back to direct Supabase query.
+  if (!_warnedEdgeFunctionFallback) {
+    _warnedEdgeFunctionFallback = true;
+    console.warn(
+      '[SupplierResolver] Edge function unavailable, using direct Supabase query.',
+      result.error
+    );
+  }
+
+  const directSuppliers = await _loadSuppliersViaDirectQuery();
+  return buildLookupMaps(directSuppliers);
 }
 
 /** Load supplier lookup maps (cached for 30s, deduped in-flight). */

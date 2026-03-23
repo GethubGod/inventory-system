@@ -61,6 +61,17 @@ function clearAuthStateSubscription() {
   authStateSubscription = null;
 }
 
+async function signOutLocalSupabaseSession(warningMessage: string) {
+  try {
+    const { error } = await supabase.auth.signOut({ scope: 'local' });
+    if (error) {
+      console.warn(warningMessage, error);
+    }
+  } catch (error) {
+    console.warn(warningMessage, error);
+  }
+}
+
 function subscribeToProfileChanges(userId: string, onChange: () => Promise<unknown>) {
   clearProfileSubscription();
   profileRealtimeChannel = supabase
@@ -320,10 +331,7 @@ export const useAuthStore = create<AuthState>()(
 
       const forceSignOutSuspended = async (message = SUSPENDED_ACCOUNT_MESSAGE) => {
         try {
-          const { error } = await supabase.auth.signOut();
-          if (error) {
-            console.warn('Failed to sign out suspended session cleanly', error);
-          }
+          await signOutLocalSupabaseSession('Failed to sign out suspended session cleanly');
         } finally {
           clearProfileSubscription();
           clearSessionState();
@@ -343,7 +351,7 @@ export const useAuthStore = create<AuthState>()(
 
         if (profile?.is_suspended) {
           if (params?.shouldThrowOnSuspended === false) {
-            await supabase.auth.signOut();
+            await signOutLocalSupabaseSession('Failed to sign out suspended session cleanly');
             clearProfileSubscription();
             clearSessionState();
             activeSessionUserId = null;
@@ -840,8 +848,9 @@ export const useAuthStore = create<AuthState>()(
       signOut: async () => {
         set({ isLoading: true });
         try {
-          const { error } = await supabase.auth.signOut();
-          if (error) throw error;
+          await signOutLocalSupabaseSession(
+            'Supabase sign-out failed; clearing local session anyway.'
+          );
           clearProfileSubscription();
           clearSessionState();
           activeSessionUserId = null;
@@ -933,14 +942,13 @@ export const useAuthStore = create<AuthState>()(
           }
 
           try {
-            const signOutResult = await withTimeout(
-              supabase.auth.signOut(),
+            await withTimeout(
+              signOutLocalSupabaseSession(
+                'Sign-out after delete-self failed; clearing local session anyway.'
+              ),
               DELETE_SELF_CLEANUP_TIMEOUT_MS,
               'Sign-out timed out after account deletion.'
             );
-            if (signOutResult.error) {
-              console.warn('Sign-out after delete-self failed; clearing local session anyway.', signOutResult.error);
-            }
           } catch (signOutError) {
             console.warn('Sign-out after delete-self timed out; clearing local session anyway.', signOutError);
           }

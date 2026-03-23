@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, ScrollView, Alert } from 'react-native';
+import { View, Text, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import { useAuthStore } from '@/store';
+import { useSignOutAction } from '@/hooks/useSignOutAction';
 import { SettingsRow, settingsIconPalettes } from '@/components/settings';
 import { BrandLogo, GlassSurface } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -20,26 +21,13 @@ import {
 
 export default function ManagerSettingsScreen() {
   const ds = useScaledStyles();
-  const { user, signOut, setViewMode } = useAuthStore();
+  const { user, setViewMode } = useAuthStore();
+  const { requestSignOut } = useSignOutAction();
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   const handleSwitchToEmployee = () => {
     setViewMode('employee');
     router.replace('/(tabs)');
-  };
-
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          await signOut();
-          router.replace('/(auth)/login');
-        },
-      },
-    ]);
   };
 
   return (
@@ -248,7 +236,7 @@ export default function ManagerSettingsScreen() {
             iconColor={settingsIconPalettes.danger.icon}
             iconBgColor={settingsIconPalettes.danger.background}
             title="Sign Out"
-            onPress={handleSignOut}
+            onPress={requestSignOut}
             showChevron={false}
             destructive
             showBorder={false}

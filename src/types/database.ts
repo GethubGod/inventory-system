@@ -224,6 +224,7 @@ export interface Order {
   user_id: string;
   location_id: string;
   status: OrderStatus;
+  order_type?: string | null;
   notes: string | null;
   created_at: string;
   fulfilled_at: string | null;
@@ -243,6 +244,10 @@ export interface OrderItem {
   decided_by: string | null;
   decided_at: string | null;
   note: string | null;
+  status?: string | null;
+  supplier_override_id?: string | null;
+  was_suggested?: boolean;
+  original_suggested_qty?: number | null;
   created_at: string;
 }
 

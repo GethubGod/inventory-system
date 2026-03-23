@@ -33,7 +33,7 @@ import type { ItemActionSheetSection } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { completePendingRemindersForUser } from '@/services/notificationService';
 import type { OrderingMode } from '@/features/ordering/types';
-import { type HistoricalOrderSummary } from '@/features/ordering/orderInsights';
+import type { RecentOrder } from '@/features/ordering/dailySuggestions';
 import { resolveActiveLocationReminders } from '@/services/locationReminderService';
 import { OrderSubmissionError } from '@/services/orderSubmission';
 import { BROWSE_INVENTORY_ROUTE } from '@/features/browse/config';
@@ -110,7 +110,6 @@ export function CartScreenView({
 }: CartScreenViewProps) {
   const ds = useScaledStyles();
   const context: CartContext = mode.scope;
-  const quickOrderRoute = mode.quickOrderRoute;
   const browseRoute = mode.browseRoute;
   const pastOrdersRoute = mode.pastOrdersRoute;
   const requiresLocationConfirm = mode.requireLocationConfirm ?? context === 'employee';
@@ -718,18 +717,24 @@ export function CartScreenView({
     return true;
   }, [context, getCartItems, orderConfirmation, showStatusToast, submittingLocation, user]);
 
-  const handleReorderPastOrder = useCallback((order: HistoricalOrderSummary) => {
-    const targetLocationId = selectedLocation?.id ?? order.locationId;
+  const handleReorderPastOrder = useCallback((order: RecentOrder) => {
+    const targetLocationId = selectedLocation?.id ?? locations[0]?.id;
+    if (!targetLocationId) {
+      showStatusToast('Select a location before reordering', 'error');
+      return;
+    }
+
     order.items.forEach((item) => {
-      addToCart(targetLocationId, item.inventoryItemId, item.quantity, item.unitType, {
+      addToCart(targetLocationId, item.item_id, item.quantity, item.unit_type, {
         context,
         inputMode: 'quantity',
         quantityRequested: item.quantity,
-        note: item.note,
+        wasSuggested: false,
+        originalSuggestedQty: null,
       });
     });
-    showStatusToast(`Added ${order.itemCount} items to cart`, 'success');
-  }, [addToCart, context, selectedLocation?.id, showStatusToast]);
+    showStatusToast(`Added ${order.item_count} items to cart`, 'success');
+  }, [addToCart, context, locations, selectedLocation?.id, showStatusToast]);
 
   const submitOrderForLocation = useCallback(async (
     submitLocationId: string,
@@ -1382,7 +1387,6 @@ export function CartScreenView({
             locationId={selectedLocation?.id ?? locations[0]?.id ?? null}
             locationName={selectedLocation?.name ?? locations[0]?.name ?? 'Current location'}
             onReorder={handleReorderPastOrder}
-            quickOrderRoute={quickOrderRoute}
           />
         )}
       </View>

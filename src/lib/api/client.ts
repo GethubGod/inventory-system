@@ -250,6 +250,25 @@ interface SupplierDTO {
   updatedAt: string | null;
 }
 
+interface RecentOrderItemDTO {
+  item_id: string;
+  item_name: string;
+  quantity: number;
+  unit_type?: 'base' | 'pack' | string | null;
+  unit: string | null;
+  supplier_name: string | null;
+}
+
+interface RecentOrderDTO {
+  id: string;
+  created_at: string;
+  display_date: string;
+  day_of_week: number;
+  item_count: number;
+  suppliers: string[];
+  items: RecentOrderItemDTO[];
+}
+
 function inventoryDtoToItem(dto: InventoryItemDTO): InventoryItem {
   return {
     id: dto.id,
@@ -282,6 +301,31 @@ export interface UserContextData {
   profile: { id: string; fullName: string | null };
   membership: { orgId: string; role: string } | null;
   organization: { id: string; name: string } | null;
+}
+
+export interface DailySuggestionItemDTO {
+  item_id: string;
+  item_name: string;
+  suggested_qty: number;
+  unit_type: 'base' | 'pack';
+  unit: string | null;
+  supplier_name: string | null;
+  frequency: number;
+  times_ordered: number;
+  total_orders: number;
+  confidence_tier: 'high' | 'medium' | 'low';
+}
+
+export interface DailySuggestionsDTO {
+  day_label: string;
+  total_past_orders: number;
+  source: 'heuristic' | 'lightgbm';
+  items: DailySuggestionItemDTO[];
+}
+
+export interface DailySuggestionsResponseDTO {
+  suggestions: DailySuggestionsDTO;
+  recent_orders?: RecentOrderDTO[];
 }
 
 export async function getUserContext(): Promise<ApiResult<UserContextData>> {
@@ -386,5 +430,15 @@ export async function listEmployeesWithStatus(params?: {
 }): Promise<ApiResult<EmployeeReminderOverview>> {
   return request<EmployeeReminderOverview>('list-employees-with-status', {
     body: params ?? {},
+  });
+}
+
+export async function getDailySuggestions(params: {
+  locationId: string;
+  minFrequency?: number;
+  lookbackMonths?: number;
+}): Promise<ApiResult<DailySuggestionsResponseDTO>> {
+  return request<DailySuggestionsResponseDTO>('daily-suggestions', {
+    body: params,
   });
 }

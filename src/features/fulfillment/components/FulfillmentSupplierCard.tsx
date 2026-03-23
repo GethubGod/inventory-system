@@ -281,31 +281,33 @@ export function FulfillmentSupplierCard({
             </Text>
           </View>
 
-          <TouchableOpacity
-            onPress={(event) => {
-              event.stopPropagation();
-              onOrderPress();
-            }}
-            activeOpacity={0.88}
-            style={{
-              width: 124,
-              height: 52,
-              borderRadius: 16,
-              backgroundColor: glassColors.accent,
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text
+          {!isExpanded ? (
+            <TouchableOpacity
+              onPress={(event) => {
+                event.stopPropagation();
+                onOrderPress();
+              }}
+              activeOpacity={0.88}
               style={{
-                color: glassColors.textOnPrimary,
-                fontSize: ds.fontSize(15),
-                fontWeight: '700',
+                width: 124,
+                height: 52,
+                borderRadius: 16,
+                backgroundColor: glassColors.accent,
+                alignItems: 'center',
+                justifyContent: 'center',
               }}
             >
-              Order
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={{
+                  color: glassColors.textOnPrimary,
+                  fontSize: ds.fontSize(15),
+                  fontWeight: '700',
+                }}
+              >
+                Order
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       </Pressable>
 

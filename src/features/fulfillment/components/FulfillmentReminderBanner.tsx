@@ -62,7 +62,7 @@ export function FulfillmentReminderBanner({
 }: FulfillmentReminderBannerProps) {
   const ds = useScaledStyles();
   const palette = TONE_STYLES[tone];
-  const iconName = tone === 'warning' ? 'notifications-outline' : 'notifications-outline';
+  const iconName = tone === 'warning' ? 'alert-outline' : tone === 'success' ? 'checkmark-circle-outline' : 'notifications-outline';
 
   return (
     <TouchableOpacity

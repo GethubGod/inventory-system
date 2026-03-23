@@ -34,6 +34,8 @@ function makeCartItem(overrides: Partial<CartItem> = {}): CartItem {
     decidedBy: null,
     decidedAt: null,
     note: null,
+    wasSuggested: false,
+    originalSuggestedQty: null,
     ...overrides,
   };
 }

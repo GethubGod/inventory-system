@@ -14,6 +14,8 @@ export interface OrderItemPayload {
   decided_by: string | null;
   decided_at: string | null;
   note: string | null;
+  was_suggested?: boolean;
+  original_suggested_qty?: number | null;
 }
 
 export interface SubmitOrderRequest {

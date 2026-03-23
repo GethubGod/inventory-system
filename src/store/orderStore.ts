@@ -5,7 +5,6 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NetInfo from '@react-native-community/netinfo';
 import {
-  Order,
   OrderWithDetails,
   UnitType,
 } from '@/types';
@@ -19,11 +18,8 @@ import {
   syncProfileAfterOrder as syncProfileService,
   generateUUID,
 } from '@/services/orderSubmission';
-
-export * from './orderStore.types';
 import type {
   CartByLocation,
-  CartContext,
   CartItem,
   FulfillmentLocationGroup,
   LastOrderedQuantityCacheValue,
@@ -47,9 +43,7 @@ import {
   resolveCurrentOrgId,
   toValidNumber,
   normalizeNote,
-  getEffectiveQuantity,
   isSubmittableCartItem,
-  normalizeCartItem,
   normalizeLocationCart,
   getLocationCart,
   normalizeCartByLocation,
@@ -92,6 +86,8 @@ import {
   createOrderLaterInAppNotification,
 } from './orderStore.helpers';
 
+export * from './orderStore.types';
+
 export const useOrderStore = create<OrderState>()(
   persist(
     (set, get) => ({
@@ -117,6 +113,8 @@ export const useOrderStore = create<OrderState>()(
 
         const inputMode: OrderInputMode = options?.inputMode ?? 'quantity';
         const note = normalizeNote(options?.note);
+        const wasSuggested = options?.wasSuggested === true;
+        const originalSuggestedQty = toValidNumber(options?.originalSuggestedQty);
 
         if (inputMode === 'quantity') {
           const quantityRequested = toValidNumber(options?.quantityRequested ?? quantity);
@@ -138,6 +136,8 @@ export const useOrderStore = create<OrderState>()(
             decidedAt: typeof options?.decidedAt === 'string' ? options.decidedAt : null,
             quantity: quantityRequested,
             note,
+            wasSuggested,
+            originalSuggestedQty,
           };
 
           const mergedCart = mergeCartItem(locationCart, nextItem);
@@ -169,6 +169,8 @@ export const useOrderStore = create<OrderState>()(
           decidedAt: typeof options?.decidedAt === 'string' ? options.decidedAt : null,
           quantity: decidedQuantity ?? 0,
           note,
+          wasSuggested,
+          originalSuggestedQty,
         };
 
         const mergedCart = mergeCartItem(locationCart, nextItem);
@@ -197,6 +199,9 @@ export const useOrderStore = create<OrderState>()(
 
         const existing = locationCart[index];
         const nextMode: OrderInputMode = options?.inputMode ?? existing.inputMode;
+        const nextWasSuggested = options?.wasSuggested ?? existing.wasSuggested;
+        const nextOriginalSuggestedQty =
+          toValidNumber(options?.originalSuggestedQty) ?? existing.originalSuggestedQty;
 
         if (nextMode === 'quantity') {
           const nextQuantity = toValidNumber(options?.quantityRequested ?? quantity);
@@ -222,6 +227,8 @@ export const useOrderStore = create<OrderState>()(
             decidedQuantity: options?.clearDecision ? null : existing.decidedQuantity,
             decidedBy: options?.clearDecision ? null : existing.decidedBy,
             decidedAt: options?.clearDecision ? null : existing.decidedAt,
+            wasSuggested: nextWasSuggested === true,
+            originalSuggestedQty: nextOriginalSuggestedQty,
           };
 
           const nextCart = locationCart.map((item, idx) => (idx === index ? updated : item));
@@ -256,6 +263,8 @@ export const useOrderStore = create<OrderState>()(
           decidedQuantity: null,
           decidedBy: null,
           decidedAt: null,
+          wasSuggested: nextWasSuggested === true,
+          originalSuggestedQty: nextOriginalSuggestedQty,
         };
 
         const nextCart = locationCart.map((item, idx) => (idx === index ? updated : item));

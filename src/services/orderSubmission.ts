@@ -150,7 +150,6 @@ export async function submitOrder(req: SubmitOrderRequest): Promise<SubmitOrderR
     });
   } catch (err: any) {
     clearTimeout(timer);
-    const elapsed = Date.now() - t0;
     if (err?.name === 'AbortError') {
       throw new OrderSubmissionError(
         'Order submission timed out. Please try again.',
@@ -289,6 +288,10 @@ function mapRpcResponseToOrder(
     decided_by: item.decided_by ?? null,
     decided_at: item.decided_at ?? null,
     note: item.note ?? null,
+    status: item.status ?? null,
+    supplier_override_id: item.supplier_override_id ?? null,
+    was_suggested: item.was_suggested === true,
+    original_suggested_qty: item.original_suggested_qty ?? null,
     created_at: item.created_at ?? '',
     inventory_item: item.inventory_item ?? {
       id: item.inventory_item_id,
@@ -310,6 +313,7 @@ function mapRpcResponseToOrder(
     user_id: data.user_id ?? userId,
     location_id: data.location_id ?? locationId,
     status: data.status ?? 'submitted',
+    order_type: data.order_type ?? 'manual',
     notes: data.notes ?? null,
     created_at: data.created_at ?? new Date().toISOString(),
     fulfilled_at: data.fulfilled_at ?? null,

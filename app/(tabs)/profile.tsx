@@ -3,21 +3,21 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Alert,
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
+import { useSignOutAction } from '@/hooks/useSignOutAction';
 import { Location } from '@/types';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { colors } from '@/constants';
 
 export default function ProfileScreen() {
   const ds = useScaledStyles();
-  const { user, location, locations, setLocation, fetchLocations, signOut, isLoading } =
+  const { user, location, locations, setLocation, fetchLocations, isLoading } =
     useAuthStore();
+  const { requestSignOut } = useSignOutAction();
 
   useEffect(() => {
     fetchLocations();
@@ -25,20 +25,6 @@ export default function ProfileScreen() {
 
   const handleLocationChange = (selectedLocation: Location) => {
     setLocation(selectedLocation);
-  };
-
-  const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          await signOut();
-          router.replace('/(auth)/login');
-        },
-      },
-    ]);
   };
 
   return (
@@ -134,7 +120,7 @@ export default function ProfileScreen() {
         <TouchableOpacity
           className="bg-white shadow-sm border border-gray-100 flex-row items-center justify-center"
           style={{ marginHorizontal: ds.spacing(16), padding: ds.spacing(16), borderRadius: ds.radius(16), marginBottom: ds.spacing(32), height: ds.buttonH + 4 }}
-          onPress={handleSignOut}
+          onPress={requestSignOut}
           disabled={isLoading}
         >
           <Ionicons name="log-out-outline" size={ds.icon(20)} color={colors.error} />

@@ -23,6 +23,8 @@ export interface CartItem {
   decidedBy: string | null;
   decidedAt: string | null;
   note: string | null;
+  wasSuggested: boolean;
+  originalSuggestedQty: number | null;
 }
 
 export interface AddToCartOptions {
@@ -33,6 +35,8 @@ export interface AddToCartOptions {
   decidedBy?: string | null;
   decidedAt?: string | null;
   note?: string | null;
+  wasSuggested?: boolean;
+  originalSuggestedQty?: number | null;
   context?: CartContext;
 }
 
@@ -41,6 +45,8 @@ export interface UpdateCartItemOptions {
   inputMode?: OrderInputMode;
   quantityRequested?: number | null;
   remainingReported?: number | null;
+  wasSuggested?: boolean;
+  originalSuggestedQty?: number | null;
   clearDecision?: boolean;
   context?: CartContext;
 }
