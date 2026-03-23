@@ -30,7 +30,7 @@ import {
   glassSpacing,
   glassTabBarHeight,
 } from '@/theme/design';
-import { useEmployeeCartActions } from '@/hooks/useEmployeeCartActions';
+import { useOrderingCartActions } from '@/hooks/useOrderingCartActions';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
@@ -41,6 +41,7 @@ import {
   type HistoricalOrderSummary,
   type PredictedOrderItem,
 } from '@/features/ordering/orderInsights';
+import type { OrderingMode } from '@/features/ordering/types';
 import { useAuthStore, useOrderStore } from '@/store';
 import { GlassView } from '@/components/ui';
 
@@ -235,7 +236,19 @@ const RecentOrderCard = memo(function RecentOrderCard({
   );
 });
 
-export function SmartOrderScreen() {
+interface SmartOrderScreenProps {
+  mode: OrderingMode;
+  identity?: string;
+  title?: string;
+  subtitle?: string;
+}
+
+export function SmartOrderScreen({
+  mode,
+  identity,
+  title = 'Smart order',
+  subtitle = 'Suggestions based on your order history',
+}: SmartOrderScreenProps) {
   const ds = useScaledStyles();
   const [loading, setLoading] = useState(true);
   const [recentOrders, setRecentOrders] = useState<HistoricalOrderSummary[]>([]);
@@ -258,14 +271,14 @@ export function SmartOrderScreen() {
     totalCartCount,
   } = useOrderStore(
     useShallow((state) => ({
-      totalCartCount: state.getTotalCartCount('employee'),
+      totalCartCount: state.getTotalCartCount(mode.scope),
     })),
   );
   const {
     activeLocationId,
     addPredictedItem,
     reorderHistoricalOrder,
-  } = useEmployeeCartActions();
+  } = useOrderingCartActions(mode.scope);
 
   useEffect(() => {
     void fetchLocations();
@@ -371,10 +384,11 @@ export function SmartOrderScreen() {
     () => (
       <View>
         <IdentityHeader
-          title="Smart order"
-          subtitle="Suggestions based on your order history"
+          identity={identity}
+          title={title}
+          subtitle={subtitle}
           cartCount={totalCartCount}
-          onPressCart={() => router.push('/cart')}
+          onPressCart={() => router.push(mode.cartRoute as any)}
         />
 
         <View style={{ marginTop: ds.spacing(8), marginBottom: ds.spacing(20) }}>
@@ -537,11 +551,15 @@ export function SmartOrderScreen() {
     [
       ds,
       handleAddAllPredicted,
+      identity,
       predictedDayLabel,
       predictedItems,
       renderPredictedRow,
+      mode.cartRoute,
       totalCartCount,
       loading,
+      subtitle,
+      title,
     ],
   );
 

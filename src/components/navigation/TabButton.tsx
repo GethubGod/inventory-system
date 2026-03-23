@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { glassHairlineWidth } from '@/theme/design';
 
 export interface TabButtonProps {
   name: keyof typeof Ionicons.glyphMap;
@@ -19,20 +20,24 @@ export function TabButton({ name, label, color, size, focused }: TabButtonProps)
     <View
       style={{
         width: 76,
-        height: 56,
-        borderRadius: 28,
+        height: 50,
+        borderRadius: 22,
+        paddingTop: 4,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor: focused ? 'rgba(232, 80, 58, 0.14)' : 'transparent',
+        backgroundColor: focused ? 'rgba(232, 80, 58, 0.10)' : 'transparent',
+        borderWidth: focused ? glassHairlineWidth : 0,
+        borderColor: focused ? 'rgba(232, 80, 58, 0.08)' : 'transparent',
       }}
     >
       <Ionicons name={name} size={size} color={color} />
       <Text
         style={{
           fontSize: 10,
-          fontWeight: '600',
+          fontWeight: focused ? '600' : '500',
           color,
-          marginTop: 2,
+          marginTop: 3,
+          letterSpacing: 0.1,
         }}
         numberOfLines={1}
       >

@@ -1,5 +1,3 @@
-export const ORDER_CONFIRMATION_ROUTE = '/order-confirmation' as const;
-
 export interface OrderConfirmationPayload {
   orderId: string;
   orderNumber?: string | null;
@@ -8,44 +6,6 @@ export interface OrderConfirmationPayload {
   summary: string;
   submittedBy: string;
   submittedAt: string;
-  browseRoute: string;
-}
-
-export interface OrderConfirmationRouteParams {
-  [key: string]: string | undefined;
-  orderId?: string;
-  orderNumber?: string;
-  locationName?: string;
-  itemCount?: string;
-  summary?: string;
-  submittedBy?: string;
-  submittedAt?: string;
-  browseRoute?: string;
-}
-
-export function createOrderConfirmationParams(
-  payload: OrderConfirmationPayload,
-): OrderConfirmationRouteParams {
-  return {
-    orderId: payload.orderId,
-    ...(payload.orderNumber ? { orderNumber: payload.orderNumber } : {}),
-    locationName: payload.locationName,
-    itemCount: String(payload.itemCount),
-    summary: payload.summary,
-    submittedBy: payload.submittedBy,
-    submittedAt: payload.submittedAt,
-    browseRoute: payload.browseRoute,
-  };
-}
-
-export function getOrderConfirmationParam(
-  value: string | string[] | undefined,
-): string | null {
-  if (Array.isArray(value)) {
-    return value[0] ?? null;
-  }
-
-  return value ?? null;
 }
 
 export function formatOrderConfirmationSummary(
@@ -71,4 +31,18 @@ export function formatOrderConfirmationDisplayId({
   }
 
   return 'Unavailable';
+}
+
+export function formatOrderConfirmationSubmittedTime(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Unavailable';
+  }
+
+  return parsed.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }

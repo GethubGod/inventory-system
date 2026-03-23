@@ -38,12 +38,12 @@ import { resolveActiveLocationReminders } from '@/services/locationReminderServi
 import { OrderSubmissionError } from '@/services/orderSubmission';
 import { BROWSE_INVENTORY_ROUTE } from '@/features/browse/config';
 import {
-  createOrderConfirmationParams,
   formatOrderConfirmationSummary,
-  ORDER_CONFIRMATION_ROUTE,
+  type OrderConfirmationPayload,
 } from './orderConfirmation';
 import { resolveLocationSwitchTarget } from './locationSwitch';
 import { EmptyCartReorderState } from './EmptyCartReorderState';
+import { OrderSubmissionConfirmationOverlay } from './OrderSubmissionConfirmationOverlay';
 import { triggerConfirmationHaptic } from '@/lib/haptics';
 import {
   glassColors,
@@ -172,7 +172,9 @@ export function CartScreenView({
   const [confirmLocationId, setConfirmLocationId] = useState<string | null>(null);
   const [confirmSourceLocationId, setConfirmSourceLocationId] = useState<string | null>(null);
   const [statusToast, setStatusToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [orderConfirmation, setOrderConfirmation] = useState<OrderConfirmationPayload | null>(null);
   const toastOpacity = useRef(new Animated.Value(0)).current;
+  const cartScreenBlurTargetRef = useRef<View>(null);
 
   const selectedLocation = useAuthStore((state) => state.location);
   const cartLocationIds = useMemo(
@@ -190,6 +192,7 @@ export function CartScreenView({
       ),
     [cartLocationIds, context, getCartItems]
   );
+  const totalCartCountLabel = `${totalCartCount} item${totalCartCount === 1 ? '' : 's'}`;
   const toastBottomOffset = context === 'employee' ? ds.spacing(88) : ds.spacing(24);
 
   useEffect(() => {
@@ -697,6 +700,10 @@ export function CartScreenView({
       return false;
     }
 
+    if (orderConfirmation) {
+      return false;
+    }
+
     if (!user) {
       showStatusToast('Please log in first', 'error');
       return false;
@@ -709,7 +716,7 @@ export function CartScreenView({
     }
 
     return true;
-  }, [context, getCartItems, showStatusToast, submittingLocation, user]);
+  }, [context, getCartItems, orderConfirmation, showStatusToast, submittingLocation, user]);
 
   const handleReorderPastOrder = useCallback((order: HistoricalOrderSummary) => {
     const targetLocationId = selectedLocation?.id ?? order.locationId;
@@ -768,22 +775,16 @@ export function CartScreenView({
         user.email?.trim() ||
         'Staff';
       const itemCount = order.order_items?.length ?? cartItems.length;
-      const successBrowseRoute =
-        context === 'employee' ? BROWSE_INVENTORY_ROUTE : browseRoute;
-
-      router.replace({
-        pathname: ORDER_CONFIRMATION_ROUTE,
-        params: createOrderConfirmationParams({
-          orderId: order.id,
-          orderNumber: normalizedOrderNumber,
-          locationName,
-          itemCount,
-          summary: formatOrderConfirmationSummary(itemCount, locationName),
-          submittedBy,
-          submittedAt: order.created_at,
-          browseRoute: successBrowseRoute,
-        }),
+      setOrderConfirmation({
+        orderId: order.id,
+        orderNumber: normalizedOrderNumber,
+        locationName,
+        itemCount,
+        summary: formatOrderConfirmationSummary(itemCount, locationName),
+        submittedBy,
+        submittedAt: order.created_at,
       });
+      void triggerConfirmationHaptic();
       // Mark pending reminders as completed client-side (DB trigger is primary)
       completePendingRemindersForUser(user.id).catch(() => {});
       resolveActiveLocationReminders(submitLocationId).catch(() => {});
@@ -802,7 +803,6 @@ export function CartScreenView({
     getCartItems,
     createAndSubmitOrder,
     createAndSubmitOrderFromSourceLocation,
-    browseRoute,
     profile?.full_name,
     showStatusToast,
   ]);
@@ -1319,66 +1319,73 @@ export function CartScreenView({
       style={{ flex: 1, backgroundColor: glassColors.background }}
       edges={['top', 'left', 'right']}
     >
-      {/* Header */}
       <View
-        style={{
-          paddingHorizontal: glassSpacing.screen,
-          paddingVertical: ds.spacing(16),
-          flexDirection: 'row',
-          alignItems: 'center',
-        }}
+        ref={cartScreenBlurTargetRef}
+        collapsable={false}
+        style={{ flex: 1 }}
       >
-        <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: ds.fontSize(32), fontWeight: '800', color: glassColors.textPrimary, letterSpacing: -0.5 }}>
-            Cart
-          </Text>
-          <Text style={{ marginTop: 6, fontSize: ds.fontSize(15), color: glassColors.textSecondary }}>
-            {totalCartCount} items · {locationsWithCart.length} locations
-          </Text>
+        {/* Header */}
+        <View
+          style={{
+            paddingHorizontal: glassSpacing.screen,
+            paddingTop: ds.spacing(12),
+            paddingBottom: ds.spacing(12),
+            flexDirection: 'row',
+            alignItems: 'center',
+          }}
+        >
+          <View style={{ flex: 1, paddingRight: ds.spacing(12) }}>
+            <Text style={{ fontSize: ds.fontSize(30), fontWeight: '800', color: glassColors.textPrimary, letterSpacing: -0.6 }}>
+              Cart
+            </Text>
+            <Text style={{ marginTop: ds.spacing(4), fontSize: ds.fontSize(13), color: glassColors.textSecondary, fontWeight: '500' }}>
+              {totalCartCountLabel}
+            </Text>
+          </View>
+          {pastOrdersRoute && (
+            <GlassSurface intensity="subtle" style={{ borderRadius: glassRadii.pill }}>
+              <TouchableOpacity
+                onPress={() => router.push(pastOrdersRoute as any)}
+                className="flex-row items-center"
+                style={{ paddingHorizontal: ds.spacing(13), minHeight: Math.max(36, Math.min(ds.buttonH, 40)) }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="time-outline" size={ds.icon(15)} color={glassColors.textSecondary} />
+                <Text style={{ fontSize: ds.fontSize(13), marginLeft: ds.spacing(6), color: glassColors.textPrimary, fontWeight: '600' }}>
+                  My Orders
+                </Text>
+              </TouchableOpacity>
+            </GlassSurface>
+          )}
         </View>
-        {pastOrdersRoute && (
-          <GlassSurface intensity="medium" style={{ borderRadius: glassRadii.pill }}>
-            <TouchableOpacity
-              onPress={() => router.push(pastOrdersRoute as any)}
-              className="flex-row items-center"
-              style={{ paddingHorizontal: ds.spacing(16), minHeight: 44 }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="time-outline" size={ds.icon(18)} color={glassColors.textPrimary} />
-              <Text style={{ fontSize: ds.fontSize(14), marginLeft: ds.spacing(6), color: glassColors.textPrimary, fontWeight: '500' }}>
-                My Orders
-              </Text>
-            </TouchableOpacity>
-          </GlassSurface>
+
+        {totalCartCount > 0 ? (
+          <FlatList
+            data={locationsWithCart}
+            keyExtractor={(location) => location.id}
+            renderItem={({ item }) => renderLocationSection(item)}
+            className="flex-1"
+            contentContainerStyle={{
+              paddingHorizontal: glassSpacing.screen,
+              paddingBottom: glassTabBarHeight + ds.spacing(20),
+            }}
+            keyboardShouldPersistTaps="handled"
+            removeClippedSubviews={Platform.OS === 'android'}
+            initialNumToRender={4}
+            maxToRenderPerBatch={6}
+            windowSize={8}
+            ListHeaderComponent={null}
+          />
+        ) : (
+          <EmptyCartReorderState
+            browseRoute={emptyCartBrowseRoute}
+            locationId={selectedLocation?.id ?? locations[0]?.id ?? null}
+            locationName={selectedLocation?.name ?? locations[0]?.name ?? 'Current location'}
+            onReorder={handleReorderPastOrder}
+            quickOrderRoute={quickOrderRoute}
+          />
         )}
       </View>
-
-      {totalCartCount > 0 ? (
-        <FlatList
-          data={locationsWithCart}
-          keyExtractor={(location) => location.id}
-          renderItem={({ item }) => renderLocationSection(item)}
-          className="flex-1"
-          contentContainerStyle={{
-            paddingHorizontal: glassSpacing.screen,
-            paddingBottom: glassTabBarHeight + ds.spacing(20),
-          }}
-          keyboardShouldPersistTaps="handled"
-          removeClippedSubviews={Platform.OS === 'android'}
-          initialNumToRender={4}
-          maxToRenderPerBatch={6}
-          windowSize={8}
-          ListHeaderComponent={null}
-        />
-      ) : (
-        <EmptyCartReorderState
-          browseRoute={emptyCartBrowseRoute}
-          locationId={selectedLocation?.id ?? locations[0]?.id ?? null}
-          locationName={selectedLocation?.name ?? locations[0]?.name ?? 'Current location'}
-          onReorder={handleReorderPastOrder}
-          quickOrderRoute={quickOrderRoute}
-        />
-      )}
 
       {/* Cart Location Modal */}
       <Modal
@@ -1770,6 +1777,14 @@ export function CartScreenView({
           </View>
         </Animated.View>
       )}
+
+      <OrderSubmissionConfirmationOverlay
+        confirmation={orderConfirmation}
+        blurTargetRef={cartScreenBlurTargetRef}
+        onDismissed={() => {
+          setOrderConfirmation(null);
+        }}
+      />
     </SafeAreaView>
   );
 }

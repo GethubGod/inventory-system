@@ -9,7 +9,6 @@ import {
   FlatList,
   GestureResponderEvent,
   RefreshControl,
-  ScrollView,
   Text,
   TouchableOpacity,
   View,
@@ -29,8 +28,6 @@ import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
-  glassSpacing,
-  glassTabBarHeight,
 } from '@/theme/design';
 import {
   BROWSE_INVENTORY_ROUTE,
@@ -55,6 +52,13 @@ import {
   type PredictedOrderItem,
 } from '@/features/ordering/orderInsights';
 import { fetchActiveLocationReminder, type LocationReminderBanner } from '@/services/locationReminderService';
+import {
+  HomeModuleCard,
+  HomeModuleLoading,
+  HomeModuleState,
+  HomeScreenScroll,
+  HomeSearchCard,
+} from './components/HomeScreenPrimitives';
 
 type HomeInsightsStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -129,177 +133,6 @@ const SuggestedItemCard = memo(function SuggestedItemCard({
         />
       </View>
     </GlassSurface>
-  );
-});
-
-interface HomeModuleCardProps {
-  title: string;
-  actionLabel?: string;
-  onPressAction?: () => void;
-  children: React.ReactNode;
-}
-
-const HomeModuleCard = memo(function HomeModuleCard({
-  title,
-  actionLabel,
-  onPressAction,
-  children,
-}: HomeModuleCardProps) {
-  const ds = useScaledStyles();
-
-  return (
-    <GlassSurface
-      intensity="subtle"
-      style={{ borderRadius: glassRadii.surface }}
-    >
-      <View
-        style={{
-          paddingHorizontal: ds.spacing(14),
-          paddingTop: ds.spacing(14),
-          paddingBottom: ds.spacing(14),
-        }}
-      >
-        <View className="flex-row items-center justify-between">
-          <Text
-            style={{
-              fontSize: ds.fontSize(15),
-              fontWeight: '700',
-              color: glassColors.textPrimary,
-            }}
-          >
-            {title}
-          </Text>
-          {actionLabel && onPressAction ? (
-            <TouchableOpacity onPress={onPressAction} hitSlop={8}>
-              <Text
-                style={{
-                  fontSize: ds.fontSize(13),
-                  fontWeight: '700',
-                  color: glassColors.accent,
-                }}
-              >
-                {actionLabel}
-              </Text>
-            </TouchableOpacity>
-          ) : null}
-        </View>
-
-        <View style={{ marginTop: ds.spacing(12) }}>{children}</View>
-      </View>
-    </GlassSurface>
-  );
-});
-
-interface HomeModuleStateProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  title: string;
-  message: string;
-  actionLabel?: string;
-  onPressAction?: () => void;
-  tone?: 'default' | 'error';
-}
-
-const HomeModuleState = memo(function HomeModuleState({
-  icon,
-  title,
-  message,
-  actionLabel,
-  onPressAction,
-  tone = 'default',
-}: HomeModuleStateProps) {
-  const ds = useScaledStyles();
-  const isError = tone === 'error';
-
-  return (
-    <View
-      style={{
-        minHeight: ds.spacing(124),
-        justifyContent: 'center',
-      }}
-    >
-      <View
-        style={{
-          width: ds.icon(36),
-          height: ds.icon(36),
-          borderRadius: glassRadii.iconTile,
-          alignItems: 'center',
-          justifyContent: 'center',
-          backgroundColor: isError ? glassColors.dangerSoft : glassColors.mediumFill,
-        }}
-      >
-        <Ionicons
-          name={icon}
-          size={ds.icon(18)}
-          color={isError ? glassColors.dangerText : glassColors.textSecondary}
-        />
-      </View>
-      <Text
-        style={{
-          marginTop: ds.spacing(12),
-          fontSize: ds.fontSize(15),
-          fontWeight: '600',
-          color: glassColors.textPrimary,
-        }}
-      >
-        {title}
-      </Text>
-      <Text
-        style={{
-          marginTop: ds.spacing(6),
-          fontSize: ds.fontSize(12),
-          color: glassColors.textSecondary,
-          lineHeight: ds.fontSize(18),
-        }}
-      >
-        {message}
-      </Text>
-      {actionLabel && onPressAction ? (
-        <TouchableOpacity
-          onPress={onPressAction}
-          activeOpacity={0.85}
-          style={{
-            alignSelf: 'flex-start',
-            marginTop: ds.spacing(14),
-            minHeight: Math.max(38, ds.buttonH - ds.spacing(8)),
-            paddingHorizontal: ds.spacing(14),
-            borderRadius: glassRadii.pill,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: glassColors.accent,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: ds.fontSize(13),
-              fontWeight: '700',
-              color: glassColors.textOnPrimary,
-            }}
-          >
-            {actionLabel}
-          </Text>
-        </TouchableOpacity>
-      ) : null}
-    </View>
-  );
-});
-
-const HomeModuleLoading = memo(function HomeModuleLoading({
-  text,
-}: {
-  text: string;
-}) {
-  const ds = useScaledStyles();
-
-  return (
-    <View
-      style={{
-        minHeight: ds.spacing(124),
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <LoadingIndicator showText text={text} />
-    </View>
   );
 });
 
@@ -681,25 +514,15 @@ export function EmployeeHomeScreen() {
   }
 
   return (
-    <SafeAreaView
-      style={{ flex: 1, backgroundColor: glassColors.background }}
-      edges={['top', 'left', 'right']}
+    <HomeScreenScroll
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={glassColors.accent}
+        />
+      }
     >
-      <ScrollView
-        className="flex-1"
-        contentContainerStyle={{
-          paddingHorizontal: glassSpacing.screen,
-          paddingBottom: glassTabBarHeight + ds.spacing(24),
-        }}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={glassColors.accent}
-          />
-        }
-        keyboardShouldPersistTaps="handled"
-      >
         <IdentityHeader
           title={greeting}
           subtitle={formatHeaderDate(homeDate)}
@@ -775,36 +598,11 @@ export function EmployeeHomeScreen() {
           </GlassSurface>
         ) : null}
 
-          <TouchableOpacity
-            onPress={() => openBrowse(browseCategory, true)}
-            activeOpacity={0.85}
-          >
-            <GlassSurface
-              intensity="medium"
-              style={{
-                borderRadius: glassRadii.search,
-                paddingHorizontal: ds.spacing(20),
-                height: Math.max(50, ds.buttonH + 8),
-              }}
-            >
-              <View className="flex-1 flex-row items-center">
-                <Ionicons
-                  name="search-outline"
-                  size={ds.icon(22)}
-                  color={glassColors.textSecondary}
-                />
-                <Text
-                  style={{
-                    marginLeft: ds.spacing(12),
-                    fontSize: ds.fontSize(16),
-                    color: glassColors.textMuted,
-                  }}
-                >
-                  Search all {items.length} items...
-                </Text>
-              </View>
-            </GlassSurface>
-          </TouchableOpacity>
+        <HomeSearchCard
+          placeholder={`Search all ${items.length} items...`}
+          onPress={() => openBrowse(browseCategory, true)}
+          accessibilityLabel="Search inventory"
+        />
 
           <View style={{ marginTop: ds.spacing(20) }}>
             <HomeModuleCard
@@ -1187,7 +985,6 @@ export function EmployeeHomeScreen() {
               </TouchableOpacity>
             </GlassSurface>
           </View>
-        </ScrollView>
-    </SafeAreaView>
+    </HomeScreenScroll>
   );
 }

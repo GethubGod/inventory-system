@@ -1,5 +1,6 @@
-import React, { memo, useCallback, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
   RefreshControl,
   Text,
@@ -9,9 +10,9 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { GlassSurface, LoadingIndicator } from '@/components';
+import { GlassSurface } from '@/components';
 import {
-  formatOrderDateLabel,
+  type HistoricalOrderItem,
   type HistoricalOrderSummary,
   type LocationOrderInsights,
   fetchLocationOrderInsights,
@@ -23,6 +24,7 @@ import {
   glassHairlineWidth,
   glassRadii,
   glassSpacing,
+  glassTabBarHeight,
 } from '@/theme/design';
 import { colors } from '@/constants';
 
@@ -34,58 +36,172 @@ interface EmptyCartReorderStateProps {
   quickOrderRoute: string;
 }
 
-interface ReorderCardProps {
-  isPrimary: boolean;
-  locationName: string;
-  onReorder: (order: HistoricalOrderSummary) => void;
-  order: HistoricalOrderSummary;
+interface ReorderCardModel {
+  id: string;
+  title: string;
+  subtitle: string;
+  itemCount: number;
+  chips: string[];
+  order: HistoricalOrderSummary | null;
 }
 
-function getPreviewLabels(order: HistoricalOrderSummary): string[] {
-  return Array.from(new Set(order.items.map((item) => item.name)));
+interface ReorderCardProps {
+  card: ReorderCardModel;
+  onReorder: (order: HistoricalOrderSummary) => void;
+}
+
+const MOCK_REORDER_CARDS: ReorderCardModel[] = [
+  {
+    id: 'mock-order-last-tuesday',
+    title: 'Last Tuesday',
+    subtitle: 'Mar 11 · Babytuna Sushi',
+    itemCount: 3,
+    chips: ['Salmon 5lb', 'Hamachi 3lb', 'Sapporo 2cs'],
+    order: null,
+  },
+  {
+    id: 'mock-order-last-friday',
+    title: 'Last Friday',
+    subtitle: 'Mar 7 · Babytuna Poki & Pho',
+    itemCount: 5,
+    chips: ['Salmon 5lb', 'Unagi 2cs', '+3 more'],
+    order: null,
+  },
+  {
+    id: 'mock-order-mar-4',
+    title: 'Tuesday, Mar 4',
+    subtitle: 'Babytuna Sushi',
+    itemCount: 2,
+    chips: ['Albacore 1cs', 'Ebi 2cs'],
+    order: null,
+  },
+];
+
+function formatShortDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function formatRelativeOrderTitle(dateString: string): string {
+  const orderDate = new Date(dateString);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const orderDay = new Date(orderDate.getFullYear(), orderDate.getMonth(), orderDate.getDate());
+  const dayDelta = Math.round((today.getTime() - orderDay.getTime()) / 86_400_000);
+  const weekday = orderDate.toLocaleDateString('en-US', { weekday: 'long' });
+
+  if (dayDelta === 0) {
+    return 'Today';
+  }
+
+  if (dayDelta === 1) {
+    return 'Yesterday';
+  }
+
+  if (dayDelta > 1 && dayDelta < 7) {
+    return `Last ${weekday}`;
+  }
+
+  return `${weekday}, ${formatShortDate(dateString)}`;
+}
+
+function formatOrderSubtitle(dateString: string, locationName: string): string {
+  const orderDate = new Date(dateString);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const orderDay = new Date(orderDate.getFullYear(), orderDate.getMonth(), orderDate.getDate());
+  const dayDelta = Math.round((today.getTime() - orderDay.getTime()) / 86_400_000);
+
+  if (dayDelta > 1 && dayDelta < 7) {
+    return `${formatShortDate(dateString)} · ${locationName}`;
+  }
+
+  return locationName;
+}
+
+function formatItemQuantity(quantity: number): string {
+  const normalized = Number(quantity.toFixed(2));
+  return Number.isInteger(normalized) ? normalized.toString() : normalized.toString();
+}
+
+function formatOrderItemChip(item: HistoricalOrderItem): string {
+  const unitLabel = item.unitType === 'base' ? item.baseUnit : item.packUnit;
+  const quantityLabel = formatItemQuantity(item.quantity);
+  return unitLabel
+    ? `${item.name} ${quantityLabel}${unitLabel}`
+    : `${item.name} ${quantityLabel}`;
+}
+
+function buildReorderCard(order: HistoricalOrderSummary, locationName: string): ReorderCardModel {
+  const previewLabels = Array.from(
+    new Set(order.items.map((item) => formatOrderItemChip(item))),
+  );
+  const visibleLabels = previewLabels.slice(0, 3);
+  const remainingCount = Math.max(previewLabels.length - visibleLabels.length, 0);
+
+  return {
+    id: order.id,
+    title: formatRelativeOrderTitle(order.createdAt),
+    subtitle: formatOrderSubtitle(order.createdAt, locationName),
+    itemCount: order.itemCount,
+    chips:
+      remainingCount > 0
+        ? [...visibleLabels.slice(0, 2), `+${remainingCount} more`]
+        : visibleLabels,
+    order,
+  };
 }
 
 const ReorderCard = memo(function ReorderCard({
-  isPrimary,
-  locationName,
+  card,
   onReorder,
-  order,
 }: ReorderCardProps) {
   const ds = useScaledStyles();
-  const previewLabels = getPreviewLabels(order);
-  const visibleLabels = previewLabels.slice(0, 3);
-  const remainingCount = Math.max(previewLabels.length - visibleLabels.length, 0);
+  const cardRadius = ds.radius(20);
+  const buttonHeight = Math.max(40, Math.min(ds.buttonH, 48) - 4);
 
   return (
     <GlassSurface
       intensity="subtle"
       style={{
-        borderRadius: glassRadii.surface,
+        borderRadius: cardRadius,
       }}
     >
-      <View style={{ padding: ds.spacing(14) }}>
+      <View style={{ padding: ds.spacing(16) }}>
         <View className="flex-row items-start justify-between">
-          <View style={{ flex: 1, paddingRight: ds.spacing(10) }}>
-            <Text
-              style={{
-                fontSize: ds.fontSize(15),
-                fontWeight: '600',
-                color: glassColors.textPrimary,
-              }}
-            >
-              {formatOrderDateLabel(order.createdAt)}
-            </Text>
-            <Text
-              style={{
-                marginTop: ds.spacing(4),
-                fontSize: ds.fontSize(12),
-                color: glassColors.textSecondary,
-              }}
-            >
-              {locationName} · {order.itemCount} items
-            </Text>
-          </View>
+          <Text
+            style={{
+              flex: 1,
+              paddingRight: ds.spacing(12),
+              fontSize: ds.fontSize(16),
+              fontWeight: '700',
+              color: glassColors.textPrimary,
+            }}
+          >
+            {card.title}
+          </Text>
+          <Text
+            style={{
+              fontSize: ds.fontSize(12),
+              fontWeight: '600',
+              color: glassColors.textSecondary,
+            }}
+          >
+            {card.itemCount} {card.itemCount === 1 ? 'item' : 'items'}
+          </Text>
         </View>
+
+        <Text
+          style={{
+            marginTop: ds.spacing(4),
+            fontSize: ds.fontSize(13),
+            color: glassColors.textSecondary,
+          }}
+        >
+          {card.subtitle}
+        </Text>
 
         <View
           style={{
@@ -95,64 +211,52 @@ const ReorderCard = memo(function ReorderCard({
             marginTop: ds.spacing(12),
           }}
         >
-          {visibleLabels.map((label) => (
+          {card.chips.map((chip) => (
             <View
-              key={label}
+              key={`${card.id}-${chip}`}
               style={{
-                backgroundColor: glassColors.mediumFill,
+                borderRadius: ds.radius(12),
+                paddingHorizontal: ds.spacing(10),
+                paddingVertical: ds.spacing(6),
+                backgroundColor: glassColors.background,
                 borderWidth: glassHairlineWidth,
                 borderColor: glassColors.cardBorder,
-                borderRadius: glassRadii.button,
-                paddingHorizontal: ds.spacing(10),
-                paddingVertical: ds.spacing(5),
               }}
             >
               <Text
                 style={{
                   fontSize: ds.fontSize(11),
+                  fontWeight: '500',
                   color: glassColors.textSecondary,
                 }}
               >
-                {label}
+                {chip}
               </Text>
             </View>
           ))}
-          {remainingCount > 0 ? (
-            <View
-              style={{
-                backgroundColor: glassColors.mediumFill,
-                borderWidth: glassHairlineWidth,
-                borderColor: glassColors.cardBorder,
-                borderRadius: glassRadii.button,
-                paddingHorizontal: ds.spacing(10),
-                paddingVertical: ds.spacing(5),
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: ds.fontSize(11),
-                  color: glassColors.textSecondary,
-                }}
-              >
-                +{remainingCount} more
-              </Text>
-            </View>
-          ) : null}
         </View>
 
         <TouchableOpacity
-          onPress={() => onReorder(order)}
+          onPress={() => {
+            if (card.order) {
+              onReorder(card.order);
+              return;
+            }
+
+            Alert.alert(
+              'No past orders yet',
+              'Place an order to enable one-tap reordering from your cart.',
+            );
+          }}
           style={{
             marginTop: ds.spacing(14),
-            minHeight: Math.max(44, ds.buttonH),
-            borderRadius: glassRadii.button,
+            minHeight: buttonHeight,
+            borderRadius: ds.radius(14),
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: isPrimary
-              ? colors.primary[500]
-              : glassColors.mediumFill,
-            borderWidth: isPrimary ? 0 : glassHairlineWidth,
-            borderColor: isPrimary ? 'transparent' : glassColors.cardBorder,
+            backgroundColor: glassColors.background,
+            borderWidth: glassHairlineWidth,
+            borderColor: glassColors.cardBorder,
           }}
           activeOpacity={0.85}
         >
@@ -160,12 +264,10 @@ const ReorderCard = memo(function ReorderCard({
             style={{
               fontSize: ds.fontSize(13),
               fontWeight: '700',
-              color: isPrimary
-                ? glassColors.textOnPrimary
-                : glassColors.textPrimary,
+              color: glassColors.textPrimary,
             }}
           >
-            Reorder all {order.itemCount} items
+            Reorder all {card.itemCount} {card.itemCount === 1 ? 'item' : 'items'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -182,26 +284,23 @@ export function EmptyCartReorderState({
 }: EmptyCartReorderStateProps) {
   const ds = useScaledStyles();
   const { height } = useWindowDimensions();
-  const [loading, setLoading] = useState(true);
   const [recentOrders, setRecentOrders] = useState<HistoricalOrderSummary[]>([]);
-  const heroMinHeight = Math.max(ds.spacing(280), Math.round(height * 0.46));
+
+  useEffect(() => {
+    setRecentOrders([]);
+  }, [locationId]);
 
   const loadOrders = useCallback(async () => {
     if (!locationId) {
       setRecentOrders([]);
-      setLoading(false);
       return;
     }
 
-    setLoading(true);
     try {
       const insights: LocationOrderInsights = await fetchLocationOrderInsights(locationId);
       setRecentOrders(insights.recentOrders);
     } catch (error) {
       console.error('Unable to load empty cart reorder suggestions', error);
-      setRecentOrders([]);
-    } finally {
-      setLoading(false);
     }
   }, [locationId]);
 
@@ -212,71 +311,105 @@ export function EmptyCartReorderState({
   );
 
   const { refreshing, onRefresh } = useManagedRefresh(loadOrders);
+  const heroMinHeight = Math.min(
+    Math.max(ds.spacing(286), Math.round(height * 0.38)),
+    ds.spacing(356),
+  );
+  const actionButtonHeight = Math.max(40, Math.min(ds.buttonH, 42));
+  const actionButtonRadius = ds.radius(14);
+  const actionButtonHorizontalPadding = ds.spacing(10);
+  const actionButtonGap = ds.spacing(12);
+  const actionIconSize = ds.icon(15);
+  const supportTextMaxWidth = ds.spacing(280);
+  const reorderCards = useMemo(
+    () =>
+      recentOrders.length > 0
+        ? recentOrders.map((order) => buildReorderCard(order, locationName))
+        : MOCK_REORDER_CARDS,
+    [locationName, recentOrders],
+  );
 
   const renderOrderCard = useCallback(
-    ({ item, index }: { item: HistoricalOrderSummary; index: number }) => (
-      <ReorderCard
-        isPrimary={index === 0}
-        locationName={locationName}
-        onReorder={onReorder}
-        order={item}
-      />
+    ({ item }: { item: ReorderCardModel }) => (
+      <ReorderCard card={item} onReorder={onReorder} />
     ),
-    [locationName, onReorder],
+    [onReorder],
   );
 
   return (
     <FlatList
-      data={recentOrders}
+      data={reorderCards}
       renderItem={renderOrderCard}
       keyExtractor={(item) => item.id}
+      showsVerticalScrollIndicator={false}
       contentContainerStyle={{
         paddingHorizontal: glassSpacing.screen,
-        paddingBottom: glassSpacing.screen,
-        flexGrow: recentOrders.length === 0 ? 1 : 0,
-        gap: ds.spacing(10),
+        paddingTop: ds.spacing(8),
+        paddingBottom: glassTabBarHeight + ds.spacing(20),
       }}
+      ItemSeparatorComponent={() => <View style={{ height: ds.spacing(10) }} />}
       ListHeaderComponent={
-        <View style={{ paddingTop: ds.spacing(12), paddingBottom: ds.spacing(12) }}>
+        <View style={{ paddingBottom: ds.spacing(8) }}>
           <View
-            className="items-center justify-center"
             style={{
+              alignItems: 'center',
+              justifyContent: 'center',
               minHeight: heroMinHeight,
-              paddingBottom: ds.spacing(18),
+              paddingTop: ds.spacing(20),
+              paddingBottom: ds.spacing(26),
             }}
           >
-            <GlassSurface
-              intensity="medium"
+            <View
               style={{
-                width: ds.icon(54),
-                height: ds.icon(54),
+                width: ds.icon(64),
+                height: ds.icon(64),
                 borderRadius: glassRadii.round,
                 alignItems: 'center',
                 justifyContent: 'center',
+                backgroundColor: colors.white,
+                borderWidth: glassHairlineWidth,
+                borderColor: glassColors.cardBorder,
               }}
             >
               <Ionicons
-                name="bag-handle-outline"
-                size={ds.icon(24)}
-                color={colors.gray[400]}
+                name="bag-outline"
+                size={ds.icon(28)}
+                color={glassColors.textTertiary}
               />
-            </GlassSurface>
+            </View>
+
             <Text
               style={{
-                marginTop: ds.spacing(16),
-                fontSize: ds.fontSize(18),
-                fontWeight: '600',
+                marginTop: ds.spacing(20),
+                fontSize: ds.fontSize(19),
+                fontWeight: '700',
                 color: glassColors.textPrimary,
+                textAlign: 'center',
               }}
             >
-              No items in cart
+              Your cart is empty
+            </Text>
+
+            <Text
+              style={{
+                marginTop: ds.spacing(8),
+                maxWidth: supportTextMaxWidth,
+                fontSize: ds.fontSize(13),
+                lineHeight: ds.fontSize(18),
+                color: glassColors.textSecondary,
+                textAlign: 'center',
+              }}
+            >
+              Browse inventory or place a quick order to get started.
             </Text>
 
             <View
               style={{
                 width: '100%',
+                maxWidth: ds.spacing(320),
+                alignSelf: 'center',
                 flexDirection: 'row',
-                gap: ds.spacing(12),
+                gap: actionButtonGap,
                 marginTop: ds.spacing(24),
               }}
             >
@@ -284,17 +417,25 @@ export function EmptyCartReorderState({
                 onPress={() => router.push(browseRoute as never)}
                 style={{
                   flex: 1,
-                  borderRadius: glassRadii.button,
-                  minHeight: ds.buttonH,
+                  minHeight: actionButtonHeight,
+                  borderRadius: actionButtonRadius,
                   alignItems: 'center',
                   justifyContent: 'center',
+                  flexDirection: 'row',
                   backgroundColor: colors.primary[500],
+                  paddingHorizontal: actionButtonHorizontalPadding,
                 }}
                 activeOpacity={0.85}
               >
+                <Ionicons
+                  name="grid-outline"
+                  size={actionIconSize}
+                  color={glassColors.textOnPrimary}
+                />
                 <Text
                   style={{
-                    fontSize: ds.buttonFont,
+                    marginLeft: ds.spacing(6),
+                    fontSize: ds.fontSize(12),
                     fontWeight: '700',
                     color: glassColors.textOnPrimary,
                   }}
@@ -302,26 +443,32 @@ export function EmptyCartReorderState({
                   Browse
                 </Text>
               </TouchableOpacity>
+
               <TouchableOpacity
                 onPress={() => router.push(quickOrderRoute as never)}
                 style={{
                   flex: 1,
-                  borderRadius: glassRadii.button,
-                  minHeight: ds.buttonH,
+                  minHeight: actionButtonHeight,
+                  borderRadius: actionButtonRadius,
                   alignItems: 'center',
                   justifyContent: 'center',
                   flexDirection: 'row',
-                  backgroundColor: glassColors.mediumFill,
+                  backgroundColor: colors.white,
                   borderWidth: glassHairlineWidth,
                   borderColor: glassColors.cardBorder,
+                  paddingHorizontal: actionButtonHorizontalPadding,
                 }}
                 activeOpacity={0.85}
               >
-                <Ionicons name="flash" size={ds.icon(18)} color={glassColors.textPrimary} />
+                <Ionicons
+                  name="flash-outline"
+                  size={actionIconSize}
+                  color={glassColors.textPrimary}
+                />
                 <Text
                   style={{
-                    marginLeft: ds.spacing(8),
-                    fontSize: ds.buttonFont,
+                    marginLeft: ds.spacing(6),
+                    fontSize: ds.fontSize(12),
                     fontWeight: '700',
                     color: glassColors.textPrimary,
                   }}
@@ -334,46 +481,17 @@ export function EmptyCartReorderState({
 
           <Text
             style={{
-              marginTop: ds.spacing(24),
-              marginBottom: ds.spacing(12),
-              color: glassColors.textSecondary,
-              fontSize: ds.fontSize(12),
+              marginTop: ds.spacing(8),
+              marginBottom: ds.spacing(8),
+              color: glassColors.textTertiary,
+              fontSize: ds.fontSize(11),
               fontWeight: '600',
-              letterSpacing: 1.3,
-              textTransform: 'uppercase',
+              letterSpacing: 1.4,
             }}
           >
-            Reorder A Past Order
+            REORDER A PAST ORDER
           </Text>
         </View>
-      }
-      ListEmptyComponent={
-        loading ? (
-          <View style={{ paddingTop: ds.spacing(20) }}>
-            <LoadingIndicator showText text="Loading suggestions..." />
-          </View>
-        ) : (
-          <View>
-            <GlassSurface
-              intensity="subtle"
-              style={{
-                borderRadius: glassRadii.surface,
-                padding: ds.spacing(18),
-                alignItems: 'center',
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: ds.fontSize(15),
-                  fontWeight: '600',
-                  color: glassColors.textPrimary,
-                }}
-              >
-                No recent orders for this location
-              </Text>
-            </GlassSurface>
-          </View>
-        )
       }
       refreshControl={
         <RefreshControl
