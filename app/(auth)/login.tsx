@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -10,19 +10,29 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import { Link, router } from 'expo-router';
+import { Link, Redirect, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
-import { AuthLogoHeader, LoadingIndicator } from '@/components';
+import { AuthLoadingScreen, AuthLogoHeader, LoadingIndicator } from '@/components';
+import { useAuthScreenGuard } from '@/hooks';
 import { supabase } from '@/lib';
 import { colors } from '@/constants';
 
 const SIGN_IN_PASSWORD_HELPER =
   'If you recently created your password, it should be at least 8 characters and include letters and numbers.';
+const AUTH_SCREEN_BACKGROUND = '#000000';
+
+function getParamValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export default function LoginScreen() {
+  const params = useLocalSearchParams<{
+    email?: string | string[];
+    notice?: string | string[];
+  }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -30,6 +40,31 @@ export default function LoginScreen() {
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [signInHelper, setSignInHelper] = useState<string | null>(null);
   const { signIn, isLoading } = useAuthStore();
+  const guard = useAuthScreenGuard();
+
+  const initialEmail = getParamValue(params.email);
+  const noticeMessage = useMemo(() => {
+    const notice = getParamValue(params.notice);
+    if (notice === 'confirm-email') {
+      return 'Check your email and confirm your account before signing in.';
+    }
+
+    return null;
+  }, [params.notice]);
+
+  useEffect(() => {
+    if (initialEmail) {
+      setEmail(initialEmail);
+    }
+  }, [initialEmail]);
+
+  if (guard.isChecking) {
+    return <AuthLoadingScreen />;
+  }
+
+  if (guard.authenticatedRedirectTo) {
+    return <Redirect href={guard.authenticatedRedirectTo} />;
+  }
 
   const handleLogin = async () => {
     if (!email.trim()) {
@@ -44,10 +79,12 @@ export default function LoginScreen() {
     try {
       setSignInHelper(null);
       await signIn(email.trim(), password);
-      router.replace('/');
     } catch (error: any) {
       const message = error?.message || 'Invalid email or password';
-      if (message.toLowerCase().includes('invalid login credentials')) {
+      if (
+        message.toLowerCase().includes('invalid login credentials') ||
+        message.toLowerCase().includes('invalid email or password')
+      ) {
         setSignInHelper(SIGN_IN_PASSWORD_HELPER);
       }
       Alert.alert('Sign In Failed', message);
@@ -89,11 +126,11 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: AUTH_SCREEN_BACKGROUND }}>
       <StatusBar style="light" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1, backgroundColor: colors.background }}
+        style={{ flex: 1, backgroundColor: AUTH_SCREEN_BACKGROUND }}
       >
         <Pressable className="flex-1 px-6 pt-10 pb-8" onPress={Keyboard.dismiss}>
           <View className="items-center mb-6">
@@ -195,6 +232,22 @@ export default function LoginScreen() {
                 }}
               >
                 <Text style={{ fontSize: 12, color: colors.warning }}>{signInHelper}</Text>
+              </View>
+            ) : null}
+
+            {noticeMessage ? (
+              <View
+                style={{
+                  marginBottom: 16,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.primary[200],
+                  backgroundColor: colors.primary[50],
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <Text style={{ fontSize: 12, color: colors.primary[700] }}>{noticeMessage}</Text>
               </View>
             ) : null}
 

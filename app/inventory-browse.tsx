@@ -1,9 +1,11 @@
 import React from 'react';
 import { Redirect, Stack, useLocalSearchParams } from 'expo-router';
+import { AuthLoadingScreen } from '@/components';
 import { EmployeeBrowseInventoryScreen } from '@/features/browse/EmployeeBrowseInventoryScreen';
 import { isBrowseCategory } from '@/features/browse/config';
 import { glassColors } from '@/theme/design';
-import { useAuthStore, useDisplayStore } from '@/store';
+import { useDisplayStore } from '@/store';
+import { useProtectedAuthGuard } from '@/hooks';
 
 function getParamValue(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) {
@@ -14,8 +16,8 @@ function getParamValue(value: string | string[] | undefined): string | undefined
 }
 
 export default function InventoryBrowseRoute() {
-  const { session, profile } = useAuthStore();
   const reduceMotion = useDisplayStore((state) => state.reduceMotion);
+  const guard = useProtectedAuthGuard();
   const params = useLocalSearchParams<{
     category?: string | string[];
     focusSearch?: string | string[];
@@ -31,16 +33,12 @@ export default function InventoryBrowseRoute() {
   const addItemParam = getParamValue(params.addItem);
   const requestIdParam = getParamValue(params.requestId);
 
-  if (!session) {
-    return <Redirect href="/(auth)/login" />;
+  if (guard.isChecking) {
+    return <AuthLoadingScreen />;
   }
 
-  if (!profile?.profile_completed) {
-    return <Redirect href="/(auth)/complete-profile" />;
-  }
-
-  if (profile.is_suspended) {
-    return <Redirect href="/suspended" />;
+  if (guard.redirectTo) {
+    return <Redirect href={guard.redirectTo} />;
   }
 
   return (

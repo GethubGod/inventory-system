@@ -8,18 +8,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Redirect, router } from 'expo-router';
+import { Redirect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
-import { AuthLogoHeader, LoadingIndicator } from '@/components';
+import { AuthLoadingScreen, AuthLogoHeader, LoadingIndicator } from '@/components';
 import { colors } from '@/constants';
 
 const ACCESS_CODE_REGEX = /^\d{4}$/;
 
 export default function CompleteProfileScreen() {
-  const { session, profile, completeProfile, isLoading } = useAuthStore();
+  const { session, profile, completeProfile, isLoading, isInitialized } = useAuthStore();
   const [fullName, setFullName] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [showAccessCode, setShowAccessCode] = useState(false);
@@ -44,8 +44,16 @@ export default function CompleteProfileScreen() {
     }
   }, [profile?.full_name, session?.user?.user_metadata?.full_name, session?.user?.user_metadata?.name]);
 
+  if (!isInitialized) {
+    return <AuthLoadingScreen />;
+  }
+
   if (!session) {
     return <Redirect href="/(auth)/login" />;
+  }
+
+  if (profile?.is_suspended) {
+    return <Redirect href="/suspended" />;
   }
 
   if (profile?.profile_completed) {
@@ -76,7 +84,6 @@ export default function CompleteProfileScreen() {
 
     try {
       await completeProfile(fullName.trim(), accessCode);
-      router.replace('/');
     } catch (error: any) {
       const message = error?.message || 'Unable to complete profile.';
       if (message.toLowerCase().includes('invalid access code')) {

@@ -117,7 +117,7 @@ export function FulfillmentReminderBanner({
         </Text>
       </View>
 
-      <Ionicons name="chevron-down" size={15} color={palette.iconColor} />
+      <Ionicons name="chevron-forward" size={15} color={palette.iconColor} />
     </TouchableOpacity>
   );
 }

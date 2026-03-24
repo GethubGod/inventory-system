@@ -51,7 +51,7 @@ function ThemeManager() {
 }
 
 export default function RootLayout() {
-  const { initialize, isInitialized, user } = useAuthStore();
+  const { initialize, isInitialized, session } = useAuthStore();
   const theme = useDisplayStore((state) => state.theme);
   const reduceMotion = useDisplayStore((state) => state.reduceMotion);
 
@@ -143,8 +143,8 @@ export default function RootLayout() {
     </View>
   );
 
-  // Only enable subscriptions when user is logged in
-  if (user) {
+  // Only enable subscriptions when a live auth session exists.
+  if (session) {
     return (
       <RealtimeSubscriptionProvider>{content}</RealtimeSubscriptionProvider>
     );

@@ -4,6 +4,8 @@ import { RealtimeChannel } from "@supabase/supabase-js";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthStore, useOrderStore, useDraftStore } from "@/store";
 import { supabase } from "@/lib/supabase";
+import { AuthLoadingScreen } from "@/components";
+import { useProtectedAuthGuard } from "@/hooks";
 import {
   TabButton,
   getTabBarScreenOptions,
@@ -13,9 +15,6 @@ import {
 
 export default function ManagerLayout() {
   const session = useAuthStore((s) => s.session);
-  const profile = useAuthStore((s) => s.profile);
-  const user = useAuthStore((s) => s.user);
-  const viewMode = useAuthStore((s) => s.viewMode);
   const cartCount = useOrderStore((state) =>
     state.getTotalCartCount("manager"),
   );
@@ -26,13 +25,8 @@ export default function ManagerLayout() {
     null,
   );
   const badgeChannelRef = useRef<RealtimeChannel | null>(null);
-  const metadataRole =
-    typeof session?.user?.user_metadata?.role === "string"
-      ? session.user.user_metadata.role
-      : typeof session?.user?.app_metadata?.role === "string"
-        ? session.user.app_metadata.role
-        : null;
-  const resolvedRole = user?.role ?? profile?.role ?? metadataRole;
+  const guard = useProtectedAuthGuard({ requireManager: true });
+  const resolvedRole = guard.resolvedRole;
   const tabBarBottomInset = getTabBarBottomInset(insets.bottom);
 
   const refreshPendingFulfillmentCount = useCallback(async () => {
@@ -125,24 +119,12 @@ export default function ManagerLayout() {
     };
   }, [refreshPendingFulfillmentCount, resolvedRole, session]);
 
-  if (!session) {
-    return <Redirect href="/(auth)/login" />;
+  if (guard.isChecking) {
+    return <AuthLoadingScreen />;
   }
 
-  if (!profile?.profile_completed) {
-    return <Redirect href="/(auth)/complete-profile" />;
-  }
-
-  if (profile.is_suspended) {
-    return <Redirect href="/suspended" />;
-  }
-
-  if (resolvedRole !== "manager") {
-    return <Redirect href="/(tabs)/settings" />;
-  }
-
-  if (viewMode !== 'manager') {
-    return <Redirect href="/(tabs)" />;
+  if (guard.redirectTo) {
+    return <Redirect href={guard.redirectTo} />;
   }
 
   return (

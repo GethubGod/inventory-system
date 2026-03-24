@@ -5,14 +5,23 @@ import { Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
 import { useSignOutAction } from '@/hooks/useSignOutAction';
+import { AuthLoadingScreen } from '@/components';
 import { colors } from '@/constants';
 
 export default function SuspendedScreen() {
-  const { session, isLoading } = useAuthStore();
-  const { performSignOut } = useSignOutAction({ requireConfirmation: false });
+  const { session, profile, isLoading, isInitialized } = useAuthStore();
+  const { isSigningOut, performSignOut } = useSignOutAction({ requireConfirmation: false });
 
-  if (!session && !isLoading) {
+  if (!isInitialized || isLoading) {
+    return <AuthLoadingScreen />;
+  }
+
+  if (!session) {
     return <Redirect href="/(auth)/login" />;
+  }
+
+  if (!profile?.is_suspended) {
+    return <Redirect href="/" />;
   }
 
   return (
@@ -28,11 +37,14 @@ export default function SuspendedScreen() {
         <TouchableOpacity
           className="mt-8 rounded-xl px-6 py-3.5"
           style={{ backgroundColor: colors.text }}
+          disabled={isSigningOut}
           onPress={() => {
             void performSignOut();
           }}
         >
-          <Text className="text-white font-semibold">Sign Out</Text>
+          <Text className="text-white font-semibold">
+            {isSigningOut ? 'Signing Out...' : 'Sign Out'}
+          </Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

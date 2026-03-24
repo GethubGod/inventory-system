@@ -24,7 +24,7 @@ import { CATEGORY_LABELS, colors } from '@/constants';
 import { InventoryItem, ItemCategory, OrderWithDetails, SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
-import { GlassSurface, ItemActionSheet, LoadingIndicator } from '@/components';
+import { ItemActionSheet, LoadingIndicator } from '@/components';
 import type { ItemActionSheetSection } from '@/components';
 import {
   FulfillmentHeader,
@@ -351,6 +351,7 @@ export default function FulfillmentScreen() {
     createOrderLaterItem: state.createOrderLaterItem,
   })));
   const [dataReady, setDataReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
   const [expandedSupplierId, setExpandedSupplierId] = useState<string | null>(null);
   const [reminderOverview, setReminderOverview] = useState<EmployeeReminderOverview | null>(null);
@@ -484,8 +485,14 @@ export default function FulfillmentScreen() {
         raceTimeout(fetchSuppliers(), 15_000, 'fetchSuppliers'),
         raceTimeout(fetchReminderOverview(), 15_000, 'fetchReminderOverview'),
       ]);
+      setLoadError(null);
     } catch (error) {
       console.error('Error refreshing fulfillment data:', error);
+      setLoadError(
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : 'Unable to load fulfillment data. Pull down to retry.'
+      );
     } finally {
       hasLoadedOnceRef.current = true;
       setDataReady(true);
@@ -2390,6 +2397,7 @@ export default function FulfillmentScreen() {
   }, []);
 
   const showInitialLoading = !dataReady && supplierCardData.length === 0 && orderLaterQueue.length === 0;
+  const showErrorState = dataReady && loadError && supplierCardData.length === 0;
 
   return (
     <SafeAreaView
@@ -2420,56 +2428,171 @@ export default function FulfillmentScreen() {
           <FulfillmentSupplierSectionLabel readyCount={supplierCardData.length} />
 
           {showInitialLoading ? (
+            <View style={{ gap: ds.spacing(10), marginTop: ds.spacing(4) }}>
+              {[1, 2, 3].map((i) => (
+                <View
+                  key={i}
+                  style={{
+                    backgroundColor: '#FBFAF8',
+                    borderRadius: 22,
+                    borderWidth: glassHairlineWidth,
+                    borderColor: '#DEDAD4',
+                    paddingHorizontal: ds.spacing(16),
+                    paddingVertical: ds.spacing(18),
+                    opacity: 1 - (i - 1) * 0.2,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{ flex: 1 }}>
+                      <View
+                        style={{
+                          width: 120 - i * 16,
+                          height: 14,
+                          borderRadius: 7,
+                          backgroundColor: glassColors.mediumFill,
+                        }}
+                      />
+                      <View
+                        style={{
+                          width: 80,
+                          height: 10,
+                          borderRadius: 5,
+                          backgroundColor: glassColors.subtleFill,
+                          marginTop: ds.spacing(8),
+                        }}
+                      />
+                    </View>
+                    <View
+                      style={{
+                        width: 70,
+                        height: 32,
+                        borderRadius: glassRadii.button,
+                        backgroundColor: glassColors.subtleFill,
+                      }}
+                    />
+                  </View>
+                </View>
+              ))}
+              <View style={{ alignItems: 'center', paddingTop: ds.spacing(6) }}>
+                <LoadingIndicator size="small" color={glassColors.accent} />
+              </View>
+            </View>
+          ) : showErrorState ? (
             <View
               style={{
-                minHeight: 180,
+                backgroundColor: '#FBFAF8',
+                borderRadius: 22,
+                borderWidth: glassHairlineWidth,
+                borderColor: '#DEDAD4',
+                paddingHorizontal: ds.spacing(20),
+                paddingVertical: ds.spacing(28),
                 alignItems: 'center',
-                justifyContent: 'center',
-                paddingVertical: ds.spacing(20),
               }}
             >
-              <LoadingIndicator size="small" color={glassColors.accent} />
-              <Text
-                style={{
-                  marginTop: ds.spacing(10),
-                  color: glassColors.textSecondary,
-                  fontSize: ds.fontSize(13),
-                  fontWeight: '600',
-                }}
-              >
-                Loading suppliers...
-              </Text>
-            </View>
-          ) : supplierCardData.length === 0 ? (
-            <GlassSurface intensity="subtle" style={{ borderRadius: glassRadii.surface }}>
               <View
                 style={{
-                  paddingHorizontal: ds.spacing(18),
-                  paddingVertical: ds.spacing(24),
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: '#FFF0EA',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: ds.spacing(12),
+                }}
+              >
+                <Ionicons name="cloud-offline-outline" size={22} color={glassColors.accent} />
+              </View>
+              <Text
+                style={{
+                  color: glassColors.textPrimary,
+                  fontSize: ds.fontSize(16),
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                Unable to load suppliers
+              </Text>
+              <Text
+                style={{
+                  color: glassColors.textSecondary,
+                  fontSize: ds.fontSize(13),
+                  lineHeight: ds.fontSize(18),
+                  marginTop: ds.spacing(6),
+                  textAlign: 'center',
+                }}
+              >
+                {loadError || 'Something went wrong. Pull down or tap below to retry.'}
+              </Text>
+              <TouchableOpacity
+                onPress={onRefresh}
+                activeOpacity={0.86}
+                style={{
+                  backgroundColor: glassColors.accent,
+                  borderRadius: glassRadii.button,
+                  paddingHorizontal: ds.spacing(20),
+                  paddingVertical: ds.spacing(10),
+                  marginTop: ds.spacing(16),
                 }}
               >
                 <Text
                   style={{
-                    color: glassColors.textPrimary,
-                    fontSize: ds.fontSize(18),
+                    color: glassColors.textOnPrimary,
+                    fontSize: ds.fontSize(14),
                     fontWeight: '700',
                   }}
                 >
-                  Nothing to display
+                  Retry
                 </Text>
-                <Text
-                  style={{
-                    color: glassColors.textSecondary,
-                    fontSize: ds.fontSize(14),
-                    lineHeight: ds.fontSize(20),
-                    marginTop: ds.spacing(6),
-                  }}
-                >
-                  Nothing to display right now. Submitted orders and supplier drafts will appear here
-                  once they are ready to review.
-                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : supplierCardData.length === 0 ? (
+            <View
+              style={{
+                backgroundColor: '#FBFAF8',
+                borderRadius: 22,
+                borderWidth: glassHairlineWidth,
+                borderColor: '#DEDAD4',
+                paddingHorizontal: ds.spacing(20),
+                paddingVertical: ds.spacing(32),
+                alignItems: 'center',
+              }}
+            >
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: glassColors.subtleFill,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  marginBottom: ds.spacing(12),
+                }}
+              >
+                <Ionicons name="checkmark-circle-outline" size={22} color={glassColors.textSecondary} />
               </View>
-            </GlassSurface>
+              <Text
+                style={{
+                  color: glassColors.textPrimary,
+                  fontSize: ds.fontSize(16),
+                  fontWeight: '700',
+                  textAlign: 'center',
+                }}
+              >
+                All caught up
+              </Text>
+              <Text
+                style={{
+                  color: glassColors.textSecondary,
+                  fontSize: ds.fontSize(13),
+                  lineHeight: ds.fontSize(18),
+                  marginTop: ds.spacing(6),
+                  textAlign: 'center',
+                  maxWidth: 260,
+                }}
+              >
+                Submitted orders and supplier drafts will appear here once they are ready to review.
+              </Text>
+            </View>
           ) : (
             supplierCardData.map((entry) => (
               <View key={entry.group.supplierId} style={{ marginBottom: ds.spacing(10) }}>

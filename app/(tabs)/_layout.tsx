@@ -1,6 +1,8 @@
 import { Redirect, Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthStore, useOrderStore, useDraftStore } from "@/store";
+import { AuthLoadingScreen } from "@/components";
+import { useProtectedAuthGuard } from "@/hooks";
 import {
   TabButton,
   getTabBarScreenOptions,
@@ -9,25 +11,20 @@ import {
 } from "@/components/navigation";
 
 export default function TabsLayout() {
-  const session = useAuthStore((s) => s.session);
-  const profile = useAuthStore((s) => s.profile);
   const cartTotal = useOrderStore((state) =>
     state.getTotalCartCount("employee"),
   );
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = getTabBarBottomInset(insets.bottom);
+  const guard = useProtectedAuthGuard();
 
-  if (!session) {
-    return <Redirect href="/(auth)/login" />;
+  if (guard.isChecking) {
+    return <AuthLoadingScreen />;
   }
 
-  if (!profile?.profile_completed) {
-    return <Redirect href="/(auth)/complete-profile" />;
-  }
-
-  if (profile.is_suspended) {
-    return <Redirect href="/suspended" />;
+  if (guard.redirectTo) {
+    return <Redirect href={guard.redirectTo} />;
   }
 
   return (

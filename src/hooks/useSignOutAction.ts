@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useAuthStore } from '@/store';
@@ -11,14 +11,15 @@ export function useSignOutAction({
   requireConfirmation = true,
 }: UseSignOutActionOptions = {}) {
   const signOut = useAuthStore((state) => state.signOut);
-  const isLoading = useAuthStore((state) => state.isLoading);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const performSignOut = useCallback(async () => {
-    if (isLoading) {
+    if (isSigningOut) {
       return;
     }
 
     try {
+      setIsSigningOut(true);
       await signOut();
       router.replace('/(auth)/login');
     } catch (error) {
@@ -30,10 +31,16 @@ export function useSignOutAction({
       }
 
       Alert.alert('Sign Out Failed', 'Unable to sign out. Please try again.');
+    } finally {
+      setIsSigningOut(false);
     }
-  }, [isLoading, signOut]);
+  }, [isSigningOut, signOut]);
 
   const requestSignOut = useCallback(() => {
+    if (isSigningOut) {
+      return;
+    }
+
     if (!requireConfirmation) {
       void performSignOut();
       return;
@@ -62,9 +69,10 @@ export function useSignOutAction({
         },
       },
     ]);
-  }, [performSignOut, requireConfirmation]);
+  }, [isSigningOut, performSignOut, requireConfirmation]);
 
   return {
+    isSigningOut,
     performSignOut,
     requestSignOut,
   };

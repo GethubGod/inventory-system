@@ -3,6 +3,7 @@ export { CategoryFilter } from './CategoryFilter';
 export { StatusFilter } from './StatusFilter';
 export { OrderCard } from './OrderCard';
 export { LoadingIndicator } from './LoadingIndicator';
+export { AuthLoadingScreen } from './AuthLoadingScreen';
 export { QrScannerModal } from './QrScannerModal';
 export { AuthLogoHeader } from './AuthLogoHeader';
 export { BrandLogo } from './BrandLogo';

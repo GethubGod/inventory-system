@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { InventoryItem, ItemCategory, SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { listInventory } from '@/lib/api/client';
+import { useAuthStore } from './authStore';
 
 export interface NewInventoryItem {
   name: string;
@@ -18,6 +19,7 @@ export interface NewInventoryItem {
 interface InventoryState {
   items: InventoryItem[];
   isLoading: boolean;
+  error: string | null;
   lastFetched: number | null;
   hasFetchedThisSession: boolean;
   selectedCategory: ItemCategory | null;
@@ -38,6 +40,7 @@ interface InventoryState {
 }
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const SESSION_EXPIRED_MESSAGE = 'Session expired. Please sign in again.';
 
 function extractMissingSchemaColumn(error: unknown): string | null {
   if (!error || typeof error !== 'object') return null;
@@ -48,11 +51,17 @@ function extractMissingSchemaColumn(error: unknown): string | null {
   return matches.length > 0 ? matches[0] : null;
 }
 
+function isSessionExpiredErrorMessage(error: unknown): boolean {
+  if (typeof error !== 'string') return false;
+  return error.trim().toLowerCase() === SESSION_EXPIRED_MESSAGE.toLowerCase();
+}
+
 export const useInventoryStore = create<InventoryState>()(
   persist(
     (set, get) => ({
       items: [],
       isLoading: false,
+      error: null,
       lastFetched: null,
       hasFetchedThisSession: false,
       selectedCategory: null,
@@ -70,10 +79,19 @@ export const useInventoryStore = create<InventoryState>()(
           }
         }
 
-        set({ isLoading: true });
+        set({ isLoading: true, error: null });
         try {
           const result = await listInventory({ limit: 5000 });
-          if (result.error) throw new Error(result.error);
+          if (result.error) {
+            if (isSessionExpiredErrorMessage(result.error)) {
+              set({ error: result.error });
+              return;
+            }
+
+            console.warn('Failed to fetch inventory items.', result.error);
+            set({ error: result.error });
+            return;
+          }
 
           const activeItems = (result.data ?? [])
             .filter((item) => item.active)
@@ -84,9 +102,21 @@ export const useInventoryStore = create<InventoryState>()(
 
           set({
             items: activeItems,
+            error: null,
             lastFetched: Date.now(),
             hasFetchedThisSession: true,
           });
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Failed to load inventory.';
+
+          if (isSessionExpiredErrorMessage(message)) {
+            set({ error: message });
+            return;
+          }
+
+          console.error('Unexpected inventory fetch failure.', error);
+          set({ error: message });
         } finally {
           set({ isLoading: false });
         }

@@ -15,9 +15,9 @@ import { colors } from '@/constants';
 
 export default function ProfileScreen() {
   const ds = useScaledStyles();
-  const { user, location, locations, setLocation, fetchLocations, isLoading } =
+  const { user, location, locations, setLocation, fetchLocations } =
     useAuthStore();
-  const { requestSignOut } = useSignOutAction();
+  const { isSigningOut, requestSignOut } = useSignOutAction();
 
   useEffect(() => {
     fetchLocations();
@@ -121,10 +121,12 @@ export default function ProfileScreen() {
           className="bg-white shadow-sm border border-gray-100 flex-row items-center justify-center"
           style={{ marginHorizontal: ds.spacing(16), padding: ds.spacing(16), borderRadius: ds.radius(16), marginBottom: ds.spacing(32), height: ds.buttonH + 4 }}
           onPress={requestSignOut}
-          disabled={isLoading}
+          disabled={isSigningOut}
         >
           <Ionicons name="log-out-outline" size={ds.icon(20)} color={colors.error} />
-          <Text className="text-red-500 font-semibold" style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}>Sign Out</Text>
+          <Text className="text-red-500 font-semibold" style={{ fontSize: ds.buttonFont, marginLeft: ds.spacing(8) }}>
+            {isSigningOut ? 'Signing Out...' : 'Sign Out'}
+          </Text>
         </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>

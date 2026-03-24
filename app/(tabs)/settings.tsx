@@ -26,7 +26,7 @@ import {
 export default function SettingsScreen() {
   const ds = useScaledStyles();
   const { user, profile, session, setViewMode } = useAuthStore();
-  const { requestSignOut } = useSignOutAction();
+  const { isSigningOut, requestSignOut } = useSignOutAction();
 
   const metadataRole =
     typeof session?.user?.user_metadata?.role === 'string'
@@ -248,10 +248,11 @@ export default function SettingsScreen() {
             icon="log-out-outline"
             iconColor={settingsIconPalettes.danger.icon}
             iconBgColor={settingsIconPalettes.danger.background}
-            title="Sign Out"
+            title={isSigningOut ? 'Signing Out...' : 'Sign Out'}
             onPress={requestSignOut}
             showChevron={false}
             destructive
+            disabled={isSigningOut}
             showBorder={false}
           />
         </GlassSurface>

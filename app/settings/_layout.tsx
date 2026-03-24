@@ -1,20 +1,17 @@
 import { Redirect, Stack } from 'expo-router';
-import { useAuthStore } from '@/store';
+import { AuthLoadingScreen } from '@/components';
+import { useProtectedAuthGuard } from '@/hooks';
 import { colors } from '@/theme/design';
 
 export default function SettingsLayout() {
-  const { session, profile } = useAuthStore();
+  const guard = useProtectedAuthGuard();
 
-  if (!session) {
-    return <Redirect href="/(auth)/login" />;
+  if (guard.isChecking) {
+    return <AuthLoadingScreen />;
   }
 
-  if (!profile?.profile_completed) {
-    return <Redirect href="/(auth)/complete-profile" />;
-  }
-
-  if (profile.is_suspended) {
-    return <Redirect href="/suspended" />;
+  if (guard.redirectTo) {
+    return <Redirect href={guard.redirectTo} />;
   }
 
   return (

@@ -9,16 +9,18 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { Link, router } from 'expo-router';
+import { Link, Redirect, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '@/store';
-import { AuthLogoHeader, LoadingIndicator } from '@/components';
+import { AuthLoadingScreen, AuthLogoHeader, LoadingIndicator } from '@/components';
+import { useAuthScreenGuard } from '@/hooks';
 import { validatePassword } from '@/lib';
 import { colors } from '@/constants';
 
 const ACCESS_CODE_REGEX = /^\d{4}$/;
+const AUTH_SCREEN_BACKGROUND = '#000000';
 
 export default function SignUpScreen() {
   const [name, setName] = useState('');
@@ -35,6 +37,7 @@ export default function SignUpScreen() {
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
 
   const { signUp, isLoading } = useAuthStore();
+  const guard = useAuthScreenGuard();
 
   const passwordValidation = useMemo(() => validatePassword(password), [password]);
   const isPasswordEmpty = password.length === 0;
@@ -44,6 +47,14 @@ export default function SignUpScreen() {
   const canCreateAccount = !isLoading && passwordValidation.isValid && passwordsMatch;
 
   const sanitizeAccessCode = (value: string) => value.replace(/\D/g, '').slice(0, 4);
+
+  if (guard.isChecking) {
+    return <AuthLoadingScreen />;
+  }
+
+  if (guard.authenticatedRedirectTo) {
+    return <Redirect href={guard.authenticatedRedirectTo} />;
+  }
 
   const handleSignUp = async () => {
     if (!name.trim()) {
@@ -68,8 +79,29 @@ export default function SignUpScreen() {
     }
 
     try {
-      await signUp(email.trim(), password, name.trim(), accessCode);
-      router.replace('/');
+      const result = await signUp(email.trim(), password, name.trim(), accessCode);
+
+      if (result.status === 'confirmation_required') {
+        Alert.alert(
+          'Confirm Your Email',
+          'Your account was created. Confirm your email before signing in.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                router.replace({
+                  pathname: '/(auth)/login',
+                  params: {
+                    email: result.email,
+                    notice: 'confirm-email',
+                  },
+                });
+              },
+            },
+          ]
+        );
+        return;
+      }
     } catch (error: any) {
       Alert.alert('Sign Up Failed', error.message || 'Failed to create account');
     }
@@ -85,14 +117,14 @@ export default function SignUpScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: AUTH_SCREEN_BACKGROUND }}>
       <StatusBar style="light" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={{ flex: 1, backgroundColor: colors.background }}
+        style={{ flex: 1, backgroundColor: AUTH_SCREEN_BACKGROUND }}
       >
         <ScrollView
-          style={{ flex: 1, backgroundColor: colors.background }}
+          style={{ flex: 1, backgroundColor: AUTH_SCREEN_BACKGROUND }}
           contentContainerStyle={{ paddingVertical: 24 }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}

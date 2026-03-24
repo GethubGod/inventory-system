@@ -22,7 +22,7 @@ import {
 export default function ManagerSettingsScreen() {
   const ds = useScaledStyles();
   const { user, setViewMode } = useAuthStore();
-  const { requestSignOut } = useSignOutAction();
+  const { isSigningOut, requestSignOut } = useSignOutAction();
   const appVersion = Constants.expoConfig?.version || '1.0.0';
 
   const handleSwitchToEmployee = () => {
@@ -235,10 +235,11 @@ export default function ManagerSettingsScreen() {
             icon="log-out-outline"
             iconColor={settingsIconPalettes.danger.icon}
             iconBgColor={settingsIconPalettes.danger.background}
-            title="Sign Out"
+            title={isSigningOut ? 'Signing Out...' : 'Sign Out'}
             onPress={requestSignOut}
             showChevron={false}
             destructive
+            disabled={isSigningOut}
             showBorder={false}
           />
         </GlassSurface>

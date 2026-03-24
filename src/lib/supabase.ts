@@ -199,12 +199,22 @@ if (__DEV__ && supabaseConfigError) {
 // Keep app startup resilient if env vars are missing.
 const resolvedSupabaseUrl = supabaseUrl || 'https://invalid.supabase.local';
 const resolvedSupabaseAnonKey = supabaseAnonKey || 'invalid-anon-key';
+const supabaseAuthStorageKey = `sb-${new URL(resolvedSupabaseUrl).hostname.split('.')[0]}-auth-token`;
 
 export const supabase = createClient(resolvedSupabaseUrl, resolvedSupabaseAnonKey, {
   auth: {
     storage: ExpoSecureStoreAdapter,
+    storageKey: supabaseAuthStorageKey,
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    detectSessionInUrl: Platform.OS === 'web',
   },
 }) as any;
+
+export async function clearSupabaseStoredSession() {
+  await Promise.all([
+    ExpoSecureStoreAdapter.removeItem(supabaseAuthStorageKey),
+    ExpoSecureStoreAdapter.removeItem(`${supabaseAuthStorageKey}-code-verifier`),
+    ExpoSecureStoreAdapter.removeItem(`${supabaseAuthStorageKey}-user`),
+  ]);
+}

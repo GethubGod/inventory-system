@@ -33,6 +33,12 @@ import {
   loadUnitConversionLookup,
   resolveUnitConversionMultiplier,
 } from '@/services/unitConversion';
+import {
+  glassColors,
+  glassHairlineWidth,
+  glassRadii,
+  glassSpacing,
+} from '@/theme/design';
 
 interface ConfirmationDetail {
   locationId?: string;
@@ -2495,24 +2501,53 @@ export default function FulfillmentConfirmationScreen() {
   }, []);
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right', 'bottom']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right', 'bottom']}>
       <ManagerScaleContainer>
-        <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center justify-between">
-          <View className="flex-row items-center flex-1">
+        <View
+          style={{
+            backgroundColor: '#FFFFFF',
+            paddingHorizontal: glassSpacing.screen,
+            paddingVertical: 12,
+            borderBottomWidth: glassHairlineWidth,
+            borderBottomColor: glassColors.cardBorder,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
             <TouchableOpacity
               onPress={handleBackPress}
-              className="p-2 mr-2"
+              style={{ padding: 8, marginRight: 8 }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Ionicons name="arrow-back" size={20} color={colors.gray[700]} />
+              <Ionicons name="arrow-back" size={20} color={glassColors.textPrimary} />
             </TouchableOpacity>
             <View>
-              <Text className="text-lg font-bold text-gray-900">{supplierLabel}</Text>
-              <Text className="text-xs text-gray-500">Review Order</Text>
+              <Text
+                style={{
+                  fontSize: 17,
+                  fontWeight: '700',
+                  color: glassColors.textPrimary,
+                }}
+              >
+                {supplierLabel}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 12,
+                  color: glassColors.textSecondary,
+                }}
+              >
+                Review Order
+              </Text>
             </View>
           </View>
-          <TouchableOpacity onPress={() => router.push('/(manager)/manager-settings/export-format')} className="p-2">
-            <Ionicons name="create-outline" size={18} color={colors.gray[600]} />
+          <TouchableOpacity
+            onPress={() => router.push('/(manager)/manager-settings/export-format')}
+            style={{ padding: 8 }}
+          >
+            <Ionicons name="create-outline" size={18} color={glassColors.textSecondary} />
           </TouchableOpacity>
         </View>
 
@@ -2612,19 +2647,61 @@ export default function FulfillmentConfirmationScreen() {
                 </View>
               )}
 
-              <View className="bg-white rounded-2xl border border-gray-100 p-3 mb-3">
-                <View className="flex-row items-center justify-between mb-2">
-                  <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Message Preview</Text>
+              <View
+                style={{
+                  backgroundColor: '#FFFFFF',
+                  borderRadius: 22,
+                  borderWidth: glassHairlineWidth,
+                  borderColor: glassColors.cardBorder,
+                  padding: 14,
+                  marginBottom: 12,
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      fontWeight: '700',
+                      color: glassColors.textSecondary,
+                      textTransform: 'uppercase',
+                      letterSpacing: 1.2,
+                    }}
+                  >
+                    Message Preview
+                  </Text>
                   <TouchableOpacity
                     onPress={() => router.push('/(manager)/manager-settings/export-format')}
-                    className="flex-row items-center"
+                    style={{ flexDirection: 'row', alignItems: 'center' }}
                   >
-                    <Ionicons name="create-outline" size={14} color={colors.primary[500]} />
-                    <Text className="text-xs text-primary-600 font-semibold ml-1">Edit Format</Text>
+                    <Ionicons name="create-outline" size={14} color={glassColors.accent} />
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: glassColors.accent,
+                        fontWeight: '600',
+                        marginLeft: 4,
+                      }}
+                    >
+                      Edit Format
+                    </Text>
                   </TouchableOpacity>
                 </View>
-                <View className="bg-gray-50 rounded-xl p-2.5">
-                  <Text className="text-sm text-gray-800 leading-5">{messageText}</Text>
+                <View
+                  style={{
+                    backgroundColor: glassColors.subtleFill,
+                    borderRadius: 14,
+                    padding: 12,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 14,
+                      color: glassColors.textPrimary,
+                      lineHeight: 20,
+                    }}
+                  >
+                    {messageText}
+                  </Text>
                 </View>
               </View>
 
@@ -2897,39 +2974,76 @@ export default function FulfillmentConfirmationScreen() {
           </Pressable>
         </Modal>
 
-        <View className="bg-white border-t border-gray-200 px-4 py-4">
+        <View
+          style={{
+            backgroundColor: '#FFFFFF',
+            borderTopWidth: glassHairlineWidth,
+            borderTopColor: glassColors.cardBorder,
+            paddingHorizontal: glassSpacing.screen,
+            paddingVertical: 14,
+          }}
+        >
           {showRetryActions ? (
-            <View className="flex-row">
+            <View style={{ flexDirection: 'row' }}>
               <TouchableOpacity
                 onPress={handleCopyToClipboard}
                 disabled={actionsDisabled}
-                className={`flex-1 rounded-xl py-3 items-center flex-row justify-center mr-3 ${
-                  actionsDisabled ? 'bg-gray-200' : 'bg-gray-100'
-                }`}
+                activeOpacity={0.86}
+                style={{
+                  flex: 1,
+                  borderRadius: glassRadii.button,
+                  paddingVertical: 13,
+                  alignItems: 'center',
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  marginRight: 12,
+                  backgroundColor: actionsDisabled ? glassColors.mediumFill : glassColors.subtleFill,
+                }}
               >
                 <Ionicons
                   name="copy-outline"
                   size={18}
-                  color={actionsDisabled ? colors.gray[400] : colors.gray[700]}
+                  color={actionsDisabled ? glassColors.textTertiary : glassColors.textPrimary}
                 />
-                <Text className={`font-semibold ml-2 ${actionsDisabled ? 'text-gray-400' : 'text-gray-700'}`}>
-                  Copy to Clipboard
+                <Text
+                  style={{
+                    fontWeight: '600',
+                    marginLeft: 8,
+                    fontSize: 15,
+                    color: actionsDisabled ? glassColors.textTertiary : glassColors.textPrimary,
+                  }}
+                >
+                  Copy
                 </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
                 onPress={handleShareOrder}
                 disabled={actionsDisabled}
-                className={`flex-1 rounded-xl py-3 items-center flex-row justify-center ${
-                  actionsDisabled ? 'bg-gray-200' : 'bg-primary-500'
-                }`}
+                activeOpacity={0.86}
+                style={{
+                  flex: 1,
+                  borderRadius: glassRadii.button,
+                  paddingVertical: 13,
+                  alignItems: 'center',
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  backgroundColor: actionsDisabled ? glassColors.mediumFill : glassColors.accent,
+                }}
               >
                 <Ionicons
                   name="share-social-outline"
                   size={18}
-                  color={actionsDisabled ? colors.gray[400] : 'white'}
+                  color={actionsDisabled ? glassColors.textTertiary : glassColors.textOnPrimary}
                 />
-                <Text className={`font-semibold ml-2 ${actionsDisabled ? 'text-gray-400' : 'text-white'}`}>
+                <Text
+                  style={{
+                    fontWeight: '700',
+                    marginLeft: 8,
+                    fontSize: 15,
+                    color: actionsDisabled ? glassColors.textTertiary : glassColors.textOnPrimary,
+                  }}
+                >
                   Share
                 </Text>
               </TouchableOpacity>
@@ -2938,16 +3052,29 @@ export default function FulfillmentConfirmationScreen() {
             <TouchableOpacity
               onPress={handleShareOrder}
               disabled={actionsDisabled}
-              className={`rounded-xl py-3 items-center flex-row justify-center ${
-                actionsDisabled ? 'bg-gray-200' : 'bg-primary-500'
-              }`}
+              activeOpacity={0.86}
+              style={{
+                borderRadius: glassRadii.button,
+                paddingVertical: 14,
+                alignItems: 'center',
+                flexDirection: 'row',
+                justifyContent: 'center',
+                backgroundColor: actionsDisabled ? glassColors.mediumFill : glassColors.accent,
+              }}
             >
               <Ionicons
                 name={isFinalizing ? 'hourglass-outline' : 'share-social-outline'}
                 size={18}
-                color={actionsDisabled ? colors.gray[400] : 'white'}
+                color={actionsDisabled ? glassColors.textTertiary : glassColors.textOnPrimary}
               />
-              <Text className={`font-semibold ml-2 ${actionsDisabled ? 'text-gray-400' : 'text-white'}`}>
+              <Text
+                style={{
+                  fontWeight: '700',
+                  marginLeft: 8,
+                  fontSize: 15,
+                  color: actionsDisabled ? glassColors.textTertiary : glassColors.textOnPrimary,
+                }}
+              >
                 {isFinalizing ? 'Sending...' : 'Share'}
               </Text>
             </TouchableOpacity>

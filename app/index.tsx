@@ -1,47 +1,19 @@
-import { View } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useAuthStore } from '@/store';
-import { LoadingIndicator } from '@/components';
+import { AuthLoadingScreen } from '@/components';
+import { getAuthenticatedHomeHref, useProtectedAuthGuard } from '@/hooks/useAuthGuard';
 
 export default function Index() {
-  const { session, user, profile, isLoading, isInitialized, viewMode } = useAuthStore();
+  const viewMode = useAuthStore((state) => state.viewMode);
+  const guard = useProtectedAuthGuard();
 
-  // Show loading state while initializing
-  if (!isInitialized || isLoading) {
-    return (
-      <View className="flex-1 items-center justify-center bg-white">
-        <LoadingIndicator size="large" showText text="Loading..." />
-      </View>
-    );
+  if (guard.isChecking) {
+    return <AuthLoadingScreen />;
   }
 
-  // Not logged in - go to login
-  if (!session) {
-    return <Redirect href="/(auth)/login" />;
+  if (guard.redirectTo) {
+    return <Redirect href={guard.redirectTo} />;
   }
 
-  // Force onboarding until profile is completed.
-  if (!profile?.profile_completed) {
-    return <Redirect href="/(auth)/complete-profile" />;
-  }
-
-  if (profile.is_suspended) {
-    return <Redirect href="/suspended" />;
-  }
-
-  const metadataRole =
-    typeof session.user?.user_metadata?.role === 'string'
-      ? session.user.user_metadata.role
-      : typeof session.user?.app_metadata?.role === 'string'
-        ? session.user.app_metadata.role
-        : null;
-  const role = user?.role ?? profile.role ?? metadataRole;
-
-  // Route based on viewMode for managers, employees always go to tabs.
-  if (role === 'manager' && viewMode === 'manager') {
-    return <Redirect href="/(manager)" />;
-  }
-
-  // Default: employee view (tabs)
-  return <Redirect href="/(tabs)" />;
+  return <Redirect href={getAuthenticatedHomeHref(guard.resolvedRole, viewMode)} />;
 }
