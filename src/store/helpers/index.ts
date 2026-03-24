@@ -5,7 +5,6 @@
 export {
   tableFlags,
   orderLaterMoveInFlightIds,
-  resolveCurrentOrgId,
   createFulfillmentId,
   toIsoString,
   toJsonObject,

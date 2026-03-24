@@ -75,10 +75,7 @@ jest.mock('expo-web-browser', () => ({
   openAuthSessionAsync: jest.fn(),
 }));
 
-const getUserContextMock = jest.fn(async () => ({ data: null }));
-
 jest.mock('@/lib/api/client', () => ({
-  getUserContext: getUserContextMock,
   registerSessionGetter: jest.fn(),
 }));
 

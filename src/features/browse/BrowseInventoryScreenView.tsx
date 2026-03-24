@@ -110,12 +110,14 @@ export function BrowseInventoryScreenView({
   );
   const {
     items,
+    error: itemsError,
     isLoading: itemsLoading,
     fetchItems,
     addItem,
   } = useInventoryStore(
     useShallow((state) => ({
       items: state.items,
+      error: state.error,
       isLoading: state.isLoading,
       fetchItems: state.fetchItems,
       addItem: state.addItem,
@@ -240,6 +242,10 @@ export function BrowseInventoryScreenView({
 
     router.replace(fallbackRoute as any);
   }, [fallbackRoute]);
+
+  const handleRetryInventory = useCallback(() => {
+    void fetchItems({ force: true });
+  }, [fetchItems]);
 
   const resetNewItemForm = useCallback(() => {
     setNewItemName(browseSearchQuery.trim());
@@ -502,6 +508,20 @@ export function BrowseInventoryScreenView({
       );
     }
 
+    if (itemsError) {
+      return (
+        <View style={{ paddingTop: ds.spacing(12) }}>
+          <EmptyStateCard
+            icon="cloud-offline-outline"
+            title="Unable to load inventory"
+            message={itemsError}
+            actionLabel="Try Again"
+            onPressAction={handleRetryInventory}
+          />
+        </View>
+      );
+    }
+
     if (emptyBrowseResults) {
       return (
         <View style={{ paddingTop: ds.spacing(12) }}>
@@ -545,6 +565,8 @@ export function BrowseInventoryScreenView({
     emptyBrowseResults,
     emptyCategoryResults,
     handleOpenAddItemModal,
+    handleRetryInventory,
+    itemsError,
     itemsLoading,
   ]);
 

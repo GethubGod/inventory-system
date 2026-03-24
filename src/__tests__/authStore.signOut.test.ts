@@ -8,6 +8,8 @@ const mockAsyncStorage = {
 const clearSupabaseStoredSessionMock = jest.fn(async () => undefined);
 const signOutMock = jest.fn();
 const getSessionMock = jest.fn(async () => ({ data: { session: null } }));
+const setSessionMock = jest.fn();
+const refreshSessionMock = jest.fn();
 const onAuthStateChangeMock = jest.fn();
 const removeChannelMock = jest.fn();
 
@@ -69,7 +71,6 @@ jest.mock('expo-web-browser', () => ({
 }));
 
 jest.mock('@/lib/api/client', () => ({
-  getUserContext: jest.fn(async () => ({ data: null })),
   registerSessionGetter: jest.fn(),
 }));
 
@@ -82,6 +83,8 @@ jest.mock('@/lib/supabase', () => ({
     auth: {
       signOut: signOutMock,
       getSession: getSessionMock,
+      setSession: setSessionMock,
+      refreshSession: refreshSessionMock,
       onAuthStateChange: onAuthStateChangeMock,
     },
     from: fromMock,
@@ -120,6 +123,8 @@ describe('useAuthStore sign-out flow', () => {
     authChangeCallback = null;
     signOutMock.mockResolvedValue({ error: null });
     getSessionMock.mockResolvedValue({ data: { session: null } });
+    setSessionMock.mockResolvedValue({ data: { session: null }, error: null });
+    refreshSessionMock.mockResolvedValue({ data: { session: null }, error: null });
     onAuthStateChangeMock.mockImplementation((callback: (event: string, session: any) => void) => {
       authChangeCallback = callback;
       return {
@@ -161,7 +166,6 @@ describe('useAuthStore sign-out flow', () => {
           is_suspended: false,
         } as any,
         location: { id: 'loc-1', name: 'Main', short_code: 'MN' } as any,
-        orgId: 'org-1',
         viewMode: 'manager',
         isInitialized: true,
         isLoading: false,
@@ -181,7 +185,6 @@ describe('useAuthStore sign-out flow', () => {
     expect(state.user).toBeNull();
     expect(state.profile).toBeNull();
     expect(state.location).toBeNull();
-    expect(state.orgId).toBeNull();
     expect(state.viewMode).toBe('employee');
     expect(mockAsyncStorage.removeItem).toHaveBeenCalledWith('babytuna-auth');
     expect(mockAsyncStorage.multiRemove).toHaveBeenCalled();
@@ -191,18 +194,33 @@ describe('useAuthStore sign-out flow', () => {
     await Promise.resolve();
   });
 
-  test('clears state after a verified signed-out auth listener event', async () => {
+  test('preserves auth state after an unexpected signed-out auth listener event', async () => {
     await useAuthStore.getState().initialize();
 
     expect(onAuthStateChangeMock).toHaveBeenCalledTimes(1);
     expect(authChangeCallback).not.toBeNull();
 
     jest.clearAllMocks();
+    getSessionMock.mockResolvedValue({ data: { session: null } });
+    setSessionMock.mockResolvedValue({
+      data: {
+        session: {
+          access_token: 'token-2',
+          refresh_token: 'refresh-2',
+          user: { id: 'user-2', email: 'employee@example.com' },
+        },
+      },
+      error: null,
+    });
 
     useAuthStore.setState(
       {
         ...useAuthStore.getInitialState(),
-        session: { user: { id: 'user-2', email: 'employee@example.com' } } as any,
+        session: {
+          access_token: 'token-1',
+          refresh_token: 'refresh-1',
+          user: { id: 'user-2', email: 'employee@example.com' },
+        } as any,
         user: {
           id: 'user-2',
           email: 'employee@example.com',
@@ -216,7 +234,6 @@ describe('useAuthStore sign-out flow', () => {
           profile_completed: true,
           is_suspended: false,
         } as any,
-        orgId: 'org-2',
         viewMode: 'manager',
         isInitialized: true,
         isLoading: false,
@@ -231,11 +248,20 @@ describe('useAuthStore sign-out flow', () => {
     jest.runOnlyPendingTimers();
     await flushMicrotasks();
 
-    expect(useAuthStore.getState().session).toBeNull();
-    expect(useAuthStore.getState().user).toBeNull();
-    expect(useAuthStore.getState().profile).toBeNull();
-    expect(useAuthStore.getState().orgId).toBeNull();
-    expect(useAuthStore.getState().viewMode).toBe('employee');
+    expect(setSessionMock).toHaveBeenCalledWith({
+      access_token: 'token-1',
+      refresh_token: 'refresh-1',
+    });
+    expect(refreshSessionMock).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().session).toMatchObject({
+      access_token: 'token-2',
+      refresh_token: 'refresh-2',
+    });
+    expect(useAuthStore.getState().user).toMatchObject({ id: 'user-2' });
+    expect(useAuthStore.getState().profile).toMatchObject({ id: 'user-2' });
+    expect(useAuthStore.getState().viewMode).toBe('manager');
+    expect(mockAsyncStorage.removeItem).not.toHaveBeenCalledWith('babytuna-auth');
+    expect(clearSupabaseStoredSessionMock).not.toHaveBeenCalled();
   });
 
   test('ignores INITIAL_SESSION callbacks with a null session', async () => {
@@ -262,7 +288,6 @@ describe('useAuthStore sign-out flow', () => {
           profile_completed: true,
           is_suspended: false,
         } as any,
-        orgId: 'org-3',
         isInitialized: true,
         isLoading: false,
       },

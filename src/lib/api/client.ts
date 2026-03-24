@@ -223,7 +223,6 @@ function isTransientError(error: string): boolean {
 
 interface InventoryItemDTO {
   id: string;
-  orgId: string;
   name: string;
   emoji: string;
   category: string;
@@ -295,14 +294,6 @@ function supplierDtoToLookupRow(dto: SupplierDTO): SupplierLookupRow {
   };
 }
 
-// ── User context ──────────────────────────────────────────
-
-export interface UserContextData {
-  profile: { id: string; fullName: string | null };
-  membership: { orgId: string; role: string } | null;
-  organization: { id: string; name: string } | null;
-}
-
 export interface DailySuggestionItemDTO {
   item_id: string;
   item_name: string;
@@ -328,20 +319,15 @@ export interface DailySuggestionsResponseDTO {
   recent_orders?: RecentOrderDTO[];
 }
 
-export async function getUserContext(): Promise<ApiResult<UserContextData>> {
-  return request<UserContextData>('v1-get-user-context', { method: 'GET' });
-}
-
 // ── Inventory (read-only in Phase 2) ──────────────────────
 // Write operations (create, update, soft-delete) require org_memberships
 // rows that mobile users don't have yet. Deferred to Phase 3.
 
 export async function listInventory(params?: {
-  orgId?: string;
   limit?: number;
   offset?: number;
 }): Promise<ApiResult<InventoryItem[]>> {
-  const result = await request<{ items: InventoryItemDTO[]; total: number; orgId: string }>(
+  const result = await request<{ items: InventoryItemDTO[]; total: number }>(
     'v1-list-inventory',
     { body: params ?? {} }
   );
@@ -359,11 +345,10 @@ export async function listInventory(params?: {
 // ── Suppliers (read-only in Phase 2) ──────────────────────
 
 export async function listSuppliers(params?: {
-  orgId?: string;
   limit?: number;
   offset?: number;
 }): Promise<ApiResult<SupplierLookupRow[]>> {
-  const result = await request<{ suppliers: SupplierDTO[]; total: number; orgId: string }>(
+  const result = await request<{ suppliers: SupplierDTO[]; total: number }>(
     'v1-list-suppliers',
     { body: params ?? {} }
   );

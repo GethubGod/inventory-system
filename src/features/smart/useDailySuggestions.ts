@@ -7,6 +7,14 @@ import {
   type SuggestionsData,
 } from '@/features/ordering/dailySuggestions';
 
+function sanitizeDailySuggestionsError(error: string): string {
+  if (error.includes('Session expired') || error.includes('sign in again')) {
+    return 'Unable to load daily suggestions right now.';
+  }
+
+  return error;
+}
+
 export function useDailySuggestions(locationId: string | null) {
   const [suggestions, setSuggestions] = useState<SuggestionsData>(createEmptySuggestions);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
@@ -46,10 +54,11 @@ export function useDailySuggestions(locationId: string | null) {
       return nextData;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to load daily suggestions.';
+      const safeMessage = sanitizeDailySuggestionsError(message);
       setSuggestions(createEmptySuggestions());
       setRecentOrders([]);
-      setError(message);
-      throw err;
+      setError(safeMessage);
+      throw new Error(safeMessage);
     } finally {
       setLoading(false);
     }

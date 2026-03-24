@@ -72,7 +72,6 @@ export type RecurringReminderCondition = 'no_order_today' | 'days_since_last_ord
 
 export interface ReminderSystemSetting {
   id: string;
-  org_id: string;
   overdue_threshold_days: number;
   reminder_rate_limit_minutes: number;
   recurring_window_minutes: number;
@@ -220,7 +219,6 @@ export interface InventoryItem {
 export interface Order {
   id: string;
   order_number: number;
-  org_id?: string;
   user_id: string;
   location_id: string;
   status: OrderStatus;

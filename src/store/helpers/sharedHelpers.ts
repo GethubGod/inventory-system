@@ -1,7 +1,6 @@
 // Shared utility functions used across all order store helper domains.
 
 import { Platform } from 'react-native';
-import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
 import { getNotificationsModule } from '@/lib/notifications';
 import type { FulfillmentLocationGroup } from '../orderStore.types';
@@ -24,11 +23,6 @@ export const orderLaterMoveInFlightIds = new Set<string>();
 // ---------------------------------------------------------------------------
 // General utilities
 // ---------------------------------------------------------------------------
-
-export function resolveCurrentOrgId(): string | null {
-  const orgId = useAuthStore.getState().orgId?.trim();
-  return orgId && orgId.length > 0 ? orgId : null;
-}
 
 export function createFulfillmentId(prefix: string) {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;

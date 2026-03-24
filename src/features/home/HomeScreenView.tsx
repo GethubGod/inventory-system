@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -55,17 +56,15 @@ import {
 } from '@/services/locationReminderService';
 import {
   HomeModuleCard,
-  HomeModuleLoading,
   HomeModuleState,
   HomeScreenScroll,
   HomeSearchCard,
 } from './components/HomeScreenPrimitives';
 import type { HomeScreenMode } from './modes';
 
-type HomeInsightsStatus = 'idle' | 'loading' | 'ready' | 'error';
-
 const HOME_INSIGHTS_TIMEOUT_MS = 8000;
 const HOME_REMINDER_TIMEOUT_MS = 6000;
+const HOME_BACKGROUND_REFRESH_INTERVAL_MS = 60 * 1000;
 
 class HomeDataTimeoutError extends Error {
   label: string;
@@ -79,6 +78,10 @@ class HomeDataTimeoutError extends Error {
 
 interface HomeScreenViewProps {
   mode: HomeScreenMode;
+}
+
+interface LoadHomeDataOptions {
+  background?: boolean;
 }
 
 interface SuggestedItemCardProps {
@@ -268,11 +271,12 @@ function isHomeDataTimeoutError(error: unknown): error is HomeDataTimeoutError {
 export function HomeScreenView({ mode }: HomeScreenViewProps) {
   const ds = useScaledStyles();
   const [browseCategory, setBrowseCategory] = useState<ItemCategory | null>(null);
-  const [orderInsightsStatus, setOrderInsightsStatus] =
-    useState<HomeInsightsStatus>('idle');
   const [predictedItems, setPredictedItems] = useState<PredictedOrderItem[]>([]);
   const [reorderOrder, setReorderOrder] = useState<HistoricalOrderSummary | null>(null);
   const [activeReminder, setActiveReminder] = useState<LocationReminderBanner | null>(null);
+  const hasLoadedHomeDataRef = useRef(false);
+  const homeDataRefreshPromiseRef = useRef<Promise<void> | null>(null);
+  const queuedHomeDataRefreshRef = useRef(false);
   const {
     location,
     locations,
@@ -321,23 +325,25 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
   }, [location, locations, setLocation]);
 
   useEffect(() => {
+    hasLoadedHomeDataRef.current = false;
+    queuedHomeDataRefreshRef.current = false;
     setPredictedItems([]);
     setReorderOrder(null);
     setActiveReminder(null);
-    setOrderInsightsStatus(location?.id ? 'loading' : 'ready');
   }, [location?.id]);
 
-  const loadHomeData = useCallback(async () => {
-    const locationId = location?.id ?? null;
+  const runHomeDataLoad = useCallback(async (background = false) => {
+    const locationId = useAuthStore.getState().location?.id ?? null;
     if (!locationId) {
+      hasLoadedHomeDataRef.current = false;
       setPredictedItems([]);
       setReorderOrder(null);
       setActiveReminder(null);
-      setOrderInsightsStatus('ready');
       return;
     }
 
-    setOrderInsightsStatus('loading');
+    const shouldPreserveCurrentState =
+      background || hasLoadedHomeDataRef.current;
 
     const [insightsResult, reminderResult] = await Promise.allSettled([
       withTimeout(
@@ -359,12 +365,10 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
     if (insightsResult.status === 'fulfilled') {
       setPredictedItems(insightsResult.value.predictedItems);
       setReorderOrder(insightsResult.value.reorderOrder);
-      setOrderInsightsStatus('ready');
     } else if (isHomeDataTimeoutError(insightsResult.reason)) {
-      setOrderInsightsStatus('ready');
+      // Keep the current empty or populated card state on transient timeouts.
     } else {
       console.error('Unable to load order insights', insightsResult.reason);
-      setOrderInsightsStatus('error');
     }
 
     if (reminderResult.status === 'fulfilled') {
@@ -373,9 +377,38 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
       // Keep the current banner state on transient timeouts.
     } else {
       console.error('Unable to load home reminder', reminderResult.reason);
-      setActiveReminder(null);
+      if (!shouldPreserveCurrentState) {
+        setActiveReminder(null);
+      }
     }
-  }, [location?.id]);
+
+    hasLoadedHomeDataRef.current = true;
+  }, []);
+
+  const loadHomeData = useCallback(
+    async ({ background = false }: LoadHomeDataOptions = {}) => {
+      if (homeDataRefreshPromiseRef.current) {
+        queuedHomeDataRefreshRef.current = true;
+        await homeDataRefreshPromiseRef.current;
+        return;
+      }
+
+      const refreshPromise = (async () => {
+        await runHomeDataLoad(background);
+
+        while (queuedHomeDataRefreshRef.current) {
+          queuedHomeDataRefreshRef.current = false;
+          await runHomeDataLoad(true);
+        }
+      })().finally(() => {
+        homeDataRefreshPromiseRef.current = null;
+      });
+
+      homeDataRefreshPromiseRef.current = refreshPromise;
+      await refreshPromise;
+    },
+    [runHomeDataLoad],
+  );
 
   const { refreshing, onRefresh } = useManagedRefresh(
     useCallback(async () => {
@@ -388,7 +421,17 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
 
   useFocusEffect(
     useCallback(() => {
-      void loadHomeData();
+      void loadHomeData({
+        background: hasLoadedHomeDataRef.current,
+      });
+
+      const intervalId = setInterval(() => {
+        void loadHomeData({ background: true });
+      }, HOME_BACKGROUND_REFRESH_INTERVAL_MS);
+
+      return () => {
+        clearInterval(intervalId);
+      };
     }, [loadHomeData]),
   );
 
@@ -410,11 +453,6 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
     [filteredPreviewBrowseItems],
   );
   const hasSuggestedItems = predictedItems.length > 0;
-  const hasQuickAction = Boolean(reorderOrder);
-  const showSuggestedLoading =
-    orderInsightsStatus === 'loading' && !hasSuggestedItems;
-  const showQuickActionsLoading =
-    orderInsightsStatus === 'loading' && !hasQuickAction;
 
   const homeDate = useMemo(() => new Date(), []);
   const greeting = getGreeting(homeDate);
@@ -620,9 +658,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
           actionLabel={predictedItems.length > 0 ? 'Add all' : undefined}
           onPressAction={predictedItems.length > 0 ? handleAddAllPredicted : undefined}
         >
-          {showSuggestedLoading ? (
-            <HomeModuleLoading text="Loading suggestions..." />
-          ) : hasSuggestedItems ? (
+          {hasSuggestedItems ? (
             <FlatList
               data={predictedItems}
               renderItem={renderSuggestedItem}
@@ -633,21 +669,10 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
                 gap: ds.spacing(10),
               }}
             />
-          ) : orderInsightsStatus === 'error' ? (
-            <HomeModuleState
-              icon="cloud-offline-outline"
-              title="Suggestions unavailable"
-              message="We couldn't load suggestions right now."
-              actionLabel="Retry"
-              onPressAction={() => {
-                void loadHomeData();
-              }}
-              tone="error"
-            />
           ) : (
             <HomeModuleState
               icon="sparkles-outline"
-              title={location?.id ? 'No suggestions yet' : 'Choose a location'}
+              title={location?.id ? 'No suggestions found' : 'Choose a location'}
               message={
                 location?.id
                   ? 'Recent ordering patterns will show up here when they are available.'
@@ -660,9 +685,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
 
       <View style={{ marginTop: ds.spacing(20) }}>
         <HomeModuleCard title="Quick Actions">
-          {showQuickActionsLoading ? (
-            <HomeModuleLoading text="Loading quick actions..." />
-          ) : reorderOrder ? (
+          {reorderOrder ? (
             <TouchableOpacity
               accessibilityRole="button"
               accessibilityLabel={`Reorder last ${formatOrderDayLabel(reorderOrder.createdAt)}`}
@@ -723,21 +746,10 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
                 color={glassColors.textSecondary}
               />
             </TouchableOpacity>
-          ) : orderInsightsStatus === 'error' ? (
-            <HomeModuleState
-              icon="cloud-offline-outline"
-              title="Quick actions unavailable"
-              message="We couldn't load your latest shortcuts right now."
-              actionLabel="Retry"
-              onPressAction={() => {
-                void loadHomeData();
-              }}
-              tone="error"
-            />
           ) : (
             <HomeModuleState
               icon="flash-outline"
-              title={location?.id ? 'No quick actions yet' : 'Choose a location'}
+              title={location?.id ? 'No quick actions found' : 'Choose a location'}
               message={
                 location?.id
                   ? 'Your latest reorder shortcuts will appear here once recent orders are available.'

@@ -1,4 +1,10 @@
 import { getDailySuggestions, type DailySuggestionsResponseDTO } from '@/lib/api/client';
+import {
+  fetchLocationOrderInsights,
+  getItemSupplierLabel,
+  type HistoricalOrderSummary,
+  type PredictedOrderItem,
+} from '@/features/ordering/orderInsights';
 
 export interface SuggestionItem {
   item_id: string;
@@ -44,6 +50,12 @@ export interface SmartOrderData {
   recentOrders: RecentOrder[];
 }
 
+const CLIENT_FALLBACK_BLOCKLIST = [
+  'No internet connection',
+  'Network error',
+  'timed out',
+];
+
 function getTodayDayLabel(): string {
   return `${new Date().toLocaleDateString('en-US', { weekday: 'long' })}s`;
 }
@@ -59,6 +71,86 @@ export function createEmptySuggestions(): SuggestionsData {
 
 function createEmptyRecentOrders(): RecentOrder[] {
   return [];
+}
+
+function shouldUseClientFallback(error: string): boolean {
+  return !CLIENT_FALLBACK_BLOCKLIST.some((pattern) => error.includes(pattern));
+}
+
+function formatRecentOrderDisplayDate(dateString: string): string {
+  return new Date(dateString).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function mapPredictedItemToSuggestionItem(
+  item: PredictedOrderItem,
+  totalPastOrders: number,
+): SuggestionItem {
+  const frequency =
+    totalPastOrders > 0 ? item.occurrenceCount / totalPastOrders : 0;
+
+  return {
+    item_id: item.inventoryItemId,
+    item_name: item.name,
+    suggested_qty: Math.max(1, item.quantity),
+    unit_type: item.unitType,
+    unit: item.unitType === 'base' ? item.baseUnit : item.packUnit,
+    supplier_name: getItemSupplierLabel(item),
+    frequency,
+    times_ordered: item.occurrenceCount,
+    total_orders: totalPastOrders,
+    confidence_tier:
+      frequency >= 0.66 ? 'high' : frequency >= 0.4 ? 'medium' : 'low',
+  };
+}
+
+function mapHistoricalOrderToRecentOrder(order: HistoricalOrderSummary): RecentOrder {
+  return {
+    id: order.id,
+    created_at: order.createdAt,
+    display_date: formatRecentOrderDisplayDate(order.createdAt),
+    day_of_week: new Date(order.createdAt).getDay(),
+    item_count: order.itemCount,
+    suppliers: Array.from(
+      new Set(order.items.map((item) => getItemSupplierLabel(item)).filter(Boolean)),
+    ),
+    items: order.items.map((item) => ({
+      item_id: item.inventoryItemId,
+      item_name: item.name,
+      quantity: item.quantity,
+      unit_type: item.unitType,
+      unit: item.unitType === 'base' ? item.baseUnit : item.packUnit,
+      supplier_name: getItemSupplierLabel(item),
+    })),
+  };
+}
+
+async function fetchSmartOrderDataFromClient(locationId: string): Promise<SmartOrderData> {
+  const insights = await fetchLocationOrderInsights(locationId);
+  const totalPastOrders = Math.max(
+    insights.predictedItems.reduce(
+      (highestCount, item) => Math.max(highestCount, item.occurrenceCount),
+      0,
+    ),
+    insights.recentOrders.filter(
+      (order) => new Date(order.createdAt).getDay() === new Date().getDay(),
+    ).length,
+  );
+
+  return {
+    suggestions: {
+      day_label: getTodayDayLabel(),
+      total_past_orders: totalPastOrders,
+      source: 'heuristic',
+      items: insights.predictedItems.map((item) =>
+        mapPredictedItemToSuggestionItem(item, totalPastOrders),
+      ),
+    },
+    recentOrders: insights.recentOrders.map(mapHistoricalOrderToRecentOrder),
+  };
 }
 
 function normalizeSuggestionsResponse(data: DailySuggestionsResponseDTO | null): SuggestionsData {
@@ -153,6 +245,17 @@ function normalizeRecentOrders(data: DailySuggestionsResponseDTO | null): Recent
 export async function fetchSmartOrderData(locationId: string): Promise<SmartOrderData> {
   const result = await getDailySuggestions({ locationId });
   if (result.error) {
+    if (shouldUseClientFallback(result.error)) {
+      try {
+        return await fetchSmartOrderDataFromClient(locationId);
+      } catch (fallbackError) {
+        console.warn('Daily suggestions edge function failed and client fallback also failed.', {
+          apiError: result.error,
+          fallbackError,
+        });
+      }
+    }
+
     throw new Error(result.error);
   }
 

@@ -37,7 +37,6 @@ function makeItem(overrides: Partial<OrderItemPayload> = {}): OrderItemPayload {
 function makeRequest(overrides: Partial<SubmitOrderRequest> = {}): SubmitOrderRequest {
   return {
     orderId: 'order-uuid-001',
-    orgId: 'org-001',
     locationId: 'loc-001',
     userId: 'user-001',
     status: 'submitted',
@@ -139,8 +138,8 @@ describe('validateSubmitRequest', () => {
     expect(result).toBe('Item 2 is missing a product reference');
   });
 
-  test('accepts request with null orgId (server resolves it)', () => {
-    expect(validateSubmitRequest(makeRequest({ orgId: null }))).toBeNull();
+  test('does not require organization scope in the request shape', () => {
+    expect(validateSubmitRequest(makeRequest())).toBeNull();
   });
 
   test('accepts remaining-mode item with valid quantity', () => {

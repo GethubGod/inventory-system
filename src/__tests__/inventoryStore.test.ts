@@ -27,11 +27,31 @@ jest.mock('../store/authStore', () => ({
 
 import { useInventoryStore } from '../store/inventoryStore';
 
+function createInventoryQueryResult(result: { data: unknown; error: unknown }) {
+  const query: {
+    select: jest.Mock;
+    eq: jest.Mock;
+    limit: jest.Mock;
+  } = {
+    select: jest.fn(),
+    eq: jest.fn(),
+    limit: jest.fn(async () => result),
+  };
+
+  query.select.mockReturnValue(query);
+  query.eq.mockReturnValue(query);
+
+  return query;
+}
+
 describe('useInventoryStore.fetchItems', () => {
   let consoleWarnSpy: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    listInventoryMock.mockReset();
+    signOutMock.mockReset();
+    supabaseMock.from.mockReset();
     consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     useInventoryStore.setState(useInventoryStore.getInitialState(), true);
   });
@@ -60,6 +80,11 @@ describe('useInventoryStore.fetchItems', () => {
       data: null,
       error: 'Network error — please check your connection.',
     });
+    const fallbackQuery = createInventoryQueryResult({
+      data: null,
+      error: new Error('fallback failed'),
+    });
+    supabaseMock.from.mockReturnValue(fallbackQuery);
 
     await expect(useInventoryStore.getState().fetchItems()).resolves.toBeUndefined();
 
@@ -68,5 +93,55 @@ describe('useInventoryStore.fetchItems', () => {
       'Network error — please check your connection.'
     );
     expect(useInventoryStore.getState().isLoading).toBe(false);
+  });
+
+  test('falls back to a direct inventory query when the API returns no items', async () => {
+    listInventoryMock.mockResolvedValue({
+      data: [],
+      error: null,
+    });
+    const fallbackQuery = createInventoryQueryResult({
+      data: [
+        {
+          id: 'item-1',
+          name: 'Salmon',
+          category: 'fish',
+          supplier_category: 'fish_supplier',
+          supplier_id: 'supplier-1',
+          base_unit: 'lb',
+          pack_unit: 'case',
+          pack_size: 1,
+          active: true,
+          created_at: '2026-03-23T00:00:00.000Z',
+          created_by: 'user-1',
+        },
+      ],
+      error: null,
+    });
+    supabaseMock.from.mockReturnValue(fallbackQuery);
+
+    await expect(useInventoryStore.getState().fetchItems()).resolves.toBeUndefined();
+
+    expect(listInventoryMock).toHaveBeenCalledWith({
+      limit: 5000,
+    });
+    expect(supabaseMock.from).toHaveBeenCalledWith('inventory_items');
+    expect(fallbackQuery.eq.mock.calls).toContainEqual(['active', true]);
+    expect(useInventoryStore.getState().items).toEqual([
+      {
+        id: 'item-1',
+        name: 'Salmon',
+        category: 'fish',
+        supplier_category: 'fish_supplier',
+        supplier_id: 'supplier-1',
+        base_unit: 'lb',
+        pack_unit: 'case',
+        pack_size: 1,
+        active: true,
+        created_at: '2026-03-23T00:00:00.000Z',
+        created_by: 'user-1',
+      },
+    ]);
+    expect(useInventoryStore.getState().error).toBeNull();
   });
 });

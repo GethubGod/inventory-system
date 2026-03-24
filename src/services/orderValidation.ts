@@ -20,7 +20,6 @@ export interface OrderItemPayload {
 
 export interface SubmitOrderRequest {
   orderId: string;
-  orgId: string | null;
   locationId: string;
   userId: string;
   status: 'submitted' | 'draft';

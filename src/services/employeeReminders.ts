@@ -101,7 +101,6 @@ export interface RecurringReminderRule {
 
 export interface ReminderSystemSettings {
   id?: string;
-  org_id: string;
   overdue_threshold_days: number;
   reminder_rate_limit_minutes: number;
   recurring_window_minutes: number;
@@ -624,8 +623,6 @@ export async function updateReminderSystemSettings(patch: {
 
   if (existing?.id) {
     query = query.eq('id', existing.id);
-  } else if (existing?.org_id) {
-    query = query.eq('org_id', existing.org_id);
   } else {
     throw new Error('Reminder settings row not found.');
   }

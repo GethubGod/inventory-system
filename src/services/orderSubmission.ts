@@ -123,7 +123,6 @@ export async function submitOrder(req: SubmitOrderRequest): Promise<SubmitOrderR
   // ── Build RPC payload ──
   const rpcPayload = {
     p_id: req.orderId,
-    p_org_id: req.orgId,
     p_location_id: req.locationId,
     p_user_id: req.userId,
     p_status: req.status,
@@ -309,7 +308,6 @@ function mapRpcResponseToOrder(
   return {
     id: data.id,
     order_number: data.order_number,
-    org_id: data.org_id,
     user_id: data.user_id ?? userId,
     location_id: data.location_id ?? locationId,
     status: data.status ?? 'submitted',

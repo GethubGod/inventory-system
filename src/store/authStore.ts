@@ -6,7 +6,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { User, Location, UserRole, Profile, AuthProvider } from '@/types';
 import { clearSupabaseStoredSession, supabase } from '@/lib/supabase';
-import { getUserContext, registerSessionGetter } from '@/lib/api/client';
+import { registerSessionGetter } from '@/lib/api/client';
 import { validateAccessCode } from '@/services/accessCodes';
 
 type ViewMode = 'employee' | 'manager';
@@ -30,6 +30,7 @@ let userScopedResetPromise: Promise<void> | null = null;
 let authStateTransitionId = 0;
 let identityRepairRpcAvailable: boolean | null = null;
 let warnedIdentityRepairRpcUnavailable = false;
+let explicitSignOutInProgress = false;
 const pendingDeferredAuthTaskTimeouts = new Set<ReturnType<typeof setTimeout>>();
 const SIGN_OUT_TIMEOUT_MS = 5_000;
 const DELETE_SELF_NETWORK_TIMEOUT_MS = 20_000;
@@ -462,7 +463,6 @@ interface AuthState {
   profile: Profile | null;
   location: Location | null;
   locations: Location[];
-  orgId: string | null;
   isLoading: boolean;
   isInitialized: boolean;
   viewMode: ViewMode;
@@ -597,7 +597,6 @@ export const useAuthStore = create<AuthState>()(
           user: null,
           profile: null,
           location: null,
-          orgId: null,
           viewMode: 'employee',
         });
       };
@@ -638,10 +637,12 @@ export const useAuthStore = create<AuthState>()(
 
       const resetSignedOutClientState = async (transitionId?: number) => {
         applySignedOutState();
+        clearExplicitSignOutFlag();
         await clearSignedOutClientStateForTransition(transitionId);
       };
 
       const forceSignOutSuspended = async (message = SUSPENDED_ACCOUNT_MESSAGE) => {
+        explicitSignOutInProgress = true;
         const transitionId = beginAuthTransition();
         try {
           void signOutLocalSupabaseSession('Failed to sign out suspended session cleanly');
@@ -650,6 +651,126 @@ export const useAuthStore = create<AuthState>()(
         }
 
         throw new Error(message);
+      };
+
+      const clearExplicitSignOutFlag = () => {
+        explicitSignOutInProgress = false;
+      };
+
+      const applyRecoveredSession = async (
+        recoveredSession: Session,
+        transitionId: number,
+        recoverySource: string
+      ) => {
+        assertFreshTransition(transitionId);
+        clearExplicitSignOutFlag();
+
+        const currentState = get();
+        const currentUserId = currentState.user?.id ?? null;
+        const currentProfileId = currentState.profile?.id ?? null;
+
+        set({ session: recoveredSession });
+        activeSessionUserId = recoveredSession.user.id;
+
+        const needsHydration =
+          !currentState.user ||
+          !currentState.profile ||
+          currentUserId !== recoveredSession.user.id ||
+          currentProfileId !== recoveredSession.user.id;
+
+        if (!needsHydration) {
+          return;
+        }
+
+        try {
+          await hydrateAuthenticatedSession(recoveredSession, {
+            transitionId,
+            repairIfNeeded: true,
+            bootstrapInput: {
+              email: recoveredSession.user.email ?? null,
+              profileCompleted: true,
+            },
+            shouldThrowOnSuspended: false,
+          });
+        } catch (error) {
+          if (isTransitionStaleError(error)) {
+            throw error;
+          }
+          console.warn(
+            `Recovered auth session via ${recoverySource}, but full hydration failed (non-fatal).`,
+            error
+          );
+        }
+      };
+
+      const recoverUnexpectedSignedOutSession = async (transitionId: number) => {
+        let verifiedSession: Session | null = null;
+
+        try {
+          const {
+            data: { session: latestSession },
+          } = await supabase.auth.getSession();
+          verifiedSession = latestSession ?? null;
+        } catch (error) {
+          console.warn('Failed to verify unexpected signed-out auth event.', error);
+        }
+
+        assertFreshTransition(transitionId);
+
+        if (verifiedSession?.user) {
+          await applyRecoveredSession(verifiedSession, transitionId, 'getSession');
+          return true;
+        }
+
+        const preservedSession = get().session;
+
+        if (!preservedSession?.user) {
+          return false;
+        }
+
+        try {
+          const { data: restoredData, error: restoredError } = await supabase.auth.setSession({
+            access_token: preservedSession.access_token,
+            refresh_token: preservedSession.refresh_token,
+          });
+
+          if (restoredError) {
+            console.warn('Failed to restore auth session after unexpected signed-out event.', restoredError);
+          } else if (restoredData.session?.user) {
+            await applyRecoveredSession(restoredData.session, transitionId, 'setSession');
+            return true;
+          }
+        } catch (error) {
+          console.warn('Unexpected error while restoring auth session after signed-out event.', error);
+        }
+
+        assertFreshTransition(transitionId);
+
+        try {
+          const { data: refreshedData, error: refreshedError } = await supabase.auth.refreshSession();
+
+          if (refreshedError) {
+            console.warn(
+              'Failed to refresh auth session after unexpected signed-out event.',
+              refreshedError
+            );
+          } else if (refreshedData.session?.user) {
+            await applyRecoveredSession(refreshedData.session, transitionId, 'refreshSession');
+            return true;
+          }
+        } catch (error) {
+          console.warn('Unexpected error while refreshing auth session after signed-out event.', error);
+        }
+
+        assertFreshTransition(transitionId);
+
+        console.warn(
+          'Ignoring unexpected signed-out auth event and preserving the current in-memory session.'
+        );
+        clearExplicitSignOutFlag();
+        set({ session: preservedSession });
+        activeSessionUserId = preservedSession.user.id;
+        return true;
       };
 
       const resolveAndSetLocation = async (locationId: string | null, expectedUserId: string) => {
@@ -776,6 +897,7 @@ export const useAuthStore = create<AuthState>()(
 
         if (profile?.is_suspended) {
           if (params?.shouldThrowOnSuspended === false) {
+            explicitSignOutInProgress = true;
             const transitionId = beginAuthTransition();
             void signOutLocalSupabaseSession('Failed to sign out suspended session cleanly');
             await resetSignedOutClientState(transitionId);
@@ -897,19 +1019,6 @@ export const useAuthStore = create<AuthState>()(
         return resolvedUser;
       };
 
-      const resolveAndSetOrgId = async (expectedUserId = get().session?.user?.id ?? null) => {
-        try {
-          const result = await getUserContext();
-          if (!expectedUserId || get().session?.user?.id !== expectedUserId) {
-            return;
-          }
-          const orgId = result.data?.membership?.orgId ?? result.data?.organization?.id ?? null;
-          set({ orgId });
-        } catch (e) {
-          console.warn('Failed to resolve orgId from user context', e);
-        }
-      };
-
       const hydrateAuthenticatedSession = async (
         session: Session,
         params?: {
@@ -923,6 +1032,7 @@ export const useAuthStore = create<AuthState>()(
         const nextUserId = session.user.id;
         const previousUserId = activeSessionUserId ?? get().user?.id ?? null;
 
+        clearExplicitSignOutFlag();
         set({ session });
 
         if (previousUserId && previousUserId !== nextUserId) {
@@ -1014,9 +1124,6 @@ export const useAuthStore = create<AuthState>()(
           user = fallbackUser;
         }
 
-        await resolveAndSetOrgId(nextUserId);
-        assertFreshTransition(params?.transitionId);
-
         subscribeToProfileChanges(nextUserId, async () => {
           try {
             await refreshProfileAndHandleSuspension({
@@ -1037,7 +1144,6 @@ export const useAuthStore = create<AuthState>()(
       profile: null,
       location: null,
       locations: [],
-      orgId: null,
       isLoading: true,
       isInitialized: false,
       viewMode: 'employee',
@@ -1187,30 +1293,19 @@ export const useAuthStore = create<AuthState>()(
 
             if (event === 'SIGNED_OUT') {
               scheduleDeferredAuthTask(async () => {
-                let activeSession: Session | null = null;
-
-                try {
-                  const {
-                    data: { session: latestSession },
-                  } = await supabase.auth.getSession();
-                  activeSession = latestSession ?? null;
-                } catch (error) {
-                  console.warn('Failed to verify signed-out auth event; treating as signed out.', error);
+                if (explicitSignOutInProgress) {
+                  try {
+                    await resetSignedOutClientState(transitionId);
+                  } finally {
+                    clearExplicitSignOutFlag();
+                  }
+                  return;
                 }
 
+                const recovered = await recoverUnexpectedSignedOutSession(transitionId);
                 assertFreshTransition(transitionId);
 
-                if (activeSession?.user) {
-                  set({ session: activeSession });
-                  await hydrateAuthenticatedSession(activeSession, {
-                    transitionId,
-                    repairIfNeeded: true,
-                    bootstrapInput: {
-                      email: activeSession.user.email ?? null,
-                      profileCompleted: true,
-                    },
-                    shouldThrowOnSuspended: false,
-                  });
+                if (recovered) {
                   return;
                 }
 
@@ -1457,6 +1552,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       signOut: async () => {
+        explicitSignOutInProgress = true;
         const transitionId = beginAuthTransition();
         await Promise.all([
           signOutLocalSupabaseSession('Supabase sign-out failed; clearing local session anyway.'),
@@ -1546,6 +1642,7 @@ export const useAuthStore = create<AuthState>()(
           }
 
           try {
+            explicitSignOutInProgress = true;
             await withTimeout(
               signOutLocalSupabaseSession(
                 'Sign-out after delete-self failed; clearing local session anyway.'
@@ -1592,7 +1689,6 @@ export const useAuthStore = create<AuthState>()(
             profile: null,
             location: null,
             locations: [],
-            orgId: null,
             viewMode: 'employee',
           });
         } finally {
@@ -1649,7 +1745,6 @@ export const useAuthStore = create<AuthState>()(
         location: state.location,
         user: state.user,
         profile: state.profile,
-        orgId: state.orgId,
         viewMode: state.viewMode,
       }),
     }

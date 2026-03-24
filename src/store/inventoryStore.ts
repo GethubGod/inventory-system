@@ -4,7 +4,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { InventoryItem, ItemCategory, SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { listInventory } from '@/lib/api/client';
-import { useAuthStore } from './authStore';
 
 export interface NewInventoryItem {
   name: string;
@@ -40,7 +39,23 @@ interface InventoryState {
 }
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const INVENTORY_FETCH_LIMIT = 5000;
 const SESSION_EXPIRED_MESSAGE = 'Session expired. Please sign in again.';
+const DIRECT_INVENTORY_OPTIONAL_COLUMNS = ['supplier_id', 'created_by'] as const;
+
+type DirectInventoryRow = {
+  id: string;
+  name: string;
+  category: ItemCategory;
+  supplier_category?: SupplierCategory | null;
+  supplier_id?: string | null;
+  base_unit: string;
+  pack_unit?: string | null;
+  pack_size?: number | null;
+  active?: boolean | null;
+  created_at?: string | null;
+  created_by?: string | null;
+};
 
 function extractMissingSchemaColumn(error: unknown): string | null {
   if (!error || typeof error !== 'object') return null;
@@ -54,6 +69,98 @@ function extractMissingSchemaColumn(error: unknown): string | null {
 function isSessionExpiredErrorMessage(error: unknown): boolean {
   if (typeof error !== 'string') return false;
   return error.trim().toLowerCase() === SESSION_EXPIRED_MESSAGE.toLowerCase();
+}
+
+function isMissingColumnError(error: unknown, columnName: string): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const err = error as {
+    code?: string;
+    details?: string;
+    hint?: string;
+    message?: string;
+  };
+  const text = `${err.message ?? ''} ${err.details ?? ''} ${err.hint ?? ''}`.toLowerCase();
+  if (!text.includes(columnName.toLowerCase())) return false;
+  return (
+    err.code === 'PGRST204' ||
+    err.code === '42703' ||
+    text.includes('could not find') ||
+    text.includes('does not exist')
+  );
+}
+
+function sortInventoryItems(items: InventoryItem[]): InventoryItem[] {
+  return [...items].sort((a, b) => {
+    if (a.category !== b.category) return a.category.localeCompare(b.category);
+    return a.name.localeCompare(b.name);
+  });
+}
+
+function mapDirectInventoryRow(row: DirectInventoryRow): InventoryItem {
+  return {
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    supplier_category: row.supplier_category ?? 'main_distributor',
+    supplier_id: row.supplier_id ?? null,
+    base_unit: row.base_unit,
+    pack_unit: row.pack_unit ?? '',
+    pack_size: row.pack_size ?? 1,
+    active: row.active !== false,
+    created_at: row.created_at ?? '',
+    created_by: row.created_by ?? null,
+  };
+}
+
+async function listInventoryDirect(options?: {
+  limit?: number;
+}): Promise<InventoryItem[]> {
+  let selectColumns = [
+    'id',
+    'name',
+    'category',
+    'supplier_category',
+    'supplier_id',
+    'base_unit',
+    'pack_unit',
+    'pack_size',
+    'active',
+    'created_at',
+    'created_by',
+  ];
+  let attempts = 0;
+
+  while (attempts < 4) {
+    let query = supabase
+      .from('inventory_items')
+      .select(selectColumns.join(','))
+      .eq('active', true);
+
+    const { data, error } = await query.limit(options?.limit ?? INVENTORY_FETCH_LIMIT);
+
+    if (!error) {
+      return sortInventoryItems(
+        (data ?? []).map((row: unknown) =>
+          mapDirectInventoryRow(row as DirectInventoryRow)
+        )
+      );
+    }
+
+    const optionalColumn = DIRECT_INVENTORY_OPTIONAL_COLUMNS.find(
+      (column) =>
+        selectColumns.includes(column) && isMissingColumnError(error, column)
+    );
+
+    if (optionalColumn) {
+      selectColumns = selectColumns.filter((column) => column !== optionalColumn);
+      attempts += 1;
+      continue;
+    }
+
+    throw error;
+  }
+
+  throw new Error('Failed to load inventory from the database.');
 }
 
 export const useInventoryStore = create<InventoryState>()(
@@ -81,24 +188,56 @@ export const useInventoryStore = create<InventoryState>()(
 
         set({ isLoading: true, error: null });
         try {
-          const result = await listInventory({ limit: 5000 });
+          const result = await listInventory({
+            limit: INVENTORY_FETCH_LIMIT,
+          });
           if (result.error) {
             if (isSessionExpiredErrorMessage(result.error)) {
               set({ error: result.error });
               return;
             }
+          }
+          let resolvedItems = result.data ?? null;
 
+          const shouldTryDirectFallback =
+            Boolean(result.error) ||
+            (Array.isArray(result.data) && result.data.length === 0);
+
+          if (shouldTryDirectFallback) {
+            try {
+              const directItems = await listInventoryDirect({
+                limit: INVENTORY_FETCH_LIMIT,
+              });
+
+              if (!result.error || directItems.length > 0) {
+                resolvedItems = directItems;
+              }
+
+              if (result.error && directItems.length > 0) {
+                console.warn(
+                  'Inventory API failed; using direct inventory query fallback.',
+                  result.error
+                );
+              }
+            } catch (fallbackError) {
+              if (result.error) {
+                console.warn(
+                  'Failed to fetch inventory items via API and direct fallback.',
+                  fallbackError
+                );
+              }
+            }
+          }
+
+          if (result.error && (!resolvedItems || resolvedItems.length === 0)) {
             console.warn('Failed to fetch inventory items.', result.error);
             set({ error: result.error });
             return;
           }
 
-          const activeItems = (result.data ?? [])
-            .filter((item) => item.active)
-            .sort((a, b) => {
-              if (a.category !== b.category) return a.category.localeCompare(b.category);
-              return a.name.localeCompare(b.name);
-            });
+          const activeItems = sortInventoryItems(
+            (resolvedItems ?? []).filter((item) => item.active)
+          );
 
           set({
             items: activeItems,
@@ -164,12 +303,7 @@ export const useInventoryStore = create<InventoryState>()(
           if (data) {
             // Add to local state
             set((state) => ({
-              items: [...state.items, data].sort((a, b) => {
-                if (a.category !== b.category) {
-                  return a.category.localeCompare(b.category);
-                }
-                return a.name.localeCompare(b.name);
-              }),
+              items: sortInventoryItems([...state.items, data]),
               lastFetched: Date.now(),
             }));
 

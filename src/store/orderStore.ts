@@ -40,7 +40,6 @@ import {
   tableFlags,
   orderLaterMoveInFlightIds,
   createCartItemId,
-  resolveCurrentOrgId,
   toValidNumber,
   normalizeNote,
   isSubmittableCartItem,
@@ -634,7 +633,6 @@ export const useOrderStore = create<OrderState>()(
         try {
           const result = await submitOrderService({
             orderId: generateUUID(),
-            orgId: resolveCurrentOrgId(),
             locationId,
             userId,
             status: 'draft',
@@ -668,7 +666,6 @@ export const useOrderStore = create<OrderState>()(
         try {
           const result = await submitOrderService({
             orderId: generateUUID(),
-            orgId: resolveCurrentOrgId(),
             locationId,
             userId,
             status: 'submitted',
@@ -708,7 +705,6 @@ export const useOrderStore = create<OrderState>()(
         try {
           const result = await submitOrderService({
             orderId: generateUUID(),
-            orgId: resolveCurrentOrgId(),
             locationId: submitLocationId,
             userId,
             status: 'submitted',
