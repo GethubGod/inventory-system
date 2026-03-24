@@ -37,7 +37,7 @@ export function ExpandableSection({
   defaultExpanded = false,
 }: ExpandableSectionProps) {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const { reduceMotion } = useDisplayStore();
+  const reduceMotion = useDisplayStore((state) => state.reduceMotion);
   const ds = useScaledStyles();
 
   const toggle = () => {

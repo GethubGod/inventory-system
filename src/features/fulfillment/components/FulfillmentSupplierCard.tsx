@@ -5,7 +5,9 @@ import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   glassColors,
   glassHairlineWidth,
+  glassRadii,
 } from '@/theme/design';
+import { GlassSurface } from '@/components';
 import { FulfillmentExpandedSupplierItems } from './FulfillmentExpandedSupplierItems';
 
 const AVATAR_PALETTE = [
@@ -55,7 +57,7 @@ function AvatarStack({ employees }: { employees: FulfillmentSupplierEmployee[] }
   const visibleEmployees = employees.slice(0, 3);
 
   return (
-    <View style={{ flexDirection: 'row', marginRight: 10 }}>
+    <View style={{ flexDirection: 'row', marginRight: 12 }}>
       {visibleEmployees.map((employee, index) => {
         const palette = AVATAR_PALETTE[index % AVATAR_PALETTE.length];
         return (
@@ -171,12 +173,10 @@ export function FulfillmentSupplierCard({
   );
 
   return (
-    <View
+    <GlassSurface
+      intensity="subtle"
       style={{
-        backgroundColor: '#FBFAF8',
-        borderRadius: 22,
-        borderWidth: glassHairlineWidth,
-        borderColor: '#DEDAD4',
+        borderRadius: glassRadii.surface,
         overflow: 'hidden',
       }}
     >
@@ -184,32 +184,14 @@ export function FulfillmentSupplierCard({
         onPress={onToggle}
         style={({ pressed }) => ({
           opacity: pressed ? 0.94 : 1,
-          paddingHorizontal: ds.spacing(16),
-          paddingTop: ds.spacing(16),
-          paddingBottom: isExpanded ? ds.spacing(10) : ds.spacing(14),
+          paddingHorizontal: ds.spacing(20),
+          paddingTop: ds.spacing(20),
+          paddingBottom: isExpanded ? ds.spacing(16) : ds.spacing(20),
         })}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1, paddingRight: ds.spacing(12) }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Animated.View
-                style={[
-                  {
-                    width: 16,
-                    marginRight: ds.spacing(10),
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  },
-                  chevronStyle,
-                ]}
-              >
-                <Ionicons
-                  name="chevron-down"
-                  size={13}
-                  color="#9A9188"
-                />
-              </Animated.View>
-
               <Text
                 numberOfLines={1}
                 style={{
@@ -244,21 +226,37 @@ export function FulfillmentSupplierCard({
                   </Text>
                 </View>
               ) : null}
+
+              <Animated.View
+                style={[
+                  {
+                    marginLeft: ds.spacing(8),
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  },
+                  chevronStyle,
+                ]}
+              >
+                <Ionicons
+                  name="chevron-down"
+                  size={14}
+                  color={glassColors.textSecondary}
+                />
+              </Animated.View>
             </View>
 
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                marginTop: ds.spacing(9),
-                marginLeft: 22,
+                marginTop: ds.spacing(14),
               }}
             >
               <AvatarStack employees={employees} />
               <Text
                 numberOfLines={1}
                 style={{
-                  color: '#8D847A',
+                  color: glassColors.textSecondary,
                   fontSize: ds.fontSize(12),
                   fontWeight: '500',
                   flex: 1,
@@ -270,11 +268,10 @@ export function FulfillmentSupplierCard({
 
             <Text
               style={{
-                color: '#8D847A',
+                color: glassColors.textSecondary,
                 fontSize: ds.fontSize(12),
                 fontWeight: '600',
-                marginTop: ds.spacing(8),
-                marginLeft: 22,
+                marginTop: ds.spacing(12),
               }}
             >
               {summaryStats}
@@ -289,23 +286,36 @@ export function FulfillmentSupplierCard({
               }}
               activeOpacity={0.88}
               style={{
-                width: 124,
-                height: 52,
-                borderRadius: 16,
+                minHeight: Math.max(42, ds.buttonH),
+                paddingHorizontal: ds.spacing(15),
+                paddingVertical: ds.spacing(10),
+                borderRadius: glassRadii.pill,
                 backgroundColor: glassColors.accent,
+                flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
+                shadowColor: 'rgba(15, 23, 42, 0.22)',
+                shadowOpacity: 0.12,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 6 },
+                elevation: 2,
               }}
             >
               <Text
                 style={{
                   color: glassColors.textOnPrimary,
-                  fontSize: ds.fontSize(15),
+                  fontSize: ds.fontSize(14),
                   fontWeight: '700',
                 }}
               >
                 Order
               </Text>
+              <Ionicons
+                name="chevron-forward"
+                size={ds.icon(16)}
+                color={glassColors.textOnPrimary}
+                style={{ marginLeft: ds.spacing(4) }}
+              />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -327,6 +337,6 @@ export function FulfillmentSupplierCard({
           />
         </Animated.View>
       ) : null}
-    </View>
+    </GlassSurface>
   );
 }

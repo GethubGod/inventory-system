@@ -3,7 +3,7 @@ import type { OrderingMode } from './types';
 export const EMPLOYEE_ORDERING_MODE: OrderingMode = {
   scope: 'employee',
   quickOrderRoute: '/quick-order',
-  cartRoute: '/cart',
+  cartRoute: '/(tabs)/cart',
   browseRoute: '/(tabs)',
   inputAccessoryId: 'quickOrderInput',
   backBehavior: 'back',

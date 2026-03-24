@@ -7,12 +7,12 @@ import React, {
 } from 'react';
 import {
   Alert,
-  FlatList,
   RefreshControl,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -494,7 +494,7 @@ export function SmartOrderScreen({
                   overflow: 'hidden',
                 }}
               >
-                <FlatList
+                <FlashList
                   data={suggestions.items}
                   renderItem={renderSuggestionRow}
                   keyExtractor={getSuggestionKey}
@@ -632,7 +632,7 @@ export function SmartOrderScreen({
       style={{ flex: 1, backgroundColor: glassColors.background }}
       edges={['top', 'left', 'right']}
     >
-      <FlatList
+      <FlashList
         data={recentOrders}
         renderItem={renderRecentOrder}
         keyExtractor={(item) => item.id}

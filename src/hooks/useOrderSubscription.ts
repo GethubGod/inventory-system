@@ -18,8 +18,8 @@ interface OrderChange {
 }
 
 export function useOrderSubscription() {
-  const { user } = useAuthStore();
-  const { notifications } = useSettingsStore();
+  const user = useAuthStore((state) => state.user);
+  const notifications = useSettingsStore((state) => state.notifications);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const previousStatusRef = useRef<Record<string, OrderStatus>>({});
   const managerRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);

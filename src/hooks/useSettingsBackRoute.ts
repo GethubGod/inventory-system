@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { type Href, useLocalSearchParams } from 'expo-router';
+import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from '@/store';
 import {
   getSettingsRootPath,
@@ -8,7 +9,14 @@ import {
 } from '@/lib/settingsNavigation';
 
 export function useSettingsNavigationContext(defaultOrigin?: SettingsOrigin) {
-  const { user, profile, session, viewMode } = useAuthStore();
+  const { user, profile, session, viewMode } = useAuthStore(
+    useShallow((state) => ({
+      user: state.user,
+      profile: state.profile,
+      session: state.session,
+      viewMode: state.viewMode,
+    }))
+  );
   const params = useLocalSearchParams<{
     origin?: string | string[];
     backTo?: string | string[];

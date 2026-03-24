@@ -614,7 +614,7 @@ function BrowseItemRowInner({
                   borderRadius: glassRadii.pill,
                   backgroundColor: glassColors.successSoft,
                   borderWidth: glassHairlineWidth,
-                  borderColor: 'rgba(52, 168, 83, 0.12)',
+                  borderColor: 'rgba(46, 125, 50, 0.18)',
                 }}
               >
                 <Text
@@ -734,6 +734,8 @@ function BrowseItemRowInner({
                   icon="remove"
                   onPress={handleDecrement}
                   accessibilityLabel={`Decrease ${item.name}`}
+                  backgroundColor="rgba(0, 0, 0, 0.06)"
+                  borderColor="rgba(0, 0, 0, 0.10)"
                 />
                 <TextInput
                   value={activeValueText}
@@ -766,6 +768,8 @@ function BrowseItemRowInner({
                   icon="add"
                   onPress={handleIncrement}
                   accessibilityLabel={`Increase ${item.name}`}
+                  backgroundColor="rgba(0, 0, 0, 0.06)"
+                  borderColor="rgba(0, 0, 0, 0.10)"
                 />
               </View>
 

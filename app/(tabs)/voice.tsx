@@ -1,7 +1,8 @@
 import React from 'react';
-import { SmartOrderScreen } from '@/features/smart/SmartOrderScreen';
-import { EMPLOYEE_ORDERING_MODE } from '@/features/ordering/modes';
+import { Redirect } from 'expo-router';
 
 export default function VoiceScreen() {
-  return <SmartOrderScreen mode={EMPLOYEE_ORDERING_MODE} />;
+  // Keep the employee route in place for launch stability, but do not expose
+  // the Smart Order page in employee mode.
+  return <Redirect href="/(tabs)" />;
 }

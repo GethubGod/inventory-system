@@ -22,6 +22,7 @@ import {
   Alert,
   StyleSheet,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
@@ -985,7 +986,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     borderRadius: ds.radius(12),
                   }}
                 >
-                  <FlatList
+                  <FlashList
                     data={filteredItems}
                     keyExtractor={(item) => item.id}
                     renderItem={renderSuggestionItem}

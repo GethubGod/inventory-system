@@ -1,9 +1,11 @@
 import React from 'react';
 import { Pressable, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   glassColors,
   glassHairlineWidth,
+  glassRadii,
 } from '@/theme/design';
 import type { FulfillmentSupplierPreviewItem } from './FulfillmentSupplierCard';
 
@@ -28,7 +30,7 @@ export function FulfillmentExpandedSupplierItems({
   const ds = useScaledStyles();
 
   return (
-    <View style={{ paddingHorizontal: ds.spacing(14), paddingBottom: ds.spacing(14), paddingTop: 2 }}>
+    <View style={{ paddingHorizontal: ds.spacing(24), paddingBottom: ds.spacing(24), paddingTop: ds.spacing(8) }}>
       {items.map((item, index) => {
         const palette = BADGE_PALETTE[Math.abs(item.badgeToneIndex) % BADGE_PALETTE.length];
 
@@ -38,13 +40,13 @@ export function FulfillmentExpandedSupplierItems({
             onPress={item.onPress || undefined}
             style={({ pressed }) => ({
               backgroundColor: '#FFFFFF',
-              borderRadius: 17,
+              borderRadius: 12,
               borderWidth: glassHairlineWidth,
-              borderColor: '#F0ECE7',
+              borderColor: '#EFEFEF',
               opacity: item.onPress && pressed ? 0.96 : 1,
-              paddingHorizontal: ds.spacing(14),
-              paddingVertical: ds.spacing(15),
-              marginTop: index === 0 ? ds.spacing(8) : ds.spacing(10),
+              paddingHorizontal: ds.spacing(16),
+              paddingVertical: ds.spacing(16),
+              marginTop: index === 0 ? 0 : ds.spacing(10),
             })}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -118,13 +120,20 @@ export function FulfillmentExpandedSupplierItems({
         onPress={onOrderPress}
         activeOpacity={0.88}
         style={{
-          marginTop: ds.spacing(14),
-          minHeight: 56,
-          borderRadius: 16,
+          marginTop: ds.spacing(24),
+          minHeight: Math.max(52, ds.buttonH + 10),
+          paddingHorizontal: ds.spacing(24),
+          paddingVertical: ds.spacing(14),
+          borderRadius: glassRadii.pill,
           backgroundColor: glassColors.accent,
+          flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'center',
-          paddingHorizontal: ds.spacing(16),
+          shadowColor: 'rgba(15, 23, 42, 0.22)',
+          shadowOpacity: 0.12,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 2,
         }}
       >
         <Text
@@ -136,6 +145,12 @@ export function FulfillmentExpandedSupplierItems({
         >
           {orderLabel}
         </Text>
+        <Ionicons
+          name="chevron-forward"
+          size={ds.icon(20)}
+          color={glassColors.textOnPrimary}
+          style={{ marginLeft: ds.spacing(6) }}
+        />
       </TouchableOpacity>
     </View>
   );

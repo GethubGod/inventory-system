@@ -191,12 +191,6 @@ export const useInventoryStore = create<InventoryState>()(
           const result = await listInventory({
             limit: INVENTORY_FETCH_LIMIT,
           });
-          if (result.error) {
-            if (isSessionExpiredErrorMessage(result.error)) {
-              set({ error: result.error });
-              return;
-            }
-          }
           let resolvedItems = result.data ?? null;
 
           const shouldTryDirectFallback =
@@ -410,9 +404,14 @@ export const useInventoryStore = create<InventoryState>()(
     {
       name: 'inventory-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
-        items: state.items,
-      }),
+      partialize: (state) => {
+        const MAX_CACHED_ITEMS = 2000;
+        return {
+          items: state.items.length > MAX_CACHED_ITEMS 
+            ? state.items.slice(0, MAX_CACHED_ITEMS) 
+            : state.items,
+        };
+      },
     }
   )
 );

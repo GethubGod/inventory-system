@@ -4,7 +4,6 @@ import {
   View,
   Text,
   ScrollView,
-  FlatList,
   TouchableOpacity,
   Alert,
   Platform,
@@ -13,6 +12,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,7 +33,6 @@ import type { ItemActionSheetSection } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { completePendingRemindersForUser } from '@/services/notificationService';
 import type { OrderingMode } from '@/features/ordering/types';
-import type { RecentOrder } from '@/features/ordering/dailySuggestions';
 import { resolveActiveLocationReminders } from '@/services/locationReminderService';
 import { OrderSubmissionError } from '@/services/orderSubmission';
 import { BROWSE_INVENTORY_ROUTE } from '@/features/browse/config';
@@ -717,25 +716,6 @@ export function CartScreenView({
     return true;
   }, [context, getCartItems, orderConfirmation, showStatusToast, submittingLocation, user]);
 
-  const handleReorderPastOrder = useCallback((order: RecentOrder) => {
-    const targetLocationId = selectedLocation?.id ?? locations[0]?.id;
-    if (!targetLocationId) {
-      showStatusToast('Select a location before reordering', 'error');
-      return;
-    }
-
-    order.items.forEach((item) => {
-      addToCart(targetLocationId, item.item_id, item.quantity, item.unit_type, {
-        context,
-        inputMode: 'quantity',
-        quantityRequested: item.quantity,
-        wasSuggested: false,
-        originalSuggestedQty: null,
-      });
-    });
-    showStatusToast(`Added ${order.item_count} items to cart`, 'success');
-  }, [addToCart, context, locations, selectedLocation?.id, showStatusToast]);
-
   const submitOrderForLocation = useCallback(async (
     submitLocationId: string,
     locationName: string,
@@ -1352,11 +1332,14 @@ export function CartScreenView({
               <TouchableOpacity
                 onPress={() => router.push(pastOrdersRoute as any)}
                 className="flex-row items-center"
-                style={{ paddingHorizontal: ds.spacing(13), minHeight: Math.max(36, Math.min(ds.buttonH, 40)) }}
+                style={{
+                  paddingHorizontal: ds.spacing(18),
+                  minHeight: Math.max(50, Math.min(ds.buttonH + ds.spacing(6), 56)),
+                }}
                 activeOpacity={0.7}
               >
-                <Ionicons name="time-outline" size={ds.icon(15)} color={glassColors.textSecondary} />
-                <Text style={{ fontSize: ds.fontSize(13), marginLeft: ds.spacing(6), color: glassColors.textPrimary, fontWeight: '600' }}>
+                <Ionicons name="time-outline" size={ds.icon(18)} color={glassColors.textSecondary} />
+                <Text style={{ fontSize: ds.fontSize(15), marginLeft: ds.spacing(8), color: glassColors.textPrimary, fontWeight: '700' }}>
                   My Orders
                 </Text>
               </TouchableOpacity>
@@ -1365,7 +1348,7 @@ export function CartScreenView({
         </View>
 
         {totalCartCount > 0 ? (
-          <FlatList
+          <FlashList
             data={locationsWithCart}
             keyExtractor={(location) => location.id}
             renderItem={({ item }) => renderLocationSection(item)}
@@ -1375,18 +1358,12 @@ export function CartScreenView({
               paddingBottom: glassTabBarHeight + ds.spacing(20),
             }}
             keyboardShouldPersistTaps="handled"
-            removeClippedSubviews={Platform.OS === 'android'}
-            initialNumToRender={4}
-            maxToRenderPerBatch={6}
-            windowSize={8}
             ListHeaderComponent={null}
           />
         ) : (
           <EmptyCartReorderState
+            quickOrderRoute={mode.quickOrderRoute}
             browseRoute={emptyCartBrowseRoute}
-            locationId={selectedLocation?.id ?? locations[0]?.id ?? null}
-            locationName={selectedLocation?.name ?? locations[0]?.name ?? 'Current location'}
-            onReorder={handleReorderPastOrder}
           />
         )}
       </View>

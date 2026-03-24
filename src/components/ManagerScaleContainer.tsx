@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { LayoutChangeEvent, View } from 'react-native';
+import { useShallow } from 'zustand/react/shallow';
 import { useDisplayStore } from '@/store';
 
 const UI_MULTIPLIER = {
@@ -23,11 +24,11 @@ interface ManagerScaleContainerProps {
 }
 
 export function ManagerScaleContainer({ children }: ManagerScaleContainerProps) {
-  const { uiScale, textScale, buttonSize } = useDisplayStore((state) => ({
+  const { uiScale, textScale, buttonSize } = useDisplayStore(useShallow((state) => ({
     uiScale: state.uiScale,
     textScale: state.textScale,
     buttonSize: state.buttonSize,
-  }));
+  })));
   const [layout, setLayout] = useState({ width: 0, height: 0 });
 
   const scale = useMemo(() => {

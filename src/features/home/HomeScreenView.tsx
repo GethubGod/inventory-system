@@ -7,13 +7,13 @@ import React, {
   useState,
 } from 'react';
 import {
-  FlatList,
   GestureResponderEvent,
   RefreshControl,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { FlashList } from '@shopify/flash-list';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -96,11 +96,14 @@ const SuggestedItemCard = memo(function SuggestedItemCard({
   const ds = useScaledStyles();
 
   return (
-    <GlassSurface
-      intensity="subtle"
+    <View
       style={{
         width: ds.spacing(168),
         borderRadius: glassRadii.surface,
+        backgroundColor: colors.gray[100],
+        borderWidth: glassHairlineWidth,
+        borderColor: glassColors.cardBorder,
+        overflow: 'hidden',
       }}
     >
       <View style={{ padding: ds.spacing(14) }}>
@@ -141,7 +144,7 @@ const SuggestedItemCard = memo(function SuggestedItemCard({
           }}
         />
       </View>
-    </GlassSurface>
+    </View>
   );
 });
 
@@ -659,7 +662,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
           onPressAction={predictedItems.length > 0 ? handleAddAllPredicted : undefined}
         >
           {hasSuggestedItems ? (
-            <FlatList
+            <FlashList
               data={predictedItems}
               renderItem={renderSuggestedItem}
               keyExtractor={(item) => `${item.inventoryItemId}:${item.unitType}`}
@@ -696,7 +699,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
                 paddingHorizontal: ds.spacing(14),
                 paddingVertical: ds.spacing(14),
                 borderRadius: glassRadii.surface,
-                backgroundColor: glassColors.background,
+                backgroundColor: colors.gray[100],
                 borderWidth: glassHairlineWidth,
                 borderColor: glassColors.cardBorder,
               }}

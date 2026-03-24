@@ -18,8 +18,8 @@ export function FulfillmentSupplierSectionLabel({
         fontSize: ds.fontSize(11),
         fontWeight: '700',
         letterSpacing: 1.5,
-        marginTop: ds.spacing(18),
-        marginBottom: ds.spacing(10),
+        marginTop: ds.spacing(32),
+        marginBottom: ds.spacing(20),
         textTransform: 'uppercase',
       }}
     >

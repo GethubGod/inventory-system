@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, Easing, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { GlassSurface } from '@/components';
 import {
   glassColors,
   glassHairlineWidth,
+  glassRadii,
 } from '@/theme/design';
 
 interface FulfillmentOrderLaterCardProps {
@@ -77,76 +79,107 @@ export function FulfillmentOrderLaterCard({
   );
 
   return (
-    <View
-      style={{
-        backgroundColor: '#FBFAF8',
-        borderRadius: 18,
-        borderWidth: glassHairlineWidth,
-        borderColor: '#DEDAD4',
-        overflow: 'hidden',
-      }}
+    <GlassSurface
+      intensity="subtle"
+      style={{ borderRadius: glassRadii.surface }}
     >
       <Pressable
         onPress={disabled ? undefined : onToggle}
         style={({ pressed }) => ({
           opacity: disabled ? 1 : pressed ? 0.94 : 1,
-          paddingHorizontal: ds.spacing(16),
-          paddingVertical: ds.spacing(12),
+          paddingHorizontal: ds.spacing(14),
+          paddingTop: ds.spacing(14),
+          paddingBottom: disabled ? ds.spacing(16) : ds.spacing(14),
         })}
       >
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Ionicons
-            name="time-outline"
-            size={15}
-            color={glassColors.textSecondary}
-            style={{ marginRight: ds.spacing(10) }}
-          />
-
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <Text
             style={{
-              flex: 1,
-              color: glassColors.textPrimary,
               fontSize: ds.fontSize(15),
               fontWeight: '700',
+              color: glassColors.textPrimary,
             }}
           >
             Order Later
           </Text>
 
-          <Text
+          {!disabled && (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text
+                style={{
+                  color: glassColors.textSecondary,
+                  fontSize: ds.fontSize(13),
+                  fontWeight: '600',
+                  marginRight: ds.spacing(6),
+                }}
+              >
+                {count} Item{count === 1 ? '' : 's'}
+              </Text>
+              <Animated.View style={chevronStyle}>
+                <Ionicons name="chevron-down" size={16} color={glassColors.textSecondary} />
+              </Animated.View>
+            </View>
+          )}
+        </View>
+        
+        {disabled ? (
+          <View
             style={{
-              color: glassColors.textSecondary,
-              fontSize: ds.fontSize(13),
-              fontWeight: '600',
-              marginRight: ds.spacing(8),
+              marginTop: ds.spacing(12),
+              minHeight: ds.spacing(124),
+              justifyContent: 'center',
             }}
           >
-            {count} Item{count === 1 ? '' : 's'}
-          </Text>
-
-          <Animated.View style={disabled ? undefined : chevronStyle}>
-            <Ionicons name="chevron-down" size={16} color={glassColors.textSecondary} />
-          </Animated.View>
-        </View>
+            <View
+              style={{
+                width: ds.icon(36),
+                height: ds.icon(36),
+                borderRadius: glassRadii.iconTile,
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: glassColors.mediumFill,
+              }}
+            >
+              <Ionicons
+                name="time-outline"
+                size={ds.icon(18)}
+                color={glassColors.textSecondary}
+              />
+            </View>
+            <Text
+              style={{
+                marginTop: ds.spacing(12),
+                fontSize: ds.fontSize(15),
+                fontWeight: '600',
+                color: glassColors.textPrimary,
+              }}
+            >
+              No pending items
+            </Text>
+            <Text
+              style={{
+                marginTop: ds.spacing(6),
+                fontSize: ds.fontSize(12),
+                color: glassColors.textSecondary,
+                lineHeight: ds.fontSize(18),
+              }}
+            >
+              Items scheduled for a future order will appear here.
+            </Text>
+          </View>
+        ) : null}
       </Pressable>
 
       {expanded && !disabled ? (
         <Animated.View
           style={[
             contentStyle,
-            { paddingHorizontal: ds.spacing(16), paddingBottom: ds.spacing(16) },
+            { paddingHorizontal: ds.spacing(14), paddingBottom: ds.spacing(14) },
           ]}
         >
-          <View
-            style={{
-              height: glassHairlineWidth,
-              backgroundColor: glassColors.divider,
-              marginBottom: ds.spacing(4),
-            }}
-          />
-          {children}
+          <View style={{ marginTop: ds.spacing(6) }}>{children}</View>
         </Animated.View>
       ) : null}
-    </View>
+    </GlassSurface>
   );
 }

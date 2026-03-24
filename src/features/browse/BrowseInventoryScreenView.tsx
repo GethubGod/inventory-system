@@ -7,7 +7,6 @@ import React, {
 } from 'react';
 import {
   Alert,
-  FlatList,
   InteractionManager,
   KeyboardAvoidingView,
   Modal,
@@ -20,6 +19,7 @@ import {
   View,
 } from 'react-native';
 import { router } from 'expo-router';
+import { FlashList, FlashListRef } from '@shopify/flash-list';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useShallow } from 'zustand/react/shallow';
@@ -76,7 +76,7 @@ export function BrowseInventoryScreenView({
   const ds = useScaledStyles();
   const insets = useSafeAreaInsets();
   const searchInputRef = useRef<TextInput>(null);
-  const browseListRef = useRef<FlatList<InventoryItem>>(null);
+  const browseListRef = useRef<FlashListRef<InventoryItem>>(null);
   const scrollRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastProcessedFocusRequestRef = useRef<string | null>(null);
   const lastScrolledFocusRequestRef = useRef<string | null>(null);
@@ -312,9 +312,33 @@ export function BrowseInventoryScreenView({
     user?.id,
   ]);
 
-  const handleActivateEditor = useCallback((itemId: string) => {
-    setActiveEditingItemId(itemId);
-  }, []);
+  const scrollToItemById = useCallback(
+    (itemId: string) => {
+      const index = filteredBrowseItems.findIndex((i) => i.id === itemId);
+      if (index < 0) {
+        return;
+      }
+
+      // Wait for the layout animation to settle before scrolling
+      setTimeout(() => {
+        browseListRef.current?.scrollToIndex({
+          index,
+          animated: !ds.reduceMotion,
+          viewPosition: 0,
+          viewOffset: ds.spacing(4),
+        });
+      }, 300);
+    },
+    [ds.reduceMotion, filteredBrowseItems],
+  );
+
+  const handleActivateEditor = useCallback(
+    (itemId: string) => {
+      setActiveEditingItemId(itemId);
+      scrollToItemById(itemId);
+    },
+    [scrollToItemById],
+  );
 
   const addAndOpenEditorForItem = useCallback(
     (item: InventoryItem) => {
@@ -324,9 +348,10 @@ export function BrowseInventoryScreenView({
       }
 
       setActiveEditingItemId(item.id);
+      scrollToItemById(item.id);
       return true;
     },
-    [addInventoryItem],
+    [addInventoryItem, scrollToItemById],
   );
 
   const handleAddAndEdit = useCallback(
@@ -691,15 +716,17 @@ export function BrowseInventoryScreenView({
 
         </View>
 
-        <BrowseCategoryScroller
-          categories={CATEGORY_ORDER}
-          selectedCategory={browseCategory}
-          onSelectCategory={setBrowseCategory}
-          expanded={browseCategoriesExpanded}
-          onToggleExpanded={() => setBrowseCategoriesExpanded((current) => !current)}
-        />
+        <View style={{ paddingHorizontal: glassSpacing.screen }}>
+          <BrowseCategoryScroller
+            categories={CATEGORY_ORDER}
+            selectedCategory={browseCategory}
+            onSelectCategory={setBrowseCategory}
+            expanded={browseCategoriesExpanded}
+            onToggleExpanded={() => setBrowseCategoriesExpanded((current) => !current)}
+          />
+        </View>
 
-        <FlatList
+        <FlashList
           ref={browseListRef}
           data={filteredBrowseItems}
           renderItem={renderExpandedBrowseItem}
@@ -714,8 +741,8 @@ export function BrowseInventoryScreenView({
             <View style={{ height: ds.spacing(8) }} />
           )}
           ListEmptyComponent={renderListEmpty}
-          onScrollToIndexFailed={handleScrollToIndexFailed}
           keyboardShouldPersistTaps="handled"
+          onScrollToIndexFailed={handleScrollToIndexFailed}
         />
       </View>
 

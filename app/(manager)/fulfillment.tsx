@@ -24,7 +24,7 @@ import { CATEGORY_LABELS, colors } from '@/constants';
 import { InventoryItem, ItemCategory, OrderWithDetails, SupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
-import { ItemActionSheet, LoadingIndicator } from '@/components';
+import { GlassSurface, ItemActionSheet, LoadingIndicator } from '@/components';
 import type { ItemActionSheetSection } from '@/components';
 import {
   FulfillmentHeader,
@@ -2418,27 +2418,27 @@ export default function FulfillmentScreen() {
         >
           <FulfillmentHeader onHistoryPress={() => router.push('/(manager)/fulfillment-history')} />
 
-          <FulfillmentReminderBanner
-            title={reminderBanner.title}
-            subtitle={reminderBanner.subtitle}
-            tone={reminderBanner.tone}
-            onPress={() => router.push('/(manager)/employee-reminders')}
-          />
+          <View style={{ marginTop: ds.spacing(16) }}>
+            <FulfillmentReminderBanner
+              title={reminderBanner.title}
+              subtitle={reminderBanner.subtitle}
+              tone={reminderBanner.tone}
+              onPress={() => router.push('/(manager)/employee-reminders')}
+            />
+          </View>
 
           <FulfillmentSupplierSectionLabel readyCount={supplierCardData.length} />
 
           {showInitialLoading ? (
-            <View style={{ gap: ds.spacing(10), marginTop: ds.spacing(4) }}>
+            <View style={{ gap: ds.spacing(16), marginTop: ds.spacing(4) }}>
               {[1, 2, 3].map((i) => (
-                <View
+                <GlassSurface
                   key={i}
+                  intensity="subtle"
                   style={{
-                    backgroundColor: '#FBFAF8',
-                    borderRadius: 22,
-                    borderWidth: glassHairlineWidth,
-                    borderColor: '#DEDAD4',
-                    paddingHorizontal: ds.spacing(16),
-                    paddingVertical: ds.spacing(18),
+                    borderRadius: glassRadii.surface,
+                    paddingHorizontal: ds.spacing(20),
+                    paddingVertical: ds.spacing(20),
                     opacity: 1 - (i - 1) * 0.2,
                   }}
                 >
@@ -2471,19 +2471,17 @@ export default function FulfillmentScreen() {
                       }}
                     />
                   </View>
-                </View>
+                </GlassSurface>
               ))}
               <View style={{ alignItems: 'center', paddingTop: ds.spacing(6) }}>
                 <LoadingIndicator size="small" color={glassColors.accent} />
               </View>
             </View>
           ) : showErrorState ? (
-            <View
+            <GlassSurface
+              intensity="subtle"
               style={{
-                backgroundColor: '#FBFAF8',
-                borderRadius: 22,
-                borderWidth: glassHairlineWidth,
-                borderColor: '#DEDAD4',
+                borderRadius: glassRadii.surface,
                 paddingHorizontal: ds.spacing(20),
                 paddingVertical: ds.spacing(28),
                 alignItems: 'center',
@@ -2544,19 +2542,7 @@ export default function FulfillmentScreen() {
                   Retry
                 </Text>
               </TouchableOpacity>
-            </View>
-          ) : supplierCardData.length === 0 ? (
-            <View
-              style={{
-                backgroundColor: '#FBFAF8',
-                borderRadius: 22,
-                borderWidth: glassHairlineWidth,
-                borderColor: '#DEDAD4',
-                paddingHorizontal: ds.spacing(20),
-                paddingVertical: ds.spacing(32),
-                alignItems: 'center',
-              }}
-            >
+            </GlassSurface>
               <View
                 style={{
                   width: 44,
@@ -2589,13 +2575,10 @@ export default function FulfillmentScreen() {
                   textAlign: 'center',
                   maxWidth: 260,
                 }}
-              >
-                Submitted orders and supplier drafts will appear here once they are ready to review.
-              </Text>
-            </View>
+            </GlassSurface>
           ) : (
             supplierCardData.map((entry) => (
-              <View key={entry.group.supplierId} style={{ marginBottom: ds.spacing(10) }}>
+              <View key={entry.group.supplierId} style={{ marginBottom: ds.spacing(20) }}>
                 <FulfillmentSupplierCard
                   name={entry.group.supplierName}
                   statusLabel={entry.statusLabel}
@@ -2612,7 +2595,7 @@ export default function FulfillmentScreen() {
             ))
           )}
 
-          <View style={{ marginTop: ds.spacing(6) }}>
+          <View style={{ marginTop: ds.spacing(4), marginBottom: ds.spacing(24) }}>
             <FulfillmentOrderLaterCard
               count={orderLaterQueue.length}
               expanded={orderLaterExpanded}

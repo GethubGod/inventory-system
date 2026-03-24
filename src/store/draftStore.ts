@@ -169,10 +169,36 @@ export const useDraftStore = create<DraftState>()(
     {
       name: 'draft-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({
-        itemsByLocation: state.itemsByLocation,
-        selectedLocationId: state.selectedLocationId,
-      }),
+      partialize: (state) => {
+        const now = Date.now();
+        const MAX_AGE = 7 * 24 * 60 * 60 * 1000;
+        const cleanedItemsByLocation = { ...state.itemsByLocation };
+
+        for (const locId of Object.keys(cleanedItemsByLocation)) {
+          const items = cleanedItemsByLocation[locId];
+          const newItems = { ...items };
+          let changed = false;
+
+          for (const itemId of Object.keys(newItems)) {
+            if (now - newItems[itemId].addedAt > MAX_AGE) {
+              delete newItems[itemId];
+              changed = true;
+            }
+          }
+
+          if (changed) {
+            cleanedItemsByLocation[locId] = newItems;
+          }
+          if (Object.keys(cleanedItemsByLocation[locId] || {}).length === 0) {
+            delete cleanedItemsByLocation[locId];
+          }
+        }
+
+        return {
+          itemsByLocation: cleanedItemsByLocation,
+          selectedLocationId: state.selectedLocationId,
+        };
+      },
     }
   )
 );

@@ -33,7 +33,7 @@ function parseQrPayload(raw: string): string {
 }
 
 export function QrScannerModal({ visible, onClose, onScan }: QrScannerModalProps) {
-  const { storageAreas } = useStockStore();
+  const storageAreas = useStockStore((state) => state.storageAreas);
   const [permission, requestPermission] = useCameraPermissions();
   const [scanned, setScanned] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -69,6 +69,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="voice"
         options={{
+          href: null,
           title: "Smart",
           tabBarIcon: ({ color, size, focused }) => (
             <TabButton name="reader-outline" label="Smart" size={size} color={color} focused={focused} />

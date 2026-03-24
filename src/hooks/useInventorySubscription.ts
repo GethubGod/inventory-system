@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuthStore, useInventoryStore } from '@/store';
 
 export function useInventorySubscription() {
-  const { user } = useAuthStore();
+  const user = useAuthStore((state) => state.user);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const refreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
