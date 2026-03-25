@@ -189,9 +189,7 @@ export function FloatingLocationSelector({
 }: FloatingLocationSelectorProps) {
   const ds = useScaledStyles();
   const { width, height } = useWindowDimensions();
-  const cartByLocation = useOrderStore((state) =>
-    cartContext === 'manager' ? state.managerCartByLocation : state.cartByLocation,
-  );
+  const cartByLocation = useOrderStore((state) => state.cartByLocation);
   const safeLocations = useMemo(
     () =>
       Array.isArray(locations)

@@ -127,7 +127,7 @@ export function CartScreenView({
     createAndSubmitOrderFromSourceLocation,
     setCartItemNote,
   } = useOrderStore(useShallow((state) => ({
-    activeCartByLocation: context === 'manager' ? state.managerCartByLocation : state.cartByLocation,
+    activeCartByLocation: state.cartByLocation,
     getCartItems: state.getCartItems,
     addToCart: state.addToCart,
     updateCartItem: state.updateCartItem,
@@ -1319,6 +1319,31 @@ export function CartScreenView({
             alignItems: 'center',
           }}
         >
+          {context === 'manager' && (
+            <TouchableOpacity
+              onPress={() => {
+                if (router.canGoBack()) {
+                  router.back();
+                } else {
+                  router.replace(emptyCartBrowseRoute as any);
+                }
+              }}
+              style={{
+                width: Math.max(40, ds.icon(40)),
+                height: Math.max(40, ds.icon(40)),
+                borderRadius: glassRadii.round,
+                backgroundColor: glassColors.subtleFill,
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginRight: ds.spacing(16),
+              }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
+              <Ionicons name="arrow-back" size={ds.icon(22)} color={glassColors.textPrimary} />
+            </TouchableOpacity>
+          )}
           <View style={{ flex: 1, paddingRight: ds.spacing(12) }}>
             <Text style={{ fontSize: ds.fontSize(30), fontWeight: '800', color: glassColors.textPrimary, letterSpacing: -0.6 }}>
               Cart

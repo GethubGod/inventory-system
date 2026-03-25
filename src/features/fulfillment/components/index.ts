@@ -3,7 +3,7 @@ export { FulfillmentExpandedSupplierItems } from './FulfillmentExpandedSupplierI
 export { FulfillmentHeader } from './FulfillmentHeader';
 export { FulfillmentOrderLaterCard } from './FulfillmentOrderLaterCard';
 export { FulfillmentReminderBanner } from './FulfillmentReminderBanner';
-export { FulfillmentSupplierSectionLabel } from './FulfillmentSupplierSectionLabel';
+export { FulfillmentSuppliersCard } from './FulfillmentSuppliersCard';
 export { FulfillmentSupplierCard } from './FulfillmentSupplierCard';
 export type {
   FulfillmentSupplierEmployee,

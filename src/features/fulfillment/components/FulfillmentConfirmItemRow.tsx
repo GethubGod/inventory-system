@@ -2,6 +2,9 @@ import React from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants';
+import { GlassSurface } from '@/components';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { glassColors, glassRadii, glassHairlineWidth } from '@/theme/design';
 
 type ChipTone = 'amber' | 'gray' | 'blue';
 
@@ -28,21 +31,6 @@ interface FulfillmentConfirmItemRowProps {
   disableControls?: boolean;
 }
 
-const CHIP_CLASS: Record<ChipTone, { container: string; text: string }> = {
-  amber: {
-    container: 'border border-amber-200 bg-amber-100',
-    text: 'text-amber-800',
-  },
-  gray: {
-    container: 'border border-gray-200 bg-gray-100',
-    text: 'text-gray-700',
-  },
-  blue: {
-    container: 'border border-blue-200 bg-blue-50',
-    text: 'text-blue-700',
-  },
-};
-
 export const FulfillmentConfirmItemRow = React.memo(function FulfillmentConfirmItemRow({
   title,
   headerActions,
@@ -59,48 +47,89 @@ export const FulfillmentConfirmItemRow = React.memo(function FulfillmentConfirmI
   footer,
   disableControls = false,
 }: FulfillmentConfirmItemRowProps) {
+  const ds = useScaledStyles();
+
   return (
-    <View className="rounded-2xl border border-gray-200 bg-white px-3 py-2.5">
-      <View className="flex-row items-start justify-between">
-        <Text className="flex-1 pr-2 text-sm font-semibold text-gray-900" numberOfLines={1}>
+    <GlassSurface
+      intensity="subtle"
+      style={{
+        borderRadius: glassRadii.surface,
+        padding: ds.spacing(16),
+      }}
+    >
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text
+          style={{
+            flex: 1,
+            paddingRight: ds.spacing(8),
+            fontSize: ds.fontSize(16),
+            fontWeight: '700',
+            color: glassColors.textPrimary,
+          }}
+          numberOfLines={1}
+        >
           {title}
         </Text>
-        {headerActions ? <View className="flex-row items-center">{headerActions}</View> : null}
+        {headerActions ? <View style={{ flexDirection: 'row', alignItems: 'center' }}>{headerActions}</View> : null}
       </View>
 
       {(chips.length > 0 || trailingChip) && (
-        <View className="mt-2 flex-row items-start justify-between">
+        <View style={{ marginTop: ds.spacing(8), flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           {chips.length > 0 ? (
-            <View className="flex-1 flex-row flex-wrap gap-1 pr-2">
+            <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: ds.spacing(6), paddingRight: ds.spacing(8) }}>
               {chips.map((chip) => {
-                const tone = CHIP_CLASS[chip.tone ?? 'gray'];
+                const getToneStyle = () => {
+                  switch (chip.tone) {
+                    case 'amber':
+                      return { bg: glassColors.warningSoft, border: glassColors.accentBorder, text: glassColors.warningText };
+                    case 'blue':
+                      return { bg: '#EFF6FF', border: '#BFDBFE', text: '#1D4ED8' }; // generic fallback colors
+                    default:
+                      return { bg: glassColors.subtleFill, border: 'transparent', text: glassColors.textSecondary };
+                  }
+                };
+                const tone = getToneStyle();
                 return (
                   <View
                     key={chip.id}
-                    className={`rounded-full px-2 py-0.5 ${tone.container}`}
+                    style={{
+                      borderRadius: glassRadii.pill,
+                      paddingHorizontal: ds.spacing(8),
+                      paddingVertical: ds.spacing(2),
+                      backgroundColor: tone.bg,
+                      borderWidth: glassHairlineWidth,
+                      borderColor: tone.border,
+                    }}
                   >
-                    <Text className={`text-[10px] font-semibold ${tone.text}`}>{chip.label}</Text>
+                    <Text style={{ fontSize: ds.fontSize(11), fontWeight: '700', color: tone.text }}>{chip.label}</Text>
                   </View>
                 );
               })}
             </View>
           ) : (
-            <View className="flex-1" />
+            <View style={{ flex: 1 }} />
           )}
-          {trailingChip ? <View className="ml-2">{trailingChip}</View> : null}
+          {trailingChip ? <View style={{ marginLeft: ds.spacing(8) }}>{trailingChip}</View> : null}
         </View>
       )}
 
-      <View className="mt-2 flex-row items-center">
+      <View style={{ marginTop: ds.spacing(12), flexDirection: 'row', alignItems: 'center' }}>
         <TouchableOpacity
           onPress={onDecrement}
           disabled={disableControls}
-          className={`h-10 w-10 rounded-lg border items-center justify-center ${
-            disableControls ? 'bg-gray-100 border-gray-200' : 'bg-white border-gray-200'
-          }`}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          style={{
+            width: ds.spacing(38),
+            height: ds.spacing(38),
+            borderRadius: glassRadii.button,
+            borderWidth: glassHairlineWidth,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: disableControls ? glassColors.subtleFill : glassColors.mediumFill,
+            borderColor: glassColors.cardBorder,
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="remove" size={16} color={colors.gray[600]} />
+          <Ionicons name="remove" size={ds.icon(16)} color={glassColors.textSecondary} />
         </TouchableOpacity>
 
         <TextInput
@@ -109,29 +138,49 @@ export const FulfillmentConfirmItemRow = React.memo(function FulfillmentConfirmI
           editable={!disableControls}
           keyboardType="decimal-pad"
           placeholder={quantityPlaceholder}
-          placeholderTextColor={colors.gray[400]}
-          className="mx-1.5 h-10 w-[58px] rounded-lg border border-gray-200 bg-white px-2 text-center text-sm font-semibold text-gray-900"
+          placeholderTextColor={glassColors.textMuted}
+          style={{
+            marginHorizontal: ds.spacing(8),
+            height: ds.spacing(38),
+            width: ds.spacing(64),
+            borderRadius: glassRadii.button,
+            borderWidth: glassHairlineWidth,
+            borderColor: glassColors.cardBorder,
+            backgroundColor: disableControls ? glassColors.subtleFill : '#FFFFFF',
+            paddingHorizontal: ds.spacing(8),
+            textAlign: 'center',
+            fontSize: ds.fontSize(15),
+            fontWeight: '700',
+            color: glassColors.textPrimary,
+          }}
         />
 
         <TouchableOpacity
           onPress={onIncrement}
           disabled={disableControls}
-          className={`h-10 w-10 rounded-lg border items-center justify-center ${
-            disableControls ? 'bg-gray-100 border-gray-200' : 'bg-white border-gray-200'
-          }`}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          style={{
+            width: ds.spacing(38),
+            height: ds.spacing(38),
+            borderRadius: glassRadii.button,
+            borderWidth: glassHairlineWidth,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: disableControls ? glassColors.subtleFill : glassColors.mediumFill,
+            borderColor: glassColors.cardBorder,
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
-          <Ionicons name="add" size={16} color={colors.gray[600]} />
+          <Ionicons name="add" size={ds.icon(16)} color={glassColors.textSecondary} />
         </TouchableOpacity>
 
-        <View className="ml-1.5 flex-shrink">{unitSelector}</View>
+        <View style={{ marginLeft: ds.spacing(8), flexShrink: 1 }}>{unitSelector}</View>
       </View>
 
       {detailsVisible && details ? (
-        <View className="mt-2.5 border-t border-gray-200 pt-2.5">{details}</View>
+        <View style={{ marginTop: ds.spacing(14), borderTopWidth: glassHairlineWidth, borderTopColor: glassColors.cardBorder, paddingTop: ds.spacing(14) }}>{details}</View>
       ) : null}
 
-      {footer ? <View className="mt-1.5">{footer}</View> : null}
-    </View>
+      {footer ? <View style={{ marginTop: ds.spacing(8) }}>{footer}</View> : null}
+    </GlassSurface>
   );
 });

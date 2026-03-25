@@ -141,7 +141,7 @@ export default function ManagerLayout() {
       />
 
       {/* Browse (hidden — accessed from Home) */}
-      <Tabs.Screen name="browse" options={{ href: null }} />
+      <Tabs.Screen name="browse" options={{ href: null, tabBarStyle: { display: 'none' } }} />
 
       {/* Quick Order */}
       <Tabs.Screen
@@ -173,6 +173,7 @@ export default function ManagerLayout() {
       <Tabs.Screen
         name="voice"
         options={{
+          href: null,
           title: "Smart",
           tabBarIcon: ({ color, size, focused }) => (
             <TabButton name="reader-outline" label="Smart" size={size} color={color} focused={focused} />
@@ -192,11 +193,11 @@ export default function ManagerLayout() {
       />
 
       {/* Hidden screens (accessible via navigation) */}
-      <Tabs.Screen name="orders" options={{ href: null }} />
+      <Tabs.Screen name="orders" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="inventory" options={{ href: null, tabBarStyle: { display: "none" } }} />
-      <Tabs.Screen name="cart" options={{ href: null }} />
+      <Tabs.Screen name="cart" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="export-fish-order" options={{ href: null }} />
-      <Tabs.Screen name="fulfillment-confirmation" options={{ href: null }} />
+      <Tabs.Screen name="fulfillment-confirmation" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="fulfillment-history" options={{ href: null }} />
       <Tabs.Screen name="fulfillment-history-detail" options={{ href: null }} />
       <Tabs.Screen name="past-orders/index" options={{ href: null, tabBarStyle: { display: "none" } }} />

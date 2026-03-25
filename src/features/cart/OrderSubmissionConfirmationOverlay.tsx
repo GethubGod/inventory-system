@@ -2,14 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Animated,
   Easing,
-  Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import type { View as RNView } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { GlassSurface } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -31,13 +29,12 @@ const EXIT_DURATION_MS = 160;
 
 interface OrderSubmissionConfirmationOverlayProps {
   confirmation: OrderConfirmationPayload | null;
-  blurTargetRef: React.RefObject<RNView | null>;
+  blurTargetRef?: React.RefObject<RNView | null>;
   onDismissed: () => void;
 }
 
 export function OrderSubmissionConfirmationOverlay({
   confirmation,
-  blurTargetRef,
   onDismissed,
 }: OrderSubmissionConfirmationOverlayProps) {
   const ds = useScaledStyles();
@@ -46,6 +43,10 @@ export function OrderSubmissionConfirmationOverlay({
   const activeConfirmationRef = useRef<OrderConfirmationPayload | null>(null);
   const dismissingRef = useRef(false);
   const autoDismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onDismissedRef = useRef(onDismissed);
+  onDismissedRef.current = onDismissed;
+  const reduceMotionRef = useRef(reduceMotion);
+  reduceMotionRef.current = reduceMotion;
   const overlayOpacity = useRef(new Animated.Value(0)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
   const cardScale = useRef(new Animated.Value(0.96)).current;
@@ -74,21 +75,9 @@ export function OrderSubmissionConfirmationOverlay({
     contentOpacity.stopAnimation();
     contentTranslateY.stopAnimation();
     progressValue.stopAnimation();
-  }, [
-    badgeOpacity,
-    badgeScale,
-    cardOpacity,
-    cardScale,
-    cardTranslateY,
-    checkOpacity,
-    checkScale,
-    contentOpacity,
-    contentTranslateY,
-    overlayOpacity,
-    progressValue,
-    pulseOpacity,
-    pulseScale,
-  ]);
+  // Animated values are stable refs — no deps needed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const resetAnimatedValues = useCallback(() => {
     overlayOpacity.setValue(0);
@@ -104,21 +93,8 @@ export function OrderSubmissionConfirmationOverlay({
     contentOpacity.setValue(0);
     contentTranslateY.setValue(8);
     progressValue.setValue(0);
-  }, [
-    badgeOpacity,
-    badgeScale,
-    cardOpacity,
-    cardScale,
-    cardTranslateY,
-    checkOpacity,
-    checkScale,
-    contentOpacity,
-    contentTranslateY,
-    overlayOpacity,
-    progressValue,
-    pulseOpacity,
-    pulseScale,
-  ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const clearAutoDismiss = useCallback(() => {
     if (autoDismissRef.current) {
@@ -131,8 +107,8 @@ export function OrderSubmissionConfirmationOverlay({
     dismissingRef.current = false;
     activeConfirmationRef.current = null;
     setActiveConfirmation(null);
-    onDismissed();
-  }, [onDismissed]);
+    onDismissedRef.current();
+  }, []);
 
   const dismissConfirmation = useCallback(() => {
     if (dismissingRef.current || !activeConfirmationRef.current) {
@@ -143,7 +119,7 @@ export function OrderSubmissionConfirmationOverlay({
     clearAutoDismiss();
     stopAnimations();
 
-    if (reduceMotion) {
+    if (reduceMotionRef.current) {
       finishDismissal();
       return;
     }
@@ -181,17 +157,12 @@ export function OrderSubmissionConfirmationOverlay({
 
       dismissingRef.current = false;
     });
-  }, [
-    cardOpacity,
-    cardScale,
-    cardTranslateY,
-    clearAutoDismiss,
-    finishDismissal,
-    overlayOpacity,
-    reduceMotion,
-    stopAnimations,
-  ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearAutoDismiss, finishDismissal, stopAnimations]);
 
+  // The only trigger for showing the overlay is a new confirmation prop.
+  // All animated values and callbacks are stable refs, so this effect
+  // runs exactly once per new confirmation — fixing the double-popup.
   useEffect(() => {
     if (!confirmation) {
       return;
@@ -204,7 +175,7 @@ export function OrderSubmissionConfirmationOverlay({
     setActiveConfirmation(confirmation);
     resetAnimatedValues();
 
-    if (reduceMotion) {
+    if (reduceMotionRef.current) {
       overlayOpacity.setValue(1);
       cardOpacity.setValue(1);
       cardScale.setValue(1);
@@ -340,27 +311,9 @@ export function OrderSubmissionConfirmationOverlay({
       clearAutoDismiss();
       stopAnimations();
     };
-  }, [
-    badgeOpacity,
-    badgeScale,
-    cardOpacity,
-    cardScale,
-    cardTranslateY,
-    checkOpacity,
-    checkScale,
-    clearAutoDismiss,
-    confirmation,
-    contentOpacity,
-    contentTranslateY,
-    dismissConfirmation,
-    overlayOpacity,
-    progressValue,
-    pulseOpacity,
-    pulseScale,
-    reduceMotion,
-    resetAnimatedValues,
-    stopAnimations,
-  ]);
+  // Only re-run when a new confirmation arrives
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmation]);
 
   useEffect(() => {
     activeConfirmationRef.current = activeConfirmation;
@@ -408,21 +361,7 @@ export function OrderSubmissionConfirmationOverlay({
         <View
           style={[
             StyleSheet.absoluteFillObject,
-            { backgroundColor: 'rgba(247, 245, 242, 0.18)' },
-          ]}
-        />
-        <BlurView
-          blurMethod={Platform.OS === 'android' ? 'dimezisBlurViewSdk31Plus' : undefined}
-          blurReductionFactor={Platform.OS === 'android' ? 8 : undefined}
-          blurTarget={blurTargetRef}
-          intensity={10}
-          tint={Platform.OS === 'ios' ? 'systemUltraThinMaterialLight' : 'light'}
-          style={StyleSheet.absoluteFill}
-        />
-        <View
-          style={[
-            StyleSheet.absoluteFillObject,
-            { backgroundColor: 'rgba(248, 246, 243, 0.34)' },
+            { backgroundColor: 'rgba(0, 0, 0, 0.35)' },
           ]}
         />
       </View>

@@ -3,6 +3,8 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { triggerImpactHaptic, ImpactFeedbackStyle } from '@/lib/haptics';
 import { colors } from '@/constants';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { glassColors, glassRadii, glassHairlineWidth } from '@/theme/design';
 
 type UnitType = 'base' | 'pack';
 
@@ -21,6 +23,7 @@ function UnitPillToggle({
   canSwitchUnit,
   onUnitChange,
 }: QuantityExportSelectorProps) {
+  const ds = useScaledStyles();
   const handlePress = () => {
     if (!canSwitchUnit) return;
     triggerImpactHaptic(ImpactFeedbackStyle.Light);
@@ -33,46 +36,46 @@ function UnitPillToggle({
     <TouchableOpacity
       onPress={handlePress}
       disabled={!canSwitchUnit}
-      className={`h-10 max-w-[112px] flex-row items-center rounded-lg px-2.5 border ${
-        isPack ? 'bg-primary-500 border-primary-600' : 'bg-gray-100 border-gray-200'
-      } ${
-        !canSwitchUnit ? 'opacity-45' : ''
-      }`}
+      style={{
+        height: ds.spacing(38),
+        maxWidth: ds.spacing(112),
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: glassRadii.button,
+        paddingHorizontal: ds.spacing(10),
+        borderWidth: glassHairlineWidth,
+        backgroundColor: isPack ? glassColors.accent : glassColors.subtleFill,
+        borderColor: isPack ? glassColors.accentBorder : glassColors.cardBorder,
+        opacity: canSwitchUnit ? 1 : 0.45,
+      }}
       activeOpacity={0.7}
-      hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
       <Text
-        className={`max-w-[82px] text-sm font-medium ${isPack ? 'text-white' : 'text-gray-700'}`}
+        style={{
+          maxWidth: ds.spacing(82),
+          fontSize: ds.fontSize(14),
+          fontWeight: '600',
+          color: isPack ? glassColors.textOnPrimary : glassColors.textPrimary,
+        }}
         numberOfLines={1}
       >
         {label}
       </Text>
       <Ionicons
         name="swap-horizontal"
-        size={14}
-        color={isPack ? colors.white : colors.gray[600]}
-        style={{ marginLeft: 3 }}
+        size={ds.icon(14)}
+        color={isPack ? colors.white : glassColors.textSecondary}
+        style={{ marginLeft: ds.spacing(4) }}
       />
     </TouchableOpacity>
   );
 }
 
-export function QuantityExportSelector({
-  exportUnitType,
-  baseUnitLabel,
-  packUnitLabel,
-  canSwitchUnit,
-  onUnitChange,
-}: QuantityExportSelectorProps) {
+export function QuantityExportSelector(props: QuantityExportSelectorProps) {
   return (
-    <View className="flex-row items-center">
-      <UnitPillToggle
-        exportUnitType={exportUnitType}
-        baseUnitLabel={baseUnitLabel}
-        packUnitLabel={packUnitLabel}
-        canSwitchUnit={canSwitchUnit}
-        onUnitChange={onUnitChange}
-      />
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <UnitPillToggle {...props} />
     </View>
   );
 }

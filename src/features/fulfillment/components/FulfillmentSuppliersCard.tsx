@@ -9,7 +9,7 @@ import {
   glassRadii,
 } from '@/theme/design';
 
-interface FulfillmentOrderLaterCardProps {
+interface FulfillmentSuppliersCardProps {
   count: number;
   expanded: boolean;
   onToggle: () => void;
@@ -17,13 +17,13 @@ interface FulfillmentOrderLaterCardProps {
   children?: React.ReactNode;
 }
 
-export function FulfillmentOrderLaterCard({
+export function FulfillmentSuppliersCard({
   count,
   expanded,
   onToggle,
   disabled = false,
   children,
-}: FulfillmentOrderLaterCardProps) {
+}: FulfillmentSuppliersCardProps) {
   const ds = useScaledStyles();
   const chevronProgress = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const contentProgress = useRef(new Animated.Value(0)).current;
@@ -96,7 +96,7 @@ export function FulfillmentOrderLaterCard({
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <Ionicons
-              name="time-outline"
+              name="swap-vertical"
               size={ds.icon(16)}
               color={glassColors.textPrimary}
               style={{ marginRight: ds.spacing(8) }}
@@ -108,7 +108,7 @@ export function FulfillmentOrderLaterCard({
                 color: glassColors.textPrimary,
               }}
             >
-              Order Later
+              Suppliers
             </Text>
           </View>
 
@@ -122,7 +122,7 @@ export function FulfillmentOrderLaterCard({
                   marginRight: ds.spacing(6),
                 }}
               >
-                {count} Item{count === 1 ? '' : 's'}
+                {count} Ready
               </Text>
               <Animated.View style={chevronStyle}>
                 <Ionicons name="chevron-down" size={16} color={glassColors.textSecondary} />
@@ -141,39 +141,40 @@ export function FulfillmentOrderLaterCard({
           >
             <View
               style={{
-                width: ds.icon(36),
-                height: ds.icon(36),
-                borderRadius: glassRadii.iconTile,
+                width: ds.icon(44),
+                height: ds.icon(44),
+                borderRadius: glassRadii.round,
                 alignItems: 'center',
                 justifyContent: 'center',
                 backgroundColor: glassColors.mediumFill,
               }}
             >
               <Ionicons
-                name="time-outline"
-                size={ds.icon(18)}
+                name="checkmark-circle-outline"
+                size={ds.icon(22)}
                 color={glassColors.textSecondary}
               />
             </View>
             <Text
               style={{
                 marginTop: ds.spacing(12),
-                fontSize: ds.fontSize(15),
-                fontWeight: '600',
+                fontSize: ds.fontSize(16),
+                fontWeight: '700',
                 color: glassColors.textPrimary,
               }}
             >
-              No pending items
+              All caught up
             </Text>
             <Text
               style={{
                 marginTop: ds.spacing(6),
-                fontSize: ds.fontSize(12),
+                fontSize: ds.fontSize(13),
                 color: glassColors.textSecondary,
                 lineHeight: ds.fontSize(18),
+                maxWidth: 240,
               }}
             >
-              Items scheduled for a future order will appear here.
+              No pending orders to fulfill at this time.
             </Text>
           </View>
         ) : null}

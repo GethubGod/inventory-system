@@ -319,9 +319,7 @@ export interface DailySuggestionsResponseDTO {
   recent_orders?: RecentOrderDTO[];
 }
 
-// ── Inventory (read-only in Phase 2) ──────────────────────
-// Write operations (create, update, soft-delete) require org_memberships
-// rows that mobile users don't have yet. Deferred to Phase 3.
+// ── Inventory ──────────────────────
 
 export async function listInventory(params?: {
   limit?: number;

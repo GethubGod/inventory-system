@@ -18,7 +18,7 @@ export function HeaderCartButton({
   onPress,
 }: HeaderCartButtonProps) {
   const ds = useScaledStyles();
-  const buttonSize = Math.max(44, ds.icon(40));
+  const buttonSize = Math.max(52, ds.icon(48));
 
   return (
     <View style={{ width: buttonSize, height: buttonSize }}>
@@ -39,7 +39,7 @@ export function HeaderCartButton({
       >
         <Ionicons
           name="bag-handle-outline"
-          size={ds.icon(20)}
+          size={ds.icon(26)}
           color={glassColors.textPrimary}
         />
       </TouchableOpacity>
@@ -47,10 +47,10 @@ export function HeaderCartButton({
         <View
           style={{
             position: 'absolute',
-            top: -6,
-            right: -6,
-            minWidth: ds.spacing(20),
-            height: ds.spacing(20),
+            top: -4,
+            right: -4,
+            minWidth: ds.spacing(24),
+            height: ds.spacing(24),
             paddingHorizontal: 4,
             borderRadius: glassRadii.round,
             alignItems: 'center',
@@ -64,7 +64,7 @@ export function HeaderCartButton({
           <Text
             style={{
               color: glassColors.textOnPrimary,
-              fontSize: ds.fontSize(10),
+              fontSize: ds.fontSize(13),
               fontWeight: '700',
             }}
           >

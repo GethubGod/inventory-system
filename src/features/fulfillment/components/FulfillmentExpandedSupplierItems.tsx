@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, Text, TouchableOpacity, View } from 'react-native';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
@@ -35,19 +35,20 @@ export function FulfillmentExpandedSupplierItems({
         const palette = BADGE_PALETTE[Math.abs(item.badgeToneIndex) % BADGE_PALETTE.length];
 
         return (
-          <Pressable
+          <TouchableOpacity
             key={item.id}
             onPress={item.onPress || undefined}
-            style={({ pressed }) => ({
+            disabled={!item.onPress}
+            activeOpacity={0.96}
+            style={{
               backgroundColor: '#FFFFFF',
               borderRadius: 12,
               borderWidth: glassHairlineWidth,
               borderColor: '#EFEFEF',
-              opacity: item.onPress && pressed ? 0.96 : 1,
               paddingHorizontal: ds.spacing(16),
               paddingVertical: ds.spacing(16),
               marginTop: index === 0 ? 0 : ds.spacing(10),
-            })}
+            }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ flex: 1, paddingRight: ds.spacing(10) }}>
@@ -112,7 +113,7 @@ export function FulfillmentExpandedSupplierItems({
                 </View>
               ) : null}
             </View>
-          </Pressable>
+          </TouchableOpacity>
         );
       })}
 
@@ -145,12 +146,6 @@ export function FulfillmentExpandedSupplierItems({
         >
           {orderLabel}
         </Text>
-        <Ionicons
-          name="chevron-forward"
-          size={ds.icon(20)}
-          color={glassColors.textOnPrimary}
-          style={{ marginLeft: ds.spacing(6) }}
-        />
       </TouchableOpacity>
     </View>
   );

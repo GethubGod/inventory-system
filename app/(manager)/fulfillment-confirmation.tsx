@@ -23,7 +23,7 @@ import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { FulfillmentConfirmItemRow, QuantityExportSelector } from '@/features/fulfillment/components';
 import { OrderLaterScheduleModal } from '@/features/fulfillment/components/OrderLaterScheduleModal';
-import { ItemActionSheet } from '@/components';
+import { GlassSurface, ItemActionSheet } from '@/components';
 import type { ItemActionSheetSection } from '@/components';
 import { buildSupplierConfirmationData } from '@/services/fulfillmentDataSource';
 import { loadSupplierLookup } from '@/services/supplierResolver';
@@ -39,6 +39,7 @@ import {
   glassRadii,
   glassSpacing,
 } from '@/theme/design';
+import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 interface ConfirmationDetail {
   locationId?: string;
@@ -524,6 +525,7 @@ const RemainingItemRow = React.memo(function RemainingItemRow({
 });
 
 export default function FulfillmentConfirmationScreen() {
+  const ds = useScaledStyles();
   const params = useLocalSearchParams<{
     items?: string;
     supplier?: string;
@@ -886,7 +888,11 @@ export default function FulfillmentConfirmationScreen() {
   );
 
   const handleBackPress = useCallback(() => {
-    router.replace('/(manager)/fulfillment');
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/(manager)/fulfillment');
+    }
   }, []);
 
   const syncOrderStoreDecision = useCallback(
@@ -2505,11 +2511,9 @@ export default function FulfillmentConfirmationScreen() {
       <ManagerScaleContainer>
         <View
           style={{
-            backgroundColor: '#FFFFFF',
             paddingHorizontal: glassSpacing.screen,
-            paddingVertical: 12,
-            borderBottomWidth: glassHairlineWidth,
-            borderBottomColor: glassColors.cardBorder,
+            paddingTop: ds.spacing(12),
+            paddingBottom: ds.spacing(16),
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -2518,49 +2522,56 @@ export default function FulfillmentConfirmationScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
             <TouchableOpacity
               onPress={handleBackPress}
-              style={{ padding: 8, marginRight: 8 }}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={{ padding: ds.spacing(8), marginRight: ds.spacing(8), marginLeft: -ds.spacing(8) }}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Ionicons name="arrow-back" size={20} color={glassColors.textPrimary} />
+              <Ionicons name="arrow-back" size={ds.icon(22)} color={glassColors.textPrimary} />
             </TouchableOpacity>
             <View>
               <Text
                 style={{
-                  fontSize: 17,
-                  fontWeight: '700',
+                  fontSize: ds.fontSize(31),
+                  fontWeight: '800',
                   color: glassColors.textPrimary,
+                  letterSpacing: -0.8,
                 }}
               >
                 {supplierLabel}
               </Text>
               <Text
                 style={{
-                  fontSize: 12,
+                  fontSize: ds.fontSize(15),
+                  fontWeight: '600',
                   color: glassColors.textSecondary,
+                  marginTop: -2,
                 }}
               >
                 Review Order
               </Text>
             </View>
           </View>
-          <TouchableOpacity
-            onPress={() => router.push('/(manager)/manager-settings/export-format')}
-            style={{ padding: 8 }}
-          >
-            <Ionicons name="create-outline" size={18} color={glassColors.textSecondary} />
-          </TouchableOpacity>
         </View>
 
         <FlatList
           className="flex-1"
           data={regularListEntries}
           keyExtractor={(entry) => entry.key}
-          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          contentContainerStyle={{ paddingHorizontal: glassSpacing.screen, paddingBottom: ds.spacing(64) }}
           keyboardShouldPersistTaps="handled"
           ListHeaderComponent={(
             <View>
               {remainingItems.length > 0 && (
-                <View className="bg-white rounded-2xl border border-amber-200 px-3 py-3 mb-3">
+                <GlassSurface
+                  intensity="subtle"
+                  style={{
+                    backgroundColor: '#FFFAF0',
+                    borderRadius: glassRadii.surface,
+                    borderWidth: glassHairlineWidth,
+                    borderColor: '#FDE68A',
+                    padding: ds.spacing(20),
+                    marginBottom: ds.spacing(16),
+                  }}
+                >
                   <View className="flex-row items-start justify-between">
                     <View className="flex-1 pr-2">
                       <View className="flex-row items-center">
@@ -2644,70 +2655,86 @@ export default function FulfillmentConfirmationScreen() {
                       );
                     })}
                   </View>
-                </View>
+                </GlassSurface>
               )}
 
-              <View
+              <GlassSurface
+                intensity="subtle"
                 style={{
-                  backgroundColor: '#FFFFFF',
-                  borderRadius: 22,
-                  borderWidth: glassHairlineWidth,
-                  borderColor: glassColors.cardBorder,
-                  padding: 14,
-                  marginBottom: 12,
+                  borderRadius: glassRadii.surface,
+                  paddingHorizontal: ds.spacing(20),
+                  paddingTop: ds.spacing(20),
+                  paddingBottom: ds.spacing(20),
+                  marginBottom: ds.spacing(24),
                 }}
               >
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: ds.spacing(14) }}>
                   <Text
                     style={{
-                      fontSize: 11,
-                      fontWeight: '700',
-                      color: glassColors.textSecondary,
-                      textTransform: 'uppercase',
-                      letterSpacing: 1.2,
+                      fontSize: ds.fontSize(13),
+                      fontWeight: '800',
+                      color: glassColors.textPrimary,
+                      letterSpacing: 0.5,
                     }}
                   >
-                    Message Preview
+                    MESSAGE PREVIEW
                   </Text>
                   <TouchableOpacity
                     onPress={() => router.push('/(manager)/manager-settings/export-format')}
-                    style={{ flexDirection: 'row', alignItems: 'center' }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      backgroundColor: glassColors.accentSoft,
+                      paddingHorizontal: ds.spacing(12),
+                      paddingVertical: ds.spacing(6),
+                      borderRadius: glassRadii.pill,
+                    }}
                   >
-                    <Ionicons name="create-outline" size={14} color={glassColors.accent} />
+                    <Ionicons name="create" size={ds.icon(13)} color={glassColors.accent} />
                     <Text
                       style={{
-                        fontSize: 12,
+                        fontSize: ds.fontSize(12),
                         color: glassColors.accent,
-                        fontWeight: '600',
-                        marginLeft: 4,
+                        fontWeight: '700',
+                        marginLeft: ds.spacing(6),
                       }}
                     >
-                      Edit Format
+                      Settings
                     </Text>
                   </TouchableOpacity>
                 </View>
                 <View
                   style={{
-                    backgroundColor: glassColors.subtleFill,
-                    borderRadius: 14,
-                    padding: 12,
+                    backgroundColor: glassColors.mediumFill,
+                    borderRadius: glassRadii.surface - 4,
+                    padding: ds.spacing(16),
                   }}
                 >
                   <Text
                     style={{
-                      fontSize: 14,
+                      fontSize: ds.fontSize(15),
                       color: glassColors.textPrimary,
-                      lineHeight: 20,
+                      lineHeight: ds.spacing(22),
+                      fontWeight: '500',
                     }}
                   >
                     {messageText}
                   </Text>
                 </View>
-              </View>
+              </GlassSurface>
 
               {hasAnyItems ? (
-                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2.5">
-                  Regular Items ({regularItemCount})
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(13),
+                    fontWeight: '800',
+                    color: glassColors.textSecondary,
+                    letterSpacing: 0.5,
+                    marginBottom: ds.spacing(10),
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  REGULAR ITEMS ({regularItemCount})
                 </Text>
               ) : null}
             </View>

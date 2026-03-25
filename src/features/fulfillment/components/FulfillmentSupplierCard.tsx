@@ -173,25 +173,44 @@ export function FulfillmentSupplierCard({
   );
 
   return (
-    <GlassSurface
-      intensity="subtle"
+    <View
       style={{
+        backgroundColor: '#FFFFFF',
         borderRadius: glassRadii.surface,
         overflow: 'hidden',
+        borderWidth: isExpanded ? 2 : 1,
+        borderColor: isExpanded ? glassColors.accentSoft : glassColors.divider,
       }}
     >
-      <Pressable
+      <TouchableOpacity
         onPress={onToggle}
-        style={({ pressed }) => ({
-          opacity: pressed ? 0.94 : 1,
+        activeOpacity={0.94}
+        style={{
           paddingHorizontal: ds.spacing(20),
           paddingTop: ds.spacing(20),
           paddingBottom: isExpanded ? ds.spacing(16) : ds.spacing(20),
-        })}
+        }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1, paddingRight: ds.spacing(12) }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Animated.View
+                style={[
+                  {
+                    marginRight: ds.spacing(8),
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  },
+                  chevronStyle,
+                ]}
+              >
+                <Ionicons
+                  name="chevron-down"
+                  size={14}
+                  color={glassColors.textSecondary}
+                />
+              </Animated.View>
+
               <Text
                 numberOfLines={1}
                 style={{
@@ -226,23 +245,6 @@ export function FulfillmentSupplierCard({
                   </Text>
                 </View>
               ) : null}
-
-              <Animated.View
-                style={[
-                  {
-                    marginLeft: ds.spacing(8),
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  },
-                  chevronStyle,
-                ]}
-              >
-                <Ionicons
-                  name="chevron-down"
-                  size={14}
-                  color={glassColors.textSecondary}
-                />
-              </Animated.View>
             </View>
 
             <View
@@ -250,6 +252,7 @@ export function FulfillmentSupplierCard({
                 flexDirection: 'row',
                 alignItems: 'center',
                 marginTop: ds.spacing(14),
+                marginLeft: 22,
               }}
             >
               <AvatarStack employees={employees} />
@@ -272,6 +275,7 @@ export function FulfillmentSupplierCard({
                 fontSize: ds.fontSize(12),
                 fontWeight: '600',
                 marginTop: ds.spacing(12),
+                marginLeft: 22,
               }}
             >
               {summaryStats}
@@ -310,16 +314,10 @@ export function FulfillmentSupplierCard({
               >
                 Order
               </Text>
-              <Ionicons
-                name="chevron-forward"
-                size={ds.icon(16)}
-                color={glassColors.textOnPrimary}
-                style={{ marginLeft: ds.spacing(4) }}
-              />
             </TouchableOpacity>
           ) : null}
         </View>
-      </Pressable>
+      </TouchableOpacity>
 
       {isExpanded ? (
         <Animated.View
@@ -337,6 +335,6 @@ export function FulfillmentSupplierCard({
           />
         </Animated.View>
       ) : null}
-    </GlassSurface>
+    </View>
   );
 }

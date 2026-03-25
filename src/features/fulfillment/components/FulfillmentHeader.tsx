@@ -38,18 +38,18 @@ export function FulfillmentHeader({
           onPress={onHistoryPress}
           activeOpacity={0.7}
           style={{
-            minHeight: 38,
-            paddingHorizontal: ds.spacing(14),
+            minHeight: ds.buttonH,
+            paddingHorizontal: ds.spacing(20),
             flexDirection: 'row',
             alignItems: 'center',
           }}
         >
-          <Ionicons name="time-outline" size={ds.icon(15)} color={glassColors.textSecondary} />
+          <Ionicons name="time-outline" size={ds.icon(20)} color={glassColors.textPrimary} />
           <Text
             style={{
-              marginLeft: ds.spacing(6),
-              fontSize: ds.fontSize(13),
-              fontWeight: '600',
+              marginLeft: ds.spacing(8),
+              fontSize: ds.fontSize(17),
+              fontWeight: '700',
               color: glassColors.textPrimary,
             }}
           >

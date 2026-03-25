@@ -30,7 +30,7 @@ import {
   FulfillmentHeader,
   FulfillmentOrderLaterCard,
   FulfillmentReminderBanner,
-  FulfillmentSupplierSectionLabel,
+  FulfillmentSuppliersCard,
   FulfillmentSupplierCard,
   OrderLaterAddToSheet,
   OrderLaterScheduleModal,
@@ -357,6 +357,7 @@ export default function FulfillmentScreen() {
   const [reminderOverview, setReminderOverview] = useState<EmployeeReminderOverview | null>(null);
   const [reminderLoadFailed, setReminderLoadFailed] = useState(false);
   const [orderLaterExpanded, setOrderLaterExpanded] = useState(false);
+  const [suppliersExpanded, setSuppliersExpanded] = useState(true);
   const [addToTargetItemId, setAddToTargetItemId] = useState<string | null>(null);
   const [addToSupplier, setAddToSupplier] = useState<string>('');
   const [addToSupplierError, setAddToSupplierError] = useState<string | null>(null);
@@ -2418,184 +2419,155 @@ export default function FulfillmentScreen() {
         >
           <FulfillmentHeader onHistoryPress={() => router.push('/(manager)/fulfillment-history')} />
 
-          <View style={{ marginTop: ds.spacing(16) }}>
-            <FulfillmentReminderBanner
-              title={reminderBanner.title}
-              subtitle={reminderBanner.subtitle}
-              tone={reminderBanner.tone}
-              onPress={() => router.push('/(manager)/employee-reminders')}
-            />
-          </View>
-
-          <FulfillmentSupplierSectionLabel readyCount={supplierCardData.length} />
-
-          {showInitialLoading ? (
-            <View style={{ gap: ds.spacing(16), marginTop: ds.spacing(4) }}>
-              {[1, 2, 3].map((i) => (
+          {/* Employee reminders banner removed by user request */}
+          <View style={{ marginTop: ds.spacing(8) }}>
+            <FulfillmentSuppliersCard
+              count={supplierCardData.length}
+              expanded={suppliersExpanded}
+              onToggle={() => setSuppliersExpanded((p) => !p)}
+              disabled={!showInitialLoading && !showErrorState && supplierCardData.length === 0}
+            >
+              {showInitialLoading ? (
+                <View style={{ gap: ds.spacing(16), marginTop: ds.spacing(4) }}>
+                  {[1, 2, 3].map((i) => (
+                    <GlassSurface
+                      key={i}
+                      intensity="subtle"
+                      style={{
+                        borderRadius: glassRadii.surface,
+                        paddingHorizontal: ds.spacing(20),
+                        paddingVertical: ds.spacing(20),
+                        opacity: 1 - (i - 1) * 0.2,
+                      }}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{ flex: 1 }}>
+                          <View
+                            style={{
+                              width: 120 - i * 16,
+                              height: 14,
+                              borderRadius: 7,
+                              backgroundColor: glassColors.mediumFill,
+                            }}
+                          />
+                          <View
+                            style={{
+                              width: 80,
+                              height: 10,
+                              borderRadius: 5,
+                              backgroundColor: glassColors.subtleFill,
+                              marginTop: ds.spacing(8),
+                            }}
+                          />
+                        </View>
+                        <View
+                          style={{
+                            width: 70,
+                            height: 32,
+                            borderRadius: glassRadii.button,
+                            backgroundColor: glassColors.subtleFill,
+                          }}
+                        />
+                      </View>
+                    </GlassSurface>
+                  ))}
+                  <View style={{ alignItems: 'center', paddingTop: ds.spacing(6) }}>
+                    <LoadingIndicator size="small" color={glassColors.accent} />
+                  </View>
+                </View>
+              ) : showErrorState ? (
                 <GlassSurface
-                  key={i}
                   intensity="subtle"
                   style={{
                     borderRadius: glassRadii.surface,
                     paddingHorizontal: ds.spacing(20),
-                    paddingVertical: ds.spacing(20),
-                    opacity: 1 - (i - 1) * 0.2,
+                    paddingVertical: ds.spacing(28),
+                    alignItems: 'center',
                   }}
                 >
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{ flex: 1 }}>
-                      <View
-                        style={{
-                          width: 120 - i * 16,
-                          height: 14,
-                          borderRadius: 7,
-                          backgroundColor: glassColors.mediumFill,
-                        }}
-                      />
-                      <View
-                        style={{
-                          width: 80,
-                          height: 10,
-                          borderRadius: 5,
-                          backgroundColor: glassColors.subtleFill,
-                          marginTop: ds.spacing(8),
-                        }}
-                      />
-                    </View>
-                    <View
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 22,
+                      backgroundColor: '#FFF0EA',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginBottom: ds.spacing(12),
+                    }}
+                  >
+                    <Ionicons name="cloud-offline-outline" size={22} color={glassColors.accent} />
+                  </View>
+                  <Text
+                    style={{
+                      color: glassColors.textPrimary,
+                      fontSize: ds.fontSize(16),
+                      fontWeight: '700',
+                      textAlign: 'center',
+                    }}
+                  >
+                    Unable to load suppliers
+                  </Text>
+                  <Text
+                    style={{
+                      color: glassColors.textSecondary,
+                      fontSize: ds.fontSize(13),
+                      lineHeight: ds.fontSize(18),
+                      marginTop: ds.spacing(6),
+                      textAlign: 'center',
+                    }}
+                  >
+                    {loadError || 'Something went wrong. Pull down or tap below to retry.'}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={onRefresh}
+                    activeOpacity={0.86}
+                    style={{
+                      backgroundColor: glassColors.accent,
+                      borderRadius: glassRadii.button,
+                      paddingHorizontal: ds.spacing(20),
+                      paddingVertical: ds.spacing(10),
+                      marginTop: ds.spacing(16),
+                    }}
+                  >
+                    <Text
                       style={{
-                        width: 70,
-                        height: 32,
-                        borderRadius: glassRadii.button,
-                        backgroundColor: glassColors.subtleFill,
+                        color: glassColors.textOnPrimary,
+                        fontSize: ds.fontSize(14),
+                        fontWeight: '700',
                       }}
+                    >
+                      Retry
+                    </Text>
+                  </TouchableOpacity>
+                </GlassSurface>
+              ) : (
+                supplierCardData.map((entry, index) => (
+                  <View 
+                    key={entry.group.supplierId} 
+                    style={{ 
+                      marginBottom: index === supplierCardData.length - 1 ? 0 : ds.spacing(20) 
+                    }}
+                  >
+                    <FulfillmentSupplierCard
+                      name={entry.group.supplierName}
+                      statusLabel={entry.statusLabel}
+                      employees={entry.employees}
+                      employeeSummary={entry.employeeSummary}
+                      summaryStats={`${entry.supplierItemCount} item${entry.supplierItemCount === 1 ? '' : 's'} • ${entry.remainingCount} remaining`}
+                      items={entry.previewItems.map(buildSupplierPreviewProps)}
+                      isExpanded={expandedSupplierId === entry.group.supplierId}
+                      orderLabel={`Order ${entry.supplierItemCount} item${entry.supplierItemCount === 1 ? '' : 's'}`}
+                      onToggle={() => toggleSupplier(entry.group.supplierId)}
+                      onOrderPress={() => handleSend(entry.group)}
                     />
                   </View>
-                </GlassSurface>
-              ))}
-              <View style={{ alignItems: 'center', paddingTop: ds.spacing(6) }}>
-                <LoadingIndicator size="small" color={glassColors.accent} />
-              </View>
-            </View>
-          ) : showErrorState ? (
-            <GlassSurface
-              intensity="subtle"
-              style={{
-                borderRadius: glassRadii.surface,
-                paddingHorizontal: ds.spacing(20),
-                paddingVertical: ds.spacing(28),
-                alignItems: 'center',
-              }}
-            >
-              <View
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  backgroundColor: '#FFF0EA',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: ds.spacing(12),
-                }}
-              >
-                <Ionicons name="cloud-offline-outline" size={22} color={glassColors.accent} />
-              </View>
-              <Text
-                style={{
-                  color: glassColors.textPrimary,
-                  fontSize: ds.fontSize(16),
-                  fontWeight: '700',
-                  textAlign: 'center',
-                }}
-              >
-                Unable to load suppliers
-              </Text>
-              <Text
-                style={{
-                  color: glassColors.textSecondary,
-                  fontSize: ds.fontSize(13),
-                  lineHeight: ds.fontSize(18),
-                  marginTop: ds.spacing(6),
-                  textAlign: 'center',
-                }}
-              >
-                {loadError || 'Something went wrong. Pull down or tap below to retry.'}
-              </Text>
-              <TouchableOpacity
-                onPress={onRefresh}
-                activeOpacity={0.86}
-                style={{
-                  backgroundColor: glassColors.accent,
-                  borderRadius: glassRadii.button,
-                  paddingHorizontal: ds.spacing(20),
-                  paddingVertical: ds.spacing(10),
-                  marginTop: ds.spacing(16),
-                }}
-              >
-                <Text
-                  style={{
-                    color: glassColors.textOnPrimary,
-                    fontSize: ds.fontSize(14),
-                    fontWeight: '700',
-                  }}
-                >
-                  Retry
-                </Text>
-              </TouchableOpacity>
-            </GlassSurface>
-              <View
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  backgroundColor: glassColors.subtleFill,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: ds.spacing(12),
-                }}
-              >
-                <Ionicons name="checkmark-circle-outline" size={22} color={glassColors.textSecondary} />
-              </View>
-              <Text
-                style={{
-                  color: glassColors.textPrimary,
-                  fontSize: ds.fontSize(16),
-                  fontWeight: '700',
-                  textAlign: 'center',
-                }}
-              >
-                All caught up
-              </Text>
-              <Text
-                style={{
-                  color: glassColors.textSecondary,
-                  fontSize: ds.fontSize(13),
-                  lineHeight: ds.fontSize(18),
-                  marginTop: ds.spacing(6),
-                  textAlign: 'center',
-                  maxWidth: 260,
-                }}
-            </GlassSurface>
-          ) : (
-            supplierCardData.map((entry) => (
-              <View key={entry.group.supplierId} style={{ marginBottom: ds.spacing(20) }}>
-                <FulfillmentSupplierCard
-                  name={entry.group.supplierName}
-                  statusLabel={entry.statusLabel}
-                  employees={entry.employees}
-                  employeeSummary={entry.employeeSummary}
-                  summaryStats={`${entry.supplierItemCount} item${entry.supplierItemCount === 1 ? '' : 's'} • ${entry.remainingCount} remaining`}
-                  items={entry.previewItems.map(buildSupplierPreviewProps)}
-                  isExpanded={expandedSupplierId === entry.group.supplierId}
-                  orderLabel={`Order ${entry.supplierItemCount} item${entry.supplierItemCount === 1 ? '' : 's'}`}
-                  onToggle={() => toggleSupplier(entry.group.supplierId)}
-                  onOrderPress={() => handleSend(entry.group)}
-                />
-              </View>
-            ))
-          )}
+                ))
+              )}
+            </FulfillmentSuppliersCard>
+          </View>
 
-          <View style={{ marginTop: ds.spacing(4), marginBottom: ds.spacing(24) }}>
+          <View style={{ marginTop: ds.spacing(20), marginBottom: ds.spacing(24) }}>
             <FulfillmentOrderLaterCard
               count={orderLaterQueue.length}
               expanded={orderLaterExpanded}

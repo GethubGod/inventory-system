@@ -255,8 +255,6 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
-      // PHASE 3: addItem stays as direct DB — v1-create-inventory-item requires
-      // org_memberships row that mobile users don't have yet.
       addItem: async (item) => {
         set({ isLoading: true });
         try {
@@ -323,7 +321,6 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
-      // PHASE 3: updateItem stays as direct DB — same org_memberships blocker.
       updateItem: async (id, updates) => {
         set({ isLoading: true });
         try {
@@ -345,7 +342,6 @@ export const useInventoryStore = create<InventoryState>()(
         }
       },
 
-      // PHASE 3: deleteItem stays as direct DB — same org_memberships blocker.
       deleteItem: async (id) => {
         set({ isLoading: true });
         try {
