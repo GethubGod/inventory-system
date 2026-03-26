@@ -97,21 +97,26 @@ Deno.serve(async (req) => {
         ? Math.max(1, Math.min(24, Math.floor(payload.lookbackMonths)))
         : 6;
 
+    const userId = authResult.user.id;
+
     const [suggestionsResult, recentOrdersResult, weekdayOrderCountQuery] = await Promise.all([
       supabaseAdmin.rpc('get_dow_suggestions', {
         p_location_id: locationId,
         p_min_frequency: minFrequency,
         p_lookback_months: lookbackMonths,
+        p_user_id: userId,
       }),
       supabaseAdmin.rpc('get_recent_orders', {
         p_location_id: locationId,
         p_limit: 10,
+        p_user_id: userId,
       }),
       supabaseAdmin
         .from('orders')
         .select('id, created_at')
         .eq('location_id', locationId)
         .eq('status', 'fulfilled')
+        .eq('user_id', userId)
         .gte(
           'created_at',
           new Date(Date.now() - lookbackMonths * 30 * 24 * 60 * 60 * 1000).toISOString(),

@@ -31,7 +31,7 @@ import {
   HeaderCartButton,
   LoadingIndicator,
 } from '@/components';
-import { CATEGORY_LABELS, colors, SUPPLIER_CATEGORY_LABELS } from '@/constants';
+import { getCategoryLabel, colors, getSupplierCategoryLabel } from '@/constants';
 import {
   glassColors,
   glassHairlineWidth,
@@ -48,9 +48,10 @@ import type {
   Location,
   SupplierCategory,
 } from '@/types';
+import { KNOWN_ITEM_CATEGORIES, KNOWN_SUPPLIER_CATEGORIES } from '@/types';
 import type { OrderingMode } from '@/features/ordering/types';
 import { BrowseItemRow } from './BrowseItemRow';
-import { CATEGORY_ORDER } from './config';
+import { CATEGORY_ORDER, buildCategoryList, getCategoryShortLabel } from './config';
 
 export interface BrowseInventoryScreenViewProps {
   mode: OrderingMode;
@@ -85,14 +86,14 @@ export function BrowseInventoryScreenView({
     requestKey: string;
     index: number;
   } | null>(null);
-  const [browseCategory, setBrowseCategory] = useState<ItemCategory | null>(initialCategory);
+  const [browseCategory, setBrowseCategory] = useState<string | null>(initialCategory ?? null);
   const [browseCategoriesExpanded, setBrowseCategoriesExpanded] = useState(false);
   const [browseSearchQuery, setBrowseSearchQuery] = useState('');
   const [showAddItemModal, setShowAddItemModal] = useState(false);
   const [newItemName, setNewItemName] = useState('');
-  const [newItemCategory, setNewItemCategory] = useState<ItemCategory>('dry');
+  const [newItemCategory, setNewItemCategory] = useState<string>('dry');
   const [newItemSupplierCategory, setNewItemSupplierCategory] =
-    useState<SupplierCategory>('main_distributor');
+    useState<string>('main_distributor');
   const [newItemBaseUnit, setNewItemBaseUnit] = useState('');
   const [newItemPackUnit, setNewItemPackUnit] = useState('');
   const [newItemPackSize, setNewItemPackSize] = useState('');
@@ -161,6 +162,7 @@ export function BrowseInventoryScreenView({
     () => [...items].sort((left, right) => left.name.localeCompare(right.name)),
     [items],
   );
+  const dynamicCategories = useMemo(() => buildCategoryList(items), [items]);
   const focusRequestKey = useMemo(() => {
     if (!initialFocusItemId) {
       return null;
@@ -567,7 +569,7 @@ export function BrowseInventoryScreenView({
           <EmptyStateCard
             icon="layers-outline"
             title="No items in this category yet"
-            message={`Switch filters or add a new ${CATEGORY_LABELS[browseCategory].toLowerCase()} item.`}
+            message={`Switch filters or add a new ${getCategoryLabel(browseCategory).toLowerCase()} item.`}
             actionLabel="Add Missing Item"
             onPressAction={handleOpenAddItemModal}
           />
@@ -676,21 +678,22 @@ export function BrowseInventoryScreenView({
             intensity="medium"
             style={{
               borderRadius: glassRadii.search,
-              paddingHorizontal: ds.spacing(14),
-              height: ds.buttonH,
+              paddingHorizontal: ds.spacing(20),
+              height: Math.max(50, ds.buttonH + 8),
             }}
           >
             <View className="flex-1 flex-row items-center">
               <Ionicons
                 name="search-outline"
-                size={ds.icon(20)}
+                size={ds.icon(22)}
                 color={glassColors.textSecondary}
               />
               <TextInput
                 ref={searchInputRef}
-                className="flex-1 ml-2"
                 style={{
-                  fontSize: ds.fontSize(13),
+                  flex: 1,
+                  marginLeft: ds.spacing(12),
+                  fontSize: ds.fontSize(16),
                   color: glassColors.textPrimary,
                 }}
                 placeholder="Search inventory..."
@@ -718,7 +721,7 @@ export function BrowseInventoryScreenView({
 
         <View style={{ paddingHorizontal: glassSpacing.screen }}>
           <BrowseCategoryScroller
-            categories={CATEGORY_ORDER}
+            categories={dynamicCategories}
             selectedCategory={browseCategory}
             onSelectCategory={setBrowseCategory}
             expanded={browseCategoriesExpanded}
@@ -864,7 +867,7 @@ export function BrowseInventoryScreenView({
                     Category
                   </Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: ds.spacing(8) }}>
-                    {CATEGORY_ORDER.map((category) => {
+                    {dynamicCategories.map((category) => {
                       const isSelected = newItemCategory === category;
                       return (
                         <TouchableOpacity
@@ -892,7 +895,7 @@ export function BrowseInventoryScreenView({
                                 : glassColors.textPrimary,
                             }}
                           >
-                            {CATEGORY_LABELS[category]}
+                            {getCategoryLabel(category)}
                           </Text>
                         </TouchableOpacity>
                       );
@@ -914,7 +917,7 @@ export function BrowseInventoryScreenView({
                     Supplier Category
                   </Text>
                   <View style={{ gap: ds.spacing(8) }}>
-                    {(['main_distributor', 'fish_supplier', 'asian_market'] as SupplierCategory[]).map(
+                    {(KNOWN_SUPPLIER_CATEGORIES as readonly string[]).map(
                       (supplierCategory) => {
                         const isSelected = newItemSupplierCategory === supplierCategory;
                         return (
@@ -943,7 +946,7 @@ export function BrowseInventoryScreenView({
                                   : glassColors.textPrimary,
                               }}
                             >
-                              {SUPPLIER_CATEGORY_LABELS[supplierCategory]}
+                              {getSupplierCategoryLabel(supplierCategory)}
                             </Text>
                           </TouchableOpacity>
                         );

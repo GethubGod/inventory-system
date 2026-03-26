@@ -41,6 +41,19 @@ import {
 } from '@/theme/design';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
+const AVATAR_PALETTE = [
+  { background: '#F7E1D7', text: '#B05534' },
+  { background: '#E6EEF6', text: '#446A86' },
+  { background: '#EEE3F5', text: '#795096' },
+  { background: '#E6F1E6', text: '#4A7A58' },
+] as const;
+
+function getInitials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
 interface ConfirmationDetail {
   locationId?: string;
   locationName: string;
@@ -69,6 +82,50 @@ const LOCATION_GROUP_LABELS: Record<LocationGroup, string> = {
   sushi: 'Sushi',
   poki: 'Poki',
 };
+
+interface LocationSectionLabelProps {
+  group: LocationGroup;
+  count: number;
+}
+
+function LocationSectionLabel({
+  group,
+  count,
+}: LocationSectionLabelProps) {
+  const ds = useScaledStyles();
+  const label = `${LOCATION_GROUP_LABELS[group]} · ${count} item${count === 1 ? '' : 's'}`;
+
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <View style={{ flex: 1, height: 1, backgroundColor: glassColors.divider }} />
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          marginHorizontal: ds.spacing(12),
+        }}
+      >
+        <Ionicons
+          name="location-outline"
+          size={ds.icon(14)}
+          color={glassColors.textSecondary}
+        />
+        <Text
+          style={{
+            fontSize: ds.fontSize(16),
+            fontWeight: '700',
+            color: glassColors.textSecondary,
+            letterSpacing: -0.2,
+            marginLeft: ds.spacing(6),
+          }}
+        >
+          {label}
+        </Text>
+      </View>
+      <View style={{ flex: 1, height: 1, backgroundColor: glassColors.divider }} />
+    </View>
+  );
+}
 
 interface ConfirmationItem {
   id: string;
@@ -395,30 +452,98 @@ const RemainingItemRow = React.memo(function RemainingItemRow({
   onQuantityChange,
   onOverflowPress,
 }: RemainingItemRowProps) {
+  const ds = useScaledStyles();
   const [showDetails, setShowDetails] = useState(false);
   const hasContributorBreakdown = contributorBreakdown.length > 1;
+
+  const orderedByContent = (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <View
+        style={{
+          width: ds.spacing(26),
+          height: ds.spacing(26),
+          borderRadius: ds.spacing(13),
+          backgroundColor: AVATAR_PALETTE[0].background,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Text style={{ color: AVATAR_PALETTE[0].text, fontSize: ds.fontSize(10), fontWeight: '700' }}>
+          {getInitials(item.orderedBy)}
+        </Text>
+      </View>
+      <View style={{ flex: 1, marginLeft: ds.spacing(8) }}>
+        <Text
+          style={{
+            fontSize: ds.fontSize(13),
+            fontWeight: '600',
+            color: glassColors.textSecondary,
+          }}
+          numberOfLines={1}
+        >
+          {item.orderedBy}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: ds.spacing(2) }}>
+          <Ionicons name="location-outline" size={ds.icon(12)} color={glassColors.textSecondary} />
+          <Text
+            style={{
+              marginLeft: ds.spacing(4),
+              fontSize: ds.fontSize(12),
+              fontWeight: '500',
+              color: glassColors.textSecondary,
+            }}
+            numberOfLines={1}
+          >
+            {item.locationName} ({item.shortCode})
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  const inlineNotesContent = item.note ? (
+    <View
+      style={{
+        borderRadius: glassRadii.button,
+        backgroundColor: '#EFF6FF',
+        borderWidth: glassHairlineWidth,
+        borderColor: '#BFDBFE',
+        paddingHorizontal: ds.spacing(12),
+        paddingVertical: ds.spacing(8),
+      }}
+    >
+      <Text style={{ fontSize: ds.fontSize(12), fontWeight: '600', color: '#1D4ED8' }}>
+        {item.orderedBy} · {item.locationName} ({item.shortCode})
+      </Text>
+      <Text style={{ fontSize: ds.fontSize(13), color: '#1E3A5F', marginTop: ds.spacing(3) }}>
+        {item.note}
+      </Text>
+    </View>
+  ) : null;
 
   return (
     <FulfillmentConfirmItemRow
       title={item.name}
+      orderedByContent={orderedByContent}
+      inlineNotesContent={inlineNotesContent}
       headerActions={(
         <>
           <TouchableOpacity
             onPress={() => onOverflowPress(item)}
-            className="p-1.5 mr-1"
+            style={{ padding: ds.spacing(6), marginRight: ds.spacing(4) }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Ionicons name="ellipsis-horizontal" size={16} color={colors.gray[500]} />
+            <Ionicons name="ellipsis-horizontal" size={ds.icon(22)} color={glassColors.textPrimary} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setShowDetails((prev) => !prev)}
-            className="p-1.5"
+            style={{ padding: ds.spacing(6) }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
             <Ionicons
               name={showDetails ? 'information-circle' : 'information-circle-outline'}
-              size={18}
-              color={showDetails ? colors.primary[500] : colors.gray[500]}
+              size={ds.icon(22)}
+              color={showDetails ? glassColors.accent : glassColors.textPrimary}
             />
           </TouchableOpacity>
         </>
@@ -434,9 +559,16 @@ const RemainingItemRow = React.memo(function RemainingItemRow({
         suggested != null ? (
           <TouchableOpacity
             onPress={() => onQuantityChange(item, suggested)}
-            className="px-2.5 py-1.5 rounded-full bg-amber-100 border border-amber-200"
+            style={{
+              paddingHorizontal: ds.spacing(12),
+              paddingVertical: ds.spacing(6),
+              borderRadius: glassRadii.pill,
+              backgroundColor: glassColors.accentSoft,
+              borderWidth: glassHairlineWidth,
+              borderColor: glassColors.accentBorder,
+            }}
           >
-            <Text className="text-[11px] font-semibold text-amber-800">
+            <Text style={{ fontSize: ds.fontSize(12), fontWeight: '700', color: glassColors.accent }}>
               Suggested: {formatQuantity(suggested)}
             </Text>
           </TouchableOpacity>
@@ -473,52 +605,83 @@ const RemainingItemRow = React.memo(function RemainingItemRow({
       )}
       detailsVisible={showDetails}
       details={(
-        <View className="rounded-xl border border-gray-200 bg-white px-3 py-3">
-          <View className={hasContributorBreakdown || item.note ? 'mb-3' : 'mb-0'}>
-            <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Ordered By</Text>
-            <Text className="text-sm text-gray-800 mt-1">
+        <View
+          style={{
+            borderRadius: glassRadii.button,
+            borderWidth: glassHairlineWidth,
+            borderColor: glassColors.cardBorder,
+            backgroundColor: glassColors.subtleFill,
+            paddingHorizontal: ds.spacing(14),
+            paddingVertical: ds.spacing(14),
+          }}
+        >
+          <View style={{ marginBottom: (hasContributorBreakdown || item.note) ? ds.spacing(12) : 0 }}>
+            <Text style={{ fontSize: ds.fontSize(11), fontWeight: '700', color: glassColors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>Ordered By</Text>
+            <Text style={{ fontSize: ds.fontSize(14), color: glassColors.textPrimary, marginTop: ds.spacing(4) }}>
               {hasContributorBreakdown ? `${contributorBreakdown.length} people` : item.orderedBy}
             </Text>
           </View>
 
           {hasContributorBreakdown && (
-            <View className={item.note ? 'mb-3' : 'mb-0'}>
+            <View style={{ marginBottom: item.note ? ds.spacing(12) : 0 }}>
               {contributorBreakdown.map((entry, index) => (
                 <View
                   key={`${item.orderItemId}-contributor-${entry.name}`}
-                  className={`flex-row items-center justify-between py-1.5 ${
-                    index < contributorBreakdown.length - 1 ? 'border-b border-gray-100' : ''
-                  }`}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: ds.spacing(6),
+                    borderBottomWidth: index < contributorBreakdown.length - 1 ? glassHairlineWidth : 0,
+                    borderBottomColor: glassColors.divider,
+                  }}
                 >
-                  <Text className="text-sm text-gray-700">{entry.name}</Text>
-                  <Text className="text-xs font-medium text-gray-600">
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View
+                      style={{
+                        width: ds.spacing(22),
+                        height: ds.spacing(22),
+                        borderRadius: ds.spacing(11),
+                        backgroundColor: AVATAR_PALETTE[index % AVATAR_PALETTE.length].background,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: ds.spacing(8),
+                      }}
+                    >
+                      <Text style={{ color: AVATAR_PALETTE[index % AVATAR_PALETTE.length].text, fontSize: ds.fontSize(9), fontWeight: '700' }}>
+                        {getInitials(entry.name)}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: ds.fontSize(14), color: glassColors.textPrimary }}>{entry.name}</Text>
+                  </View>
+                  <Text style={{ fontSize: ds.fontSize(12), fontWeight: '600', color: glassColors.textSecondary }}>
                     {formatQuantity(entry.reportedTotal)} {item.unitLabel}
-                    {entry.rowCount > 1 ? ` • ${entry.rowCount} entries` : ''}
+                    {entry.rowCount > 1 ? ` · ${entry.rowCount} entries` : ''}
                   </Text>
                 </View>
               ))}
             </View>
           )}
 
-          <View className={item.note ? 'mb-3' : 'mb-0'}>
-            <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Location</Text>
-            <Text className="text-sm text-gray-800 mt-1">
+          <View style={{ marginBottom: item.note ? ds.spacing(12) : 0 }}>
+            <Text style={{ fontSize: ds.fontSize(11), fontWeight: '700', color: glassColors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>Location</Text>
+            <Text style={{ fontSize: ds.fontSize(14), color: glassColors.textPrimary, marginTop: ds.spacing(4) }}>
               {item.locationName} ({item.shortCode})
             </Text>
-            <Text className="text-xs text-gray-500 mt-1">
+            <Text style={{ fontSize: ds.fontSize(12), color: glassColors.textSecondary, marginTop: ds.spacing(4) }}>
               Reported amount: {formatQuantity(item.reportedRemaining)} {item.unitLabel}
             </Text>
           </View>
 
           {item.note ? (
             <View>
-              <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Notes</Text>
-              <Text className="text-sm text-blue-800 mt-1">{item.note}</Text>
+              <Text style={{ fontSize: ds.fontSize(11), fontWeight: '700', color: glassColors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>Notes</Text>
+              <Text style={{ fontSize: ds.fontSize(14), color: '#1D4ED8', marginTop: ds.spacing(4) }}>{item.note}</Text>
             </View>
           ) : null}
         </View>
       )}
-      footer={isSaving ? <Text className="text-[11px] text-gray-500">Saving...</Text> : undefined}
+      footer={isSaving ? <Text style={{ fontSize: ds.fontSize(12), color: glassColors.textSecondary }}>Saving...</Text> : undefined}
       disableControls={isSaving}
     />
   );
@@ -752,7 +915,7 @@ export default function FulfillmentConfirmationScreen() {
       return supplierLabelParam.trim();
     }
     if (!supplierId) return 'Supplier';
-    return SUPPLIER_CATEGORY_LABELS[supplierId as keyof typeof SUPPLIER_CATEGORY_LABELS] || supplierId;
+    return SUPPLIER_CATEGORY_LABELS[supplierId] || supplierId;
   }, [supplierId, supplierLabelParam]);
   const managerLocationIds = useMemo(
     () =>
@@ -888,11 +1051,7 @@ export default function FulfillmentConfirmationScreen() {
   );
 
   const handleBackPress = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/(manager)/fulfillment');
-    }
+    router.replace('/(manager)/fulfillment');
   }, []);
 
   const syncOrderStoreDecision = useCallback(
@@ -1186,6 +1345,67 @@ export default function FulfillmentConfirmationScreen() {
     [unitInfoMap, unitLabelAvailabilityByInventoryItemId]
   );
 
+  const resolvePreviewQuantityAndUnit = useCallback(
+    ({
+      inventoryItemId,
+      sourceQuantity,
+      sourceUnitType,
+      sourceUnitLabel,
+      targetUnitType,
+      targetUnitLabel,
+    }: {
+      inventoryItemId: string;
+      sourceQuantity: number;
+      sourceUnitType: 'base' | 'pack';
+      sourceUnitLabel: string;
+      targetUnitType: 'base' | 'pack';
+      targetUnitLabel: string;
+    }) => {
+      if (!Number.isFinite(sourceQuantity)) {
+        return null;
+      }
+
+      if (sourceUnitType === targetUnitType) {
+        return {
+          quantity: sourceQuantity,
+          unitType: targetUnitType,
+          unitLabel: targetUnitLabel,
+        };
+      }
+
+      const unitInfo = unitInfoMap[inventoryItemId];
+      const conversionMultiplier = resolveUnitConversionMultiplier({
+        inventoryItemId,
+        fromUnitLabel: sourceUnitLabel,
+        toUnitLabel: targetUnitLabel,
+        fromUnitType: sourceUnitType,
+        toUnitType: targetUnitType,
+        packSize: unitInfo?.pack_size ?? null,
+        lookup: unitConversionLookup,
+      });
+
+      if (!conversionMultiplier) {
+        return {
+          quantity: sourceQuantity,
+          unitType: sourceUnitType,
+          unitLabel: sourceUnitLabel,
+        };
+      }
+
+      const convertedQuantity = applyUnitConversion(sourceQuantity, conversionMultiplier);
+      if (!Number.isFinite(convertedQuantity)) {
+        return null;
+      }
+
+      return {
+        quantity: convertedQuantity,
+        unitType: targetUnitType,
+        unitLabel: targetUnitLabel,
+      };
+    },
+    [unitConversionLookup, unitInfoMap]
+  );
+
   const groupedRemainingItems = useMemo(() => {
     return remainingItems.reduce(
       (acc, item) => {
@@ -1268,9 +1488,39 @@ export default function FulfillmentConfirmationScreen() {
     const groupOrder: LocationGroup[] = ['sushi', 'poki'];
     const output = groupOrder
       .map((group) => {
-        const lines: string[] = [];
-        const regularItems = groupedItems[group] || [];
+        const orderedEntries: ({ type: 'grouped'; key: string } | { type: 'raw'; line: string })[] = [];
+        const groupedLines = new Map<
+          string,
+          { name: string; quantity: number; unitLabel: string }
+        >();
+        const regularItems = groupedRegularItems[group] || [];
         const remainingRows = groupedRemainingItems[group] || [];
+
+        const addGroupedLine = ({
+          name,
+          quantity,
+          unitLabel,
+          unitType,
+        }: {
+          name: string;
+          quantity: number;
+          unitLabel: string;
+          unitType: 'base' | 'pack';
+        }) => {
+          const key = `${name.trim().toLowerCase()}|${unitType}|${unitLabel.trim().toLowerCase()}`;
+          const existing = groupedLines.get(key);
+          if (existing) {
+            existing.quantity += quantity;
+            return;
+          }
+
+          groupedLines.set(key, { name, quantity, unitLabel });
+          orderedEntries.push({ type: 'grouped', key });
+        };
+
+        const addRawLine = (line: string) => {
+          orderedEntries.push({ type: 'raw', line });
+        };
 
         regularItems.forEach((item) => {
           const settings = getExportSettings(item.id, item.unitType);
@@ -1280,12 +1530,30 @@ export default function FulfillmentConfirmationScreen() {
             item.unitType,
             item.unitLabel
           );
-          const displayQty = item.quantity;
-          const displayLabel =
+          const targetUnitLabel =
             targetUnit === 'pack'
               ? unitSelectorProps.packUnitLabel
               : unitSelectorProps.baseUnitLabel;
-          lines.push(`- ${item.name}: ${formatQuantity(displayQty)} ${displayLabel}`);
+          const previewEntry = resolvePreviewQuantityAndUnit({
+            inventoryItemId: item.inventoryItemId,
+            sourceQuantity: item.quantity,
+            sourceUnitType: item.unitType,
+            sourceUnitLabel: item.unitLabel,
+            targetUnitType: targetUnit,
+            targetUnitLabel,
+          });
+
+          if (!previewEntry || !Number.isFinite(previewEntry.quantity) || previewEntry.quantity <= 0) {
+            addRawLine(`- ${item.name}: ${formatQuantity(item.quantity)} ${item.unitLabel}`);
+            return;
+          }
+
+          addGroupedLine({
+            name: item.name,
+            quantity: previewEntry.quantity,
+            unitLabel: previewEntry.unitLabel,
+            unitType: previewEntry.unitType,
+          });
         });
 
         remainingRows.forEach((item) => {
@@ -1299,15 +1567,44 @@ export default function FulfillmentConfirmationScreen() {
           const sourceQty = item.decidedQuantity;
           const isValid =
             sourceQty != null && Number.isFinite(sourceQty) && sourceQty > 0;
-          const displayQty = isValid
-            ? formatQuantity(sourceQty!)
-            : '[set qty]';
-          const displayLabel =
+          const targetUnitLabel =
             targetUnit === 'pack'
               ? unitSelectorProps.packUnitLabel
               : unitSelectorProps.baseUnitLabel;
-          lines.push(`- ${item.name}: ${displayQty} ${displayLabel}`);
+
+          if (!isValid) {
+            addRawLine(`- ${item.name}: [set qty] ${targetUnitLabel}`);
+            return;
+          }
+
+          const previewEntry = resolvePreviewQuantityAndUnit({
+            inventoryItemId: item.inventoryItemId,
+            sourceQuantity: sourceQty!,
+            sourceUnitType: item.unitType,
+            sourceUnitLabel: item.unitLabel,
+            targetUnitType: targetUnit,
+            targetUnitLabel,
+          });
+
+          if (!previewEntry || !Number.isFinite(previewEntry.quantity) || previewEntry.quantity <= 0) {
+            addRawLine(`- ${item.name}: ${formatQuantity(sourceQty!)} ${item.unitLabel}`);
+            return;
+          }
+
+          addGroupedLine({
+            name: item.name,
+            quantity: previewEntry.quantity,
+            unitLabel: previewEntry.unitLabel,
+            unitType: previewEntry.unitType,
+          });
         });
+
+        const lines = orderedEntries.map((entry) => {
+          if (entry.type === 'raw') return entry.line;
+          const grouped = groupedLines.get(entry.key);
+          if (!grouped) return null;
+          return `- ${grouped.name}: ${formatQuantity(grouped.quantity)} ${grouped.unitLabel}`;
+        }).filter((entry): entry is string => Boolean(entry));
 
         if (lines.length === 0) return null;
         return `--- ${LOCATION_GROUP_LABELS[group].toUpperCase()} ---\n${lines.join('\n')}`;
@@ -1316,7 +1613,13 @@ export default function FulfillmentConfirmationScreen() {
       .join('\n\n');
 
     return output.length > 0 ? output : 'No items to order.';
-  }, [groupedItems, groupedRemainingItems, getExportSettings, getUnitSelectorPropsByInventoryItemId]);
+  }, [
+    getExportSettings,
+    getUnitSelectorPropsByInventoryItemId,
+    groupedRegularItems,
+    groupedRemainingItems,
+    resolvePreviewQuantityAndUnit,
+  ]);
 
   const messageText = useMemo(() => {
     const today = new Date().toLocaleDateString('en-US', {
@@ -2561,62 +2864,100 @@ export default function FulfillmentConfirmationScreen() {
           ListHeaderComponent={(
             <View>
               {remainingItems.length > 0 && (
-                <GlassSurface
-                  intensity="subtle"
+                <View
                   style={{
-                    backgroundColor: '#FFFAF0',
+                    backgroundColor: 'transparent',
                     borderRadius: glassRadii.surface,
-                    borderWidth: glassHairlineWidth,
-                    borderColor: '#FDE68A',
-                    padding: ds.spacing(20),
-                    marginBottom: ds.spacing(16),
+                    borderWidth: 2,
+                    borderColor: glassColors.accentBorder,
+                    paddingHorizontal: ds.spacing(18),
+                    paddingTop: ds.spacing(18),
+                    paddingBottom: ds.spacing(18),
+                    marginBottom: ds.spacing(20),
                   }}
                 >
-                  <View className="flex-row items-start justify-between">
-                    <View className="flex-1 pr-2">
-                      <View className="flex-row items-center">
-                        <Text className="text-base font-bold text-amber-900">Remaining Items</Text>
-                        <TouchableOpacity
-                          onPress={handleRemainingInstructionsPress}
-                          className="ml-1.5 p-1"
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                        >
-                          <Ionicons name="information-circle-outline" size={16} color={colors.warning} />
-                        </TouchableOpacity>
-                      </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, paddingRight: ds.spacing(8) }}>
+                      <Text
+                        style={{
+                          fontSize: ds.fontSize(20),
+                          fontWeight: '800',
+                          color: glassColors.textPrimary,
+                          letterSpacing: -0.4,
+                        }}
+                      >
+                        Remaining Items
+                      </Text>
+                      <TouchableOpacity
+                        onPress={handleRemainingInstructionsPress}
+                        style={{ marginLeft: ds.spacing(6), padding: ds.spacing(4) }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons name="information-circle-outline" size={ds.icon(20)} color={glassColors.textSecondary} />
+                      </TouchableOpacity>
                     </View>
                     <TouchableOpacity
                       onPress={handleAutoFillSuggestions}
                       disabled={suggestionCount === 0 || loadingLastOrdered || savingRemainingIds.size > 0}
-                      className={`px-2.5 py-1.5 rounded-lg ${
-                        suggestionCount === 0 || loadingLastOrdered || savingRemainingIds.size > 0
-                          ? 'bg-amber-100'
-                          : 'bg-amber-200'
-                      }`}
+                      style={{
+                        minHeight: Math.max(38, ds.buttonH - ds.spacing(8)),
+                        paddingHorizontal: ds.spacing(14),
+                        borderRadius: glassRadii.pill,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        backgroundColor: (suggestionCount === 0 || loadingLastOrdered || savingRemainingIds.size > 0)
+                          ? glassColors.accentSoft
+                          : glassColors.accent,
+                        opacity: suggestionCount === 0 || loadingLastOrdered || savingRemainingIds.size > 0 ? 0.7 : 1,
+                      }}
                     >
-                      <Text className="text-xs font-semibold text-amber-900">Auto-fill</Text>
+                      <Text
+                        style={{
+                          fontSize: ds.fontSize(13),
+                          fontWeight: '700',
+                          color:
+                            suggestionCount === 0 || loadingLastOrdered || savingRemainingIds.size > 0
+                              ? glassColors.accent
+                              : glassColors.textOnPrimary,
+                        }}
+                      >
+                        Auto-fill
+                      </Text>
                     </TouchableOpacity>
                   </View>
 
                   {hasMissingRemaining && (
-                    <View className="mt-2 rounded-lg bg-red-50 border border-red-200 px-2.5 py-2">
-                      <Text className="text-xs font-medium text-red-700">
+                    <View
+                      style={{
+                        marginTop: ds.spacing(12),
+                        borderRadius: glassRadii.button,
+                        backgroundColor: glassColors.dangerSoft,
+                        borderWidth: glassHairlineWidth,
+                        borderColor: 'rgba(163, 45, 45, 0.18)',
+                        paddingHorizontal: ds.spacing(12),
+                        paddingVertical: ds.spacing(8),
+                      }}
+                    >
+                      <Text style={{ fontSize: ds.fontSize(13), fontWeight: '500', color: glassColors.dangerText }}>
                         {unresolvedRemainingItemIds.length} remaining item
                         {unresolvedRemainingItemIds.length === 1 ? '' : 's'} still need a final quantity.
                       </Text>
                     </View>
                   )}
 
-                  <View className="mt-2">
+                  <View style={{ marginTop: ds.spacing(12) }}>
                     {(['sushi', 'poki'] as LocationGroup[]).map((group) => {
                       const rows = groupedRemainingItems[group];
                       if (!rows || rows.length === 0) return null;
 
                       return (
-                        <View key={`remaining-${group}`} className="mb-3 last:mb-0">
-                          <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                            {LOCATION_GROUP_LABELS[group]}
-                          </Text>
+                        <View key={`remaining-${group}`} style={{ marginBottom: ds.spacing(14) }}>
+                          <View style={{ marginBottom: ds.spacing(10) }}>
+                            <LocationSectionLabel
+                              group={group}
+                              count={rows.length}
+                            />
+                          </View>
 
                           {rows.map((item, index) => {
                             const suggested = getSuggestion(item);
@@ -2633,7 +2974,7 @@ export default function FulfillmentConfirmationScreen() {
                             return (
                               <View
                                 key={item.orderItemId}
-                                className={index < rows.length - 1 ? 'mb-2' : ''}
+                                style={index < rows.length - 1 ? { marginBottom: ds.spacing(10) } : undefined}
                               >
                                 <RemainingItemRow
                                   item={item}
@@ -2655,7 +2996,7 @@ export default function FulfillmentConfirmationScreen() {
                       );
                     })}
                   </View>
-                </GlassSurface>
+                </View>
               )}
 
               <GlassSurface
@@ -2671,13 +3012,12 @@ export default function FulfillmentConfirmationScreen() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: ds.spacing(14) }}>
                   <Text
                     style={{
-                      fontSize: ds.fontSize(13),
-                      fontWeight: '800',
+                      fontSize: ds.fontSize(15),
+                      fontWeight: '700',
                       color: glassColors.textPrimary,
-                      letterSpacing: 0.5,
                     }}
                   >
-                    MESSAGE PREVIEW
+                    Message Preview
                   </Text>
                   <TouchableOpacity
                     onPress={() => router.push('/(manager)/manager-settings/export-format')}
@@ -2724,46 +3064,62 @@ export default function FulfillmentConfirmationScreen() {
               </GlassSurface>
 
               {hasAnyItems ? (
-                <Text
-                  style={{
-                    fontSize: ds.fontSize(13),
-                    fontWeight: '800',
-                    color: glassColors.textSecondary,
-                    letterSpacing: 0.5,
-                    marginBottom: ds.spacing(10),
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  REGULAR ITEMS ({regularItemCount})
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: ds.spacing(12) }}>
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(15),
+                      fontWeight: '700',
+                      color: glassColors.textPrimary,
+                    }}
+                  >
+                    Regular Items
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(15),
+                      fontWeight: '600',
+                      color: glassColors.textSecondary,
+                      marginLeft: ds.spacing(6),
+                    }}
+                  >
+                    ({regularItemCount})
+                  </Text>
+                </View>
               ) : null}
             </View>
           )}
           ListEmptyComponent={(
             hasAnyItems ? (
-              <View className="items-center justify-center py-8 bg-white border border-gray-200 rounded-xl">
-                <Text className="text-gray-500 text-sm">No regular items in this supplier section</Text>
+              <View
+                style={{
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  paddingVertical: ds.spacing(32),
+                  backgroundColor: '#FFFFFF',
+                  borderWidth: glassHairlineWidth,
+                  borderColor: glassColors.divider,
+                  borderRadius: glassRadii.surface,
+                }}
+              >
+                <Text style={{ color: glassColors.textSecondary, fontSize: ds.fontSize(14) }}>No regular items in this supplier section</Text>
               </View>
             ) : (
-              <View className="items-center justify-center py-12">
-                <Ionicons name="list-outline" size={48} color={colors.gray[300]} />
-                <Text className="text-gray-500 text-base mt-3">No items to confirm</Text>
-                <Text className="text-gray-400 text-sm mt-1">Return to fulfillment to select items</Text>
+              <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: ds.spacing(48) }}>
+                <Ionicons name="list-outline" size={ds.icon(48)} color={glassColors.textMuted} />
+                <Text style={{ color: glassColors.textSecondary, fontSize: ds.fontSize(16), marginTop: ds.spacing(12) }}>No items to confirm</Text>
+                <Text style={{ color: glassColors.textMuted, fontSize: ds.fontSize(14), marginTop: ds.spacing(4) }}>Return to fulfillment to select items</Text>
               </View>
             )
           )}
           renderItem={({ item: entry }) => {
             if (entry.type === 'group-header') {
-              const label = LOCATION_GROUP_LABELS[entry.group].toUpperCase();
+              const count = groupedRegularItems[entry.group]?.length ?? 0;
               return (
-                <View className="mb-2">
-                  <View className="flex-row items-center">
-                    <View className="flex-1 h-px bg-gray-200" />
-                    <Text className="text-xs font-semibold text-gray-500 uppercase tracking-widest mx-3">
-                      {label}
-                    </Text>
-                    <View className="flex-1 h-px bg-gray-200" />
-                  </View>
+                <View style={{ marginBottom: ds.spacing(10) }}>
+                  <LocationSectionLabel
+                    group={entry.group}
+                    count={count}
+                  />
                 </View>
               );
             }
@@ -2788,28 +3144,146 @@ export default function FulfillmentConfirmationScreen() {
               item.unitLabel
             );
 
+            const orderedByContent = (
+              <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: ds.spacing(6) }}>
+                {hasMultipleContributors ? (
+                  <>
+                    <View style={{ flexDirection: 'row', marginRight: ds.spacing(4) }}>
+                      {item.contributors.slice(0, 3).map((contributor, cIdx) => {
+                        const palette = AVATAR_PALETTE[cIdx % AVATAR_PALETTE.length];
+                        return (
+                          <View
+                            key={`${item.id}-av-${contributor.userId || contributor.name}-${cIdx}`}
+                            style={{
+                              width: ds.spacing(26),
+                              height: ds.spacing(26),
+                              borderRadius: ds.spacing(13),
+                              backgroundColor: palette.background,
+                              borderWidth: 1.5,
+                              borderColor: '#FFFFFF',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              marginLeft: cIdx === 0 ? 0 : -ds.spacing(6),
+                              zIndex: item.contributors.length - cIdx,
+                            }}
+                          >
+                            <Text style={{ color: palette.text, fontSize: ds.fontSize(10), fontWeight: '700' }}>
+                              {getInitials(contributor.name)}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                      {contributorCount > 3 && (
+                        <View
+                          style={{
+                            width: ds.spacing(26),
+                            height: ds.spacing(26),
+                            borderRadius: ds.spacing(13),
+                            backgroundColor: '#F2ECE4',
+                            borderWidth: 1.5,
+                            borderColor: '#FFFFFF',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginLeft: -ds.spacing(6),
+                          }}
+                        >
+                          <Text style={{ color: '#7B6B5D', fontSize: ds.fontSize(10), fontWeight: '700' }}>
+                            +{contributorCount - 3}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text
+                      style={{
+                        fontSize: ds.fontSize(13),
+                        fontWeight: '600',
+                        color: glassColors.textSecondary,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {item.contributors.map((c) => c.name).join(', ')}
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <View
+                      style={{
+                        width: ds.spacing(26),
+                        height: ds.spacing(26),
+                        borderRadius: ds.spacing(13),
+                        backgroundColor: AVATAR_PALETTE[0].background,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Text style={{ color: AVATAR_PALETTE[0].text, fontSize: ds.fontSize(10), fontWeight: '700' }}>
+                        {getInitials(singleContributorName)}
+                      </Text>
+                    </View>
+                    <Text
+                      style={{
+                        fontSize: ds.fontSize(13),
+                        fontWeight: '600',
+                        color: glassColors.textSecondary,
+                      }}
+                      numberOfLines={1}
+                    >
+                      {singleContributorName} · {formatQuantity(item.sumOfContributorQuantities)} {item.unitLabel}
+                    </Text>
+                  </>
+                )}
+              </View>
+            );
+
+            const inlineNotesContent = item.notes.length > 0 ? (
+              <View style={{ gap: ds.spacing(6) }}>
+                {item.notes.map((note) => (
+                  <View
+                    key={note.id}
+                    style={{
+                      borderRadius: glassRadii.button,
+                      backgroundColor: '#EFF6FF',
+                      borderWidth: glassHairlineWidth,
+                      borderColor: '#BFDBFE',
+                      paddingHorizontal: ds.spacing(12),
+                      paddingVertical: ds.spacing(8),
+                    }}
+                  >
+                    <Text style={{ fontSize: ds.fontSize(12), fontWeight: '600', color: '#1D4ED8' }}>
+                      {note.author} · {note.locationName} ({note.shortCode})
+                    </Text>
+                    <Text style={{ fontSize: ds.fontSize(13), color: '#1E3A5F', marginTop: ds.spacing(3) }}>
+                      {note.text}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : null;
+
             return (
-              <View className="mb-2.5">
+              <View style={{ marginBottom: ds.spacing(10) }}>
                 <FulfillmentConfirmItemRow
                   title={item.name}
+                  orderedByContent={orderedByContent}
+                  inlineNotesContent={inlineNotesContent}
                   headerActions={(
                     <>
                       <TouchableOpacity
                         onPress={() => handleRegularItemOverflow(item)}
-                        className="p-1.5 mr-1"
+                        style={{ padding: ds.spacing(6), marginRight: ds.spacing(4) }}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
-                        <Ionicons name="ellipsis-horizontal" size={16} color={colors.gray[500]} />
+                        <Ionicons name="ellipsis-horizontal" size={ds.icon(22)} color={glassColors.textPrimary} />
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => toggleExpand(item.id)}
-                        className="p-1.5"
+                        style={{ padding: ds.spacing(6) }}
                         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       >
                         <Ionicons
                           name={isExpanded ? 'information-circle' : 'information-circle-outline'}
-                          size={18}
-                          color={isExpanded ? colors.primary[500] : colors.gray[500]}
+                          size={ds.icon(22)}
+                          color={isExpanded ? glassColors.accent : glassColors.textPrimary}
                         />
                       </TouchableOpacity>
                     </>
@@ -2837,90 +3311,163 @@ export default function FulfillmentConfirmationScreen() {
                   )}
                   detailsVisible={isExpanded}
                   details={(
-                    <View className="rounded-xl border border-gray-200 bg-white px-3 py-3">
-                      <Text className="text-sm font-semibold text-gray-900">
+                    <View
+                      style={{
+                        borderRadius: glassRadii.button,
+                        borderWidth: glassHairlineWidth,
+                        borderColor: glassColors.cardBorder,
+                        backgroundColor: colors.gray[100],
+                        paddingHorizontal: ds.spacing(14),
+                        paddingVertical: ds.spacing(14),
+                      }}
+                    >
+                      <Text style={{ fontSize: ds.fontSize(14), fontWeight: '600', color: glassColors.textPrimary }}>
                         Ordered by: {hasMultipleContributors ? `${contributorCount} people` : singleContributorName}
                       </Text>
-                      <Text className="text-xs text-gray-500 mt-1">
+                      <Text style={{ fontSize: ds.fontSize(12), color: glassColors.textSecondary, marginTop: ds.spacing(4) }}>
                         Final total: {finalTotalText}
                       </Text>
 
                       {hasMultipleContributors && (
-                        <View className="mt-3">
-                          <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                        <View style={{ marginTop: ds.spacing(12) }}>
+                          <Text
+                            style={{
+                              fontSize: ds.fontSize(11),
+                              fontWeight: '700',
+                              color: glassColors.textSecondary,
+                              textTransform: 'uppercase',
+                              letterSpacing: 0.5,
+                              marginBottom: ds.spacing(8),
+                            }}
+                          >
                             Per-person breakdown
                           </Text>
                           {item.contributors.map((contributor, contributorIndex) => (
                             <View
                               key={`${item.id}-contributor-${contributor.userId || contributor.name}-${contributorIndex}`}
-                              className={`flex-row items-center justify-between py-1.5 ${
-                                contributorIndex < item.contributors.length - 1 ? 'border-b border-gray-200' : ''
-                              }`}
+                              style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                paddingVertical: ds.spacing(6),
+                                borderBottomWidth: contributorIndex < item.contributors.length - 1 ? glassHairlineWidth : 0,
+                                borderBottomColor: glassColors.divider,
+                              }}
                             >
-                              <Text className="text-sm text-gray-700">{contributor.name}</Text>
-                              <Text className="text-sm font-medium text-gray-700">
+                              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <View
+                                  style={{
+                                    width: ds.spacing(22),
+                                    height: ds.spacing(22),
+                                    borderRadius: ds.spacing(11),
+                                    backgroundColor: AVATAR_PALETTE[contributorIndex % AVATAR_PALETTE.length].background,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: ds.spacing(8),
+                                  }}
+                                >
+                                  <Text style={{ color: AVATAR_PALETTE[contributorIndex % AVATAR_PALETTE.length].text, fontSize: ds.fontSize(9), fontWeight: '700' }}>
+                                    {getInitials(contributor.name)}
+                                  </Text>
+                                </View>
+                                <Text style={{ fontSize: ds.fontSize(14), color: glassColors.textPrimary }}>{contributor.name}</Text>
+                              </View>
+                              <Text style={{ fontSize: ds.fontSize(14), fontWeight: '600', color: glassColors.textPrimary }}>
                                 {formatQuantity(contributor.quantity)} {item.unitLabel}
                               </Text>
                             </View>
                           ))}
-                          <Text className="text-xs text-gray-500 mt-2">
+                          <Text style={{ fontSize: ds.fontSize(12), color: glassColors.textSecondary, marginTop: ds.spacing(8) }}>
                             Contributors total: {contributorTotalText}
                           </Text>
 
                           {canResetToSum && (
                             <TouchableOpacity
                               onPress={() => handleResetToSum(item)}
-                              className="self-start mt-2 px-2.5 py-1.5 rounded-md bg-gray-200"
+                              style={{
+                                alignSelf: 'flex-start',
+                                marginTop: ds.spacing(8),
+                                paddingHorizontal: ds.spacing(12),
+                                paddingVertical: ds.spacing(6),
+                                borderRadius: glassRadii.button,
+                                backgroundColor: glassColors.mediumFill,
+                              }}
                             >
-                              <Text className="text-[11px] font-semibold text-gray-700">Reset to sum</Text>
+                              <Text style={{ fontSize: ds.fontSize(12), fontWeight: '700', color: glassColors.textPrimary }}>Reset to sum</Text>
                             </TouchableOpacity>
                           )}
                         </View>
                       )}
 
                       {item.details.length > 0 && (
-                        <View className="mt-3">
-                          <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                        <View style={{ marginTop: ds.spacing(12) }}>
+                          <Text
+                            style={{
+                              fontSize: ds.fontSize(11),
+                              fontWeight: '700',
+                              color: glassColors.textSecondary,
+                              textTransform: 'uppercase',
+                              letterSpacing: 0.5,
+                              marginBottom: ds.spacing(8),
+                            }}
+                          >
                             Location breakdown
                           </Text>
                           {item.details.map((detail, detailIndex) => (
                             <View
                               key={`${item.id}-detail-${detail.locationId || detail.locationName}-${detailIndex}`}
-                              className={`py-1.5 ${
-                                detailIndex < item.details.length - 1 ? 'border-b border-gray-200' : ''
-                              }`}
+                              style={{
+                                paddingVertical: ds.spacing(6),
+                                borderBottomWidth: detailIndex < item.details.length - 1 ? glassHairlineWidth : 0,
+                                borderBottomColor: glassColors.divider,
+                              }}
                             >
-                              <View className="flex-row items-center justify-between">
-                                <Text className="text-sm text-gray-700">
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Text style={{ fontSize: ds.fontSize(14), color: glassColors.textPrimary }}>
                                   {detail.locationName}
                                   {detail.shortCode ? ` (${detail.shortCode})` : ''}
                                 </Text>
-                                <Text className="text-sm font-medium text-gray-700">
+                                <Text style={{ fontSize: ds.fontSize(14), fontWeight: '600', color: glassColors.textPrimary }}>
                                   {formatQuantity(detail.quantity)} {item.unitLabel}
                                 </Text>
                               </View>
-                              <Text className="text-xs text-gray-500 mt-1">Ordered by {detail.orderedBy}</Text>
+                              <Text style={{ fontSize: ds.fontSize(12), color: glassColors.textSecondary, marginTop: ds.spacing(3) }}>Ordered by {detail.orderedBy}</Text>
                             </View>
                           ))}
                         </View>
                       )}
 
                       {item.notes.length > 0 && (
-                        <View className="mt-3">
-                          <Text className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                        <View style={{ marginTop: ds.spacing(12) }}>
+                          <Text
+                            style={{
+                              fontSize: ds.fontSize(11),
+                              fontWeight: '700',
+                              color: glassColors.textSecondary,
+                              textTransform: 'uppercase',
+                              letterSpacing: 0.5,
+                              marginBottom: ds.spacing(8),
+                            }}
+                          >
                             Notes
                           </Text>
                           {item.notes.map((note, noteIndex) => (
                             <View
                               key={note.id}
-                              className={`rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-2 ${
-                                noteIndex < item.notes.length - 1 ? 'mb-2' : ''
-                              }`}
+                              style={{
+                                borderRadius: glassRadii.button,
+                                borderWidth: glassHairlineWidth,
+                                borderColor: '#BFDBFE',
+                                backgroundColor: '#EFF6FF',
+                                paddingHorizontal: ds.spacing(12),
+                                paddingVertical: ds.spacing(8),
+                                marginBottom: noteIndex < item.notes.length - 1 ? ds.spacing(6) : 0,
+                              }}
                             >
-                              <Text className="text-[11px] font-semibold text-blue-700">
-                                {note.author} • {note.locationName} ({note.shortCode})
+                              <Text style={{ fontSize: ds.fontSize(12), fontWeight: '600', color: '#1D4ED8' }}>
+                                {note.author} · {note.locationName} ({note.shortCode})
                               </Text>
-                              <Text className="text-xs text-blue-900 mt-1">{note.text}</Text>
+                              <Text style={{ fontSize: ds.fontSize(13), color: '#1E3A5F', marginTop: ds.spacing(3) }}>{note.text}</Text>
                             </View>
                           ))}
                         </View>
@@ -2947,22 +3494,39 @@ export default function FulfillmentConfirmationScreen() {
           animationType="fade"
           onRequestClose={closeNoteEditor}
         >
-          <Pressable className="flex-1 bg-black/35 justify-end" onPress={closeNoteEditor}>
+          <Pressable
+            style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.35)', justifyContent: 'flex-end' }}
+            onPress={closeNoteEditor}
+          >
             <Pressable
-              className="bg-white rounded-t-3xl px-4 pt-4 pb-5"
+              style={{
+                backgroundColor: '#FFFFFF',
+                borderTopLeftRadius: glassRadii.surface,
+                borderTopRightRadius: glassRadii.surface,
+                paddingHorizontal: ds.spacing(20),
+                paddingTop: ds.spacing(20),
+                paddingBottom: ds.spacing(24),
+              }}
               onPress={(event) => event.stopPropagation()}
             >
-              <View className="flex-row items-center justify-between mb-3">
-                <View className="flex-1 pr-2">
-                  <Text className="text-lg font-bold text-gray-900">
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: ds.spacing(14) }}>
+                <View style={{ flex: 1, paddingRight: ds.spacing(8) }}>
+                  <Text style={{ fontSize: ds.fontSize(20), fontWeight: '700', color: glassColors.textPrimary }}>
                     {(noteRegularItem?.notes.length || noteRemainingItem?.note) ? 'Edit Note' : 'Add Note'}
                   </Text>
-                  <Text className="text-xs text-gray-500 mt-0.5">
+                  <Text style={{ fontSize: ds.fontSize(13), color: glassColors.textSecondary, marginTop: ds.spacing(4) }}>
                     {noteRegularItem?.name || noteRemainingItem?.name || ''}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={closeNoteEditor} className="p-2">
-                  <Ionicons name="close" size={20} color={colors.gray[500]} />
+                <TouchableOpacity
+                  onPress={closeNoteEditor}
+                  style={{
+                    padding: ds.spacing(8),
+                    borderRadius: glassRadii.round,
+                    backgroundColor: glassColors.mediumFill,
+                  }}
+                >
+                  <Ionicons name="close" size={ds.icon(20)} color={glassColors.textPrimary} />
                 </TouchableOpacity>
               </View>
 
@@ -2970,29 +3534,52 @@ export default function FulfillmentConfirmationScreen() {
                 value={noteDraft}
                 onChangeText={setNoteDraft}
                 placeholder="Add supplier note..."
-                placeholderTextColor={colors.gray[400]}
+                placeholderTextColor={glassColors.textMuted}
                 multiline
                 maxLength={240}
                 textAlignVertical="top"
-                className="min-h-[110px] rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-900"
+                style={{
+                  minHeight: ds.spacing(120),
+                  borderRadius: glassRadii.button,
+                  borderWidth: glassHairlineWidth,
+                  borderColor: glassColors.divider,
+                  backgroundColor: glassColors.mediumFill,
+                  paddingHorizontal: ds.spacing(14),
+                  paddingVertical: ds.spacing(14),
+                  fontSize: ds.fontSize(15),
+                  color: glassColors.textPrimary,
+                }}
               />
-              <Text className="text-xs text-gray-400 mt-2">{noteDraft.length}/240</Text>
+              <Text style={{ fontSize: ds.fontSize(12), color: glassColors.textMuted, marginTop: ds.spacing(8) }}>{noteDraft.length}/240</Text>
 
-              <View className="flex-row mt-4">
+              <View style={{ flexDirection: 'row', marginTop: ds.spacing(16) }}>
                 <TouchableOpacity
                   onPress={closeNoteEditor}
-                  className="flex-1 py-3 rounded-xl bg-gray-100 items-center justify-center mr-2"
+                  style={{
+                    flex: 1,
+                    paddingVertical: ds.spacing(14),
+                    borderRadius: glassRadii.button,
+                    backgroundColor: glassColors.mediumFill,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginRight: ds.spacing(10),
+                  }}
                 >
-                  <Text className="text-sm font-semibold text-gray-700">Cancel</Text>
+                  <Text style={{ fontSize: ds.fontSize(15), fontWeight: '600', color: glassColors.textPrimary }}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleSaveNote}
                   disabled={isSavingNote}
-                  className={`flex-1 py-3 rounded-xl items-center justify-center ${
-                    isSavingNote ? 'bg-primary-300' : 'bg-primary-500'
-                  }`}
+                  style={{
+                    flex: 1,
+                    paddingVertical: ds.spacing(14),
+                    borderRadius: glassRadii.button,
+                    backgroundColor: isSavingNote ? '#F79B8C' : glassColors.accent,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
                 >
-                  <Text className="text-sm font-semibold text-white">
+                  <Text style={{ fontSize: ds.fontSize(15), fontWeight: '700', color: '#FFFFFF' }}>
                     {isSavingNote ? 'Saving...' : 'Save Note'}
                   </Text>
                 </TouchableOpacity>
@@ -3003,11 +3590,9 @@ export default function FulfillmentConfirmationScreen() {
 
         <View
           style={{
-            backgroundColor: '#FFFFFF',
-            borderTopWidth: glassHairlineWidth,
-            borderTopColor: glassColors.cardBorder,
             paddingHorizontal: glassSpacing.screen,
-            paddingVertical: 14,
+            paddingTop: ds.spacing(8),
+            paddingBottom: ds.spacing(14),
           }}
         >
           {showRetryActions ? (
@@ -3018,8 +3603,8 @@ export default function FulfillmentConfirmationScreen() {
                 activeOpacity={0.86}
                 style={{
                   flex: 1,
-                  borderRadius: glassRadii.button,
-                  paddingVertical: 13,
+                  height: Math.max(56, ds.buttonH + 8),
+                  borderRadius: glassRadii.submitButton,
                   alignItems: 'center',
                   flexDirection: 'row',
                   justifyContent: 'center',
@@ -3050,25 +3635,25 @@ export default function FulfillmentConfirmationScreen() {
                 activeOpacity={0.86}
                 style={{
                   flex: 1,
-                  borderRadius: glassRadii.button,
-                  paddingVertical: 13,
+                  height: Math.max(56, ds.buttonH + 8),
+                  borderRadius: glassRadii.submitButton,
                   alignItems: 'center',
                   flexDirection: 'row',
                   justifyContent: 'center',
-                  backgroundColor: actionsDisabled ? glassColors.mediumFill : glassColors.accent,
+                  backgroundColor: actionsDisabled ? glassColors.accentSoft : glassColors.accent,
                 }}
               >
                 <Ionicons
                   name="share-social-outline"
-                  size={18}
-                  color={actionsDisabled ? glassColors.textTertiary : glassColors.textOnPrimary}
+                  size={ds.icon(20)}
+                  color={actionsDisabled ? glassColors.accent : glassColors.textOnPrimary}
                 />
                 <Text
                   style={{
                     fontWeight: '700',
-                    marginLeft: 8,
-                    fontSize: 15,
-                    color: actionsDisabled ? glassColors.textTertiary : glassColors.textOnPrimary,
+                    marginLeft: ds.spacing(8),
+                    fontSize: ds.fontSize(17),
+                    color: actionsDisabled ? glassColors.accent : glassColors.textOnPrimary,
                   }}
                 >
                   Share
@@ -3081,25 +3666,25 @@ export default function FulfillmentConfirmationScreen() {
               disabled={actionsDisabled}
               activeOpacity={0.86}
               style={{
-                borderRadius: glassRadii.button,
-                paddingVertical: 14,
+                height: Math.max(56, ds.buttonH + 8),
+                borderRadius: glassRadii.submitButton,
                 alignItems: 'center',
                 flexDirection: 'row',
                 justifyContent: 'center',
-                backgroundColor: actionsDisabled ? glassColors.mediumFill : glassColors.accent,
+                backgroundColor: actionsDisabled ? glassColors.accentSoft : glassColors.accent,
               }}
             >
               <Ionicons
                 name={isFinalizing ? 'hourglass-outline' : 'share-social-outline'}
-                size={18}
-                color={actionsDisabled ? glassColors.textTertiary : glassColors.textOnPrimary}
+                size={ds.icon(20)}
+                color={actionsDisabled ? glassColors.accent : glassColors.textOnPrimary}
               />
               <Text
                 style={{
                   fontWeight: '700',
-                  marginLeft: 8,
-                  fontSize: 15,
-                  color: actionsDisabled ? glassColors.textTertiary : glassColors.textOnPrimary,
+                  marginLeft: ds.spacing(8),
+                  fontSize: ds.fontSize(17),
+                  color: actionsDisabled ? glassColors.accent : glassColors.textOnPrimary,
                 }}
               >
                 {isFinalizing ? 'Sending...' : 'Share'}

@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Animated, Easing, Pressable, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Easing, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { colors } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
 } from '@/theme/design';
-import { GlassSurface } from '@/components';
 import { FulfillmentExpandedSupplierItems } from './FulfillmentExpandedSupplierItems';
 
 const AVATAR_PALETTE = [
@@ -175,11 +175,9 @@ export function FulfillmentSupplierCard({
   return (
     <View
       style={{
-        backgroundColor: '#FFFFFF',
+        backgroundColor: colors.gray[100],
         borderRadius: glassRadii.surface,
         overflow: 'hidden',
-        borderWidth: isExpanded ? 2 : 1,
-        borderColor: isExpanded ? glassColors.accentSoft : glassColors.divider,
       }}
     >
       <TouchableOpacity

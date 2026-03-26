@@ -7,6 +7,7 @@ import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { glassColors, glassRadii, glassHairlineWidth } from '@/theme/design';
 
 type ChipTone = 'amber' | 'gray' | 'blue';
+type SurfaceTone = 'subtle' | 'homeGray';
 
 export interface FulfillmentConfirmItemChip {
   id: string;
@@ -29,6 +30,9 @@ interface FulfillmentConfirmItemRowProps {
   detailsVisible?: boolean;
   footer?: React.ReactNode;
   disableControls?: boolean;
+  orderedByContent?: React.ReactNode;
+  inlineNotesContent?: React.ReactNode;
+  surfaceTone?: SurfaceTone;
 }
 
 export const FulfillmentConfirmItemRow = React.memo(function FulfillmentConfirmItemRow({
@@ -46,27 +50,25 @@ export const FulfillmentConfirmItemRow = React.memo(function FulfillmentConfirmI
   detailsVisible = false,
   footer,
   disableControls = false,
+  orderedByContent,
+  inlineNotesContent,
+  surfaceTone = 'subtle',
 }: FulfillmentConfirmItemRowProps) {
   const ds = useScaledStyles();
+  const isGraySurface = surfaceTone === 'homeGray';
 
-  return (
-    <GlassSurface
-      intensity="subtle"
-      style={{
-        borderRadius: glassRadii.surface,
-        padding: ds.spacing(16),
-      }}
-    >
+  const content = (
+    <>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text
           style={{
             flex: 1,
             paddingRight: ds.spacing(8),
-            fontSize: ds.fontSize(16),
+            fontSize: ds.fontSize(17),
             fontWeight: '700',
             color: glassColors.textPrimary,
           }}
-          numberOfLines={1}
+          numberOfLines={2}
         >
           {title}
         </Text>
@@ -74,7 +76,7 @@ export const FulfillmentConfirmItemRow = React.memo(function FulfillmentConfirmI
       </View>
 
       {(chips.length > 0 || trailingChip) && (
-        <View style={{ marginTop: ds.spacing(8), flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+        <View style={{ marginTop: ds.spacing(10), flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }}>
           {chips.length > 0 ? (
             <View style={{ flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: ds.spacing(6), paddingRight: ds.spacing(8) }}>
               {chips.map((chip) => {
@@ -83,9 +85,9 @@ export const FulfillmentConfirmItemRow = React.memo(function FulfillmentConfirmI
                     case 'amber':
                       return { bg: glassColors.warningSoft, border: glassColors.accentBorder, text: glassColors.warningText };
                     case 'blue':
-                      return { bg: '#EFF6FF', border: '#BFDBFE', text: '#1D4ED8' }; // generic fallback colors
+                      return { bg: '#EFF6FF', border: '#BFDBFE', text: '#1D4ED8' };
                     default:
-                      return { bg: glassColors.subtleFill, border: 'transparent', text: glassColors.textSecondary };
+                      return { bg: colors.gray[100], border: glassColors.cardBorder, text: glassColors.textSecondary };
                   }
                 };
                 const tone = getToneStyle();
@@ -94,14 +96,14 @@ export const FulfillmentConfirmItemRow = React.memo(function FulfillmentConfirmI
                     key={chip.id}
                     style={{
                       borderRadius: glassRadii.pill,
-                      paddingHorizontal: ds.spacing(8),
-                      paddingVertical: ds.spacing(2),
+                      paddingHorizontal: ds.spacing(10),
+                      paddingVertical: ds.spacing(4),
                       backgroundColor: tone.bg,
                       borderWidth: glassHairlineWidth,
                       borderColor: tone.border,
                     }}
                   >
-                    <Text style={{ fontSize: ds.fontSize(11), fontWeight: '700', color: tone.text }}>{chip.label}</Text>
+                    <Text style={{ fontSize: ds.fontSize(12), fontWeight: '700', color: tone.text }}>{chip.label}</Text>
                   </View>
                 );
               })}
@@ -113,74 +115,112 @@ export const FulfillmentConfirmItemRow = React.memo(function FulfillmentConfirmI
         </View>
       )}
 
-      <View style={{ marginTop: ds.spacing(12), flexDirection: 'row', alignItems: 'center' }}>
-        <TouchableOpacity
-          onPress={onDecrement}
-          disabled={disableControls}
-          style={{
-            width: ds.spacing(38),
-            height: ds.spacing(38),
-            borderRadius: glassRadii.button,
-            borderWidth: glassHairlineWidth,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: disableControls ? glassColors.subtleFill : glassColors.mediumFill,
-            borderColor: glassColors.cardBorder,
-          }}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name="remove" size={ds.icon(16)} color={glassColors.textSecondary} />
-        </TouchableOpacity>
+      {orderedByContent ? <View style={{ marginTop: ds.spacing(10) }}>{orderedByContent}</View> : null}
 
-        <TextInput
-          value={quantityValue}
-          onChangeText={onQuantityChangeText}
-          editable={!disableControls}
-          keyboardType="decimal-pad"
-          placeholder={quantityPlaceholder}
-          placeholderTextColor={glassColors.textMuted}
-          style={{
-            marginHorizontal: ds.spacing(8),
-            height: ds.spacing(38),
-            width: ds.spacing(64),
-            borderRadius: glassRadii.button,
-            borderWidth: glassHairlineWidth,
-            borderColor: glassColors.cardBorder,
-            backgroundColor: disableControls ? glassColors.subtleFill : '#FFFFFF',
-            paddingHorizontal: ds.spacing(8),
-            textAlign: 'center',
-            fontSize: ds.fontSize(15),
-            fontWeight: '700',
-            color: glassColors.textPrimary,
-          }}
-        />
+      <View style={{ marginTop: ds.spacing(14), flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          <TouchableOpacity
+            onPress={onDecrement}
+            disabled={disableControls}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 13,
+              borderWidth: glassHairlineWidth,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: disableControls ? colors.gray[100] : colors.gray[200],
+              borderColor: glassColors.cardBorder,
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="remove" size={ds.icon(20)} color={glassColors.textPrimary} />
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          onPress={onIncrement}
-          disabled={disableControls}
-          style={{
-            width: ds.spacing(38),
-            height: ds.spacing(38),
-            borderRadius: glassRadii.button,
-            borderWidth: glassHairlineWidth,
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: disableControls ? glassColors.subtleFill : glassColors.mediumFill,
-            borderColor: glassColors.cardBorder,
-          }}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Ionicons name="add" size={ds.icon(16)} color={glassColors.textSecondary} />
-        </TouchableOpacity>
+          <TextInput
+            value={quantityValue}
+            onChangeText={onQuantityChangeText}
+            editable={!disableControls}
+            keyboardType="decimal-pad"
+            placeholder={quantityPlaceholder}
+            placeholderTextColor={glassColors.textMuted}
+            style={{
+              marginHorizontal: ds.spacing(8),
+              height: 42,
+              width: ds.spacing(74),
+              borderRadius: 13,
+              borderWidth: glassHairlineWidth,
+              borderColor: glassColors.cardBorder,
+              backgroundColor: disableControls
+                ? colors.gray[100]
+                : isGraySurface
+                  ? glassColors.subtleFill
+                  : colors.gray[100],
+              paddingHorizontal: ds.spacing(8),
+              textAlign: 'center',
+              fontSize: ds.fontSize(17),
+              fontWeight: '700',
+              color: glassColors.textPrimary,
+            }}
+          />
 
-        <View style={{ marginLeft: ds.spacing(8), flexShrink: 1 }}>{unitSelector}</View>
+          <TouchableOpacity
+            onPress={onIncrement}
+            disabled={disableControls}
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 13,
+              borderWidth: glassHairlineWidth,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: disableControls ? colors.gray[100] : colors.gray[200],
+              borderColor: glassColors.cardBorder,
+            }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="add" size={ds.icon(20)} color={glassColors.textPrimary} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ marginLeft: ds.spacing(12), flexShrink: 0 }}>{unitSelector}</View>
       </View>
+
+      {inlineNotesContent ? <View style={{ marginTop: ds.spacing(12) }}>{inlineNotesContent}</View> : null}
 
       {detailsVisible && details ? (
         <View style={{ marginTop: ds.spacing(14), borderTopWidth: glassHairlineWidth, borderTopColor: glassColors.cardBorder, paddingTop: ds.spacing(14) }}>{details}</View>
       ) : null}
 
-      {footer ? <View style={{ marginTop: ds.spacing(8) }}>{footer}</View> : null}
+      {footer ? <View style={{ marginTop: ds.spacing(10) }}>{footer}</View> : null}
+    </>
+  );
+
+  if (isGraySurface) {
+    return (
+      <View
+        style={{
+          backgroundColor: colors.gray[100],
+          borderRadius: glassRadii.surface,
+          borderWidth: glassHairlineWidth,
+          borderColor: glassColors.cardBorder,
+          padding: ds.spacing(20),
+        }}
+      >
+        {content}
+      </View>
+    );
+  }
+
+  return (
+    <GlassSurface
+      intensity="subtle"
+      style={{
+        borderRadius: glassRadii.surface,
+        padding: ds.spacing(20),
+      }}
+    >
+      {content}
     </GlassSurface>
   );
 });

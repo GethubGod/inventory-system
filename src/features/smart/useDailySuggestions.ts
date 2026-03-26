@@ -15,7 +15,7 @@ function sanitizeDailySuggestionsError(error: string): string {
   return error;
 }
 
-export function useDailySuggestions(locationId: string | null) {
+export function useDailySuggestions(locationId: string | null, userId?: string | null) {
   const [suggestions, setSuggestions] = useState<SuggestionsData>(createEmptySuggestions);
   const [recentOrders, setRecentOrders] = useState<RecentOrder[]>([]);
   const [loading, setLoading] = useState(false);
@@ -48,7 +48,7 @@ export function useDailySuggestions(locationId: string | null) {
     setError(null);
 
     try {
-      const nextData = await fetchSmartOrderData(locationId);
+      const nextData = await fetchSmartOrderData(locationId, userId);
       setSuggestions(nextData.suggestions);
       setRecentOrders(nextData.recentOrders);
       return nextData;
@@ -62,7 +62,7 @@ export function useDailySuggestions(locationId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [locationId]);
+  }, [locationId, userId]);
 
   return {
     suggestions,

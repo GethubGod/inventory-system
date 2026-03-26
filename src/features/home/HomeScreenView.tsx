@@ -32,7 +32,8 @@ import {
 } from '@/theme/design';
 import {
   CATEGORY_ORDER,
-  CATEGORY_SHORT_LABELS,
+  getCategoryShortLabel,
+  buildCategoryList,
 } from '@/features/browse/config';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useOrderingCartActions } from '@/hooks/useOrderingCartActions';
@@ -99,6 +100,7 @@ const SuggestedItemCard = memo(function SuggestedItemCard({
     <View
       style={{
         width: ds.spacing(168),
+        minHeight: ds.spacing(148),
         borderRadius: glassRadii.surface,
         backgroundColor: colors.gray[100],
         borderWidth: glassHairlineWidth,
@@ -106,33 +108,35 @@ const SuggestedItemCard = memo(function SuggestedItemCard({
         overflow: 'hidden',
       }}
     >
-      <View style={{ padding: ds.spacing(14) }}>
-        <Text
-          style={{
-            fontSize: ds.fontSize(15),
-            fontWeight: '600',
-            color: glassColors.textPrimary,
-          }}
-          numberOfLines={2}
-        >
-          {item.name}
-        </Text>
-        <Text
-          style={{
-            marginTop: ds.spacing(4),
-            fontSize: ds.fontSize(12),
-            color: glassColors.textSecondary,
-          }}
-          numberOfLines={1}
-        >
-          {item.quantity} {item.unitType === 'base' ? item.baseUnit : item.packUnit}
-          {' · '}
-          {getItemSupplierLabel(item)}
-        </Text>
+      <View style={{ padding: ds.spacing(14), flex: 1, flexDirection: 'column' }}>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              fontSize: ds.fontSize(15),
+              fontWeight: '600',
+              color: glassColors.textPrimary,
+            }}
+            numberOfLines={2}
+          >
+            {item.name}
+          </Text>
+          <Text
+            style={{
+              marginTop: ds.spacing(4),
+              fontSize: ds.fontSize(12),
+              color: glassColors.textSecondary,
+            }}
+            numberOfLines={1}
+          >
+            {item.quantity} {item.unitType === 'base' ? item.baseUnit : item.packUnit}
+            {' · '}
+            {getItemSupplierLabel(item)}
+          </Text>
+        </View>
         <AddButton
           onPress={() => onAdd(item)}
           style={{
-            marginTop: ds.spacing(12),
+            marginTop: 'auto',
             minHeight: Math.max(38, ds.buttonH - ds.spacing(8)),
             borderRadius: glassRadii.button,
             alignItems: 'center',
@@ -192,7 +196,7 @@ const BrowsePreviewRow = memo(function BrowsePreviewRow({
           }}
           numberOfLines={1}
         >
-          {CATEGORY_SHORT_LABELS[item.category]} · per {item.pack_unit}
+          {getCategoryShortLabel(item.category)} · per {item.pack_unit}
         </Text>
       </View>
       <AddButton
@@ -336,7 +340,9 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
   }, [location?.id]);
 
   const runHomeDataLoad = useCallback(async (background = false) => {
-    const locationId = useAuthStore.getState().location?.id ?? null;
+    const authState = useAuthStore.getState();
+    const locationId = authState.location?.id ?? null;
+    const userId = authState.session?.user?.id ?? null;
     if (!locationId) {
       hasLoadedHomeDataRef.current = false;
       setPredictedItems([]);
@@ -350,7 +356,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
 
     const [insightsResult, reminderResult] = await Promise.allSettled([
       withTimeout(
-        fetchLocationOrderInsights(locationId),
+        fetchLocationOrderInsights(locationId, 12, userId),
         HOME_INSIGHTS_TIMEOUT_MS,
         'Home insights',
       ),
@@ -668,17 +674,18 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
               keyExtractor={(item) => `${item.inventoryItemId}:${item.unitType}`}
               horizontal
               showsHorizontalScrollIndicator={false}
+              ItemSeparatorComponent={() => <View style={{ width: ds.spacing(10) }} />}
               contentContainerStyle={{
-                gap: ds.spacing(10),
+                paddingRight: ds.spacing(10),
               }}
             />
           ) : (
             <HomeModuleState
               icon="sparkles-outline"
-              title={location?.id ? 'No suggestions found' : 'Choose a location'}
+              title={location?.id ? 'Collecting more data' : 'Choose a location'}
               message={
                 location?.id
-                  ? 'Recent ordering patterns will show up here when they are available.'
+                  ? 'Suggestions will appear here as you place more orders.'
                   : 'Select a location to see suggested items.'
               }
             />
@@ -752,10 +759,10 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
           ) : (
             <HomeModuleState
               icon="flash-outline"
-              title={location?.id ? 'No quick actions found' : 'Choose a location'}
+              title={location?.id ? 'Collecting more data' : 'Choose a location'}
               message={
                 location?.id
-                  ? 'Your latest reorder shortcuts will appear here once recent orders are available.'
+                  ? 'Quick actions will appear here as you place more orders.'
                   : 'Select a location to see quick actions.'
               }
             />
@@ -937,7 +944,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
                         color: glassColors.textPrimary,
                       }}
                     >
-                      {CATEGORY_SHORT_LABELS[category]}
+                      {getCategoryShortLabel(category)}
                     </Text>
                   </TouchableOpacity>
                 );

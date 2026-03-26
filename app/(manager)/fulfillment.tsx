@@ -20,8 +20,9 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore, useOrderStore } from '@/store';
-import { CATEGORY_LABELS, colors } from '@/constants';
-import { InventoryItem, ItemCategory, OrderWithDetails, SupplierCategory } from '@/types';
+import { getCategoryLabel, colors } from '@/constants';
+import { InventoryItem, OrderWithDetails } from '@/types';
+import { KNOWN_SUPPLIER_CATEGORIES } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { GlassSurface, ItemActionSheet, LoadingIndicator } from '@/components';
@@ -83,14 +84,14 @@ interface AggregatedItem {
 }
 
 interface CategoryGroup {
-  category: ItemCategory;
+  category: string;
   items: AggregatedItem[];
 }
 
 interface SupplierGroup {
   supplierId: string;
   supplierName: string;
-  supplierType: SupplierCategory | null;
+  supplierType: string | null;
   isInactive: boolean;
   isUnknown: boolean;
   categoryGroups: CategoryGroup[];
@@ -123,7 +124,7 @@ interface ConfirmationRegularItem {
   id: string;
   inventoryItemId: string;
   name: string;
-  category: ItemCategory;
+  category: string;
   locationGroup: LocationGroup;
   quantity: number;
   unitType: 'base' | 'pack';
@@ -158,7 +159,7 @@ interface ConfirmationRegularItem {
 interface SupplierOption {
   id: string;
   name: string;
-  supplierType: SupplierCategory | null;
+  supplierType: string | null;
   isDefault: boolean;
   active: boolean;
 }
@@ -168,7 +169,7 @@ interface RemainingConfirmationItem {
   orderId: string;
   inventoryItemId: string;
   name: string;
-  category: ItemCategory;
+  category: string;
   locationGroup: LocationGroup;
   locationId: string;
   locationName: string;
@@ -188,11 +189,7 @@ const LOCATION_GROUP_LABELS: Record<LocationGroup, string> = {
   poki: 'Poki',
 };
 
-const LEGACY_SUPPLIER_TYPES: SupplierCategory[] = [
-  'fish_supplier',
-  'main_distributor',
-  'asian_market',
-];
+const LEGACY_SUPPLIER_TYPES: string[] = [...KNOWN_SUPPLIER_CATEGORIES];
 
 const SUPPLIER_DISPLAY_PRIORITY = new Map<string, number>([
   ['asian markets', 0],
@@ -226,25 +223,15 @@ function toSafeNumber(value: unknown, fallback = 0) {
   return parsed;
 }
 
-function toItemCategory(value: unknown): ItemCategory {
-  switch (value) {
-    case 'fish':
-    case 'protein':
-    case 'produce':
-    case 'dry':
-    case 'dairy_cold':
-    case 'frozen':
-    case 'sauces':
-    case 'packaging':
-    case 'alcohol':
-      return value;
-    default:
-      return 'dry';
+function toItemCategory(value: unknown): string {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value.trim();
   }
+  return 'dry';
 }
 
-function isSupplierCategory(value: unknown): value is SupplierCategory {
-  return value === 'fish_supplier' || value === 'main_distributor' || value === 'asian_market';
+function isSupplierCategory(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function toSupplierId(value: unknown): string | null {
@@ -669,7 +656,7 @@ export default function FulfillmentScreen() {
   }, [supplierOptions]);
 
   const defaultSupplierIdByType = useMemo(() => {
-    const map = new Map<SupplierCategory, string>();
+    const map = new Map<string, string>();
     LEGACY_SUPPLIER_TYPES.forEach((supplierType) => {
       const match =
         supplierOptions.find(
@@ -742,7 +729,7 @@ export default function FulfillmentScreen() {
   );
 
   const resolveSupplierType = useCallback(
-    (supplierId: string): SupplierCategory | null => {
+    (supplierId: string): string | null => {
       const optionType = getSupplierOption(supplierId)?.supplierType;
       if (optionType) return optionType;
       return null;
@@ -978,8 +965,8 @@ export default function FulfillmentScreen() {
       });
     });
 
-    const supplierMap = new Map<string, Map<ItemCategory, AggregatedItem[]>>();
-    const supplierTypeById = new Map<string, SupplierCategory | null>();
+    const supplierMap = new Map<string, Map<string, AggregatedItem[]>>();
+    const supplierTypeById = new Map<string, string | null>();
 
     Array.from(itemMap.values()).forEach((aggregatedItem) => {
       const supplierId = aggregatedItem.effectiveSupplierId;
@@ -1023,7 +1010,7 @@ export default function FulfillmentScreen() {
 
         const aType = resolveSupplierType(a);
         const bType = resolveSupplierType(b);
-        const typeOrder = (value: SupplierCategory | null) => {
+        const typeOrder = (value: string | null) => {
           if (value === 'asian_market') return 0;
           if (value === 'fish_supplier') return 1;
           if (value === 'main_distributor') return 2;
@@ -1054,7 +1041,7 @@ export default function FulfillmentScreen() {
       }
 
       categoryGroups.sort((a, b) =>
-        (CATEGORY_LABELS[a.category] || a.category).localeCompare(CATEGORY_LABELS[b.category] || b.category)
+        getCategoryLabel(a.category).localeCompare(getCategoryLabel(b.category))
       );
 
       groups.push({
@@ -1284,7 +1271,7 @@ export default function FulfillmentScreen() {
           id: string;
           inventoryItemId: string;
           name: string;
-          category: ItemCategory;
+          category: string;
           locationGroup: LocationGroup;
           unitType: 'base' | 'pack';
           unitLabel: string;

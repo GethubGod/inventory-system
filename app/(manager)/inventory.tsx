@@ -19,11 +19,10 @@ import { router } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useAuthStore, useInventoryStore, useOrderStore, useSettingsStore } from '@/store';
 import {
-  ItemCategory,
   InventoryItem,
-  SupplierCategory,
 } from '@/types';
-import { CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS, categoryColors, colors } from '@/constants';
+import { KNOWN_ITEM_CATEGORIES, KNOWN_SUPPLIER_CATEGORIES } from '@/types';
+import { getCategoryLabel, getSupplierCategoryLabel, categoryColors, colors } from '@/constants';
 import { LoadingIndicator } from '@/components';
 import { getInventoryWithStock, InventoryWithStock } from '@/lib/api/stock';
 import { supabase } from '@/lib/supabase';
@@ -33,25 +32,10 @@ import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 
-const categories: ItemCategory[] = [
-  'fish',
-  'protein',
-  'produce',
-  'dry',
-  'dairy_cold',
-  'frozen',
-  'sauces',
-  'alcohol',
-  'packaging',
-];
+const categories = [...KNOWN_ITEM_CATEGORIES];
+const supplierCategories = [...KNOWN_SUPPLIER_CATEGORIES];
 
-const supplierCategories: SupplierCategory[] = [
-  'fish_supplier',
-  'main_distributor',
-  'asian_market',
-];
-
-const CATEGORY_EMOJI: Record<ItemCategory, string> = {
+const CATEGORY_EMOJI: Record<string, string> = {
   fish: '🐟',
   protein: '🥩',
   produce: '🥬',
@@ -62,6 +46,10 @@ const CATEGORY_EMOJI: Record<ItemCategory, string> = {
   alcohol: '🍺',
   packaging: '📦',
 };
+
+function getCategoryEmoji(category: string): string {
+  return CATEGORY_EMOJI[category] ?? '📋';
+}
 
 const COUNT_UNITS = ['portion', 'each', 'lb', 'case', 'bag', 'bottle', 'jar', 'pack'] as const;
 const ORDER_UNITS = ['lb', 'case', 'each', 'bag', 'bottle', 'jar', 'pack'] as const;
@@ -105,8 +93,8 @@ interface AreaItemEdit {
 
 interface NewItemForm {
   name: string;
-  category: ItemCategory;
-  supplier_category: SupplierCategory;
+  category: string;
+  supplier_category: string;
   base_unit: string;
   pack_unit: string;
   pack_size: string;
@@ -184,15 +172,15 @@ export default function ManagerInventoryScreen() {
   const [addUnitPickerTarget, setAddUnitPickerTarget] = useState<{ areaId: string; field: 'unit' | 'order' } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
-  const [bulkCategory, setBulkCategory] = useState<ItemCategory>('produce');
-  const [bulkSupplier, setBulkSupplier] = useState<SupplierCategory>('main_distributor');
+  const [bulkCategory, setBulkCategory] = useState<string>('produce');
+  const [bulkSupplier, setBulkSupplier] = useState<string>('main_distributor');
   const [bulkBaseUnit, setBulkBaseUnit] = useState('lb');
   const [bulkPackUnit, setBulkPackUnit] = useState('case');
   const [bulkPackSize, setBulkPackSize] = useState('1');
 
   const [locationFilter, setLocationFilter] = useState<string>('all');
   const [selectedStat, setSelectedStat] = useState<'all' | 'reorder' | 'low' | 'good' | 'overdue'>('all');
-  const [categoryFilter, setCategoryFilter] = useState<ItemCategory | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
 
@@ -1810,7 +1798,7 @@ export default function ManagerInventoryScreen() {
                     className={`font-semibold ${isSelected ? 'text-white' : 'text-gray-700'}`}
                     style={{ fontSize: ds.fontSize(13) }}
                   >
-                    {category ? CATEGORY_LABELS[category] : 'All'}
+                    {category ? getCategoryLabel(category) : 'All'}
                   </Text>
                 </TouchableOpacity>
               );
@@ -2633,7 +2621,7 @@ export default function ManagerInventoryScreen() {
                         <View className="flex-1">
                           <Text className="text-sm font-semibold text-gray-900">{result.item.name}</Text>
                           <Text className="text-xs text-gray-500 mt-1">
-                            {CATEGORY_LABELS[result.item.category]} • In {result.areaCount} area
+                            {getCategoryLabel(result.item.category)} • In {result.areaCount} area
                             {result.areaCount !== 1 ? 's' : ''}
                           </Text>
                         </View>
@@ -2674,7 +2662,7 @@ export default function ManagerInventoryScreen() {
                     <View className="flex-row flex-wrap gap-2">
                       {categories.map((cat) => {
                         const isSelected = form.category === cat;
-                        const color = categoryColors[cat];
+                        const color = categoryColors[cat] || '#999999';
                         return (
                           <TouchableOpacity
                             key={cat}
@@ -2683,7 +2671,7 @@ export default function ManagerInventoryScreen() {
                             onPress={() => setForm({ ...form, category: cat })}
                           >
                             <Text style={{ color: isSelected ? colors.white : color }} className="text-sm font-medium">
-                              {CATEGORY_LABELS[cat]}
+                              {getCategoryLabel(cat)}
                             </Text>
                           </TouchableOpacity>
                         );
@@ -2703,7 +2691,7 @@ export default function ManagerInventoryScreen() {
                             onPress={() => setForm({ ...form, supplier_category: sup })}
                           >
                             <Text className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}>
-                              {SUPPLIER_CATEGORY_LABELS[sup]}
+                              {getSupplierCategoryLabel(sup)}
                             </Text>
                           </TouchableOpacity>
                         );
@@ -2744,7 +2732,7 @@ export default function ManagerInventoryScreen() {
                           {selectedAddItem ? selectedAddItem.name : form.name}
                         </Text>
                         <Text className="text-xs text-gray-500 mt-1">
-                          {selectedAddItem ? CATEGORY_LABELS[selectedAddItem.category] : CATEGORY_LABELS[form.category]}
+                          {selectedAddItem ? getCategoryLabel(selectedAddItem.category) : getCategoryLabel(form.category)}
                         </Text>
                         {addLocationId && (
                           <Text className="text-xs text-gray-400 mt-1">
@@ -3008,7 +2996,7 @@ export default function ManagerInventoryScreen() {
                 <View className="flex-row flex-wrap gap-2">
                   {categories.map((cat) => {
                     const isSelected = bulkCategory === cat;
-                    const color = categoryColors[cat];
+                    const color = categoryColors[cat] || '#999999';
                     return (
                       <TouchableOpacity
                         key={cat}
@@ -3017,7 +3005,7 @@ export default function ManagerInventoryScreen() {
                         onPress={() => setBulkCategory(cat)}
                       >
                         <Text style={{ color: isSelected ? colors.white : color }} className="text-sm font-medium">
-                          {CATEGORY_LABELS[cat]}
+                          {getCategoryLabel(cat)}
                         </Text>
                       </TouchableOpacity>
                     );
@@ -3037,7 +3025,7 @@ export default function ManagerInventoryScreen() {
                         onPress={() => setBulkSupplier(sup)}
                       >
                         <Text className={`text-sm font-medium ${isSelected ? 'text-white' : 'text-gray-700'}`}>
-                          {SUPPLIER_CATEGORY_LABELS[sup]}
+                          {getSupplierCategoryLabel(sup)}
                         </Text>
                       </TouchableOpacity>
                     );

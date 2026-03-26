@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { InventoryItem, ItemCategory, SupplierCategory } from '@/types';
+import type { KnownItemCategory, KnownSupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { listInventory } from '@/lib/api/client';
 
@@ -21,8 +22,8 @@ interface InventoryState {
   error: string | null;
   lastFetched: number | null;
   hasFetchedThisSession: boolean;
-  selectedCategory: ItemCategory | null;
-  selectedSupplierCategory: SupplierCategory | null;
+  selectedCategory: string | null;
+  selectedSupplierCategory: string | null;
   searchQuery: string;
 
   // Actions
@@ -30,12 +31,12 @@ interface InventoryState {
   addItem: (item: NewInventoryItem) => Promise<InventoryItem>;
   updateItem: (id: string, updates: Partial<NewInventoryItem>) => Promise<void>;
   deleteItem: (id: string) => Promise<void>;
-  setSelectedCategory: (category: ItemCategory | null) => void;
-  setSelectedSupplierCategory: (category: SupplierCategory | null) => void;
+  setSelectedCategory: (category: string | null) => void;
+  setSelectedSupplierCategory: (category: string | null) => void;
   setSearchQuery: (query: string) => void;
   getFilteredItems: () => InventoryItem[];
-  getItemsByCategory: (category: ItemCategory) => InventoryItem[];
-  getItemsBySupplierCategory: (category: SupplierCategory) => InventoryItem[];
+  getItemsByCategory: (category: string) => InventoryItem[];
+  getItemsBySupplierCategory: (category: string) => InventoryItem[];
 }
 
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes

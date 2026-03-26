@@ -1,24 +1,13 @@
 import { ScrollView, TouchableOpacity, Text, View } from 'react-native';
-import { ItemCategory } from '@/types';
-import { CATEGORY_LABELS } from '@/constants';
-import { categoryGlassTints, glassColors, glassHairlineWidth, glassRadii } from '@/theme/design';
-
-// Shorter labels for compact display
-const SHORT_LABELS: Record<string, string> = {
-  fish: 'Fish',
-  protein: 'Protein',
-  produce: 'Produce',
-  dry: 'Dry',
-  dairy_cold: 'Dairy',
-  frozen: 'Frozen',
-  sauces: 'Sauces',
-  packaging: 'Packaging',
-};
+import type { ItemCategory } from '@/types';
+import { getCategoryLabel } from '@/constants';
+import { getCategoryTint, glassColors, glassHairlineWidth, glassRadii } from '@/theme/design';
+import { getCategoryShortLabel } from '@/features/browse/config';
 
 interface CategoryFilterProps {
-  categories: ItemCategory[];
-  selectedCategory: ItemCategory | null;
-  onSelectCategory: (category: ItemCategory | null) => void;
+  categories: string[];
+  selectedCategory: string | null;
+  onSelectCategory: (category: string | null) => void;
 }
 
 export function CategoryFilter({
@@ -70,8 +59,8 @@ export function CategoryFilter({
         {/* Category Filters */}
         {categories.map((category) => {
           const isSelected = selectedCategory === category;
-          const tint = categoryGlassTints[category];
-          const label = SHORT_LABELS[category] || CATEGORY_LABELS[category];
+          const tint = getCategoryTint(category);
+          const label = getCategoryShortLabel(category);
 
           return (
             <TouchableOpacity

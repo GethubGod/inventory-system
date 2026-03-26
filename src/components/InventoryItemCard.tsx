@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { InventoryItem, UnitType } from '@/types';
 import { useOrderStore } from '@/store';
 import type { OrderInputMode, CartContext } from '@/store/orderStore';
-import { categoryColors, CATEGORY_LABELS } from '@/constants';
+import { categoryColors, getCategoryLabel } from '@/constants';
 import { GlassView } from '@/components/ui';
 import {
   categoryGlassTints,
@@ -78,7 +78,7 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
   }, [locationId]);
 
   const categoryColor = categoryColors[item.category] || glassColors.textTertiary;
-  const categoryTint = categoryGlassTints[item.category];
+  const categoryTint = categoryGlassTints[item.category] || { background: glassColors.mediumFill, icon: glassColors.textSecondary };
   const showControls = isExpanded || Boolean(cartItem);
 
   const tinyFontSize = ds.fontSize(12);
@@ -384,7 +384,7 @@ function InventoryItemCardInner({ item, locationId, cartContext, hideCategory }:
                 }}
               >
                 <Text style={{ color: categoryColor, fontSize: tinyFontSize, fontWeight: '500' }}>
-                  {CATEGORY_LABELS[item.category]}
+                  {getCategoryLabel(item.category)}
                 </Text>
               </View>
             )}

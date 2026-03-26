@@ -1,18 +1,26 @@
-export type ItemCategory =
-  | 'fish'
-  | 'protein'
-  | 'produce'
-  | 'dry'
-  | 'dairy_cold'
-  | 'frozen'
-  | 'sauces'
-  | 'packaging'
-  | 'alcohol';
+export const KNOWN_ITEM_CATEGORIES = [
+  'fish',
+  'protein',
+  'produce',
+  'dry',
+  'dairy_cold',
+  'frozen',
+  'sauces',
+  'packaging',
+  'alcohol',
+] as const;
 
-export type SupplierCategory =
-  | 'fish_supplier'
-  | 'main_distributor'
-  | 'asian_market';
+export type KnownItemCategory = (typeof KNOWN_ITEM_CATEGORIES)[number];
+export type ItemCategory = KnownItemCategory | (string & {});
+
+export const KNOWN_SUPPLIER_CATEGORIES = [
+  'fish_supplier',
+  'main_distributor',
+  'asian_market',
+] as const;
+
+export type KnownSupplierCategory = (typeof KNOWN_SUPPLIER_CATEGORIES)[number];
+export type SupplierCategory = KnownSupplierCategory | (string & {});
 
 export type UserRole = 'employee' | 'manager';
 export type AuthProvider = 'email' | 'google' | 'apple';

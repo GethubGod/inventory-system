@@ -158,7 +158,7 @@ export default function FulfillmentHistoryScreen() {
       <ManagerScaleContainer>
         <View className="bg-white px-4 py-3 border-b border-gray-100 flex-row items-center">
           <TouchableOpacity
-            onPress={() => router.navigate('/(manager)/fulfillment')}
+            onPress={() => router.replace('/(manager)/fulfillment')}
             className="p-2 mr-2"
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >

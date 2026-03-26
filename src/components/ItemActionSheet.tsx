@@ -186,13 +186,7 @@ export function ItemActionSheet({
                   </Text>
                 ) : null}
 
-                <GlassSurface
-                  intensity="subtle"
-                  style={{
-                    borderRadius: glassRadii.surface,
-                    overflow: 'hidden',
-                  }}
-                >
+                <View style={{ gap: ds.spacing(10) }}>
                   {visibleItems.map((item, itemIndex) => {
                     const disabled = item.disabled === true;
                     const iconBackground = item.destructive
@@ -208,77 +202,85 @@ export function ItemActionSheet({
                     const labelColor = item.destructive ? glassColors.dangerText : glassColors.textPrimary;
 
                     return (
-                      <TouchableOpacity
+                      <GlassSurface
                         key={item.id}
-                        disabled={disabled}
-                        onPress={item.onPress}
-                        activeOpacity={0.78}
+                        intensity="subtle"
                         style={{
-                          flexDirection: 'row',
-                          alignItems: 'flex-start',
-                          minHeight: Math.max(64, ds.rowH),
-                          paddingHorizontal: ds.spacing(16),
-                          paddingVertical: ds.spacing(14),
-                          opacity: disabled ? 0.45 : 1,
-                          borderBottomWidth: itemIndex < visibleItems.length - 1 ? glassHairlineWidth : 0,
-                          borderBottomColor: glassColors.divider,
+                          borderRadius: glassRadii.button,
+                          borderWidth: 1,
+                          borderColor: item.destructive ? 'rgba(239, 68, 68, 0.4)' : glassColors.cardBorder,
+                          overflow: 'hidden',
                         }}
                       >
-                        {item.icon ? (
-                          <View
-                            style={{
-                              width: ds.icon(40),
-                              height: ds.icon(40),
-                              borderRadius: ds.icon(20),
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              backgroundColor: iconBackground,
-                              borderWidth: glassHairlineWidth,
-                              borderColor: item.destructive
-                                ? 'rgba(163, 45, 45, 0.12)'
-                                : glassColors.cardBorder,
-                            }}
-                          >
-                            <Ionicons name={item.icon as any} size={ds.icon(18)} color={iconColor} />
-                          </View>
-                        ) : (
-                          <View style={{ width: ds.icon(40), height: ds.icon(40) }} />
-                        )}
-                        <View style={{ flex: 1, marginLeft: ds.spacing(12), paddingTop: ds.spacing(2) }}>
-                          <Text
-                            style={{
-                              fontSize: ds.fontSize(15),
-                              fontWeight: '600',
-                              color: labelColor,
-                            }}
-                          >
-                            {item.label}
-                          </Text>
-                          {item.detail ? (
-                            <Text
+                        <TouchableOpacity
+                          disabled={disabled}
+                          onPress={item.onPress}
+                          activeOpacity={0.78}
+                          style={{
+                            flexDirection: 'row',
+                            alignItems: 'flex-start',
+                            minHeight: Math.max(64, ds.rowH),
+                            paddingHorizontal: ds.spacing(16),
+                            paddingVertical: ds.spacing(14),
+                            opacity: disabled ? 0.45 : 1,
+                          }}
+                        >
+                          {item.icon ? (
+                            <View
                               style={{
-                                fontSize: ds.fontSize(13),
-                                marginTop: ds.spacing(4),
-                                color: glassColors.textSecondary,
-                                lineHeight: ds.fontSize(18),
+                                width: ds.icon(40),
+                                height: ds.icon(40),
+                                borderRadius: ds.icon(20),
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                backgroundColor: iconBackground,
+                                borderWidth: glassHairlineWidth,
+                                borderColor: item.destructive
+                                  ? 'rgba(163, 45, 45, 0.12)'
+                                  : glassColors.cardBorder,
                               }}
                             >
-                              {item.detail}
+                              <Ionicons name={item.icon as any} size={ds.icon(18)} color={iconColor} />
+                            </View>
+                          ) : (
+                            <View style={{ width: ds.icon(40), height: ds.icon(40) }} />
+                          )}
+                          <View style={{ flex: 1, marginLeft: ds.spacing(12), paddingTop: ds.spacing(2) }}>
+                            <Text
+                              style={{
+                                fontSize: ds.fontSize(15),
+                                fontWeight: '600',
+                                color: labelColor,
+                              }}
+                            >
+                              {item.label}
                             </Text>
-                          ) : null}
-                        </View>
+                            {item.detail ? (
+                              <Text
+                                style={{
+                                  fontSize: ds.fontSize(13),
+                                  marginTop: ds.spacing(4),
+                                  color: glassColors.textSecondary,
+                                  lineHeight: ds.fontSize(18),
+                                }}
+                              >
+                                {item.detail}
+                              </Text>
+                            ) : null}
+                          </View>
 
-                        <View style={{ paddingTop: ds.spacing(8), marginLeft: ds.spacing(8) }}>
-                          <Ionicons
-                            name="chevron-forward"
-                            size={ds.icon(16)}
-                            color={glassColors.textSecondary}
-                          />
-                        </View>
-                      </TouchableOpacity>
+                          <View style={{ paddingTop: ds.spacing(8), marginLeft: ds.spacing(8) }}>
+                            <Ionicons
+                              name="chevron-forward"
+                              size={ds.icon(16)}
+                              color={glassColors.textSecondary}
+                            />
+                          </View>
+                        </TouchableOpacity>
+                      </GlassSurface>
                     );
                   })}
-                </GlassSurface>
+                </View>
               </View>
             );
           })

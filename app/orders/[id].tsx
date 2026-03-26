@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useOrderStore, useAuthStore } from '@/store';
 import { OrderItemWithInventory } from '@/types';
-import { statusColors, ORDER_STATUS_LABELS, CATEGORY_LABELS, categoryColors, colors } from '@/constants';
+import { statusColors, ORDER_STATUS_LABELS, getCategoryLabel, categoryColors, colors } from '@/constants';
 import { supabase } from '@/lib/supabase';
 import { LoadingIndicator } from '@/components';
 import { completePendingRemindersForUser } from '@/services/notificationService';
@@ -316,7 +316,7 @@ export default function OrderDetailScreen() {
               className="px-2.5 py-1 rounded-lg self-start mt-2"
             >
               <Text style={{ color: categoryColor }} className="text-xs font-medium">
-                {CATEGORY_LABELS[item.inventory_item.category]}
+                {getCategoryLabel(item.inventory_item.category)}
               </Text>
             </View>
             {lineNote && (

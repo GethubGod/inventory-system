@@ -18,7 +18,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { AddButton } from '@/components/AddButton';
 import { GlassSurface } from '@/components/ui/GlassSurface';
-import { CATEGORY_LABELS } from '@/constants';
+import { getCategoryLabel } from '@/constants';
 import {
   glassColors,
   glassHairlineWidth,
@@ -230,7 +230,7 @@ function BrowseItemRowInner({
     quantityText,
     remainingText,
   );
-  const subtitle = `${CATEGORY_LABELS[item.category]} · per ${item.pack_unit}`;
+  const subtitle = `${getCategoryLabel(item.category)} · per ${item.pack_unit}`;
 
   const commitQuantity = useCallback(
     (nextQuantity: number, nextUnitType: UnitType = unitType) => {
@@ -888,8 +888,7 @@ function BrowseItemRowInner({
                   color: glassColors.textSecondary,
                 }}
               >
-                Remaining records what is left on hand. Final order quantity can
-                be decided later.
+                State remaining amount and manager will decide how much to order.
               </Text>
             ) : null}
           </View>

@@ -194,6 +194,57 @@ describe('useAuthStore sign-out flow', () => {
     await Promise.resolve();
   });
 
+  test('ignores the SIGNED_OUT auth event triggered by an explicit sign out', async () => {
+    await useAuthStore.getState().initialize();
+
+    expect(onAuthStateChangeMock).toHaveBeenCalledTimes(1);
+    expect(authChangeCallback).not.toBeNull();
+
+    jest.clearAllMocks();
+    signOutMock.mockImplementation(async () => {
+      authChangeCallback?.('SIGNED_OUT', null);
+      return { error: null };
+    });
+
+    useAuthStore.setState(
+      {
+        ...useAuthStore.getInitialState(),
+        session: { user: { id: 'user-1', email: 'manager@example.com' } } as any,
+        user: {
+          id: 'user-1',
+          email: 'manager@example.com',
+          name: 'Manager',
+          role: 'manager',
+          default_location_id: 'loc-1',
+        } as any,
+        profile: {
+          id: 'user-1',
+          role: 'manager',
+          profile_completed: true,
+          is_suspended: false,
+        } as any,
+        location: { id: 'loc-1', name: 'Main', short_code: 'MN' } as any,
+        viewMode: 'manager',
+        isInitialized: true,
+        isLoading: false,
+      },
+      true
+    );
+
+    await expect(useAuthStore.getState().signOut()).resolves.toBeUndefined();
+
+    expect(signOutMock).toHaveBeenCalledWith({ scope: 'local' });
+    expect(setSessionMock).not.toHaveBeenCalled();
+    expect(refreshSessionMock).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().user).toBeNull();
+    expect(useAuthStore.getState().profile).toBeNull();
+    expect(useAuthStore.getState().location).toBeNull();
+    expect(useAuthStore.getState().viewMode).toBe('employee');
+    expect(mockAsyncStorage.removeItem).toHaveBeenCalledWith('babytuna-auth');
+    expect(clearSupabaseStoredSessionMock).toHaveBeenCalledTimes(1);
+  });
+
   test('preserves auth state after an unexpected signed-out auth listener event', async () => {
     await useAuthStore.getState().initialize();
 

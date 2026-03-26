@@ -1,10 +1,9 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { triggerImpactHaptic, ImpactFeedbackStyle } from '@/lib/haptics';
-import { colors } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { glassColors, glassRadii, glassHairlineWidth } from '@/theme/design';
+import { glassColors, glassHairlineWidth } from '@/theme/design';
+import { segmentedControlColors } from '@/theme/segmentedControls';
 
 type UnitType = 'base' | 'pack';
 
@@ -24,51 +23,94 @@ function UnitPillToggle({
   onUnitChange,
 }: QuantityExportSelectorProps) {
   const ds = useScaledStyles();
-  const handlePress = () => {
-    if (!canSwitchUnit) return;
+  const handlePress = (nextUnit: UnitType) => {
+    if (!canSwitchUnit || nextUnit === exportUnitType) return;
     triggerImpactHaptic(ImpactFeedbackStyle.Light);
-    onUnitChange(exportUnitType === 'base' ? 'pack' : 'base');
+    onUnitChange(nextUnit);
   };
-  const label = exportUnitType === 'base' ? baseUnitLabel : packUnitLabel;
-  const isPack = exportUnitType === 'pack';
+
+  if (!canSwitchUnit) {
+    const label = exportUnitType === 'base' ? baseUnitLabel : packUnitLabel;
+
+    return (
+      <View
+        style={{
+          minHeight: 42,
+          borderRadius: 13,
+          borderWidth: glassHairlineWidth,
+          borderColor: glassColors.cardBorder,
+          backgroundColor: segmentedControlColors.inactiveBackground,
+          paddingHorizontal: ds.spacing(14),
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: 0.7,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: ds.fontSize(14),
+            fontWeight: '700',
+            color: glassColors.textSecondary,
+          }}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+      </View>
+    );
+  }
 
   return (
-    <TouchableOpacity
-      onPress={handlePress}
-      disabled={!canSwitchUnit}
+    <View
       style={{
-        height: ds.spacing(38),
-        maxWidth: ds.spacing(112),
+        minHeight: 42,
         flexDirection: 'row',
-        alignItems: 'center',
-        borderRadius: glassRadii.button,
-        paddingHorizontal: ds.spacing(10),
+        alignItems: 'stretch',
+        borderRadius: 13,
+        backgroundColor: segmentedControlColors.inactiveBackground,
+        overflow: 'hidden',
         borderWidth: glassHairlineWidth,
-        backgroundColor: isPack ? glassColors.accent : glassColors.subtleFill,
-        borderColor: isPack ? glassColors.accentBorder : glassColors.cardBorder,
-        opacity: canSwitchUnit ? 1 : 0.45,
+        borderColor: glassColors.cardBorder,
       }}
-      activeOpacity={0.7}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     >
-      <Text
-        style={{
-          maxWidth: ds.spacing(82),
-          fontSize: ds.fontSize(14),
-          fontWeight: '600',
-          color: isPack ? glassColors.textOnPrimary : glassColors.textPrimary,
-        }}
-        numberOfLines={1}
-      >
-        {label}
-      </Text>
-      <Ionicons
-        name="swap-horizontal"
-        size={ds.icon(14)}
-        color={isPack ? colors.white : glassColors.textSecondary}
-        style={{ marginLeft: ds.spacing(4) }}
-      />
-    </TouchableOpacity>
+      {([
+        { key: 'pack' as const, label: packUnitLabel },
+        { key: 'base' as const, label: baseUnitLabel },
+      ]).map((option) => {
+        const isActive = option.key === exportUnitType;
+
+        return (
+          <TouchableOpacity
+            key={option.key}
+            onPress={() => handlePress(option.key)}
+            style={{
+              minHeight: 42,
+              paddingHorizontal: ds.spacing(14),
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: isActive
+                ? segmentedControlColors.activeBackground
+                : 'transparent',
+            }}
+            activeOpacity={0.75}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text
+              style={{
+                fontSize: ds.fontSize(14),
+                fontWeight: '700',
+                color: isActive
+                  ? segmentedControlColors.activeText
+                  : segmentedControlColors.inactiveText,
+              }}
+              numberOfLines={1}
+            >
+              {option.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </View>
   );
 }
 

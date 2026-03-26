@@ -1,4 +1,5 @@
-import type { ItemCategory } from '@/types';
+import type { ItemCategory, KnownItemCategory } from '@/types';
+import { KNOWN_ITEM_CATEGORIES } from '@/types';
 
 export const BROWSE_INVENTORY_ROUTE = '/inventory-browse' as const;
 
@@ -21,7 +22,7 @@ export interface BrowseInventoryNavigationOptions {
   requestId?: string | null;
 }
 
-export const CATEGORY_ORDER: ItemCategory[] = [
+export const CATEGORY_ORDER: KnownItemCategory[] = [
   'fish',
   'protein',
   'produce',
@@ -33,7 +34,7 @@ export const CATEGORY_ORDER: ItemCategory[] = [
   'packaging',
 ];
 
-export const CATEGORY_SHORT_LABELS: Record<ItemCategory, string> = {
+const KNOWN_SHORT_LABELS: Record<string, string> = {
   fish: 'Fish',
   protein: 'Protein',
   produce: 'Produce',
@@ -45,12 +46,30 @@ export const CATEGORY_SHORT_LABELS: Record<ItemCategory, string> = {
   packaging: 'Packaging',
 };
 
+export const CATEGORY_SHORT_LABELS: Record<string, string> = KNOWN_SHORT_LABELS;
+
+export function getCategoryShortLabel(category: string): string {
+  return KNOWN_SHORT_LABELS[category] ?? category.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 export function isBrowseCategory(value: string | null | undefined): value is ItemCategory {
   if (!value) {
     return false;
   }
 
-  return CATEGORY_ORDER.includes(value as ItemCategory);
+  return (KNOWN_ITEM_CATEGORIES as readonly string[]).includes(value);
+}
+
+export function buildCategoryList(items: { category: string }[]): string[] {
+  const knownSet = new Set<string>(CATEGORY_ORDER);
+  const extra = new Set<string>();
+  for (const item of items) {
+    if (!knownSet.has(item.category)) {
+      extra.add(item.category);
+    }
+  }
+  const sorted = Array.from(extra).sort((a, b) => a.localeCompare(b));
+  return [...CATEGORY_ORDER, ...sorted];
 }
 
 export function createBrowseInventoryRouteParams({

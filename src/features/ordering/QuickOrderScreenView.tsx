@@ -33,10 +33,9 @@ import {
   InventoryItem,
   UnitType,
   Location,
-  ItemCategory,
-  SupplierCategory,
 } from "@/types";
-import { colors, CATEGORY_LABELS } from "@/constants";
+import { KNOWN_ITEM_CATEGORIES, KNOWN_SUPPLIER_CATEGORIES } from "@/types";
+import { colors, getCategoryLabel } from "@/constants";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
 import { useResolvedActiveLocation } from "@/hooks/useResolvedActiveLocation";
 import { triggerConfirmationHaptic } from "@/lib/haptics";
@@ -70,23 +69,8 @@ const CATEGORY_EMOJI: Record<string, string> = {
   packaging: "📦",
 };
 
-const QUICK_CREATE_CATEGORIES: ItemCategory[] = [
-  "fish",
-  "protein",
-  "produce",
-  "dry",
-  "dairy_cold",
-  "frozen",
-  "sauces",
-  "alcohol",
-  "packaging",
-];
-
-const QUICK_CREATE_SUPPLIERS: SupplierCategory[] = [
-  "fish_supplier",
-  "main_distributor",
-  "asian_market",
-];
+const QUICK_CREATE_CATEGORIES: string[] = [...KNOWN_ITEM_CATEGORIES];
+const QUICK_CREATE_SUPPLIERS: string[] = [...KNOWN_SUPPLIER_CATEGORIES];
 
 type ScreenState = "searching" | "quantity";
 
@@ -164,9 +148,9 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemCategory, setNewItemCategory] =
-    useState<ItemCategory>("produce");
+    useState<string>("produce");
   const [newItemSupplier, setNewItemSupplier] =
-    useState<SupplierCategory>("main_distributor");
+    useState<string>("main_distributor");
   const [newItemBaseUnit, setNewItemBaseUnit] = useState("lb");
   const [newItemPackUnit, setNewItemPackUnit] = useState("case");
   const [newItemPackSize, setNewItemPackSize] = useState("1");
@@ -459,7 +443,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
     ({ item, index }: { item: InventoryItem; index: number }) => {
       const isFirst = index === 0;
       const emoji = CATEGORY_EMOJI[item.category] || "📦";
-      const categoryLabel = CATEGORY_LABELS[item.category] || item.category;
+      const categoryLabel = getCategoryLabel(item.category);
 
       return (
         <TouchableOpacity
@@ -1458,7 +1442,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                             isSelected ? "text-white" : "text-gray-700"
                           }`}
                         >
-                          {CATEGORY_LABELS[cat] || cat}
+                          {getCategoryLabel(cat)}
                         </Text>
                       </TouchableOpacity>
                     );

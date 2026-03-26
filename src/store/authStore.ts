@@ -1289,19 +1289,19 @@ export const useAuthStore = create<AuthState>()(
               return;
             }
 
-            const transitionId = beginAuthTransition();
-
             if (event === 'SIGNED_OUT') {
-              scheduleDeferredAuthTask(async () => {
-                if (explicitSignOutInProgress) {
-                  try {
-                    await resetSignedOutClientState(transitionId);
-                  } finally {
-                    clearExplicitSignOutFlag();
-                  }
-                  return;
-                }
+              const currentState = get();
+              const isAlreadySignedOutLocally =
+                !currentState.session?.user && !currentState.user && !currentState.profile;
 
+              if (explicitSignOutInProgress || isAlreadySignedOutLocally) {
+                clearExplicitSignOutFlag();
+                return;
+              }
+
+              const transitionId = beginAuthTransition();
+
+              scheduleDeferredAuthTask(async () => {
                 const recovered = await recoverUnexpectedSignedOutSession(transitionId);
                 assertFreshTransition(transitionId);
 
@@ -1313,6 +1313,8 @@ export const useAuthStore = create<AuthState>()(
               });
               return;
             }
+
+            const transitionId = beginAuthTransition();
 
             if (!session) {
               return;

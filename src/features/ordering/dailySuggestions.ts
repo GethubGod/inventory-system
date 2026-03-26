@@ -128,8 +128,11 @@ function mapHistoricalOrderToRecentOrder(order: HistoricalOrderSummary): RecentO
   };
 }
 
-async function fetchSmartOrderDataFromClient(locationId: string): Promise<SmartOrderData> {
-  const insights = await fetchLocationOrderInsights(locationId);
+async function fetchSmartOrderDataFromClient(
+  locationId: string,
+  userId?: string | null,
+): Promise<SmartOrderData> {
+  const insights = await fetchLocationOrderInsights(locationId, 12, userId);
   const totalPastOrders = Math.max(
     insights.predictedItems.reduce(
       (highestCount, item) => Math.max(highestCount, item.occurrenceCount),
@@ -242,12 +245,15 @@ function normalizeRecentOrders(data: DailySuggestionsResponseDTO | null): Recent
     .filter((order) => order.items.length > 0);
 }
 
-export async function fetchSmartOrderData(locationId: string): Promise<SmartOrderData> {
+export async function fetchSmartOrderData(
+  locationId: string,
+  userId?: string | null,
+): Promise<SmartOrderData> {
   const result = await getDailySuggestions({ locationId });
   if (result.error) {
     if (shouldUseClientFallback(result.error)) {
       try {
-        return await fetchSmartOrderDataFromClient(locationId);
+        return await fetchSmartOrderDataFromClient(locationId, userId);
       } catch (fallbackError) {
         console.warn('Daily suggestions edge function failed and client fallback also failed.', {
           apiError: result.error,
@@ -265,7 +271,10 @@ export async function fetchSmartOrderData(locationId: string): Promise<SmartOrde
   };
 }
 
-export async function fetchDailySuggestions(locationId: string): Promise<SuggestionsData> {
-  const data = await fetchSmartOrderData(locationId);
+export async function fetchDailySuggestions(
+  locationId: string,
+  userId?: string | null,
+): Promise<SuggestionsData> {
+  const data = await fetchSmartOrderData(locationId, userId);
   return data.suggestions;
 }

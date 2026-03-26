@@ -1,9 +1,8 @@
 import React from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { CATEGORY_LABELS } from '@/constants';
+import { getCategoryLabel } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import type { ItemCategory } from '@/types';
 import {
   glassColors,
   glassHairlineWidth,
@@ -49,9 +48,9 @@ function CategoryPill({
 }
 
 interface BrowseCategoryScrollerProps {
-  categories: ItemCategory[];
-  selectedCategory: ItemCategory | null;
-  onSelectCategory: (category: ItemCategory | null) => void;
+  categories: string[];
+  selectedCategory: string | null;
+  onSelectCategory: (category: string | null) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
 }
@@ -77,7 +76,7 @@ export function BrowseCategoryScroller({
       {categories.map((category) => (
         <CategoryPill
           key={category}
-          label={CATEGORY_LABELS[category]}
+          label={getCategoryLabel(category)}
           active={selectedCategory === category}
           onPress={() =>
             onSelectCategory(selectedCategory === category ? null : category)

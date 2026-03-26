@@ -1,5 +1,5 @@
 import { Platform, StyleSheet } from 'react-native';
-import type { ItemCategory } from '@/types';
+import type { ItemCategory, KnownItemCategory } from '@/types';
 
 export const primaryScale = {
   50: '#FFF3F1',
@@ -159,7 +159,7 @@ export const glass = {
   },
 } as const;
 
-export const categoryTints: Record<ItemCategory, { background: string; icon: string }> = {
+const knownCategoryTints: Record<KnownItemCategory, { background: string; icon: string }> = {
   fish: { background: colors.tagBlueBg, icon: colors.tagBlue },
   protein: { background: colors.tagRedBg, icon: colors.tagRed },
   produce: { background: colors.tagGreenBg, icon: colors.tagGreen },
@@ -170,6 +170,14 @@ export const categoryTints: Record<ItemCategory, { background: string; icon: str
   alcohol: { background: colors.tagIndigoBg, icon: colors.tagIndigo },
   packaging: { background: grayScale[200], icon: grayScale[700] },
 };
+
+const defaultCategoryTint = { background: grayScale[100], icon: grayScale[600] };
+
+export const categoryTints: Record<string, { background: string; icon: string }> = knownCategoryTints;
+
+export function getCategoryTint(category: ItemCategory): { background: string; icon: string } {
+  return (knownCategoryTints as Record<string, { background: string; icon: string }>)[category] ?? defaultCategoryTint;
+}
 
 export const uiTints = {
   accent: { background: colors.primaryLight, icon: colors.primary },

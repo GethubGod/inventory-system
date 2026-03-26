@@ -257,16 +257,19 @@ export function SmartOrderScreen({
   const {
     location,
     locations,
+    session,
     setLocation,
     fetchLocations,
   } = useAuthStore(
     useShallow((state) => ({
       location: state.location,
       locations: state.locations,
+      session: state.session,
       setLocation: state.setLocation,
       fetchLocations: state.fetchLocations,
     })),
   );
+  const activeUserId = session?.user?.id ?? null;
   const {
     totalCartCount,
   } = useOrderStore(
@@ -288,7 +291,7 @@ export function SmartOrderScreen({
     loading: smartOrderLoading,
     error: smartOrderError,
     reload: reloadSuggestions,
-  } = useDailySuggestions(activeLocationId);
+  } = useDailySuggestions(activeLocationId, activeUserId);
 
   useEffect(() => {
     void fetchLocations();
@@ -546,7 +549,7 @@ export function SmartOrderScreen({
               <EmptyStateCard
                 icon="time-outline"
                 title={`Usually ordered on ${suggestions.day_label}`}
-                message={`Not enough ${suggestions.day_label} order history yet. Keep ordering through the app and suggestions will appear.`}
+                message={`Collecting more data. Keep placing orders on ${suggestions.day_label} and your personalized suggestions will appear here.`}
                 alignment="leading"
               />
             </View>

@@ -1,4 +1,4 @@
-import { CATEGORY_LABELS, SUPPLIER_CATEGORY_LABELS } from '@/constants';
+import { getCategoryLabel, getSupplierCategoryLabel } from '@/constants';
 import { supabase } from '@/lib/supabase';
 import type {
   InventoryItem,
@@ -166,8 +166,9 @@ function groupPredictedItems(
 export async function fetchLocationOrderInsights(
   locationId: string,
   limit = 12,
+  userId?: string | null,
 ): Promise<LocationOrderInsights> {
-  const { data, error } = await supabase
+  let query = supabase
     .from('orders')
     .select(
       `
@@ -197,6 +198,11 @@ export async function fetchLocationOrderInsights(
     .order('created_at', { ascending: false })
     .limit(Math.max(limit, 12));
 
+  if (userId) {
+    query = query.eq('user_id', userId);
+  }
+
+  const { data, error } = await query;
   if (error) {
     throw error;
   }
@@ -242,11 +248,11 @@ export function summarizeOrderItems(
 }
 
 export function getItemMetaLabel(item: HistoricalOrderItem): string {
-  return `${CATEGORY_LABELS[item.category]} · ${
+  return `${getCategoryLabel(item.category)} · ${
     item.unitType === 'base' ? item.baseUnit : `per ${item.packUnit}`
   }`;
 }
 
 export function getItemSupplierLabel(item: HistoricalOrderItem): string {
-  return SUPPLIER_CATEGORY_LABELS[item.supplierCategory];
+  return getSupplierCategoryLabel(item.supplierCategory);
 }
