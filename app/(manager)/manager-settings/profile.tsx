@@ -11,7 +11,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -272,7 +271,6 @@ export default function ManagerProfileSettingsScreen() {
       } else {
         Alert.alert('Account deleted');
       }
-      router.replace('/(auth)/login');
     } catch (error: any) {
       Alert.alert(
         'Unable to delete account',

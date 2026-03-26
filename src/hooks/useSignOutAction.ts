@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import { Alert, Platform } from 'react-native';
-import { router } from 'expo-router';
 import { useAuthStore } from '@/store';
 
 interface UseSignOutActionOptions {
@@ -21,7 +20,6 @@ export function useSignOutAction({
     try {
       setIsSigningOut(true);
       await signOut();
-      router.replace('/(auth)/login');
     } catch (error) {
       console.error('Failed to complete sign out.', error);
 

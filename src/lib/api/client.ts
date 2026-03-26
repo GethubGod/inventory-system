@@ -43,11 +43,13 @@ function getBaseUrl(): string {
 // Synchronous session getter registered by authStore at module load.
 // Avoids supabase.auth.getSession() which deadlocks on React Native
 // due to an internal lock in auth-js.
-let _syncSessionGetter: (() => { access_token?: string } | null) | null = null;
+let _syncSessionGetter:
+  | (() => { access_token?: string; refresh_token?: string } | null)
+  | null = null;
 
 /** Called by authStore to provide deadlock-free token access. */
 export function registerSessionGetter(
-  getter: () => { access_token?: string } | null,
+  getter: () => { access_token?: string; refresh_token?: string } | null,
 ) {
   _syncSessionGetter = getter;
 }
@@ -67,9 +69,31 @@ async function getAccessToken(): Promise<string | null> {
 }
 
 async function refreshAccessToken(): Promise<string | null> {
+  const syncSession = _syncSessionGetter?.() ?? null;
+
   try {
     const { data, error } = await supabase.auth.refreshSession();
-    if (error || !data.session) return null;
+    if (!error && data.session?.access_token) {
+      return data.session.access_token;
+    }
+  } catch {
+    // Fall back to the in-memory session below.
+  }
+
+  if (!syncSession?.access_token || !syncSession?.refresh_token) {
+    return null;
+  }
+
+  try {
+    const { data, error } = await supabase.auth.setSession({
+      access_token: syncSession.access_token,
+      refresh_token: syncSession.refresh_token,
+    });
+
+    if (error || !data.session?.access_token) {
+      return null;
+    }
+
     return data.session.access_token;
   } catch {
     return null;
@@ -402,6 +426,15 @@ export async function setUserSuspended(params: {
   isSuspended: boolean;
 }): Promise<ApiResult<{ success: boolean }>> {
   return request<{ success: boolean }>('set-user-suspended', { body: params });
+}
+
+export async function deleteSelfAccountRequest(
+  confirmText: string
+): Promise<ApiResult<{ ok?: boolean }>> {
+  return request<{ ok?: boolean }>('delete-self', {
+    body: { confirm: confirmText },
+    timeoutMs: 20_000,
+  });
 }
 
 // ── Employee reminders (mobile-repo edge function) ────────

@@ -10,7 +10,6 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { ChangePasswordModal, SettingsGroup, SettingsScreenLayout } from '@/components/settings';
@@ -260,7 +259,6 @@ export default function ProfileSettingsScreen() {
       } else {
         Alert.alert('Account deleted');
       }
-      router.replace('/(auth)/login');
     } catch (error: any) {
       Alert.alert(
         'Unable to delete account',

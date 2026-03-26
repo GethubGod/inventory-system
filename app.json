@@ -2,7 +2,7 @@
   "expo": {
     "name": "Babytuna Systems",
     "slug": "babytuna-systems",
-    "version": "1.0.0",
+    "version": "1.5.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
     "scheme": "babytunasystems",
@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.babytuna.systems",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "config": {
         "usesNonExemptEncryption": false
       },

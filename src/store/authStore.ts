@@ -6,7 +6,7 @@ import * as AuthSession from 'expo-auth-session';
 import * as WebBrowser from 'expo-web-browser';
 import { User, Location, UserRole, Profile, AuthProvider } from '@/types';
 import { clearSupabaseStoredSession, supabase } from '@/lib/supabase';
-import { registerSessionGetter } from '@/lib/api/client';
+import { deleteSelfAccountRequest, registerSessionGetter } from '@/lib/api/client';
 import { validateAccessCode } from '@/services/accessCodes';
 
 type ViewMode = 'employee' | 'manager';
@@ -1574,73 +1574,24 @@ export const useAuthStore = create<AuthState>()(
 
         set({ isLoading: true });
         try {
-          const invokeDeleteSelf = () =>
-            withTimeout(
-              supabase.functions.invoke('delete-self', {
-                body: { confirm: 'DELETE' },
-              }),
-              DELETE_SELF_NETWORK_TIMEOUT_MS,
-              'Delete request timed out. Please check your connection and try again.'
-            );
-
-          // Let the Supabase client attach the freshly-refreshed token automatically.
-          let { error } = await invokeDeleteSelf();
-
-          // Single retry on 401 — refresh once more in case of a race.
-          const initialStatus = (error as any)?.context?.status as number | undefined;
-          if (error && initialStatus === 401) {
-            const { data: retryRefreshed, error: retryRefreshError } = await withTimeout(
-              supabase.auth.refreshSession(),
-              DELETE_SELF_NETWORK_TIMEOUT_MS,
-              'Session refresh timed out. Please check your connection and try again.'
-            );
-            if (retryRefreshError || !retryRefreshed?.session) {
-              throw new Error('Your session has expired. Please sign out, sign in again, and retry.');
-            }
-            ({ error } = await invokeDeleteSelf());
-          }
+          const { error } = await withTimeout(
+            deleteSelfAccountRequest('DELETE'),
+            DELETE_SELF_NETWORK_TIMEOUT_MS,
+            'Delete request timed out. Please check your connection and try again.'
+          );
 
           if (error) {
-            const status = (error as any)?.context?.status as number | undefined;
-            if (status === 404) {
+            const normalizedError = error.trim();
+            if (normalizedError === 'Unexpected response (404)') {
               throw new Error(
                 'Delete account service is unavailable. Please contact support.'
               );
             }
-            if (status === 401) {
+            if (normalizedError === 'Session expired. Please sign in again.') {
               throw new Error('Your session has expired. Please sign out, sign in again, and retry.');
             }
 
-            let serverMessage: string | null = null;
-            const response = (error as any)?.context;
-            if (response && typeof response.clone === 'function') {
-              if (typeof response.json === 'function') {
-                try {
-                  const payload = await response.clone().json();
-                  if (payload && typeof payload.error === 'string') {
-                    serverMessage =
-                      typeof payload.details === 'string'
-                        ? `${payload.error}: ${payload.details}`
-                        : payload.error;
-                  }
-                } catch {
-                  // Ignore JSON parsing failures and try plain text fallback next.
-                }
-              }
-
-              if (!serverMessage && typeof response.text === 'function') {
-                try {
-                  const text = (await response.clone().text())?.trim();
-                  if (text) {
-                    serverMessage = text.length > 240 ? `${text.slice(0, 240)}...` : text;
-                  }
-                } catch {
-                  // Ignore parsing failures and fall back to generic error text.
-                }
-              }
-            }
-
-            throw new Error(serverMessage || error.message || 'Unable to delete account.');
+            throw new Error(normalizedError || 'Unable to delete account.');
           }
 
           try {

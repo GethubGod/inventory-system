@@ -23,6 +23,16 @@ import { colors } from '@/constants';
 const SIGN_IN_PASSWORD_HELPER =
   'If you recently created your password, it should be at least 8 characters and include letters and numbers.';
 const AUTH_SCREEN_BACKGROUND = '#000000';
+const AUTH_INPUT_TEXT_STYLE = {
+  flex: 1,
+  marginLeft: 12,
+  fontSize: 16,
+  lineHeight: 20,
+  height: 48,
+  paddingVertical: 0,
+  includeFontPadding: false,
+  textAlignVertical: 'center' as const,
+};
 
 function getParamValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
@@ -162,7 +172,8 @@ export default function LoginScreen() {
                   color={focusedInput === 'email' ? colors.primary[500] : colors.gray[400]}
                 />
                 <TextInput
-                  className="flex-1 ml-3 text-gray-900 text-base"
+                  className="text-gray-900"
+                  style={AUTH_INPUT_TEXT_STYLE}
                   placeholder="Enter your email"
                   placeholderTextColor={colors.gray[400]}
                   value={email}
@@ -185,7 +196,8 @@ export default function LoginScreen() {
                   color={focusedInput === 'password' ? colors.primary[500] : colors.gray[400]}
                 />
                 <TextInput
-                  className="flex-1 ml-3 text-gray-900 text-base"
+                  className="text-gray-900"
+                  style={AUTH_INPUT_TEXT_STYLE}
                   placeholder="Enter your password"
                   placeholderTextColor={colors.gray[400]}
                   value={password}
