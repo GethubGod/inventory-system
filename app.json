@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.babytuna.systems",
-      "buildNumber": "2",
+      "buildNumber": "10",
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -81,7 +81,7 @@
         "projectId": "fd32384c-3175-4fef-81b4-1321513b386e"
       }
     },
-    "runtimeVersion": "1.0.0",
+    "runtimeVersion": "1.5.0",
     "owner": "gethubgod",
     "updates": {
       "url": "https://u.expo.dev/fd32384c-3175-4fef-81b4-1321513b386e"

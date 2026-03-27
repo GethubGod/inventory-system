@@ -501,6 +501,7 @@ const USER_SCOPED_STORAGE_KEYS = [
   'stock-storage',
   'babytuna-fulfillment',
   'tuna-specialist-storage',
+  'home-insights-cache-v1',
 ] as const;
 
 type PersistedStoreApi = {
