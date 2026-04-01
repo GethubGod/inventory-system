@@ -29,12 +29,56 @@ const KNOWN_VALUES = {
   },
 };
 
+function normalizeTextCell(value) {
+  if (value === null || value === undefined) return '';
+  return String(value).trim();
+}
+
+function normalizePositiveNumber(value, fallback) {
+  var parsed = Number(value);
+  if (!isFinite(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
+function deleteAutoManagedFields(row) {
+  delete row.created_at;
+  delete row.updated_at;
+}
+
+function getRowKeySignature(row) {
+  return Object.keys(row).sort().join('|');
+}
+
+function groupRowsByKeySignature(rows) {
+  var groups = {};
+  var orderedSignatures = [];
+
+  for (var i = 0; i < rows.length; i++) {
+    var row = rows[i];
+    var signature = getRowKeySignature(row);
+
+    if (!groups[signature]) {
+      groups[signature] = [];
+      orderedSignatures.push(signature);
+    }
+
+    groups[signature].push(row);
+  }
+
+  var result = [];
+  for (var j = 0; j < orderedSignatures.length; j++) {
+    result.push(groups[orderedSignatures[j]]);
+  }
+
+  return result;
+}
+
 // ============================================================
 // MENU
 // ============================================================
 function onOpen() {
   SpreadsheetApp.getUi()
-    .createMenu('🐟 Babytuna')
+    .createMenu('Babytuna Sync')
     .addItem('Sync All to Supabase', 'syncAllToSupabase')
     .addItem('Sync Current Sheet Only', 'syncCurrentSheet')
     .addSeparator()
@@ -133,7 +177,8 @@ function syncSheetUpsertOnly(ss, config) {
   var rows = [];
   var newRowIndices = []; // track which spreadsheet rows got auto-generated IDs
   var newRowUuids = [];
-  var validationErrors = [];
+  var validationWarnings = [];
+  var blockingErrors = [];
 
   for (var i = 1; i < data.length; i++) {
     var row = {};
@@ -165,6 +210,27 @@ function syncSheetUpsertOnly(ss, config) {
     var keyCol = config.conflictColumn;
     if (row[keyCol] === null || row[keyCol] === undefined) continue;
 
+    deleteAutoManagedFields(row);
+
+    if (Object.prototype.hasOwnProperty.call(row, 'active') &&
+        (row.active === null || row.active === undefined)) {
+      row.active = true;
+    }
+
+    if (config.table === 'inventory_items') {
+      row.base_unit = normalizeTextCell(row.base_unit);
+      row.pack_unit = normalizeTextCell(row.pack_unit);
+      row.emoji = normalizeTextCell(row.emoji);
+      row.pack_size = normalizePositiveNumber(row.pack_size, 1);
+
+      if (!row.base_unit && !row.pack_unit) {
+        blockingErrors.push(
+          'Row ' + (i + 1) + ': at least one of "base_unit" or "pack_unit" is required'
+        );
+        continue;
+      }
+    }
+
     // Normalize text values and log warnings for unknown categories
     var tableKnownValues = KNOWN_VALUES[config.table];
     if (tableKnownValues) {
@@ -174,7 +240,7 @@ function syncSheetUpsertOnly(ss, config) {
           var val = String(row[col]).trim().toLowerCase();
           row[col] = val;
           if (val.length > 0 && tableKnownValues[col].indexOf(val) === -1) {
-            validationErrors.push(
+            validationWarnings.push(
               'Row ' + rowNum + ': "' + col + '" has new value "' + val + '" ' +
               '(known values: ' + tableKnownValues[col].join(', ') + ')'
             );
@@ -186,8 +252,12 @@ function syncSheetUpsertOnly(ss, config) {
     rows.push(row);
   }
 
-  if (validationErrors.length > 0) {
-    Logger.log('New category values detected:\n' + validationErrors.join('\n'));
+  if (blockingErrors.length > 0) {
+    throw new Error(blockingErrors.join('\n'));
+  }
+
+  if (validationWarnings.length > 0) {
+    Logger.log('New category values detected:\n' + validationWarnings.join('\n'));
   }
 
   if (rows.length === 0) return 'No valid rows — skipped';
@@ -195,15 +265,21 @@ function syncSheetUpsertOnly(ss, config) {
   var batchSize = 50;
   var upserted = 0;
 
-  for (var i = 0; i < rows.length; i += batchSize) {
-    var batch = rows.slice(i, i + batchSize);
-    var response = supabaseUpsert(config.table, batch, config.conflictColumn);
+  var rowGroups = groupRowsByKeySignature(rows);
 
-    if (response.getResponseCode() >= 400) {
-      throw new Error('HTTP ' + response.getResponseCode() + ': ' + response.getContentText());
+  for (var g = 0; g < rowGroups.length; g++) {
+    var group = rowGroups[g];
+
+    for (var i = 0; i < group.length; i += batchSize) {
+      var batch = group.slice(i, i + batchSize);
+      var response = supabaseUpsert(config.table, batch, config.conflictColumn);
+
+      if (response.getResponseCode() >= 400) {
+        throw new Error('HTTP ' + response.getResponseCode() + ': ' + response.getContentText());
+      }
+
+      upserted += batch.length;
     }
-
-    upserted += batch.length;
   }
 
   // Write auto-generated UUIDs back to the sheet so future syncs update (not duplicate)

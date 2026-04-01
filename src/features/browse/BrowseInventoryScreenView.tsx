@@ -52,6 +52,7 @@ import { KNOWN_ITEM_CATEGORIES, KNOWN_SUPPLIER_CATEGORIES } from '@/types';
 import type { OrderingMode } from '@/features/ordering/types';
 import { BrowseItemRow } from './BrowseItemRow';
 import { CATEGORY_ORDER, buildCategoryList, getCategoryShortLabel } from './config';
+import { normalizeInventoryPackSize } from '@/lib/inventoryUnits';
 
 export interface BrowseInventoryScreenViewProps {
   mode: OrderingMode;
@@ -268,15 +269,14 @@ export function BrowseInventoryScreenView({
       Alert.alert('Error', 'Please enter an item name');
       return;
     }
-    if (!newItemBaseUnit.trim()) {
-      Alert.alert('Error', 'Please enter a base unit');
+    if (!newItemBaseUnit.trim() && !newItemPackUnit.trim()) {
+      Alert.alert('Error', 'Please enter at least one unit');
       return;
     }
-    if (!newItemPackUnit.trim()) {
-      Alert.alert('Error', 'Please enter a pack unit');
-      return;
-    }
-    if (!newItemPackSize.trim() || Number.isNaN(Number.parseFloat(newItemPackSize))) {
+    if (
+      newItemPackSize.trim().length > 0 &&
+      (!Number.isFinite(Number(newItemPackSize)) || Number(newItemPackSize) <= 0)
+    ) {
       Alert.alert('Error', 'Please enter a valid pack size');
       return;
     }
@@ -289,7 +289,9 @@ export function BrowseInventoryScreenView({
         supplier_category: newItemSupplierCategory,
         base_unit: newItemBaseUnit.trim(),
         pack_unit: newItemPackUnit.trim(),
-        pack_size: Number.parseFloat(newItemPackSize),
+        pack_size: newItemPackSize.trim().length > 0
+          ? normalizeInventoryPackSize(newItemPackSize)
+          : undefined,
         created_by: user?.id,
       });
 
@@ -733,7 +735,7 @@ export function BrowseInventoryScreenView({
           ref={browseListRef}
           data={filteredBrowseItems}
           renderItem={renderExpandedBrowseItem}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item: InventoryItem) => item.id}
           contentContainerStyle={{
             paddingHorizontal: glassSpacing.screen,
             paddingTop: ds.spacing(12),
@@ -745,7 +747,7 @@ export function BrowseInventoryScreenView({
           )}
           ListEmptyComponent={renderListEmpty}
           keyboardShouldPersistTaps="handled"
-          onScrollToIndexFailed={handleScrollToIndexFailed}
+          {...({ onScrollToIndexFailed: handleScrollToIndexFailed } as any)}
         />
       </View>
 

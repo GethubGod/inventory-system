@@ -5,14 +5,15 @@ import { InventoryItem, ItemCategory, SupplierCategory } from '@/types';
 import type { KnownItemCategory, KnownSupplierCategory } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { listInventory } from '@/lib/api/client';
+import { normalizeInventoryItemUnits } from '@/lib/inventoryUnits';
 
 export interface NewInventoryItem {
   name: string;
   category: ItemCategory;
   supplier_category: SupplierCategory;
-  base_unit: string;
-  pack_unit: string;
-  pack_size: number;
+  base_unit?: string;
+  pack_unit?: string;
+  pack_size?: number | null;
   created_by?: string;
 }
 
@@ -104,7 +105,7 @@ function mapDirectInventoryRow(row: DirectInventoryRow): InventoryItem {
     category: row.category,
     supplier_category: row.supplier_category ?? 'main_distributor',
     supplier_id: row.supplier_id ?? null,
-    base_unit: row.base_unit,
+    base_unit: row.base_unit ?? '',
     pack_unit: row.pack_unit ?? '',
     pack_size: row.pack_size ?? 1,
     active: row.active !== false,
@@ -259,8 +260,10 @@ export const useInventoryStore = create<InventoryState>()(
       addItem: async (item) => {
         set({ isLoading: true });
         try {
+          const normalizedUnits = normalizeInventoryItemUnits(item);
           const insertPayload: Record<string, unknown> = {
             ...item,
+            ...normalizedUnits,
             active: true,
           };
 
@@ -294,13 +297,14 @@ export const useInventoryStore = create<InventoryState>()(
 
           if (error) throw error;
           if (data) {
+            const createdItem = mapDirectInventoryRow(data as DirectInventoryRow);
             // Add to local state
             set((state) => ({
-              items: sortInventoryItems([...state.items, data]),
+              items: sortInventoryItems([...state.items, createdItem]),
               lastFetched: Date.now(),
             }));
 
-            return data;
+            return createdItem;
           }
 
           // Fallback: refresh items if representation wasn't returned
@@ -325,17 +329,38 @@ export const useInventoryStore = create<InventoryState>()(
       updateItem: async (id, updates) => {
         set({ isLoading: true });
         try {
+          const shouldNormalizeUnits =
+            Object.prototype.hasOwnProperty.call(updates, 'base_unit') ||
+            Object.prototype.hasOwnProperty.call(updates, 'pack_unit') ||
+            Object.prototype.hasOwnProperty.call(updates, 'pack_size');
+          const normalizedUpdates = shouldNormalizeUnits
+            ? {
+                ...updates,
+                ...normalizeInventoryItemUnits({
+                  base_unit: updates.base_unit,
+                  pack_unit: updates.pack_unit,
+                  pack_size: updates.pack_size,
+                }),
+              }
+            : updates;
           const { error } = await supabase
             .from('inventory_items')
-            .update(updates)
+            .update(normalizedUpdates)
             .eq('id', id);
 
           if (error) throw error;
 
           // Update local state
+          const typedUpdates = normalizedUpdates as Partial<InventoryItem>;
           set((state) => ({
             items: state.items.map((item) =>
-              item.id === id ? { ...item, ...updates } : item
+              item.id === id
+                ? {
+                    ...item,
+                    ...typedUpdates,
+                    pack_size: typedUpdates.pack_size ?? item.pack_size,
+                  }
+                : item
             ),
           }));
         } finally {

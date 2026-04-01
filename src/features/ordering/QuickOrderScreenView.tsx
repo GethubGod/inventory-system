@@ -39,6 +39,12 @@ import { colors, getCategoryLabel } from "@/constants";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
 import { useResolvedActiveLocation } from "@/hooks/useResolvedActiveLocation";
 import { triggerConfirmationHaptic } from "@/lib/haptics";
+import {
+  getInventoryUnitSummary,
+  hasInventoryUnit,
+  normalizeInventoryPackSize,
+  resolvePreferredInventoryUnitType,
+} from "@/lib/inventoryUnits";
 import { BrandLogo, GlassSurface } from "@/components";
 import {
   glassColors,
@@ -153,7 +159,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
     useState<string>("main_distributor");
   const [newItemBaseUnit, setNewItemBaseUnit] = useState("lb");
   const [newItemPackUnit, setNewItemPackUnit] = useState("case");
-  const [newItemPackSize, setNewItemPackSize] = useState("1");
+  const [newItemPackSize, setNewItemPackSize] = useState("");
   const [isCreatingItem, setIsCreatingItem] = useState(false);
 
   // Keyboard state
@@ -288,7 +294,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
     setNewItemSupplier("main_distributor");
     setNewItemBaseUnit("lb");
     setNewItemPackUnit("case");
-    setNewItemPackSize("1");
+    setNewItemPackSize("");
   }, [searchQuery]);
 
   const handleOpenQuickCreate = useCallback(() => {
@@ -301,12 +307,12 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
       Alert.alert("Error", "Please enter an item name");
       return;
     }
-    if (!newItemBaseUnit.trim() || !newItemPackUnit.trim()) {
-      Alert.alert("Error", "Please enter base and pack units");
+    if (!newItemBaseUnit.trim() && !newItemPackUnit.trim()) {
+      Alert.alert("Error", "Please enter at least one unit");
       return;
     }
-    const packSize = parseFloat(newItemPackSize);
-    if (isNaN(packSize) || packSize <= 0) {
+    const packSizeInput = newItemPackSize.trim();
+    if (packSizeInput.length > 0 && (!Number.isFinite(Number(packSizeInput)) || Number(packSizeInput) <= 0)) {
       Alert.alert("Error", "Please enter a valid pack size");
       return;
     }
@@ -319,7 +325,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
         supplier_category: newItemSupplier,
         base_unit: newItemBaseUnit.trim(),
         pack_unit: newItemPackUnit.trim(),
-        pack_size: packSize,
+        pack_size: packSizeInput.length > 0 ? normalizeInventoryPackSize(packSizeInput) : undefined,
         created_by: user?.id,
       });
 
@@ -367,7 +373,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
     setQuantity("1");
     setRemainingAmount("0");
     setInputMode("quantity");
-    setSelectedUnit("pack");
+    setSelectedUnit(resolvePreferredInventoryUnitType(item, "pack"));
     setScreenState("quantity");
 
     setTimeout(() => {
@@ -385,12 +391,13 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
   // Handle Add to Cart
   const handleAddToCart = useCallback(() => {
     if (!selectedItem || !selectedLocation) return;
+    const resolvedUnit = resolvePreferredInventoryUnitType(selectedItem, selectedUnit);
 
     if (inputMode === "quantity") {
       const qty = parseFloat(quantity);
       if (!Number.isFinite(qty) || qty <= 0) return;
 
-      addToCart(selectedLocation.id, selectedItem.id, qty, selectedUnit, {
+      addToCart(selectedLocation.id, selectedItem.id, qty, resolvedUnit, {
         inputMode: "quantity",
         quantityRequested: qty,
         context: scope,
@@ -400,7 +407,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
       const remaining = parseFloat(remainingAmount);
       if (!Number.isFinite(remaining) || remaining < 0) return;
 
-      addToCart(selectedLocation.id, selectedItem.id, remaining, selectedUnit, {
+      addToCart(selectedLocation.id, selectedItem.id, remaining, resolvedUnit, {
         inputMode: "remaining",
         remainingReported: remaining,
         context: scope,
@@ -472,8 +479,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               style={{ fontSize: ds.fontSize(12) }}
               className="text-gray-500"
             >
-              {categoryLabel} • {item.pack_size} {item.base_unit}/
-              {item.pack_unit}
+              {categoryLabel} • {getInventoryUnitSummary(item)}
             </Text>
           </View>
           {isFirst && (
@@ -1118,14 +1124,13 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     >
                       {selectedItem.name}
                     </Text>
-                    <Text
-                      style={{ fontSize: ds.fontSize(12) }}
-                      className="text-gray-500"
-                    >
-                      {selectedItem.pack_size} {selectedItem.base_unit}/
-                      {selectedItem.pack_unit}
-                    </Text>
-                  </View>
+                  <Text
+                    style={{ fontSize: ds.fontSize(12) }}
+                    className="text-gray-500"
+                  >
+                      {getInventoryUnitSummary(selectedItem)}
+                  </Text>
+                </View>
                 </View>
 
                 <View
@@ -1270,54 +1275,68 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                   >
                     <TouchableOpacity
                       onPress={() => {
+                        if (!hasInventoryUnit(selectedItem, "pack")) return;
                         setSelectedUnit("pack");
                         quantityInputRef.current?.focus();
                       }}
                       className={`rounded-l-lg justify-center ${
                         selectedUnit === "pack"
                           ? "bg-primary-500"
-                          : "bg-gray-100"
+                          : hasInventoryUnit(selectedItem, "pack")
+                            ? "bg-gray-100"
+                            : "bg-gray-200"
                       }`}
                       style={{
                         minHeight: 44,
                         paddingHorizontal: ds.spacing(12),
+                        opacity: hasInventoryUnit(selectedItem, "pack") ? 1 : 0.55,
                       }}
+                      disabled={!hasInventoryUnit(selectedItem, "pack")}
                     >
                       <Text
                         style={{ fontSize: ds.fontSize(14) }}
                         className={`font-medium ${
                           selectedUnit === "pack"
                             ? "text-white"
-                            : "text-gray-600"
+                            : hasInventoryUnit(selectedItem, "pack")
+                              ? "text-gray-600"
+                              : "text-gray-400"
                         }`}
                       >
-                        {selectedItem.pack_unit}
+                        {selectedItem.pack_unit || "Pack"}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => {
+                        if (!hasInventoryUnit(selectedItem, "base")) return;
                         setSelectedUnit("base");
                         quantityInputRef.current?.focus();
                       }}
                       className={`rounded-r-lg justify-center ${
                         selectedUnit === "base"
                           ? "bg-primary-500"
-                          : "bg-gray-100"
+                          : hasInventoryUnit(selectedItem, "base")
+                            ? "bg-gray-100"
+                            : "bg-gray-200"
                       }`}
                       style={{
                         minHeight: 44,
                         paddingHorizontal: ds.spacing(12),
+                        opacity: hasInventoryUnit(selectedItem, "base") ? 1 : 0.55,
                       }}
+                      disabled={!hasInventoryUnit(selectedItem, "base")}
                     >
                       <Text
                         style={{ fontSize: ds.fontSize(14) }}
                         className={`font-medium ${
                           selectedUnit === "base"
                             ? "text-white"
-                            : "text-gray-600"
+                            : hasInventoryUnit(selectedItem, "base")
+                              ? "text-gray-600"
+                              : "text-gray-400"
                         }`}
                       >
-                        {selectedItem.base_unit}
+                        {selectedItem.base_unit || "Base"}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -1512,7 +1531,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     }}
                     className="font-medium text-gray-700"
                   >
-                    Base Unit *
+                    Base Unit
                   </Text>
                   <TextInput
                     className="bg-white border border-gray-200 text-gray-900"
@@ -1537,7 +1556,7 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     }}
                     className="font-medium text-gray-700"
                   >
-                    Pack Unit *
+                    Pack Unit
                   </Text>
                   <TextInput
                     className="bg-white border border-gray-200 text-gray-900"
@@ -1557,15 +1576,15 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
               </View>
 
               <View style={{ marginBottom: ds.spacing(24) }}>
-                <Text
-                  style={{
-                    fontSize: ds.fontSize(14),
-                    marginBottom: ds.spacing(8),
-                  }}
-                  className="font-medium text-gray-700"
-                >
-                  Pack Size *
-                </Text>
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(14),
+                      marginBottom: ds.spacing(8),
+                    }}
+                    className="font-medium text-gray-700"
+                  >
+                  Pack Size
+                  </Text>
                 <View className="flex-row items-center">
                   <TextInput
                     className="bg-white border border-gray-200 text-gray-900"
@@ -1589,9 +1608,18 @@ export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
                     }}
                     className="text-gray-500"
                   >
-                    {newItemBaseUnit || "units"} per {newItemPackUnit || "pack"}
+                    Defaults to 1 when blank
                   </Text>
                 </View>
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(12),
+                    marginTop: ds.spacing(8),
+                  }}
+                  className="text-gray-400"
+                >
+                  Enter one unit or both. Missing pack-size values sync as 1.
+                </Text>
               </View>
             </ScrollView>
 

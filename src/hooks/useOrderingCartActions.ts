@@ -7,6 +7,7 @@ import type { HistoricalOrderSummary, PredictedOrderItem } from '@/features/orde
 import type { RecentOrder, SuggestionItem } from '@/features/ordering/dailySuggestions';
 import type { InventoryItem, UnitType } from '@/types';
 import type { AddToCartOptions, CartContext } from '@/store/orderStore';
+import { resolvePreferredInventoryUnitType } from '@/lib/inventoryUnits';
 
 function isAcceptedAdd(
   quantity: number,
@@ -69,7 +70,7 @@ export function useOrderingCartActions(context: CartContext) {
 
   const addInventoryItem = useCallback(
     (item: InventoryItem) =>
-      addLineItem(item.id, 1, 'pack', {
+      addLineItem(item.id, 1, resolvePreferredInventoryUnitType(item, 'pack'), {
         inputMode: 'quantity',
         quantityRequested: 1,
       }),

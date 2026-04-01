@@ -52,6 +52,12 @@ import {
   glassTabBarHeight,
 } from '@/theme/design';
 import { segmentedControlColors } from '@/theme/segmentedControls';
+import {
+  getInventoryUnitLabel,
+  getInventoryUnitSummary,
+  hasInventoryUnit,
+  resolvePreferredInventoryUnitType,
+} from '@/lib/inventoryUnits';
 
 interface CartItemWithDetails extends CartItem {
   inventoryItem?: InventoryItem;
@@ -93,9 +99,16 @@ function formatActionValue(value: number | null | undefined): string {
 
 function getItemActionSummary(item: CartItemWithDetails): string {
   const unitLabel =
-    item.unitType === 'pack'
-      ? item.inventoryItem?.pack_unit ?? 'pack'
-      : item.inventoryItem?.base_unit ?? 'unit';
+    item.inventoryItem
+      ? getInventoryUnitLabel(
+          item.inventoryItem,
+          item.inventoryItem
+            ? resolvePreferredInventoryUnitType(item.inventoryItem, item.unitType)
+            : item.unitType
+        )
+      : item.unitType === 'pack'
+        ? 'pack'
+        : 'unit';
   const valueText =
     item.inputMode === 'remaining'
       ? `Remaining ${formatActionValue(item.remainingReported ?? 0)} ${unitLabel}`
@@ -363,8 +376,12 @@ export function CartScreenView({
 
   const handleItemValueChange = useCallback(
     (locationId: string, item: CartItemWithDetails, nextValue: number, unitType: UnitType) => {
+      const resolvedUnitType = item.inventoryItem
+        ? resolvePreferredInventoryUnitType(item.inventoryItem, unitType)
+        : unitType;
+
       if (item.inputMode === 'quantity') {
-        updateCartItem(locationId, item.inventoryItemId, nextValue, unitType, {
+        updateCartItem(locationId, item.inventoryItemId, nextValue, resolvedUnitType, {
           cartItemId: item.id,
           inputMode: 'quantity',
           quantityRequested: nextValue,
@@ -373,7 +390,7 @@ export function CartScreenView({
         return;
       }
 
-      updateCartItem(locationId, item.inventoryItemId, Math.max(0, nextValue), unitType, {
+      updateCartItem(locationId, item.inventoryItemId, Math.max(0, nextValue), resolvedUnitType, {
         cartItemId: item.id,
         inputMode: 'remaining',
         remainingReported: Math.max(0, nextValue),
@@ -440,6 +457,9 @@ export function CartScreenView({
     item: CartItemWithDetails,
     nextMode: 'quantity' | 'remaining'
   ) => {
+    const resolvedUnitType = item.inventoryItem
+      ? resolvePreferredInventoryUnitType(item.inventoryItem, item.unitType)
+      : item.unitType;
     const currentValue =
       item.inputMode === 'quantity'
         ? item.quantityRequested ?? item.quantity
@@ -447,7 +467,7 @@ export function CartScreenView({
 
     if (nextMode === 'remaining') {
       const nextRemaining = Math.max(0, currentValue);
-      updateCartItem(locationId, item.inventoryItemId, nextRemaining, item.unitType, {
+      updateCartItem(locationId, item.inventoryItemId, nextRemaining, resolvedUnitType, {
         cartItemId: item.id,
         inputMode: 'remaining',
         remainingReported: nextRemaining,
@@ -455,7 +475,7 @@ export function CartScreenView({
       });
     } else {
       const nextQuantity = Math.max(1, item.decidedQuantity ?? currentValue ?? 1);
-      updateCartItem(locationId, item.inventoryItemId, nextQuantity, item.unitType, {
+      updateCartItem(locationId, item.inventoryItemId, nextQuantity, resolvedUnitType, {
         cartItemId: item.id,
         inputMode: 'quantity',
         quantityRequested: nextQuantity,
@@ -470,6 +490,10 @@ export function CartScreenView({
     if (!menuItem) return;
     const { locationId, item } = menuItem;
     if (!item.inventoryItem) return;
+    const resolvedUnitType = resolvePreferredInventoryUnitType(
+      item.inventoryItem,
+      item.unitType
+    );
 
     if (item.inputMode === 'remaining') {
       Alert.alert('Not available', 'Remaining-mode items cannot be duplicated.');
@@ -479,7 +503,7 @@ export function CartScreenView({
     }
 
     const baseQuantity = item.quantityRequested ?? item.quantity;
-    updateCartItem(locationId, item.inventoryItemId, baseQuantity + baseQuantity, item.unitType, {
+    updateCartItem(locationId, item.inventoryItemId, baseQuantity + baseQuantity, resolvedUnitType, {
       cartItemId: item.id,
       inputMode: 'quantity',
       quantityRequested: baseQuantity + baseQuantity,
@@ -525,9 +549,15 @@ export function CartScreenView({
     }
 
     if (params.action === 'add') {
+      const resolvedUnitType = params.item.inventoryItem
+        ? resolvePreferredInventoryUnitType(
+            params.item.inventoryItem,
+            params.item.unitType
+          )
+        : params.item.unitType;
       if (params.item.inputMode === 'quantity') {
         const qty = params.item.quantityRequested ?? params.item.quantity;
-        addToCart(params.toLocationId, params.item.inventoryItemId, qty, params.item.unitType, {
+        addToCart(params.toLocationId, params.item.inventoryItemId, qty, resolvedUnitType, {
           inputMode: 'quantity',
           quantityRequested: qty,
           note: params.item.note,
@@ -535,7 +565,7 @@ export function CartScreenView({
         });
       } else {
         const remaining = params.item.remainingReported ?? 0;
-        addToCart(params.toLocationId, params.item.inventoryItemId, remaining, params.item.unitType, {
+        addToCart(params.toLocationId, params.item.inventoryItemId, remaining, resolvedUnitType, {
           inputMode: 'remaining',
           remainingReported: remaining,
           decidedQuantity: params.item.decidedQuantity,
@@ -546,11 +576,17 @@ export function CartScreenView({
         });
       }
     } else {
+      const resolvedUnitType = params.item.inventoryItem
+        ? resolvePreferredInventoryUnitType(
+            params.item.inventoryItem,
+            params.item.unitType
+          )
+        : params.item.unitType;
       moveCartItem(
         params.sourceLocationId,
         params.toLocationId,
         params.item.inventoryItemId,
-        params.item.unitType,
+        resolvedUnitType,
         params.item.id,
         context
       );
@@ -856,9 +892,15 @@ export function CartScreenView({
     const itemName = inventoryItem?.name || `Item ${item.inventoryItemId.slice(0, 8)}`;
     const isRemainingMode = item.inputMode === 'remaining';
     const value = isRemainingMode ? item.remainingReported ?? 0 : item.quantityRequested ?? item.quantity;
-    const packUnitLabel = inventoryItem?.pack_unit || 'pack';
-    const baseUnitLabel = inventoryItem?.base_unit || 'unit';
-    const unitLabel = unitType === 'pack' ? packUnitLabel : baseUnitLabel;
+    const resolvedUnitType = inventoryItem
+      ? resolvePreferredInventoryUnitType(inventoryItem, unitType)
+      : unitType;
+    const packEnabled = inventoryItem ? hasInventoryUnit(inventoryItem, 'pack') : true;
+    const baseEnabled = inventoryItem ? hasInventoryUnit(inventoryItem, 'base') : true;
+    const packUnitLabel = inventoryItem ? getInventoryUnitLabel(inventoryItem, 'pack') : 'pack';
+    const baseUnitLabel = inventoryItem ? getInventoryUnitLabel(inventoryItem, 'base') : 'unit';
+    const unitLabel = resolvedUnitType === 'pack' ? packUnitLabel : baseUnitLabel;
+    const unitSummary = inventoryItem ? getInventoryUnitSummary(inventoryItem) : `${baseUnitLabel}/${packUnitLabel}`;
     const key = `${locationId}-${item.id}`;
     const isExpanded = expandedItems.has(key);
 
@@ -958,7 +1000,7 @@ export function CartScreenView({
           {/* Inline stepper — matches reference */}
           <View className="flex-row items-center">
             <TouchableOpacity
-              onPress={() => handleItemValueChange(locationId, item, value - 1, unitType)}
+              onPress={() => handleItemValueChange(locationId, item, value - 1, resolvedUnitType)}
               style={{
                 width: 42,
                 height: 42,
@@ -987,7 +1029,7 @@ export function CartScreenView({
             </Text>
 
             <TouchableOpacity
-              onPress={() => handleItemValueChange(locationId, item, value + 1, unitType)}
+              onPress={() => handleItemValueChange(locationId, item, value + 1, resolvedUnitType)}
               style={{
                 width: 42,
                 height: 42,
@@ -1114,19 +1156,25 @@ export function CartScreenView({
                   style={{
                     paddingHorizontal: ds.spacing(14),
                     paddingVertical: ds.spacing(7),
-                    backgroundColor: unitType === 'pack'
+                    backgroundColor: resolvedUnitType === 'pack'
                       ? segmentedControlColors.activeBackground
-                      : 'transparent',
+                      : packEnabled
+                        ? 'transparent'
+                        : glassColors.mediumFill,
+                    opacity: packEnabled ? 1 : 0.55,
                   }}
                   activeOpacity={0.75}
+                  disabled={!packEnabled}
                 >
                   <Text
                     style={{
                       fontSize: ds.fontSize(14),
                       fontWeight: '600',
-                      color: unitType === 'pack'
+                      color: resolvedUnitType === 'pack'
                         ? segmentedControlColors.activeText
-                        : segmentedControlColors.inactiveText,
+                        : packEnabled
+                          ? segmentedControlColors.inactiveText
+                          : glassColors.textMuted,
                     }}
                   >
                     {packUnitLabel}
@@ -1137,19 +1185,25 @@ export function CartScreenView({
                   style={{
                     paddingHorizontal: ds.spacing(14),
                     paddingVertical: ds.spacing(7),
-                    backgroundColor: unitType === 'base'
+                    backgroundColor: resolvedUnitType === 'base'
                       ? segmentedControlColors.activeBackground
-                      : 'transparent',
+                      : baseEnabled
+                        ? 'transparent'
+                        : glassColors.mediumFill,
+                    opacity: baseEnabled ? 1 : 0.55,
                   }}
                   activeOpacity={0.75}
+                  disabled={!baseEnabled}
                 >
                   <Text
                     style={{
                       fontSize: ds.fontSize(14),
                       fontWeight: '600',
-                      color: unitType === 'base'
+                      color: resolvedUnitType === 'base'
                         ? segmentedControlColors.activeText
-                        : segmentedControlColors.inactiveText,
+                        : baseEnabled
+                          ? segmentedControlColors.inactiveText
+                          : glassColors.textMuted,
                     }}
                   >
                     {baseUnitLabel}
@@ -1161,7 +1215,7 @@ export function CartScreenView({
                   style={{ fontSize: ds.fontSize(13), color: glassColors.textSecondary, marginLeft: ds.spacing(10) }}
                   numberOfLines={1}
                 >
-                  {(inventoryItem?.pack_size ?? 1)} {baseUnitLabel}/{packUnitLabel}
+                  {unitSummary}
                 </Text>
               )}
             </View>

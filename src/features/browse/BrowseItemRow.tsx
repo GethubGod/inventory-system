@@ -27,6 +27,13 @@ import {
 import { segmentedControlColors } from '@/theme/segmentedControls';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { useOrderStore } from '@/store';
+import {
+  getInventoryConversionSummary,
+  getInventoryUnitLabel,
+  getInventoryUnitSummary,
+  hasInventoryUnit,
+  resolvePreferredInventoryUnitType,
+} from '@/lib/inventoryUnits';
 import type { CartItem, OrderInputMode } from '@/store/orderStore';
 import type { InventoryItem, UnitType } from '@/types';
 
@@ -116,7 +123,7 @@ function getActiveValueText(
 }
 
 function getUnitLabel(item: InventoryItem, unitType: UnitType) {
-  return unitType === 'pack' ? item.pack_unit : item.base_unit;
+  return getInventoryUnitLabel(item, unitType);
 }
 
 function getCompactSummary(item: InventoryItem, cartItem: CartItem) {
@@ -189,16 +196,22 @@ function BrowseItemRowInner({
     ),
   );
   const [inputMode, setInputMode] = useState<OrderInputMode>('quantity');
-  const [unitType, setUnitType] = useState<UnitType>('pack');
+  const [unitType, setUnitType] = useState<UnitType>(
+    resolvePreferredInventoryUnitType(item, 'pack')
+  );
   const [quantityText, setQuantityText] = useState('1');
   const [remainingText, setRemainingText] = useState('0');
   const [noteDraft, setNoteDraft] = useState('');
   const [showNoteEditor, setShowNoteEditor] = useState(false);
+  const preferredUnitType = useMemo(
+    () => resolvePreferredInventoryUnitType(item, cartItem?.unitType ?? 'pack'),
+    [cartItem?.unitType, item],
+  );
 
   useEffect(() => {
     if (!cartItem) {
       setInputMode('quantity');
-      setUnitType('pack');
+      setUnitType(preferredUnitType);
       setQuantityText('1');
       setRemainingText('0');
       setNoteDraft('');
@@ -207,11 +220,11 @@ function BrowseItemRowInner({
     }
 
     setInputMode(cartItem.inputMode);
-    setUnitType(cartItem.unitType);
+    setUnitType(preferredUnitType);
     setQuantityText(getQuantityFromCart(cartItem));
     setRemainingText(getRemainingFromCart(cartItem));
     setNoteDraft(cartItem.note ?? '');
-  }, [cartItem]);
+  }, [cartItem, preferredUnitType]);
 
   useEffect(() => {
     if (!isActiveEditor) {
@@ -230,7 +243,8 @@ function BrowseItemRowInner({
     quantityText,
     remainingText,
   );
-  const subtitle = `${getCategoryLabel(item.category)} · per ${item.pack_unit}`;
+  const subtitle = `${getCategoryLabel(item.category)} · ${getInventoryUnitSummary(item)}`;
+  const conversionSummary = getInventoryConversionSummary(item);
 
   const commitQuantity = useCallback(
     (nextQuantity: number, nextUnitType: UnitType = unitType) => {
@@ -431,6 +445,9 @@ function BrowseItemRowInner({
       if (nextUnitType === unitType) {
         return;
       }
+      if (!hasInventoryUnit(item, nextUnitType)) {
+        return;
+      }
 
       setUnitType(nextUnitType);
       if (inputMode === 'quantity') {
@@ -544,7 +561,7 @@ function BrowseItemRowInner({
             >
               {subtitle}
             </Text>
-            {isExpanded ? (
+            {isExpanded && conversionSummary ? (
               <Text
                 style={{
                   marginTop: ds.spacing(3),
@@ -552,7 +569,7 @@ function BrowseItemRowInner({
                   color: glassColors.textMuted,
                 }}
               >
-                1 {item.pack_unit} = {formatNumericValue(item.pack_size)} {item.base_unit}
+                {conversionSummary}
               </Text>
             ) : null}
           </View>
@@ -787,7 +804,7 @@ function BrowseItemRowInner({
               >
                 <TouchableOpacity
                   accessibilityRole="button"
-                  accessibilityLabel={`Use ${item.pack_unit} units`}
+                  accessibilityLabel={`Use ${getInventoryUnitLabel(item, 'pack')} units`}
                   onPress={() => handleUnitChange('pack')}
                   style={{
                     flex: 1,
@@ -797,8 +814,12 @@ function BrowseItemRowInner({
                     backgroundColor:
                       unitType === 'pack'
                         ? segmentedControlColors.activeBackground
-                        : 'transparent',
+                        : hasInventoryUnit(item, 'pack')
+                          ? 'transparent'
+                          : glassColors.mediumFill,
+                    opacity: hasInventoryUnit(item, 'pack') ? 1 : 0.55,
                   }}
+                  disabled={!hasInventoryUnit(item, 'pack')}
                 >
                   <Text
                     numberOfLines={1}
@@ -808,15 +829,17 @@ function BrowseItemRowInner({
                       color:
                         unitType === 'pack'
                           ? segmentedControlColors.activeText
-                          : segmentedControlColors.inactiveText,
+                          : hasInventoryUnit(item, 'pack')
+                            ? segmentedControlColors.inactiveText
+                            : glassColors.textMuted,
                     }}
                   >
-                    {item.pack_unit}
+                    {item.pack_unit || 'Pack'}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   accessibilityRole="button"
-                  accessibilityLabel={`Use ${item.base_unit} units`}
+                  accessibilityLabel={`Use ${getInventoryUnitLabel(item, 'base')} units`}
                   onPress={() => handleUnitChange('base')}
                   style={{
                     flex: 1,
@@ -826,8 +849,12 @@ function BrowseItemRowInner({
                     backgroundColor:
                       unitType === 'base'
                         ? segmentedControlColors.activeBackground
-                        : 'transparent',
+                        : hasInventoryUnit(item, 'base')
+                          ? 'transparent'
+                          : glassColors.mediumFill,
+                    opacity: hasInventoryUnit(item, 'base') ? 1 : 0.55,
                   }}
+                  disabled={!hasInventoryUnit(item, 'base')}
                 >
                   <Text
                     numberOfLines={1}
@@ -837,10 +864,12 @@ function BrowseItemRowInner({
                       color:
                         unitType === 'base'
                           ? segmentedControlColors.activeText
-                          : segmentedControlColors.inactiveText,
+                          : hasInventoryUnit(item, 'base')
+                            ? segmentedControlColors.inactiveText
+                            : glassColors.textMuted,
                     }}
                   >
-                    {item.base_unit}
+                    {item.base_unit || 'Base'}
                   </Text>
                 </TouchableOpacity>
               </View>

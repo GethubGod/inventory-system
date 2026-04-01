@@ -8,6 +8,7 @@ import {
   OrderWithDetails,
   UnitType,
 } from '@/types';
+import { resolvePreferredInventoryUnitType } from '@/lib/inventoryUnits';
 import { supabase } from '@/lib/supabase';
 import { perfMark, perfMeasure } from '@/lib/perf';
 import {
@@ -84,8 +85,33 @@ import {
   scheduleOrderLaterNotification,
   createOrderLaterInAppNotification,
 } from './orderStore.helpers';
+import { useInventoryStore } from './inventoryStore';
 
 export * from './orderStore.types';
+
+function normalizeCartItemUnitForSubmit(cartItem: CartItem): CartItem {
+  const inventoryItem = useInventoryStore
+    .getState()
+    .items.find((item) => item.id === cartItem.inventoryItemId);
+
+  if (!inventoryItem) {
+    return cartItem;
+  }
+
+  const normalizedUnitType = resolvePreferredInventoryUnitType(
+    inventoryItem,
+    cartItem.unitType
+  );
+
+  if (normalizedUnitType === cartItem.unitType) {
+    return cartItem;
+  }
+
+  return {
+    ...cartItem,
+    unitType: normalizedUnitType,
+  };
+}
 
 export const useOrderStore = create<OrderState>()(
   persist(
@@ -636,7 +662,7 @@ export const useOrderStore = create<OrderState>()(
             locationId,
             userId,
             status: 'draft',
-            items: cartItemsForInsert.map(cartItemToPayload),
+            items: cartItemsForInsert.map(normalizeCartItemUnitForSubmit).map(cartItemToPayload),
           });
 
           syncProfileService(userId, result.order.created_at);
@@ -669,7 +695,7 @@ export const useOrderStore = create<OrderState>()(
             locationId,
             userId,
             status: 'submitted',
-            items: cartItemsForInsert.map(cartItemToPayload),
+            items: cartItemsForInsert.map(normalizeCartItemUnitForSubmit).map(cartItemToPayload),
           });
 
           syncProfileService(userId, result.order.created_at);
@@ -708,7 +734,7 @@ export const useOrderStore = create<OrderState>()(
             locationId: submitLocationId,
             userId,
             status: 'submitted',
-            items: cartItemsForInsert.map(cartItemToPayload),
+            items: cartItemsForInsert.map(normalizeCartItemUnitForSubmit).map(cartItemToPayload),
           });
 
           syncProfileService(userId, result.order.created_at);

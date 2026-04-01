@@ -299,7 +299,7 @@ function inventoryDtoToItem(dto: InventoryItemDTO): InventoryItem {
     category: dto.category as InventoryItem['category'],
     supplier_category: (dto.supplierCategory ?? 'main_distributor') as InventoryItem['supplier_category'],
     supplier_id: dto.supplierId ?? null,
-    base_unit: dto.baseUnit,
+    base_unit: dto.baseUnit ?? '',
     pack_unit: dto.packUnit ?? '',
     pack_size: dto.packSize ?? 1,
     active: dto.active,

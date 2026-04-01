@@ -30,6 +30,7 @@ import { getCheckStatus } from '@/store/stockStore';
 import { useStockNetworkStatus } from '@/hooks';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { normalizeInventoryPackSize } from '@/lib/inventoryUnits';
 
 
 const categories = [...KNOWN_ITEM_CATEGORIES];
@@ -1019,16 +1020,20 @@ export default function ManagerInventoryScreen() {
       return;
     }
 
-    if (!bulkBaseUnit.trim() || !bulkPackUnit.trim()) {
-      Alert.alert('Error', 'Please enter base unit and pack unit');
+    if (!bulkBaseUnit.trim() && !bulkPackUnit.trim()) {
+      Alert.alert('Error', 'Please enter at least one unit');
       return;
     }
 
-    const packSize = parseInt(bulkPackSize, 10);
-    if (isNaN(packSize) || packSize < 1) {
+    const packSizeInput = bulkPackSize.trim();
+    if (
+      packSizeInput.length > 0 &&
+      (!Number.isFinite(Number(packSizeInput)) || Number(packSizeInput) < 1)
+    ) {
       Alert.alert('Error', 'Please enter a valid pack size');
       return;
     }
+    const packSize = packSizeInput.length > 0 ? normalizeInventoryPackSize(packSizeInput) : undefined;
 
     setIsSubmitting(true);
     let successCount = 0;
