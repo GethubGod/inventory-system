@@ -1,7 +1,7 @@
 import React from 'react';
-import { QuickOrderScreenView } from '@/features/ordering/QuickOrderScreenView';
+import { QuickOrderScreen as QuickOrderChatScreen } from '@/features/ordering/QuickOrderScreen';
 import { EMPLOYEE_ORDERING_MODE } from '@/features/ordering/modes';
 
 export default function QuickOrderScreen() {
-  return <QuickOrderScreenView mode={EMPLOYEE_ORDERING_MODE} />;
+  return <QuickOrderChatScreen mode={EMPLOYEE_ORDERING_MODE} />;
 }

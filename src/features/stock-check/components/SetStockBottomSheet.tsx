@@ -11,15 +11,14 @@ import React, {
 import { Platform, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import Animated, {
   Easing,
-  FadeInUp,
-  FadeOutUp,
+  FadeIn,
+  FadeOut,
   LinearTransition,
 } from 'react-native-reanimated';
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
   BottomSheetModal,
-  BottomSheetScrollView,
   BottomSheetTextInput,
   BottomSheetView,
 } from '@gorhom/bottom-sheet';
@@ -92,11 +91,11 @@ const WHEEL_ROW_HEIGHT = 40;
 const WHEEL_VISIBLE_RANGE = 2;
 
 /**
- * Snap points: ~60% default (just enough for header + wheels + summary +
- * Done) and ~92% expanded (when the user taps "Note" to reveal the input).
- * Index 0 = collapsed (notes hidden), Index 1 = expanded (notes visible).
+ * Fixed sheet height. The note UI swaps inside the same fixed sheet instead
+ * of expanding it, which prevents picker gestures from competing with sheet
+ * content panning.
  */
-const SNAP_POINTS = ['60%', '92%'] as const;
+const SNAP_POINTS = ['58%'] as const;
 
 /** Quick-suggestion chips relocated from the legacy InlineNoteEditor. */
 const QUICK_NOTE_SUGGESTIONS = [
@@ -106,6 +105,8 @@ const QUICK_NOTE_SUGGESTIONS = [
   'Chef requested',
   'Running low',
 ] as const;
+
+type SheetViewMode = 'quantity' | 'note';
 
 /* ──────────────────────────────────────────────────────────────────────────
  * Helpers (pure)
@@ -146,6 +147,8 @@ interface IconCircleButtonProps {
   accessibilityLabel: string;
   /** When true, button paints in the accent tint (used for "note attached"). */
   accent?: boolean;
+  size?: number;
+  iconSize?: number;
 }
 
 const IconCircleButton = memo(function IconCircleButton({
@@ -153,6 +156,8 @@ const IconCircleButton = memo(function IconCircleButton({
   onPress,
   accessibilityLabel,
   accent,
+  size = 34,
+  iconSize = 18,
 }: IconCircleButtonProps) {
   return (
     <TouchableOpacity
@@ -160,10 +165,10 @@ const IconCircleButton = memo(function IconCircleButton({
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
       activeOpacity={0.75}
-      hitSlop={6}
+      hitSlop={10}
       style={{
-        width: 34,
-        height: 34,
+        width: size,
+        height: size,
         borderRadius: glassRadii.round,
         alignItems: 'center',
         justifyContent: 'center',
@@ -172,7 +177,7 @@ const IconCircleButton = memo(function IconCircleButton({
     >
       <Ionicons
         name={icon}
-        size={18}
+        size={iconSize}
         color={accent ? glassColors.accent : glassColors.textPrimary}
       />
     </TouchableOpacity>
@@ -248,24 +253,11 @@ function SetStockBottomSheetImpl(
     [],
   );
 
-  /* ── Snap-point management ─────────────────────────────────────────── */
+  /* ── Fixed sheet view state ────────────────────────────────────────── */
 
   const snapPoints = useMemo(() => SNAP_POINTS as unknown as string[], []);
-
-  /**
-   * Tracks the currently-active snap index so the Note section knows when
-   * to render. Source of truth is gorhom's `onChange` — both manual drags
-   * and our own `snapToIndex` calls flow through it, keeping the toggle
-   * state always in sync with the visible sheet height.
-   */
-  const [snapIndex, setSnapIndex] = useState(0);
-  const noteOpen = snapIndex >= 1;
-
-  const handleSheetChange = useCallback((index: number) => {
-    // gorhom emits -1 on dismiss; ignore — onDismiss handles teardown.
-    if (index < 0) return;
-    setSnapIndex(index);
-  }, []);
+  const [viewMode, setViewMode] = useState<SheetViewMode>('quantity');
+  const noteOpen = viewMode === 'note';
 
   /* ── Backdrop ──────────────────────────────────────────────────────── */
 
@@ -330,8 +322,7 @@ function SetStockBottomSheetImpl(
     setStockAmount(clampWheelInteger(item.stockAmount, AMOUNT_MAX));
     setStockPieces(clampWheelInteger(item.stockPieces, PIECES_MAX));
     setNoteDraft(item.noteText ?? '');
-    // Snap back to compact view on every new item — keeps muscle memory
-    // consistent (the sheet always starts the same way).
+    setViewMode('quantity');
     modalRef.current?.snapToIndex(0);
   }, [item]);
 
@@ -399,24 +390,20 @@ function SetStockBottomSheetImpl(
     });
   }, []);
 
-  /**
-   * Toggle that drives the "expand for note" / "collapse" snap animation.
-   * Both directions go through `snapToIndex`, so the sheet's own
-   * `onChange` keeps `snapIndex` (and therefore `noteOpen`) in sync.
-   */
   const handleToggleNote = useCallback(() => {
-    if (snapIndex >= 1) {
-      modalRef.current?.snapToIndex(0);
-    } else {
-      modalRef.current?.snapToIndex(1);
-    }
-  }, [snapIndex]);
+    setViewMode((prev) => (prev === 'note' ? 'quantity' : 'note'));
+  }, []);
 
   /* ── Footer / actions ──────────────────────────────────────────────── */
 
   const handleCancel = useCallback(() => {
     modalRef.current?.dismiss();
   }, []);
+
+  const handleDismiss = useCallback(() => {
+    setViewMode('quantity');
+    onDismiss();
+  }, [onDismiss]);
 
   const handleDone = useCallback(() => {
     if (!item) return;
@@ -436,7 +423,7 @@ function SetStockBottomSheetImpl(
   // Pinned-footer offset against the safe-area inset.
   const footerBottomInset = Math.max(insets.bottom, ds.spacing(10));
   const footerHeight = ds.spacing(54);
-  const scrollPaddingBottom = footerHeight + footerBottomInset + ds.spacing(8);
+  const contentPaddingBottom = footerHeight + footerBottomInset + ds.spacing(12);
 
   /* Whether the user has dialed in any stock or note edits — used as a
    * conservative dirty-check for accessibility hints on the X close. */
@@ -447,23 +434,129 @@ function SetStockBottomSheetImpl(
       item.stockPieces !== stockPieces ||
       (item.noteText ?? '') !== noteDraft);
 
+  const renderHandle = useCallback(
+    () => (
+      <View
+        style={{
+          paddingHorizontal: ds.spacing(20),
+          paddingTop: ds.spacing(8),
+          paddingBottom: item ? ds.spacing(10) : ds.spacing(4),
+          backgroundColor: colors.white,
+          borderTopLeftRadius: glassRadii.surface + 4,
+          borderTopRightRadius: glassRadii.surface + 4,
+        }}
+      >
+        <View
+          style={{
+            alignSelf: 'center',
+            width: 42,
+            height: 5,
+            borderRadius: glassRadii.pill,
+            backgroundColor: grayScale[300],
+            marginBottom: item ? ds.spacing(12) : 0,
+          }}
+        />
+
+        {item ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+            }}
+          >
+            <View style={{ flex: 1, paddingRight: ds.spacing(12) }}>
+              <Text
+                style={{
+                  fontSize: ds.fontSize(22),
+                  fontWeight: '900',
+                  color: glassColors.textPrimary,
+                }}
+                numberOfLines={1}
+                ellipsizeMode="tail"
+              >
+                {item.name}
+              </Text>
+              <Text
+                style={{
+                  marginTop: ds.spacing(2),
+                  fontSize: ds.fontSize(12),
+                  color: glassColors.textSecondary,
+                }}
+                numberOfLines={1}
+              >
+                {parSubtitle}
+              </Text>
+            </View>
+
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: ds.spacing(8),
+              }}
+            >
+              <IconCircleButton
+                icon={
+                  noteOpen
+                    ? 'arrow-back'
+                    : item.hasNote
+                      ? 'document-text-outline'
+                      : 'create-outline'
+                }
+                onPress={handleToggleNote}
+                accent={noteOpen || item.hasNote}
+                accessibilityLabel={
+                  noteOpen
+                    ? 'Hide note'
+                    : item.hasNote
+                      ? 'Edit note'
+                      : 'Add note'
+                }
+                size={40}
+                iconSize={20}
+              />
+              <IconCircleButton
+                icon="close"
+                onPress={handleCancel}
+                accessibilityLabel={
+                  isDirty
+                    ? 'Cancel and discard wheel changes'
+                    : 'Close'
+                }
+                size={48}
+                iconSize={26}
+              />
+            </View>
+          </View>
+        ) : null}
+      </View>
+    ),
+    [
+      ds,
+      handleCancel,
+      handleToggleNote,
+      isDirty,
+      item,
+      noteOpen,
+      parSubtitle,
+    ],
+  );
+
   return (
     <BottomSheetModal
       ref={modalRef}
       index={0}
       snapPoints={snapPoints}
       enableDynamicSizing={false}
-      onDismiss={onDismiss}
-      onChange={handleSheetChange}
+      enableContentPanningGesture={false}
+      enableHandlePanningGesture
+      enablePanDownToClose
+      onDismiss={handleDismiss}
       backdropComponent={renderBackdrop}
       keyboardBehavior={Platform.OS === 'ios' ? 'interactive' : 'extend'}
       keyboardBlurBehavior="restore"
       android_keyboardInputMode="adjustResize"
-      handleIndicatorStyle={{
-        backgroundColor: grayScale[300],
-        width: 38,
-        height: 4,
-      }}
+      handleComponent={renderHandle}
       backgroundStyle={{
         backgroundColor: colors.white,
         borderTopLeftRadius: glassRadii.surface + 4,
@@ -491,133 +584,25 @@ function SetStockBottomSheetImpl(
           </View>
         ) : (
           <>
-            <BottomSheetScrollView
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{
+            <View
+              style={{
+                flex: 1,
                 paddingHorizontal: ds.spacing(20),
-                // Tight top — the drag indicator already provides visual
-                // breathing room, no need for an extra 8-12pt gap.
                 paddingTop: ds.spacing(2),
-                paddingBottom: scrollPaddingBottom,
+                paddingBottom: contentPaddingBottom,
               }}
             >
-              {/* ── Header ───────────────────────────────────────────
-                  Compact: title block on the left, two small icon buttons
-                  on the right (Note toggle + X close). Replaces the
-                  bulky "Cancel" pill from Phase 5. */}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'flex-start',
-                  marginBottom: ds.spacing(10),
-                }}
-              >
-                <View style={{ flex: 1, paddingRight: ds.spacing(10) }}>
-                  <Text
-                    style={{
-                      fontSize: ds.fontSize(11),
-                      fontWeight: '700',
-                      letterSpacing: 1.2,
-                      color: glassColors.textSecondary,
-                      textTransform: 'uppercase',
-                    }}
-                    numberOfLines={1}
-                  >
-                    {item.name}
-                  </Text>
-                  <Text
-                    style={{
-                      marginTop: ds.spacing(2),
-                      fontSize: ds.fontSize(20),
-                      fontWeight: '800',
-                      color: glassColors.textPrimary,
-                    }}
-                    numberOfLines={1}
-                  >
-                    Set stock
-                  </Text>
-                  <Text
-                    style={{
-                      marginTop: ds.spacing(2),
-                      fontSize: ds.fontSize(12),
-                      color: glassColors.textSecondary,
-                    }}
-                    numberOfLines={1}
-                  >
-                    {parSubtitle}
-                  </Text>
-                </View>
-
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: ds.spacing(8),
-                  }}
-                >
-                  <IconCircleButton
-                    icon={
-                      noteOpen
-                        ? 'document-text'
-                        : item.hasNote
-                          ? 'document-text-outline'
-                          : 'create-outline'
-                    }
-                    onPress={handleToggleNote}
-                    accent={noteOpen || item.hasNote}
-                    accessibilityLabel={
-                      noteOpen
-                        ? 'Hide note'
-                        : item.hasNote
-                          ? 'Edit note'
-                          : 'Add note'
-                    }
-                  />
-                  <IconCircleButton
-                    icon="close"
-                    onPress={handleCancel}
-                    accessibilityLabel={
-                      isDirty
-                        ? 'Cancel and discard wheel changes'
-                        : 'Close'
-                    }
-                  />
-                </View>
-              </View>
-
-              {/* ── Wheel pickers ──────────────────────────────────── */}
-              <WheelPickerGroup
-                itemHeight={WHEEL_ROW_HEIGHT}
-                visibleRange={WHEEL_VISIBLE_RANGE}
-                unitLabel="Unit"
-                unitOptions={unitWheelOptions}
-                unitIndex={unitIndex}
-                onUnitIndexChange={handleUnitIndexChange}
-                amountLabel="Amount"
-                amountOptions={amountWheelOptions}
-                amountIndex={clampWheelInteger(stockAmount, AMOUNT_MAX)}
-                onAmountIndexChange={handleAmountIndexChange}
-                piecesLabel="Pieces"
-                piecesOptions={piecesWheelOptions}
-                piecesIndex={clampWheelInteger(stockPieces, PIECES_MAX)}
-                onPiecesIndexChange={handlePiecesIndexChange}
-              />
-
-              {/* ── Note section (revealed only at expanded snap) ──── */}
               {noteOpen ? (
                 <Animated.View
-                  // Smooth enter/exit so the panel doesn't pop on snap.
-                  // The sheet's own height animation runs in parallel —
-                  // these layout transitions stay in lockstep with it.
-                  entering={FadeInUp.duration(200).easing(
+                  key="note-view"
+                  entering={FadeIn.duration(180).easing(
                     Easing.bezier(0.2, 0, 0.2, 1).factory(),
                   )}
-                  exiting={FadeOutUp.duration(140).easing(
+                  exiting={FadeOut.duration(120).easing(
                     Easing.bezier(0.4, 0, 0.6, 1).factory(),
                   )}
-                  layout={LinearTransition.duration(200)}
-                  style={{ marginTop: ds.spacing(14) }}
+                  layout={LinearTransition.duration(180)}
+                  style={{ flex: 1 }}
                 >
                   <Text
                     style={{
@@ -640,8 +625,8 @@ function SetStockBottomSheetImpl(
                     multiline
                     textAlignVertical="top"
                     style={{
-                      minHeight: 52,
-                      maxHeight: 96,
+                      flex: 1,
+                      minHeight: 150,
                       backgroundColor: grayScale[100],
                       borderRadius: glassRadii.surface,
                       paddingHorizontal: ds.spacing(12),
@@ -669,69 +654,98 @@ function SetStockBottomSheetImpl(
                     ))}
                   </ScrollView>
                 </Animated.View>
-              ) : null}
+              ) : (
+                <Animated.View
+                  key="quantity-view"
+                  entering={FadeIn.duration(180).easing(
+                    Easing.bezier(0.2, 0, 0.2, 1).factory(),
+                  )}
+                  exiting={FadeOut.duration(120).easing(
+                    Easing.bezier(0.4, 0, 0.6, 1).factory(),
+                  )}
+                  layout={LinearTransition.duration(180)}
+                >
+                  {/* ── Wheel pickers ──────────────────────────────── */}
+                  <WheelPickerGroup
+                    itemHeight={WHEEL_ROW_HEIGHT}
+                    visibleRange={WHEEL_VISIBLE_RANGE}
+                    unitLabel="Unit"
+                    unitOptions={unitWheelOptions}
+                    unitIndex={unitIndex}
+                    onUnitIndexChange={handleUnitIndexChange}
+                    amountLabel="Amount"
+                    amountOptions={amountWheelOptions}
+                    amountIndex={clampWheelInteger(stockAmount, AMOUNT_MAX)}
+                    onAmountIndexChange={handleAmountIndexChange}
+                    piecesLabel="Pieces"
+                    piecesOptions={piecesWheelOptions}
+                    piecesIndex={clampWheelInteger(stockPieces, PIECES_MAX)}
+                    onPiecesIndexChange={handlePiecesIndexChange}
+                  />
 
-              {/* ── Summary box ────────────────────────────────────── */}
-              <View
-                style={{
-                  marginTop: ds.spacing(14),
-                  paddingHorizontal: ds.spacing(14),
-                  paddingVertical: ds.spacing(12),
-                  borderRadius: glassRadii.surface,
-                  backgroundColor: 'rgba(232, 80, 58, 0.06)',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                }}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text
+                  {/* ── Summary box ────────────────────────────────── */}
+                  <View
                     style={{
-                      fontSize: ds.fontSize(10),
-                      fontWeight: '700',
-                      letterSpacing: 1.4,
-                      color: glassColors.textSecondary,
-                      textTransform: 'uppercase',
+                      marginTop: ds.spacing(14),
+                      paddingHorizontal: ds.spacing(14),
+                      paddingVertical: ds.spacing(12),
+                      borderRadius: glassRadii.surface,
+                      backgroundColor: 'rgba(232, 80, 58, 0.06)',
+                      flexDirection: 'row',
+                      alignItems: 'center',
                     }}
                   >
-                    Stock
-                  </Text>
-                  <Text
-                    style={{
-                      marginTop: ds.spacing(2),
-                      fontSize: ds.fontSize(17),
-                      fontWeight: '800',
-                      color: glassColors.textPrimary,
-                    }}
-                    numberOfLines={1}
-                  >
-                    {liveStockLabel}
-                  </Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text
-                    style={{
-                      fontSize: ds.fontSize(10),
-                      fontWeight: '700',
-                      letterSpacing: 1.4,
-                      color: glassColors.textSecondary,
-                      textTransform: 'uppercase',
-                    }}
-                  >
-                    Need to order
-                  </Text>
-                  <Text
-                    style={{
-                      marginTop: ds.spacing(2),
-                      fontSize: ds.fontSize(17),
-                      fontWeight: '800',
-                      color: glassColors.accent,
-                    }}
-                  >
-                    {liveNeedToOrder}
-                  </Text>
-                </View>
-              </View>
-            </BottomSheetScrollView>
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: ds.fontSize(10),
+                          fontWeight: '700',
+                          letterSpacing: 1.4,
+                          color: glassColors.textSecondary,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Stock
+                      </Text>
+                      <Text
+                        style={{
+                          marginTop: ds.spacing(2),
+                          fontSize: ds.fontSize(17),
+                          fontWeight: '800',
+                          color: glassColors.textPrimary,
+                        }}
+                        numberOfLines={1}
+                      >
+                        {liveStockLabel}
+                      </Text>
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text
+                        style={{
+                          fontSize: ds.fontSize(10),
+                          fontWeight: '700',
+                          letterSpacing: 1.4,
+                          color: glassColors.textSecondary,
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        Need to order
+                      </Text>
+                      <Text
+                        style={{
+                          marginTop: ds.spacing(2),
+                          fontSize: ds.fontSize(17),
+                          fontWeight: '800',
+                          color: glassColors.accent,
+                        }}
+                      >
+                        {liveNeedToOrder}
+                      </Text>
+                    </View>
+                  </View>
+                </Animated.View>
+              )}
+            </View>
 
             {/* ── Pinned Done CTA ─────────────────────────────────────
                 Anchored to the absolute bottom of the sheet (just above

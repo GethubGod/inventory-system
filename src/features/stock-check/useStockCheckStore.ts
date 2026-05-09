@@ -20,6 +20,7 @@ const STATE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 interface PersistedRow {
   orderQuantity: number;
   checked: boolean;
+  checkedAt?: number | null;
   hasNote: boolean;
   noteText: string;
   /**
@@ -238,6 +239,8 @@ export const useStockCheckStore = create<StockCheckState>()(
               const cached = cachedRows[id];
               const orderQty = cached?.orderQuantity ?? 0;
               const checked = cached?.checked ?? false;
+              const checkedAt =
+                typeof cached?.checkedAt === 'number' ? cached.checkedAt : null;
               const hasNote = cached?.hasNote ?? false;
               const noteText = cached?.noteText ?? '';
               const status = deriveStatus(par, orderQty, checked);
@@ -277,6 +280,7 @@ export const useStockCheckStore = create<StockCheckState>()(
                 packSize,
                 orderQuantity: orderQty,
                 checked,
+                checkedAt,
                 hasNote,
                 noteText,
                 status,
@@ -350,6 +354,7 @@ export const useStockCheckStore = create<StockCheckState>()(
           ...item,
           orderQuantity: item.orderQuantity + 1,
           checked: true,
+          checkedAt: Date.now(),
           status: deriveStatus(item.parLevel, item.orderQuantity + 1, true),
         };
         set(applyItemUpdate(state, next));
@@ -365,6 +370,7 @@ export const useStockCheckStore = create<StockCheckState>()(
             ...item,
             orderQuantity: 0,
             checked: true,
+            checkedAt: Date.now(),
             status: deriveStatus(item.parLevel, 0, true),
           };
           set(applyItemUpdate(state, next));
@@ -374,6 +380,7 @@ export const useStockCheckStore = create<StockCheckState>()(
         const next: StockCheckItem = {
           ...item,
           orderQuantity: nextQty,
+          checkedAt: item.checkedAt ?? Date.now(),
           status: deriveStatus(item.parLevel, nextQty, true),
         };
         set(applyItemUpdate(state, next));
@@ -399,6 +406,7 @@ export const useStockCheckStore = create<StockCheckState>()(
           stockPieces: 0,
           orderQuantity: 0,
           checked: true,
+          checkedAt: Date.now(),
           status: 'at_par',
         };
         set(applyItemUpdate(state, next));
@@ -425,6 +433,7 @@ export const useStockCheckStore = create<StockCheckState>()(
           stockPieces: 0,
           orderQuantity: par,
           checked: true,
+          checkedAt: Date.now(),
           status: 'needs_order',
         };
         set(applyItemUpdate(state, next));
@@ -528,6 +537,7 @@ export const useStockCheckStore = create<StockCheckState>()(
           stockPieces,
           orderQuantity,
           checked: true,
+          checkedAt: Date.now(),
           status,
         };
         set(applyItemUpdate(state, next));
@@ -607,6 +617,7 @@ function syncRowToPersistence(
         [next.id]: {
           orderQuantity: next.orderQuantity,
           checked: next.checked,
+          checkedAt: next.checkedAt,
           hasNote: next.hasNote,
           noteText: next.noteText,
           unitType: next.unitType,

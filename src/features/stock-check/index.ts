@@ -1,4 +1,6 @@
 export { StockCheckScreenView } from './StockCheckScreenView';
+export { StockHomeScreen } from './StockHomeScreen';
+export { PastChecksScreen } from './PastChecksScreen';
 export {
   useStockCheckStore,
   computeAreaProgress,

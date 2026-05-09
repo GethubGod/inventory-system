@@ -10,7 +10,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  FlatList,
   Keyboard,
   Platform,
   InputAccessoryView,
@@ -31,10 +30,11 @@ import { useAuthStore, useInventoryStore, useOrderStore } from "@/store";
 import type { OrderInputMode } from "@/store";
 import {
   InventoryItem,
+  KNOWN_ITEM_CATEGORIES,
+  KNOWN_SUPPLIER_CATEGORIES,
   UnitType,
   Location,
 } from "@/types";
-import { KNOWN_ITEM_CATEGORIES, KNOWN_SUPPLIER_CATEGORIES } from "@/types";
 import { colors, getCategoryLabel } from "@/constants";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
 import { useResolvedActiveLocation } from "@/hooks/useResolvedActiveLocation";
@@ -102,11 +102,11 @@ function sanitizeNumericInput(value: string): string {
   return `${whole}.${fractional}`;
 }
 
-interface QuickOrderScreenViewProps {
+interface QuickSearchScreenViewProps {
   mode: OrderingMode;
 }
 
-export function QuickOrderScreenView({ mode }: QuickOrderScreenViewProps) {
+export function QuickSearchScreenView({ mode }: QuickSearchScreenViewProps) {
   const ds = useScaledStyles();
   const scope = mode.scope;
   const showSearchActionButton = mode.searchAction === "quick_create";

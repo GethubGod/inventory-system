@@ -163,6 +163,29 @@ export default function SettingsScreen() {
           style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
         >
           <SettingsRow
+            icon="search-outline"
+            iconColor={settingsIconPalettes.quickSearch.icon}
+            iconBgColor={settingsIconPalettes.quickSearch.background}
+            title="Quick Search"
+            subtitle="Use the classic item search ordering flow"
+            onPress={() =>
+              router.push(
+                buildSettingsHref('/settings/quick-search', {
+                  origin: 'employee',
+                  backTo: EMPLOYEE_SETTINGS_ROOT,
+                }),
+              )
+            }
+            showBorder={false}
+          />
+        </GlassSurface>
+
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
+        >
+          <SettingsRow
             icon="cube-outline"
             iconColor={settingsIconPalettes.stock.icon}
             iconBgColor={settingsIconPalettes.stock.background}

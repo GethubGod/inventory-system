@@ -1,6 +1,6 @@
 import { Redirect, Tabs } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuthStore, useOrderStore, useDraftStore } from "@/store";
+import { useOrderStore, useDraftStore } from "@/store";
 import { AuthLoadingScreen } from "@/components";
 import { useProtectedAuthGuard } from "@/hooks";
 import {
@@ -103,6 +103,8 @@ export default function TabsLayout() {
       <Tabs.Screen name="draft" options={{ href: null }} />
       <Tabs.Screen name="orders" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />
+      <Tabs.Screen name="stock-check-list" options={{ href: null }} />
+      <Tabs.Screen name="past-checks" options={{ href: null }} />
     </Tabs>
   );
 }

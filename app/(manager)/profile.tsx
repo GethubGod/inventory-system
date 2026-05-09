@@ -170,6 +170,29 @@ export default function ManagerSettingsScreen() {
           style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
         >
           <SettingsRow
+            icon="search-outline"
+            iconColor={settingsIconPalettes.quickSearch.icon}
+            iconBgColor={settingsIconPalettes.quickSearch.background}
+            title="Quick Search"
+            subtitle="Use the classic item search ordering flow"
+            onPress={() =>
+              router.push(
+                buildSettingsHref('/settings/quick-search', {
+                  origin: 'manager',
+                  backTo: MANAGER_SETTINGS_ROOT,
+                }),
+              )
+            }
+            showBorder={false}
+          />
+        </GlassSurface>
+
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
+        >
+          <SettingsRow
             icon="information-circle-outline"
             iconColor={settingsIconPalettes.support.icon}
             iconBgColor={settingsIconPalettes.support.background}

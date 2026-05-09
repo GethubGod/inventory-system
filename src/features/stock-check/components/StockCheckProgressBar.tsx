@@ -7,18 +7,29 @@ interface StockCheckProgressBarProps {
   totalItems: number;
   checkedItems: number;
   itemsToOrder: number;
+  labelMode?: 'totalChecked' | 'uncheckedRemaining';
 }
 
 export const StockCheckProgressBar = memo(function StockCheckProgressBar({
   totalItems,
   checkedItems,
   itemsToOrder,
+  labelMode = 'totalChecked',
 }: StockCheckProgressBarProps) {
   const ds = useScaledStyles();
   const ratio = useMemo(() => {
     if (totalItems <= 0) return 0;
     return Math.max(0, Math.min(1, checkedItems / totalItems));
   }, [checkedItems, totalItems]);
+  const uncheckedItems = Math.max(0, totalItems - checkedItems);
+  const leftLabel =
+    labelMode === 'uncheckedRemaining'
+      ? `${checkedItems} checked`
+      : `${checkedItems} of ${totalItems} checked`;
+  const rightLabel =
+    labelMode === 'uncheckedRemaining'
+      ? `${uncheckedItems} unchecked`
+      : `${itemsToOrder} to order`;
 
   return (
     <View
@@ -45,7 +56,7 @@ export const StockCheckProgressBar = memo(function StockCheckProgressBar({
             color: glassColors.textPrimary,
           }}
         >
-          {checkedItems} of {totalItems} checked
+          {leftLabel}
         </Text>
         <Text
           style={{
@@ -54,7 +65,7 @@ export const StockCheckProgressBar = memo(function StockCheckProgressBar({
             color: glassColors.accent,
           }}
         >
-          {itemsToOrder} to order
+          {rightLabel}
         </Text>
       </View>
 

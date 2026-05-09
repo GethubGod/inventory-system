@@ -8,6 +8,7 @@ export const settingsIconPalettes = {
   stock: uiTints.accent,
   support: uiTints.indigo,
   orders: uiTints.accent,
+  quickSearch: uiTints.amber,
   users: uiTints.blue,
   switchView: uiTints.purple,
   accessCodes: uiTints.accent,

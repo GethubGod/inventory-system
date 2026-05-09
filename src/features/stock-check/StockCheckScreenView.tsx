@@ -9,20 +9,13 @@ import React, {
 import {
   FlatList,
   KeyboardAvoidingView,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
   Platform,
   RefreshControl,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import Animated, {
-  Easing,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -39,20 +32,15 @@ import {
   ImpactFeedbackStyle,
 } from '@/lib/haptics';
 import { useAuthStore } from '@/store';
-import { useOrderingCartActions } from '@/hooks/useOrderingCartActions';
 import {
-  colors,
   glassColors,
   glassRadii,
   glassSpacing,
-  grayScale,
 } from '@/theme/design';
 import type { Location } from '@/types';
 import { StockCheckHeader } from './components/StockCheckHeader';
 import { StockCheckProgressBar } from './components/StockCheckProgressBar';
-import { StorageAreaFilterBar } from './components/StorageAreaFilterBar';
 import { StockCheckItemCard } from './components/StockCheckItemCard';
-import { StationPickerBottomSheet } from './components/StationPickerBottomSheet';
 import {
   SetStockBottomSheet,
   type SetStockBottomSheetRef,
@@ -71,15 +59,14 @@ const AnimatedFlatList = Animated.createAnimatedComponent(
   FlatList<StockCheckItem>,
 );
 
-/** Pixel slack to count "scrolled to bottom" — matches FlatList onEndReached idiom. */
-const SCROLL_TO_BOTTOM_SLACK = 24;
+interface StockCheckScreenViewProps {
+  stationId?: string | string[];
+}
 
-/** CTA color animation timing — same curve as the chevron + dropdown. */
-const CTA_TIMING = { duration: 220, easing: Easing.bezier(0.2, 0, 0.2, 1) };
-
-export function StockCheckScreenView() {
+export function StockCheckScreenView({ stationId }: StockCheckScreenViewProps) {
   const ds = useScaledStyles();
   const insets = useSafeAreaInsets();
+  const routeStationId = Array.isArray(stationId) ? stationId[0] : stationId;
 
   const location = useAuthStore((state) => state.location);
   const allLocations = useAuthStore((state) => state.locations);
@@ -109,15 +96,8 @@ export function StockCheckScreenView() {
     })),
   );
 
-  const { addLineItem } = useOrderingCartActions('employee');
-
   const [refreshing, setRefreshing] = useState(false);
-  const [stationPickerVisible, setStationPickerVisible] = useState(false);
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
-  // Tracks whether the user has physically scrolled to the bottom of the
-  // CURRENT station's list. Reset whenever the station changes or the data
-  // shape changes substantially. Used as one of two CTA-enable conditions.
-  const [hasScrolledToBottom, setHasScrolledToBottom] = useState(false);
 
   // Active item id for the screen-level Set-Stock bottom sheet. Exactly ONE
   // sheet is mounted; this id is what the sheet reads from `itemsById`. We
@@ -134,29 +114,7 @@ export function StockCheckScreenView() {
     }
   }, [loadLocation, location?.id]);
 
-  // Reset scroll-to-bottom state on station change — entering a new station
-  // means the user hasn't yet seen its tail.
-  useEffect(() => {
-    setHasScrolledToBottom(false);
-  }, [selectedAreaId]);
-
   /* ────────────── Derived selectors ─────────────────────────────────── */
-
-  const filterOptions = useMemo(
-    () =>
-      areas.map((area) => {
-        const progress = computeAreaProgress(area, itemsById);
-        return {
-          id: area.id,
-          label: area.name,
-          badgeCount: Math.max(
-            0,
-            progress.totalItems - progress.checkedItems,
-          ),
-        };
-      }),
-    [areas, itemsById],
-  );
 
   const selectedArea = useMemo(
     () => areas.find((a) => a.id === selectedAreaId) ?? null,
@@ -189,14 +147,6 @@ export function StockCheckScreenView() {
       .filter((item): item is StockCheckItem => Boolean(item));
   }, [itemsById, selectedArea]);
 
-  const allItemsCheckedInStation = useMemo(() => {
-    if (areaItems.length === 0) return false;
-    for (const it of areaItems) {
-      if (!it.checked) return false;
-    }
-    return true;
-  }, [areaItems]);
-
   /* ────────────── Action handlers ───────────────────────────────────── */
 
   const handleRefresh = useCallback(async () => {
@@ -217,13 +167,12 @@ export function StockCheckScreenView() {
     [selectArea],
   );
 
-  const handleOpenStationPicker = useCallback(() => {
-    setStationPickerVisible(true);
-  }, []);
-
-  const handleCloseStationPicker = useCallback(() => {
-    setStationPickerVisible(false);
-  }, []);
+  useEffect(() => {
+    if (!routeStationId) return;
+    if (!areas.some((area) => area.id === routeStationId)) return;
+    if (selectedAreaId === routeStationId) return;
+    handleSelectArea(routeStationId);
+  }, [areas, handleSelectArea, routeStationId, selectedAreaId]);
 
   const handleToggleLocationDropdown = useCallback(() => {
     setLocationDropdownOpen((prev) => !prev);
@@ -239,11 +188,15 @@ export function StockCheckScreenView() {
       setAuthLocation(next);
       // The store's loadLocation will run via the effect below as `location.id`
       // changes. Reset transient view state immediately.
-      setHasScrolledToBottom(false);
       void triggerImpactHaptic(ImpactFeedbackStyle.Light);
     },
     [location?.id, setAuthLocation],
   );
+
+  const handleContinueLater = useCallback(() => {
+    void triggerImpactHaptic(ImpactFeedbackStyle.Light);
+    router.replace('/(tabs)/stock-check' as any);
+  }, []);
 
   const handleMarkFull = useCallback(
     (itemId: string) => {
@@ -304,61 +257,7 @@ export function StockCheckScreenView() {
     [clearItemNote, commitStockEntry, setItemNote],
   );
 
-  const reviewableItems = useMemo(
-    () =>
-      Object.values(itemsById).filter(
-        (item) =>
-          item.status === 'needs_order' ||
-          (item.status === 'low' && item.orderQuantity > 0),
-      ),
-    [itemsById],
-  );
-
-  const handleConfirmStock = useCallback(() => {
-    if (reviewableItems.length === 0) {
-      void triggerConfirmationHaptic();
-      router.push('/(tabs)/cart' as any);
-      return;
-    }
-    let added = 0;
-    for (const item of reviewableItems) {
-      const qty =
-        item.orderQuantity > 0 ? item.orderQuantity : item.parLevel;
-      if (qty <= 0) continue;
-      // The cart's `addLineItem` takes the structured 'pack' | 'base' the
-      // user selected via the unit segmented control on each card. We pass
-      // it through verbatim — no string-label sniffing needed.
-      const ok = addLineItem(item.id, qty, item.unitType, {
-        inputMode: 'quantity',
-        quantityRequested: qty,
-        note: item.hasNote ? item.noteText : undefined,
-      });
-      if (ok) added += 1;
-    }
-    if (added > 0) {
-      void triggerConfirmationHaptic();
-      router.push('/(tabs)/cart' as any);
-    }
-  }, [addLineItem, reviewableItems]);
-
   /* ────────────── Scroll tracking ───────────────────────────────────── */
-
-  const handleScroll = useCallback(
-    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-      const { contentOffset, layoutMeasurement, contentSize } = e.nativeEvent;
-      // Avoid flapping: once the user has reached the bottom in this station
-      // we *latch* `hasScrolledToBottom` to true. Scrolling back up to inspect
-      // a row before pressing Confirm shouldn't disable the CTA.
-      if (hasScrolledToBottom) return;
-      const reachedBottom =
-        contentOffset.y + layoutMeasurement.height >=
-        contentSize.height - SCROLL_TO_BOTTOM_SLACK;
-      if (reachedBottom) {
-        setHasScrolledToBottom(true);
-      }
-    },
-    [hasScrolledToBottom],
-  );
 
   const handleScrollBeginDrag = useCallback(() => {
     // Dismiss the location dropdown the instant the user begins scrolling the
@@ -368,33 +267,6 @@ export function StockCheckScreenView() {
       setLocationDropdownOpen(false);
     }
   }, [locationDropdownOpen]);
-
-  const handleEndReached = useCallback(() => {
-    // Belt-and-braces: short lists may reach the bottom without firing scroll.
-    if (areaItems.length === 0) return;
-    if (!hasScrolledToBottom) setHasScrolledToBottom(true);
-  }, [hasScrolledToBottom, areaItems.length]);
-
-  /* ────────────── CTA enable + animated background ──────────────────── */
-
-  const ctaEnabled =
-    areaItems.length > 0 &&
-    allItemsCheckedInStation &&
-    hasScrolledToBottom;
-
-  const ctaProgress = useSharedValue(0);
-  useEffect(() => {
-    ctaProgress.value = withTiming(ctaEnabled ? 1 : 0, CTA_TIMING);
-  }, [ctaEnabled, ctaProgress]);
-
-  // The CTA paints a grey base layer + an animated red layer on top. Driving
-  // the red layer's opacity from 0 → 1 produces a clean "grey → red"
-  // crossfade with no muddied intermediate colors. Cheap (worklet-only,
-  // single mutation) and color-token-driven.
-  const ctaBackgroundStyle = useAnimatedStyle(() => ({
-    backgroundColor: glassColors.accent,
-    opacity: ctaProgress.value,
-  }));
 
   /* ────────────── Render row ────────────────────────────────────────── */
 
@@ -441,27 +313,14 @@ export function StockCheckScreenView() {
 
   /* ────────────── Layout offsets ────────────────────────────────────── */
 
-  // The Stock Check route doesn't render through the standard tab safe-area
-  // wrapper, so the FAB-like CTA needs to clear the tab bar manually. The
-  // tab bar's true height is `60 + max(insets.bottom, glassSpacing.tabBarBottom)`
-  // (see `getTabBarBottomInset` / `getTabBarScreenOptions`). Computing it
-  // exactly avoids the double-spacing bug from the previous pass where we
-  // added both `glassTabBarHeight` AND the bottom inset, leaving a ~40px gap.
+  // The route renders inside a hidden tab screen, so list content needs to
+  // clear the tab bar directly now that the sticky confirm CTA is gone.
   const tabBarBottomInset = Math.max(
     insets.bottom,
     glassSpacing.tabBarBottom,
   );
   const actualTabBarHeight = 60 + tabBarBottomInset;
-
-  const ctaHeight = Math.max(56, ds.buttonH + 8);
-  // 16px breathing room above the tab bar — Apple-HIG-friendly density.
-  const ctaBottomGap = ds.spacing(16);
-  const ctaBottomOffset = actualTabBarHeight + ctaBottomGap;
-  // List padding-bottom: clear the CTA, the gap, and the tab bar so the last
-  // row is fully visible (and the user can actually *reach* the bottom of
-  // the list, which the CTA enable logic depends on).
-  const listPaddingBottom =
-    ctaHeight + ctaBottomGap + actualTabBarHeight + ds.spacing(12);
+  const listPaddingBottom = actualTabBarHeight + ds.spacing(18);
 
   /* ───────── Loading & error states ─────────────────────────────────── */
 
@@ -613,12 +472,56 @@ export function StockCheckScreenView() {
             checkedItems={sectionProgress.checkedItems}
             itemsToOrder={sectionProgress.itemsToOrder}
           />
-          <StorageAreaFilterBar
-            options={filterOptions}
-            selectedId={selectedAreaId}
-            onSelect={handleSelectArea}
-            onPressMore={handleOpenStationPicker}
-          />
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingBottom: ds.spacing(12),
+            }}
+          >
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Continue stock check later"
+              onPress={handleContinueLater}
+              activeOpacity={0.75}
+              hitSlop={8}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: ds.spacing(6),
+                paddingRight: ds.spacing(10),
+              }}
+            >
+              <Ionicons
+                name="chevron-back"
+                size={ds.icon(18)}
+                color={glassColors.textPrimary}
+              />
+              <Text
+                style={{
+                  fontSize: ds.fontSize(14),
+                  fontWeight: '800',
+                  color: glassColors.textPrimary,
+                }}
+              >
+                Continue later
+              </Text>
+            </TouchableOpacity>
+
+            <Text
+              style={{
+                flex: 1,
+                textAlign: 'right',
+                fontSize: ds.fontSize(15),
+                fontWeight: '900',
+                color: glassColors.textPrimary,
+              }}
+              numberOfLines={1}
+            >
+              {selectedArea?.name ?? 'Select station'}
+            </Text>
+          </View>
         </View>
 
         <AnimatedFlatList
@@ -642,11 +545,7 @@ export function StockCheckScreenView() {
           initialNumToRender={12}
           maxToRenderPerBatch={8}
           windowSize={9}
-          onScroll={handleScroll}
           onScrollBeginDrag={handleScrollBeginDrag}
-          scrollEventThrottle={16}
-          onEndReached={handleEndReached}
-          onEndReachedThreshold={0.05}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -656,112 +555,7 @@ export function StockCheckScreenView() {
           }
           extraData={activeItemId}
         />
-
-        {/*
-          Phase 4: CTA — docked just above the tab bar. Background color
-          animates between disabled-grey and brand-red via Reanimated. The
-          button is non-interactive in the disabled state (pointerEvents:
-          'none' on the disabled overlay isn't needed because we just gate
-          onPress + activeOpacity).
-        */}
-        <View
-          pointerEvents="box-none"
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: ctaBottomOffset,
-          }}
-        >
-          <View
-            style={{
-              marginHorizontal: ds.spacing(16),
-              borderRadius: glassRadii.submitButton,
-              overflow: 'hidden',
-              shadowColor: 'rgba(15, 23, 42, 0.35)',
-              shadowOpacity: 0.18,
-              shadowRadius: 16,
-              shadowOffset: { width: 0, height: 8 },
-              elevation: 4,
-            }}
-          >
-            {/* Disabled-state base layer — shows through when ctaProgress is 0.
-                grayScale[500] keeps the white icon + label legible while still
-                reading clearly as "inert / disabled". */}
-            <View
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundColor: grayScale[500],
-              }}
-            />
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                {
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                },
-                ctaBackgroundStyle,
-              ]}
-            />
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel={
-                ctaEnabled
-                  ? 'Confirm stock'
-                  : areaItems.length === 0
-                    ? 'Confirm stock — no items in this station'
-                    : !allItemsCheckedInStation
-                      ? 'Confirm stock — check every item to enable'
-                      : 'Confirm stock — scroll to the bottom of the list to enable'
-              }
-              accessibilityState={{ disabled: !ctaEnabled }}
-              disabled={!ctaEnabled}
-              onPress={handleConfirmStock}
-              activeOpacity={0.9}
-              style={{
-                height: ctaHeight,
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexDirection: 'row',
-              }}
-            >
-              <Ionicons
-                name="checkmark-circle"
-                size={ds.icon(20)}
-                color={colors.white}
-                style={{ opacity: ctaEnabled ? 1 : 0.85 }}
-              />
-              <Text
-                style={{
-                  fontSize: ds.fontSize(17),
-                  color: colors.white,
-                  fontWeight: '700',
-                  marginLeft: ds.spacing(8),
-                  opacity: ctaEnabled ? 1 : 0.92,
-                }}
-              >
-                Confirm stock
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
       </KeyboardAvoidingView>
-
-      <StationPickerBottomSheet
-        visible={stationPickerVisible}
-        options={filterOptions}
-        selectedId={selectedAreaId}
-        onSelect={handleSelectArea}
-        onClose={handleCloseStationPicker}
-      />
 
       {/*
         Single screen-level Set-Stock sheet. We pass the *entire* active item

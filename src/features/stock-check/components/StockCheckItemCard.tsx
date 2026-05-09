@@ -35,7 +35,6 @@ import {
   grayScale,
 } from '@/theme/design';
 import type { StockCheckItem } from '../types';
-import { deriveDisplayedOrder } from '../useStockCheckStore';
 import { formatStockDisplay, getStockUnitLabel } from '../utils/stockMath';
 
 /** Vibrant success green for the "checked / done" state on the card chevron. */
@@ -69,32 +68,6 @@ const SWIPE_VELOCITY_COMMIT = 850;
 
 const REVEAL_GREEN_BG = 'rgba(34, 197, 94, 0.95)';
 const REVEAL_RED_BG = 'rgba(232, 80, 58, 0.95)';
-
-/* ──────────────────────────────────────────────────────────────────────────
- * Subtitle helper — same prefix/suffix split as before, but the display
- * driver (`stockUnit`) now comes from the wheel-picker triple rather than
- * the legacy unit-type segmented control.
- * ──────────────────────────────────────────────────────────────────────── */
-
-function getSubtitleSegments(item: StockCheckItem): {
-  prefix: string;
-  suffix: string;
-  suffixIsAccent: boolean;
-} {
-  const parUnitLabel =
-    item.unitType === 'pack'
-      ? item.packUnit || item.baseUnit || 'each'
-      : item.baseUnit || item.packUnit || 'each';
-  const prefix = `needs ${item.parLevel} ${parUnitLabel}`;
-  if (item.status === 'unchecked') {
-    return { prefix, suffix: 'not checked', suffixIsAccent: false };
-  }
-  if (item.status === 'at_par') {
-    return { prefix, suffix: 'at par', suffixIsAccent: false };
-  }
-  const orderQty = deriveDisplayedOrder(item);
-  return { prefix, suffix: `order ${orderQty}`, suffixIsAccent: orderQty > 0 };
-}
 
 /* ──────────────────────────────────────────────────────────────────────────
  * EditChevron — circular action button on the right edge of every row.
@@ -395,7 +368,6 @@ function StockCheckItemCardImpl({
     return { opacity };
   });
 
-  const subtitle = useMemo(() => getSubtitleSegments(item), [item]);
   const stockDisplay = useMemo(() => formatStockDisplay(item), [item]);
   const isUnchecked = item.status === 'unchecked';
 
@@ -550,7 +522,9 @@ function StockCheckItemCardImpl({
             activeOpacity={0.96}
             style={{
               paddingHorizontal: ds.spacing(16),
-              paddingVertical: ds.spacing(14),
+              paddingVertical: ds.spacing(13),
+              minHeight: ds.spacing(64),
+              justifyContent: 'center',
             }}
           >
             <View
@@ -559,7 +533,13 @@ function StockCheckItemCardImpl({
                 alignItems: 'center',
               }}
             >
-              <View style={{ flex: 1, paddingRight: ds.spacing(10) }}>
+              <View
+                style={{
+                  flex: 1,
+                  paddingRight: ds.spacing(10),
+                  justifyContent: 'center',
+                }}
+              >
                 <Text
                   style={{
                     fontSize: ds.fontSize(16),
@@ -572,26 +552,6 @@ function StockCheckItemCardImpl({
                 >
                   {item.name}
                 </Text>
-                <Text
-                  style={{
-                    marginTop: ds.spacing(2),
-                    fontSize: ds.fontSize(13),
-                    color: glassColors.textSecondary,
-                  }}
-                  numberOfLines={1}
-                >
-                  {subtitle.prefix}{' '}
-                  <Text
-                    style={{
-                      color: subtitle.suffixIsAccent
-                        ? glassColors.accent
-                        : glassColors.textSecondary,
-                      fontWeight: subtitle.suffixIsAccent ? '700' : '400',
-                    }}
-                  >
-                    · {subtitle.suffix}
-                  </Text>
-                </Text>
               </View>
 
               <View
@@ -603,8 +563,8 @@ function StockCheckItemCardImpl({
               >
                 <Text
                   style={{
-                    fontSize: ds.fontSize(15),
-                    fontWeight: '800',
+                    fontSize: ds.fontSize(18),
+                    fontWeight: '900',
                     color: isUnchecked
                       ? glassColors.textMuted
                       : glassColors.textPrimary,

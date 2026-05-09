@@ -17,6 +17,8 @@ import {
 import { LocationSwitcherDropdown } from './LocationSwitcherDropdown';
 import type { Location } from '@/types';
 
+type HeaderIconName = React.ComponentProps<typeof Ionicons>['name'];
+
 interface StockCheckHeaderProps {
   locationLabel: string;
   locations: Location[];
@@ -26,6 +28,8 @@ interface StockCheckHeaderProps {
   onSelectLocation: (location: Location) => void;
   onCloseDropdown: () => void;
   onPressMore?: () => void;
+  moreAccessibilityLabel?: string;
+  moreIconName?: HeaderIconName;
 }
 
 const ELLIPSIS_BUTTON_SIZE = 40;
@@ -54,6 +58,8 @@ export const StockCheckHeader = memo(function StockCheckHeader({
   onSelectLocation,
   onCloseDropdown,
   onPressMore,
+  moreAccessibilityLabel = 'More options',
+  moreIconName = 'ellipsis-horizontal',
 }: StockCheckHeaderProps) {
   const ds = useScaledStyles();
   const chevronProgress = useSharedValue(isDropdownOpen ? 1 : 0);
@@ -161,7 +167,7 @@ export const StockCheckHeader = memo(function StockCheckHeader({
 
         <TouchableOpacity
           accessibilityRole="button"
-          accessibilityLabel="More options"
+          accessibilityLabel={moreAccessibilityLabel}
           onPress={onPressMore}
           activeOpacity={0.7}
           hitSlop={8}
@@ -177,7 +183,7 @@ export const StockCheckHeader = memo(function StockCheckHeader({
           }}
         >
           <Ionicons
-            name="ellipsis-horizontal"
+            name={moreIconName}
             size={ds.icon(18)}
             color={glassColors.textSecondary}
           />

@@ -41,6 +41,7 @@ export interface StockCheckItem {
    */
   orderQuantity: number;
   checked: boolean;
+  checkedAt: number | null;
   hasNote: boolean;
   noteText: string;
   status: StockCheckStatus;
