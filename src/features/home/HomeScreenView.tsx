@@ -650,6 +650,10 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
     router.push(mode.cartRoute as any);
   }, [mode.cartRoute, reorderHistoricalOrder, reorderOrder]);
 
+  const handleStockCheckPress = useCallback(() => {
+    router.push('/(tabs)/stock-check' as any);
+  }, []);
+
   const renderSuggestedItem = useCallback(
     ({ item }: { item: PredictedOrderItem }) => (
       <SuggestedItemCard item={item} onAdd={addPredictedItem} />
@@ -797,12 +801,12 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
 
       <View style={{ marginTop: ds.spacing(20) }}>
         <HomeModuleCard title="Quick Actions">
-          {reorderOrder ? (
+          <View style={{ gap: ds.spacing(10) }}>
             <TouchableOpacity
               accessibilityRole="button"
-              accessibilityLabel={`Reorder last ${formatOrderDayLabel(reorderOrder.createdAt)}`}
-              accessibilityHint="Adds the recommended reorder items to your cart and opens the cart"
-              onPress={handleQuickActionPress}
+              accessibilityLabel="Perform stock check"
+              accessibilityHint="Opens the stock check screen to count inventory and build an order"
+              onPress={handleStockCheckPress}
               className="flex-row items-center"
               style={{
                 paddingHorizontal: ds.spacing(14),
@@ -826,7 +830,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
                 }}
               >
                 <Ionicons
-                  name="star-outline"
+                  name="clipboard-outline"
                   size={ds.icon(18)}
                   color={glassColors.accent}
                 />
@@ -839,7 +843,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
                     color: glassColors.textPrimary,
                   }}
                 >
-                  Reorder last {formatOrderDayLabel(reorderOrder.createdAt)}
+                  Perform Stock Check
                 </Text>
                 <Text
                   style={{
@@ -849,7 +853,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
                   }}
                   numberOfLines={1}
                 >
-                  {reorderOrder.itemCount} items · {summarizeOrderItems(reorderOrder)}
+                  Walk your storage areas and build an order
                 </Text>
               </View>
               <Ionicons
@@ -858,17 +862,70 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
                 color={glassColors.textSecondary}
               />
             </TouchableOpacity>
-          ) : (
-            <HomeModuleState
-              icon="flash-outline"
-              title={location?.id ? 'Collecting more data' : 'Choose a location'}
-              message={
-                location?.id
-                  ? 'Quick actions will appear here as you place more orders.'
-                  : 'Select a location to see quick actions.'
-              }
-            />
-          )}
+
+            {reorderOrder ? (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={`Reorder last ${formatOrderDayLabel(reorderOrder.createdAt)}`}
+                accessibilityHint="Adds the recommended reorder items to your cart and opens the cart"
+                onPress={handleQuickActionPress}
+                className="flex-row items-center"
+                style={{
+                  paddingHorizontal: ds.spacing(14),
+                  paddingVertical: ds.spacing(14),
+                  borderRadius: glassRadii.surface,
+                  backgroundColor: colors.gray[100],
+                  borderWidth: glassHairlineWidth,
+                  borderColor: glassColors.cardBorder,
+                }}
+                activeOpacity={0.85}
+              >
+                <View
+                  style={{
+                    width: ds.icon(36),
+                    height: ds.icon(36),
+                    borderRadius: glassRadii.iconTile,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: glassColors.accentSoft,
+                    marginRight: ds.spacing(12),
+                  }}
+                >
+                  <Ionicons
+                    name="star-outline"
+                    size={ds.icon(18)}
+                    color={glassColors.accent}
+                  />
+                </View>
+                <View style={{ flex: 1, paddingRight: ds.spacing(10) }}>
+                  <Text
+                    style={{
+                      fontSize: ds.fontSize(15),
+                      fontWeight: '600',
+                      color: glassColors.textPrimary,
+                    }}
+                  >
+                    Reorder last {formatOrderDayLabel(reorderOrder.createdAt)}
+                  </Text>
+                  <Text
+                    style={{
+                      marginTop: ds.spacing(4),
+                      fontSize: ds.fontSize(12),
+                      color: glassColors.textSecondary,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {reorderOrder.itemCount} items · {summarizeOrderItems(reorderOrder)}
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={ds.icon(18)}
+                  color={glassColors.textSecondary}
+                />
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </HomeModuleCard>
       </View>
 

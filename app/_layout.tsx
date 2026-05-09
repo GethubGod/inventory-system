@@ -7,6 +7,7 @@ import {
   AppState,
   AppStateStatus,
 } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useAuthStore, useDisplayStore } from "@/store";
@@ -120,7 +121,7 @@ export default function RootLayout() {
 
   // Wrap in subscription provider when user is authenticated
   const content = (
-    <View style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeManager />
       <StatusBar style={statusBarStyle} />
       <Stack
@@ -140,7 +141,7 @@ export default function RootLayout() {
         <Stack.Screen name="orders" options={{ headerShown: false }} />
         <Stack.Screen name="suspended" options={{ headerShown: false }} />
       </Stack>
-    </View>
+    </GestureHandlerRootView>
   );
 
   // Only enable subscriptions when a live auth session exists.
