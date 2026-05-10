@@ -1,11 +1,11 @@
 import {
   ItemCategory,
   Order,
-  OrderItem,
   OrderStatus,
   OrderWithDetails,
   UnitType,
 } from '@/types';
+import type { PendingFulfillmentDataResult } from '@/services/fulfillmentDataSource';
 
 export type OrderInputMode = 'quantity' | 'remaining';
 export type CartScope = 'employee' | 'manager';
@@ -344,7 +344,7 @@ export interface OrderState {
   ) => Promise<PastOrderDetail | null>;
   flushPendingPastOrderSync: (managerId?: string | null) => Promise<void>;
   createPastOrder: (input: FinalizeSupplierOrderInput) => Promise<PastOrder>;
-  fetchPendingFulfillmentOrders: (locationIds?: string[]) => Promise<void>;
+  fetchPendingFulfillmentOrders: (locationIds?: string[]) => Promise<PendingFulfillmentDataResult>;
   addSupplierDraftItem: (input: SupplierDraftItemInput) => SupplierDraftItem;
   updateSupplierDraftItemQuantity: (draftItemId: string, quantity: number) => void;
   removeSupplierDraftItem: (draftItemId: string) => void;

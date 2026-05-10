@@ -291,18 +291,6 @@ function StockHomeScreenImpl() {
               moreAccessibilityLabel="View past checks"
               moreIconName="time-outline"
             />
-            <View style={{ marginBottom: ds.spacing(16) }}>
-              <Text
-                style={{
-                  fontSize: ds.fontSize(38),
-                  fontWeight: '900',
-                  color: glassColors.textPrimary,
-                  letterSpacing: 0,
-                }}
-              >
-                Stock Check
-              </Text>
-            </View>
             <StockCheckProgressBar
               totalItems={overallProgress.totalItems}
               checkedItems={overallProgress.checkedItems}

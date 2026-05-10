@@ -8,6 +8,7 @@ module.exports = {
         moduleResolution: 'node',
         esModuleInterop: true,
         strict: true,
+        allowImportingTsExtensions: true,
         paths: { '@/*': ['./src/*'] },
         baseUrl: '.',
       },

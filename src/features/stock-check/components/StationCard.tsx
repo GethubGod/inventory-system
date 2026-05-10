@@ -169,7 +169,7 @@ export const StationCard = memo(function StationCard({
             <Text
               style={{
                 fontSize: ds.fontSize(12),
-                fontWeight: '900',
+                fontWeight: '700',
                 color: accent,
                 letterSpacing: 1.3,
               }}
@@ -207,7 +207,7 @@ export const StationCard = memo(function StationCard({
           <Text
             style={{
               fontSize: ds.fontSize(20),
-              fontWeight: '900',
+              fontWeight: '600',
               color: glassColors.textPrimary,
               letterSpacing: 0,
             }}

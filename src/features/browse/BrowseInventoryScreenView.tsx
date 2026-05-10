@@ -26,10 +26,10 @@ import { useShallow } from 'zustand/react/shallow';
 import {
   BrowseCategoryScroller,
   EmptyStateCard,
-  FloatingLocationSelector,
   GlassSurface,
   HeaderCartButton,
   LoadingIndicator,
+  LocationSelectorButton,
 } from '@/components';
 import { getCategoryLabel, colors, getSupplierCategoryLabel } from '@/constants';
 import {
@@ -46,12 +46,12 @@ import type {
   InventoryItem,
   ItemCategory,
   Location,
-  SupplierCategory,
 } from '@/types';
-import { KNOWN_ITEM_CATEGORIES, KNOWN_SUPPLIER_CATEGORIES } from '@/types';
+import { KNOWN_SUPPLIER_CATEGORIES } from '@/types';
 import type { OrderingMode } from '@/features/ordering/types';
+import { LocationSwitcherDropdown } from '@/features/stock-check/components/LocationSwitcherDropdown';
 import { BrowseItemRow } from './BrowseItemRow';
-import { CATEGORY_ORDER, buildCategoryList, getCategoryShortLabel } from './config';
+import { buildCategoryList } from './config';
 import { normalizeInventoryPackSize } from '@/lib/inventoryUnits';
 
 export interface BrowseInventoryScreenViewProps {
@@ -100,6 +100,7 @@ export function BrowseInventoryScreenView({
   const [newItemPackSize, setNewItemPackSize] = useState('');
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
   const [activeEditingItemId, setActiveEditingItemId] = useState<string | null>(null);
+  const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
   const { location, locations, setLocation } = useResolvedActiveLocation();
   const {
     fetchLocations,
@@ -133,10 +134,11 @@ export function BrowseInventoryScreenView({
     })),
   );
   const { activeLocationId, addInventoryItem } = useOrderingCartActions(mode.scope);
-  const floatingSelectorBottomOffset =
-    Math.max(insets.bottom, ds.spacing(12)) + ds.spacing(12);
-  const floatingSelectorReservedSpace =
-    floatingSelectorBottomOffset + ds.spacing(96);
+  const tabBarSafeBottomPadding =
+    60 + Math.max(insets.bottom, glassSpacing.tabBarBottom) + ds.spacing(24);
+  const headerBackButtonSize = Math.max(44, ds.icon(40));
+  const headerCartButtonSize = Math.max(52, ds.icon(48));
+  const scrollToItemViewOffset = ds.spacing(4);
 
   useEffect(() => {
     void fetchItems();
@@ -164,6 +166,10 @@ export function BrowseInventoryScreenView({
     [items],
   );
   const dynamicCategories = useMemo(() => buildCategoryList(items), [items]);
+  const sortedLocations = useMemo(
+    () => [...locations].sort((a, b) => a.name.localeCompare(b.name)),
+    [locations],
+  );
   const focusRequestKey = useMemo(() => {
     if (!initialFocusItemId) {
       return null;
@@ -329,11 +335,11 @@ export function BrowseInventoryScreenView({
           index,
           animated: !ds.reduceMotion,
           viewPosition: 0,
-          viewOffset: ds.spacing(4),
+          viewOffset: scrollToItemViewOffset,
         });
       }, 300);
     },
-    [ds.reduceMotion, filteredBrowseItems],
+    [ds.reduceMotion, filteredBrowseItems, scrollToItemViewOffset],
   );
 
   const handleActivateEditor = useCallback(
@@ -371,6 +377,8 @@ export function BrowseInventoryScreenView({
 
   const handleLocationChange = useCallback(
     (selectedLocation: Location) => {
+      setLocationDropdownOpen(false);
+
       if (selectedLocation.id === location?.id) {
         return;
       }
@@ -380,6 +388,14 @@ export function BrowseInventoryScreenView({
     },
     [location?.id, setLocation],
   );
+
+  const handleToggleLocationDropdown = useCallback(() => {
+    setLocationDropdownOpen((current) => !current);
+  }, []);
+
+  const handleCloseLocationDropdown = useCallback(() => {
+    setLocationDropdownOpen(false);
+  }, []);
 
   useEffect(() => {
     if (!focusRequestKey) {
@@ -617,14 +633,16 @@ export function BrowseInventoryScreenView({
             style={{
               paddingBottom: ds.spacing(8),
               flexDirection: 'row',
-              alignItems: 'flex-start',
+              alignItems: 'center',
+              position: 'relative',
+              zIndex: 10,
             }}
           >
             <GlassSurface
               intensity="medium"
               style={{
-                width: Math.max(44, ds.icon(40)),
-                height: Math.max(44, ds.icon(40)),
+                width: headerBackButtonSize,
+                height: headerBackButtonSize,
                 borderRadius: glassRadii.round,
               }}
             >
@@ -644,34 +662,36 @@ export function BrowseInventoryScreenView({
               style={{
                 flex: 1,
                 marginLeft: ds.spacing(12),
-                paddingTop: ds.spacing(2),
+                marginRight: ds.spacing(12),
               }}
             >
-              <Text
-                style={{
-                  fontSize: ds.fontSize(28),
-                  fontWeight: '700',
-                  color: glassColors.textPrimary,
-                  letterSpacing: -0.5,
-                }}
-              >
-                Browse
-              </Text>
-              <Text
-                style={{
-                  marginTop: ds.spacing(4),
-                  fontSize: ds.fontSize(12),
-                  color: glassColors.textSecondary,
-                }}
-              >
-                {filteredBrowseItems.length} items
-                {browseCategory ? '' : ' · sorted A-Z'}
-              </Text>
+              <LocationSelectorButton
+                label={location?.name ?? 'Select location'}
+                expanded={locationDropdownOpen}
+                onPress={handleToggleLocationDropdown}
+              />
             </View>
-            <View style={{ paddingTop: ds.spacing(2) }}>
+            <View>
               <HeaderCartButton
                 count={totalCartCount}
                 onPress={() => router.push(mode.cartRoute as any)}
+              />
+            </View>
+            <View
+              pointerEvents="box-none"
+              style={{
+                position: 'absolute',
+                top: headerCartButtonSize + ds.spacing(4),
+                left: headerBackButtonSize + ds.spacing(12),
+                right: headerCartButtonSize + ds.spacing(12),
+              }}
+            >
+              <LocationSwitcherDropdown
+                isOpen={locationDropdownOpen}
+                locations={sortedLocations}
+                selectedLocationId={location?.id ?? null}
+                onSelect={handleLocationChange}
+                onRequestClose={handleCloseLocationDropdown}
               />
             </View>
           </View>
@@ -739,7 +759,7 @@ export function BrowseInventoryScreenView({
           contentContainerStyle={{
             paddingHorizontal: glassSpacing.screen,
             paddingTop: ds.spacing(12),
-            paddingBottom: floatingSelectorReservedSpace,
+            paddingBottom: tabBarSafeBottomPadding,
             flexGrow: filteredBrowseItems.length === 0 ? 1 : 0,
           }}
           ItemSeparatorComponent={() => (
@@ -747,17 +767,10 @@ export function BrowseInventoryScreenView({
           )}
           ListEmptyComponent={renderListEmpty}
           keyboardShouldPersistTaps="handled"
+          onScrollBeginDrag={handleCloseLocationDropdown}
           {...({ onScrollToIndexFailed: handleScrollToIndexFailed } as any)}
         />
       </View>
-
-      <FloatingLocationSelector
-        locations={locations}
-        selectedLocation={location}
-        onSelectLocation={handleLocationChange}
-        cartContext={mode.scope}
-        bottomOffset={floatingSelectorBottomOffset}
-      />
 
       <Modal
         visible={showAddItemModal}

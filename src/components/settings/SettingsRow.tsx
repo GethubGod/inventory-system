@@ -17,6 +17,7 @@ export interface SettingsRowProps {
   rightElement?: React.ReactNode;
   disabled?: boolean;
   showBorder?: boolean;
+  borderColor?: string;
 }
 
 export function SettingsRow({
@@ -31,6 +32,7 @@ export function SettingsRow({
   rightElement,
   disabled = false,
   showBorder = true,
+  borderColor = glassColors.divider,
 }: SettingsRowProps) {
   const ds = useScaledStyles();
 
@@ -47,7 +49,7 @@ export function SettingsRow({
         paddingVertical: ds.spacing(14),
         minHeight: Math.max(ds.rowH, 60),
         borderBottomWidth: showBorder ? glassHairlineWidth : 0,
-        borderBottomColor: glassColors.divider,
+        borderBottomColor: borderColor,
       }}
     >
       {icon && (

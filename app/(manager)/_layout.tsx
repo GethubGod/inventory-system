@@ -154,7 +154,7 @@ export default function ManagerLayout() {
       />
 
       {/* Browse (hidden — accessed from Home) */}
-      <Tabs.Screen name="browse" options={{ href: null, tabBarStyle: { display: 'none' } }} />
+      <Tabs.Screen name="browse" options={{ href: null }} />
 
       {/* Quick Order */}
       <Tabs.Screen

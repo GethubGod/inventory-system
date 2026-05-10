@@ -103,6 +103,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="draft" options={{ href: null }} />
       <Tabs.Screen name="orders" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />
+      <Tabs.Screen name="inventory-browse" options={{ href: null }} />
       <Tabs.Screen name="stock-check-list" options={{ href: null }} />
       <Tabs.Screen name="past-checks" options={{ href: null }} />
     </Tabs>

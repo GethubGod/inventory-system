@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase';
 import { perfMark, perfMeasure } from '@/lib/perf';
 import {
   loadPendingFulfillmentData,
+  type PendingFulfillmentDataResult,
 } from '@/services/fulfillmentDataSource';
 import {
   submitOrder as submitOrderService,
@@ -1525,13 +1526,9 @@ export const useOrderStore = create<OrderState>()(
             }
           }
 
-          set((state) => {
-            const consumed = extractConsumedOrderItemIds(nextPastOrders);
-            return {
-              pastOrders: nextPastOrders,
-              orderLaterQueue: nextOrderLaterQueue,
-              orders: removeConsumedOrderItems(state.orders, consumed),
-            };
+          set({
+            pastOrders: nextPastOrders,
+            orderLaterQueue: nextOrderLaterQueue,
           });
 
           const queueSnapshot = [...get().orderLaterQueue];
@@ -1574,7 +1571,7 @@ export const useOrderStore = create<OrderState>()(
         }
       },
 
-      fetchPendingFulfillmentOrders: async (locationIds) => {
+      fetchPendingFulfillmentOrders: async (locationIds): Promise<PendingFulfillmentDataResult> => {
         perfMark('fetchPendingFulfillmentOrders');
         set({ isFulfillmentLoading: true });
         try {
@@ -1596,6 +1593,7 @@ export const useOrderStore = create<OrderState>()(
             locationIds,
           });
           set({ orders: result.orders });
+          return result;
         } finally {
           set({ isFulfillmentLoading: false });
           perfMeasure('fetchPendingFulfillmentOrders');

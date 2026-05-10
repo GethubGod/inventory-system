@@ -64,3 +64,10 @@ export {
   normalizeOrderLaterItem,
   normalizeOrderLaterQueue,
 } from './supplierDraftHelpers';
+
+// Quick Order → cart conversion
+export {
+  areQuickOrderItemsCartReady,
+  quickOrderItemsToCartAdds,
+  type QuickOrderCartAdd,
+} from './quickOrderCart';

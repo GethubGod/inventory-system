@@ -1,7 +1,7 @@
 import type { ItemCategory, KnownItemCategory } from '@/types';
 import { KNOWN_ITEM_CATEGORIES } from '@/types';
 
-export const BROWSE_INVENTORY_ROUTE = '/inventory-browse' as const;
+export const BROWSE_INVENTORY_ROUTE = '/(tabs)/inventory-browse' as const;
 
 export interface BrowseInventoryRouteParams {
   [key: string]: string | undefined;

@@ -21,8 +21,7 @@ import * as Haptics from 'expo-haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore, useOrderStore } from '@/store';
 import { getCategoryLabel, colors } from '@/constants';
-import { InventoryItem, OrderWithDetails } from '@/types';
-import { KNOWN_SUPPLIER_CATEGORIES } from '@/types';
+import { InventoryItem, KNOWN_SUPPLIER_CATEGORIES, OrderWithDetails } from '@/types';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { GlassSurface, ItemActionSheet, LoadingIndicator } from '@/components';
@@ -30,7 +29,6 @@ import type { ItemActionSheetSection } from '@/components';
 import {
   FulfillmentHeader,
   FulfillmentOrderLaterCard,
-  FulfillmentReminderBanner,
   FulfillmentSuppliersCard,
   FulfillmentSupplierCard,
   OrderLaterAddToSheet,
@@ -41,9 +39,8 @@ import type {
   FulfillmentSupplierPreviewItem,
   OrderLaterSupplierOption,
 } from '@/features/fulfillment/components';
-import { listEmployeesWithReminderStatus } from '@/services';
-import type { EmployeeReminderOverview } from '@/services';
 import { loadSupplierLookup, invalidateSupplierCache } from '@/services/supplierResolver';
+import type { PendingFulfillmentDataResult } from '@/services/fulfillmentDataSource';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
@@ -234,6 +231,36 @@ function isSupplierCategory(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function normalizeSupplierOptions(
+  lookup: PendingFulfillmentDataResult['supplierLookup'],
+): SupplierOption[] {
+  return lookup.suppliers.map((row) => ({
+    id: row.id,
+    name: row.name,
+    supplierType: isSupplierCategory(row.supplierType) ? row.supplierType : null,
+    isDefault: row.isDefault,
+    active: row.active,
+  }));
+}
+
+function areSupplierOptionsEqual(
+  current: SupplierOption[],
+  next: SupplierOption[],
+): boolean {
+  if (current.length !== next.length) return false;
+
+  return current.every((supplier, index) => {
+    const candidate = next[index];
+    return (
+      supplier.id === candidate.id &&
+      supplier.name === candidate.name &&
+      supplier.supplierType === candidate.supplierType &&
+      supplier.isDefault === candidate.isDefault &&
+      supplier.active === candidate.active
+    );
+  });
+}
+
 function toSupplierId(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
@@ -341,8 +368,6 @@ export default function FulfillmentScreen() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [supplierOptions, setSupplierOptions] = useState<SupplierOption[]>([]);
   const [expandedSupplierId, setExpandedSupplierId] = useState<string | null>(null);
-  const [reminderOverview, setReminderOverview] = useState<EmployeeReminderOverview | null>(null);
-  const [reminderLoadFailed, setReminderLoadFailed] = useState(false);
   const [orderLaterExpanded, setOrderLaterExpanded] = useState(false);
   const [suppliersExpanded, setSuppliersExpanded] = useState(true);
   const [addToTargetItemId, setAddToTargetItemId] = useState<string | null>(null);
@@ -362,12 +387,18 @@ export default function FulfillmentScreen() {
   const hasLoadedOnceRef = useRef(false);
   const sendTapLockUntilRef = useRef(0);
   const actionLocksRef = useRef<Set<string>>(new Set());
-  const managerLocationIds = useMemo(
+  const managerLocationIdsKey = useMemo(
     () =>
       locations
         .map((location) => (typeof location.id === 'string' ? location.id.trim() : ''))
-        .filter((id) => id.length > 0),
+        .filter((id) => id.length > 0)
+        .sort()
+        .join('|'),
     [locations]
+  );
+  const managerLocationIds = useMemo(
+    () => (managerLocationIdsKey ? managerLocationIdsKey.split('|') : []),
+    [managerLocationIdsKey],
   );
   const runLockedAction = useCallback(async (lockKey: string, action: () => Promise<void>) => {
     if (actionLocksRef.current.has(lockKey)) {
@@ -396,49 +427,14 @@ export default function FulfillmentScreen() {
       // Reuse the cached supplier lookup (same data loadPendingFulfillmentData uses)
       // so we don't make a duplicate DB query.
       const lookup = await loadSupplierLookup();
-      const normalized = lookup.suppliers.map((row) => ({
-        id: row.id,
-        name: row.name,
-        supplierType: isSupplierCategory(row.supplierType) ? row.supplierType : null,
-        isDefault: row.isDefault,
-        active: row.active,
-      } satisfies SupplierOption));
-      setSupplierOptions(normalized);
+      const normalized = normalizeSupplierOptions(lookup);
+      setSupplierOptions((current) =>
+        areSupplierOptionsEqual(current, normalized) ? current : normalized,
+      );
     } catch (error) {
       console.error('Error fetching suppliers:', error);
     }
   }, []);
-
-  const fetchReminderOverview = useCallback(async () => {
-    try {
-      const overview = await listEmployeesWithReminderStatus();
-      const scopedEmployees =
-        managerLocationIds.length === 0
-          ? overview.employees
-          : overview.employees.filter((row) => {
-              if (!row.locationId) return true;
-              return managerLocationIds.includes(row.locationId);
-            });
-
-      const activeEmployees = scopedEmployees.filter((row) => !row.isSuspended);
-      const pendingEmployees = activeEmployees.filter((row) => row.status !== 'ok');
-
-      setReminderOverview({
-        ...overview,
-        employees: activeEmployees,
-        stats: {
-          pendingReminders: pendingEmployees.length,
-          overdueEmployees: activeEmployees.filter((row) => row.status === 'overdue').length,
-          notificationsOff: activeEmployees.filter((row) => row.notificationsOff).length,
-        },
-      });
-      setReminderLoadFailed(false);
-    } catch (error) {
-      console.warn('[Fulfillment] Unable to load reminder overview.', error);
-      setReminderLoadFailed(true);
-      setReminderOverview(null);
-    }
-  }, [managerLocationIds]);
 
   const runRefreshCycle = useCallback(async () => {
     const raceTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T | void> =>
@@ -465,14 +461,15 @@ export default function FulfillmentScreen() {
           'loadFulfillmentData'
         );
       }
+      // Supplier options must be available before pending orders are committed
+      // to the store; otherwise the screen briefly groups rows with an empty
+      // supplier map and flashes the wrong fulfillment state.
+      await raceTimeout(fetchSuppliers(), 15_000, 'fetchSuppliers');
+
       // Each fetch has its own try/catch so individual failures don't block
       // the others. Timeouts prevent Supabase client hangs from stalling
       // the entire screen.
-      await Promise.all([
-        raceTimeout(fetchPendingOrders(), 15_000, 'fetchPendingOrders'),
-        raceTimeout(fetchSuppliers(), 15_000, 'fetchSuppliers'),
-        raceTimeout(fetchReminderOverview(), 15_000, 'fetchReminderOverview'),
-      ]);
+      await raceTimeout(fetchPendingOrders(), 15_000, 'fetchPendingOrders');
       setLoadError(null);
     } catch (error) {
       console.error('Error refreshing fulfillment data:', error);
@@ -487,7 +484,6 @@ export default function FulfillmentScreen() {
     }
   }, [
     fetchPendingOrders,
-    fetchReminderOverview,
     fetchSuppliers,
     loadFulfillmentData,
     managerLocationIds,
@@ -585,21 +581,6 @@ export default function FulfillmentScreen() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'past_order_items' },
-        scheduleRefresh
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'reminders' },
-        scheduleRefresh
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'reminder_events' },
-        scheduleRefresh
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'profiles' },
         scheduleRefresh
       )
       .subscribe();
@@ -2295,48 +2276,6 @@ export default function FulfillmentScreen() {
       user?.id,
     ]
   );
-
-  const reminderBanner = useMemo(() => {
-    if (!reminderOverview && !reminderLoadFailed) {
-      return {
-        tone: 'neutral' as const,
-        title: 'Checking employee reminders',
-        subtitle: 'We are syncing who still needs a nudge.',
-      };
-    }
-
-    if (reminderLoadFailed) {
-      return {
-        tone: 'neutral' as const,
-        title: 'Employee reminders unavailable',
-        subtitle: 'Open reminders to retry and review the latest status.',
-      };
-    }
-
-    const pendingEmployees = (reminderOverview?.employees ?? []).filter((row) => row.status !== 'ok');
-    if (pendingEmployees.length === 0) {
-      return {
-        tone: 'neutral' as const,
-        title: 'No employees need a reminder',
-        subtitle: 'Everyone has ordered on schedule.',
-      };
-    }
-
-    const names = pendingEmployees.slice(0, 3).map((row) => getFirstName(row.name));
-    const reminderSuffix = pendingEmployees.some((row) => row.activeReminder)
-      ? 'reminder already active'
-      : 'usually order by Tuesday';
-    const nameSummary =
-      names.length > 0
-        ? `${names.join(', ')}${pendingEmployees.length > 3 ? ` +${pendingEmployees.length - 3}` : ''}`
-        : 'Tap to review reminders';
-
-    return {
-      tone: 'warning' as const,
-      title: `${pendingEmployees.length} employee${pendingEmployees.length === 1 ? '' : 's'} haven't ordered`,
-      subtitle: `${nameSummary} - ${reminderSuffix}`,
-    };
-  }, [reminderLoadFailed, reminderOverview]);
 
   const buildSupplierPreviewProps = useCallback(
     (item: LocationGroupedItem): FulfillmentSupplierPreviewItem => {

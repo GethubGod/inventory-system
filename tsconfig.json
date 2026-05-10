@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "allowJs": true,
+    "allowImportingTsExtensions": true,
     "customConditions": [
       "react-native"
     ],
@@ -45,7 +46,8 @@
     "android",
     "ios",
     "babel.config.js",
-    "metro.config.js"
+    "metro.config.js",
+    "scratch_query.ts"
   ],
   "include": [
     "**/*.ts",
