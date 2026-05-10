@@ -262,26 +262,37 @@ export default function ManagerOrdersScreen() {
           <Text className="text-xl font-bold text-gray-900 ml-2">Orders</Text>
         </View>
 
-        {/* Location Selector */}
-        <TouchableOpacity
-          className="bg-gray-100 rounded-full px-3 py-2 flex-row items-center"
-          onPress={() => {
-            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-            setShowLocationPicker((prev) => !prev);
-          }}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="location" size={14} color={colors.primary[500]} />
-          <Text className="text-gray-900 font-medium ml-2" numberOfLines={1}>
-            {selectedLocation?.name || 'All Locations'}
-          </Text>
-          <Ionicons
-            name={showLocationPicker ? 'chevron-up' : 'chevron-down'}
-            size={14}
-            color={colors.gray[600]}
-            className="ml-1.5"
-          />
-        </TouchableOpacity>
+        <View className="flex-row items-center">
+          <TouchableOpacity
+            className="bg-orange-50 rounded-full px-3 py-2 flex-row items-center mr-2"
+            onPress={() => router.push('/(manager)/orders/pending')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="sparkles-outline" size={14} color={colors.primary[500]} />
+            <Text className="text-gray-900 font-medium ml-2">Pending Review</Text>
+          </TouchableOpacity>
+
+          {/* Location Selector */}
+          <TouchableOpacity
+            className="bg-gray-100 rounded-full px-3 py-2 flex-row items-center"
+            onPress={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setShowLocationPicker((prev) => !prev);
+            }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="location" size={14} color={colors.primary[500]} />
+            <Text className="text-gray-900 font-medium ml-2" numberOfLines={1}>
+              {selectedLocation?.name || 'All Locations'}
+            </Text>
+            <Ionicons
+              name={showLocationPicker ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color={colors.gray[600]}
+              className="ml-1.5"
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {showLocationPicker && (

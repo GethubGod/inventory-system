@@ -265,11 +265,15 @@ export async function loadPendingFulfillmentData(options?: {
   // secondary_supplier, secondary_supplier_id) may not exist on every
   // database — a missing column causes PostgREST to return a 400 error
   // that silently breaks the entire query.
-  const buildQuery = (inventorySelect: string) => {
+  const buildQuery = (inventorySelect: string, includeReviewColumns: boolean) => {
+    const orderSelectPrefix = includeReviewColumns
+      ? 'id,status,location_id,created_at,entry_method,quick_session_id,manager_review_status,'
+      : 'id,status,location_id,created_at,';
+
     let q = supabase
       .from('orders')
       .select(`
-        id,status,location_id,created_at,
+        ${orderSelectPrefix}
         user:users!orders_user_id_fkey(id,name),
         location:locations(id,name,short_code),
         order_items(
@@ -290,18 +294,30 @@ export async function loadPendingFulfillmentData(options?: {
 
   // Try with all columns first (best supplier resolution), fall back to
   // core columns if any are missing (error 42703 = undefined_column).
+  let includeReviewColumns = true;
   let { data, error } = await buildQuery(
-    'id,name,category,base_unit,pack_unit,pack_size,supplier_category,default_supplier,secondary_supplier,supplier_id,active'
+    'id,name,category,base_unit,pack_unit,pack_size,supplier_category,default_supplier,secondary_supplier,supplier_id,active',
+    includeReviewColumns
   );
 
   if (error && (error as any).code === '42703') {
+    const message = String((error as any).message ?? '');
+    if (
+      message.includes('manager_review_status') ||
+      message.includes('entry_method') ||
+      message.includes('quick_session_id')
+    ) {
+      includeReviewColumns = false;
+    }
+
     ({ data, error } = await buildQuery(
-      'id,name,category,base_unit,pack_unit,pack_size,supplier_category,supplier_id,active'
+      'id,name,category,base_unit,pack_unit,pack_size,supplier_category,supplier_id,active',
+      includeReviewColumns
     ));
   }
 
   if (error && (error as any).code === '42703') {
-    ({ data, error } = await buildQuery('*'));
+    ({ data, error } = await buildQuery('*', includeReviewColumns));
   }
 
   if (error) {
@@ -311,6 +327,14 @@ export async function loadPendingFulfillmentData(options?: {
   const unresolvedIssues: SupplierResolutionIssue[] = [];
 
   const filteredOrders = ((data || []) as unknown as OrderWithDetails[])
+    .filter((order) => {
+      const row = order as OrderWithDetails & Record<string, unknown>;
+      if (row.entry_method !== 'quick_order' && !row.quick_session_id) {
+        return true;
+      }
+
+      return row.manager_review_status === 'approved';
+    })
     .map((order) => {
       const rawItems = Array.isArray((order as any).order_items) ? ((order as any).order_items as any[]) : [];
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Redirect, Tabs } from "expo-router";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuthStore, useOrderStore, useDraftStore } from "@/store";
+import { useAuthStore, useDraftStore } from "@/store";
 import { supabase } from "@/lib/supabase";
 import { AuthLoadingScreen } from "@/components";
 import { useProtectedAuthGuard } from "@/hooks";
@@ -15,9 +15,6 @@ import {
 
 export default function ManagerLayout() {
   const session = useAuthStore((s) => s.session);
-  const cartCount = useOrderStore((state) =>
-    state.getTotalCartCount("manager"),
-  );
   const draftCount = useDraftStore((state) => state.getTotalItemCount());
   const insets = useSafeAreaInsets();
   const [pendingFulfillmentCount, setPendingFulfillmentCount] = useState(0);
@@ -38,17 +35,33 @@ export default function ManagerLayout() {
     try {
       // Count unique submitted orders that still have at least one pending order_item.
       // This tracks actual fulfillment workload more accurately than raw order status counts.
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("order_items")
-        .select("order_id,orders!inner(status)")
+        .select("order_id,orders!inner(status,entry_method,quick_session_id,manager_review_status)")
         .or("status.is.null,status.eq.pending")
         .eq("orders.status", "submitted")
         .limit(10000);
+
+      if (error && (error as any).code === "42703") {
+        ({ data, error } = await supabase
+          .from("order_items")
+          .select("order_id,orders!inner(status)")
+          .or("status.is.null,status.eq.pending")
+          .eq("orders.status", "submitted")
+          .limit(10000));
+      }
 
       if (error) throw error;
 
       const uniqueOrderIds = new Set(
         (Array.isArray(data) ? data : [])
+          .filter((row: any) => {
+            const order = Array.isArray(row?.orders) ? row.orders[0] : row?.orders;
+            if (order?.entry_method !== "quick_order" && !order?.quick_session_id) {
+              return true;
+            }
+            return order?.manager_review_status === "approved";
+          })
           .map((row: any) =>
             typeof row?.order_id === "string" ? row.order_id : null,
           )
@@ -194,6 +207,7 @@ export default function ManagerLayout() {
 
       {/* Hidden screens (accessible via navigation) */}
       <Tabs.Screen name="orders" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="orders/pending" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="inventory" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="cart" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="export-fish-order" options={{ href: null }} />
@@ -206,6 +220,7 @@ export default function ManagerLayout() {
       <Tabs.Screen name="manager-settings/user-management" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="manager-settings/profile" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="manager-settings/access-codes" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/quick-order-config" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders-recurring" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders-settings" options={{ href: null, tabBarStyle: { display: "none" } }} />

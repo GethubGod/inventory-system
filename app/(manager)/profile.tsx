@@ -85,6 +85,29 @@ export default function ManagerSettingsScreen() {
           style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
         >
           <SettingsRow
+            icon="sparkles-outline"
+            iconColor={settingsIconPalettes.quickSearch.icon}
+            iconBgColor={settingsIconPalettes.quickSearch.background}
+            title="Quick Order AI"
+            subtitle="Manage aliases and parser examples"
+            onPress={() =>
+              router.push(
+                buildSettingsHref('/(manager)/manager-settings/quick-order-config', {
+                  origin: 'manager',
+                  backTo: MANAGER_SETTINGS_ROOT,
+                }),
+              )
+            }
+            showBorder={false}
+          />
+        </GlassSurface>
+
+        <GlassSurface
+          intensity="subtle"
+          blurred={false}
+          style={{ marginHorizontal: glassSpacing.screen, marginBottom: ds.spacing(12), borderRadius: glassRadii.surface }}
+        >
+          <SettingsRow
             icon="eye-outline"
             iconColor={settingsIconPalettes.display.icon}
             iconBgColor={settingsIconPalettes.display.background}

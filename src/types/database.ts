@@ -220,6 +220,7 @@ export interface InventoryItem {
   pack_unit: string;
   pack_size: number;
   active: boolean;
+  aliases?: string[];
   created_at: string;
   created_by?: string | null;
 }
@@ -231,10 +232,25 @@ export interface Order {
   location_id: string;
   status: OrderStatus;
   order_type?: string | null;
+  entry_method?: 'manual' | 'quick_order' | 'voice_order' | 'suggested_order';
+  quick_session_id?: string | null;
+  manager_review_status?: 'not_required' | 'pending' | 'approved' | 'changes_requested' | 'rejected';
+  manager_review_notes?: string | null;
+  manager_reviewed_at?: string | null;
+  manager_reviewed_by?: string | null;
   notes: string | null;
   created_at: string;
   fulfilled_at: string | null;
   fulfilled_by: string | null;
+}
+
+export interface ParserExampleRow {
+  id: string;
+  raw_text: string;
+  structured_output: Record<string, unknown>[];
+  source: 'manager' | 'correction' | 'seed';
+  is_active: boolean;
+  created_at: string;
 }
 
 export interface OrderItem {
@@ -423,6 +439,13 @@ export interface Database {
         OrderItem,
         Omit<OrderItem, 'id' | 'created_at'>,
         Partial<Omit<OrderItem, 'id' | 'created_at'>>
+      >;
+      parser_examples: DatabaseTable<
+        ParserExampleRow,
+        Omit<ParserExampleRow, 'id' | 'created_at' | 'source'> & {
+          source?: ParserExampleRow['source'];
+        },
+        Partial<Omit<ParserExampleRow, 'id' | 'created_at'>>
       >;
       suppliers: DatabaseTable<
         Supplier,
