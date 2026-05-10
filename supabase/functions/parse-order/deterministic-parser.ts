@@ -1,13 +1,99 @@
 import type { CandidateParsedLine } from './types.ts';
 import { normalizeUnit, UNIT_WORDS } from './units.ts';
 
-const QUANTITY = String.raw`(\d+(?:\.\d+)?)`;
-const UNIT = UNIT_WORDS.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-const QTY_UNIT = new RegExp(`${QUANTITY}\\s*(${UNIT})\\b`, 'i');
-const QTY_ONLY = new RegExp(`\\b${QUANTITY}\\b`, 'i');
+// ---------------------------------------------------------------------------
+// Quantity patterns — supports numeric, fractional, and word quantities
+// ---------------------------------------------------------------------------
 
-const LEADING_INTENT = /^(?:please\s+)?(?:(?:add(?:\s+another)?|also|plus|another|need(?:\s+more)?|change(?:\s+to)?|make(?:\s+it|\s+that)?|replace|actually|update|set)\s+)/i;
+/** Regex fragment matching a numeric quantity: 2, 0.5, .5 */
+const NUMERIC_QTY = String.raw`(\d+(?:\.\d+)?|\.\d+)`;
+
+/** Fraction patterns: 1/2, 3/4, etc. */
+const FRACTION_QTY = String.raw`(\d+\s*/\s*\d+)`;
+
+/** Word-to-number mapping for common quantities. */
+const WORD_QUANTITIES: Record<string, number> = {
+  half: 0.5,
+  'half a': 0.5,
+  'a half': 0.5,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  dozen: 12,
+  'a': 1,
+};
+
+/** Sorted word quantity keys, longest-first so "half a" matches before "half". */
+const WORD_QTY_KEYS = Object.keys(WORD_QUANTITIES).sort((a, b) => b.length - a.length);
+
+// ---------------------------------------------------------------------------
+// Unit patterns
+// ---------------------------------------------------------------------------
+
+const UNIT = UNIT_WORDS.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+
+/** Combined quantity regex: numeric OR fraction. */
+const QTY_UNIT = new RegExp(`(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${UNIT})\\b`, 'i');
+const QTY_ONLY = new RegExp(`\\b(?:${NUMERIC_QTY}|${FRACTION_QTY})\\b`, 'i');
+
+// ---------------------------------------------------------------------------
+// Intent stripping
+// ---------------------------------------------------------------------------
+
+const LEADING_INTENT = /^(?:please\s+)?(?:(?:add(?:\s+more|\s+another)?|also(?:\s+add)?|plus|another|need(?:\s+more)?|change(?:\s+to)?|make(?:\s+it|\s+that)?|replace|actually|update(?:\s+to)?|set(?:\s+to)?|remove|delete|take\s+out|take\s+off|get\s+rid\s+of|drop|cancel\s+item|subtract|reduce|lower|decrease|minus|take\s+away)\s+)/i;
 const TRAILING_INTENT = /\s+(?:to|instead)$/i;
+
+// ---------------------------------------------------------------------------
+// "qty unit of item" pattern: "1 box of crab mix", "half box of ground tuna"
+// ---------------------------------------------------------------------------
+
+const QTY_UNIT_OF_ITEM = new RegExp(
+  `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${UNIT})\\s+(?:of\\s+)(.+)$`,
+  'i',
+);
+
+// Build word-qty leading regex for "half box of crab mix", "half a box of ..."
+const WORD_QTY_REGEX_PARTS = WORD_QTY_KEYS.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+const WORD_QTY_PATTERN = WORD_QTY_REGEX_PARTS.join('|');
+const WORD_QTY_UNIT_OF_ITEM = new RegExp(
+  `^\\s*(${WORD_QTY_PATTERN})\\s+(${UNIT})\\s+(?:of\\s+)(.+)$`,
+  'i',
+);
+
+// "qty unit item" without "of" — e.g. "2cs salmon"
+const QTY_UNIT_ITEM_NO_OF = new RegExp(
+  `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${UNIT})\\s+(.+)$`,
+  'i',
+);
+
+// "item qty unit" — e.g. "salmon 2cs", "ground garlic 1 pack"
+const ITEM_QTY_UNIT = new RegExp(
+  `^(.+?)\\s+(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${UNIT})\\s*$`,
+  'i',
+);
+
+// "item qty" — e.g. "salmon 2", "tuna loin 1"
+const ITEM_QTY = new RegExp(
+  `^(.+?)\\s+(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*$`,
+  'i',
+);
+
+// "qty item" — e.g. "2 salmon", "6 shrimp ebi"
+const QTY_ITEM = new RegExp(
+  `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s+(.+)$`,
+  'i',
+);
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 export function normalizeOrderText(value: string): string {
   return value
@@ -48,10 +134,43 @@ function cleanItemText(value: string): string {
   return next;
 }
 
+/**
+ * Converts a raw quantity string to a number.
+ * Supports: "2", "0.5", ".5", "1/2", "3/4"
+ */
 function toQuantity(value: string | undefined): number | null {
   if (!value) return null;
-  const parsed = Number(value);
+  const trimmed = value.trim();
+
+  // Fraction: "1/2", "3/4"
+  const fractionMatch = trimmed.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (fractionMatch) {
+    const numerator = Number(fractionMatch[1]);
+    const denominator = Number(fractionMatch[2]);
+    if (denominator > 0) {
+      const result = numerator / denominator;
+      return Number.isFinite(result) && result > 0 ? result : null;
+    }
+    return null;
+  }
+
+  const parsed = Number(trimmed);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+/**
+ * Looks for a word quantity at the start of the text.
+ * Returns [quantity, remaining_text] or null.
+ */
+function extractWordQuantity(text: string): [number, string] | null {
+  const lower = text.toLowerCase().trim();
+  for (const word of WORD_QTY_KEYS) {
+    if (lower.startsWith(word + ' ') || lower === word) {
+      const remaining = text.trim().slice(word.length).trim();
+      return [WORD_QUANTITIES[word], remaining];
+    }
+  }
+  return null;
 }
 
 export function parseDeterministicOrder(rawText: string): CandidateParsedLine[] {
@@ -60,51 +179,121 @@ export function parseDeterministicOrder(rawText: string): CandidateParsedLine[] 
 }
 
 function parseLine(rawLine: string, index: number): CandidateParsedLine {
-  const normalized = rawLine.trim().replace(/[ \t]+/g, ' ').toLowerCase();
-  let itemText = normalized;
+  const compactRaw = rawLine.trim().replace(/[ \t]+/g, ' ');
+  const normalized = compactRaw.toLowerCase();
+  let itemText = compactRaw;
   let quantity: number | null = null;
   let unit: string | null = null;
   let confidence = 0.55;
 
-  const qtyUnitAtStart = normalized.match(new RegExp(`^\\s*${QUANTITY}\\s*(${UNIT})\\b\\s+(.+)$`, 'i'));
-  if (qtyUnitAtStart) {
-    quantity = toQuantity(qtyUnitAtStart[1]);
-    unit = normalizeUnit(qtyUnitAtStart[2]);
-    itemText = qtyUnitAtStart[3];
-    confidence = 0.92;
-  } else {
-    const qtyAtStart = normalized.match(new RegExp(`^\\s*${QUANTITY}\\b\\s+(.+)$`, 'i'));
-    if (qtyAtStart) {
-      quantity = toQuantity(qtyAtStart[1]);
-      itemText = qtyAtStart[2];
-      confidence = 0.78;
-    } else {
-      const qtyUnitAtEnd = normalized.match(new RegExp(`^(.+?)\\s+${QUANTITY}\\s*(${UNIT})\\s*$`, 'i'));
-      if (qtyUnitAtEnd) {
-        itemText = qtyUnitAtEnd[1];
-        quantity = toQuantity(qtyUnitAtEnd[2]);
-        unit = normalizeUnit(qtyUnitAtEnd[3]);
-        confidence = 0.92;
-      } else {
-        const qtyAtEnd = normalized.match(new RegExp(`^(.+?)\\s+${QUANTITY}\\s*$`, 'i'));
-        if (qtyAtEnd) {
-          itemText = qtyAtEnd[1];
-          quantity = toQuantity(qtyAtEnd[2]);
-          confidence = 0.74;
-        }
-      }
+  // ---------------------------------------------------------------
+  // Pattern 1: "qty unit of item" — "1 box of crab mix", "half box of ground tuna"
+  // ---------------------------------------------------------------
+  const wordQtyUnitOf = compactRaw.match(WORD_QTY_UNIT_OF_ITEM);
+  if (wordQtyUnitOf) {
+    const wordQty = WORD_QUANTITIES[wordQtyUnitOf[1].toLowerCase()];
+    if (wordQty != null) {
+      quantity = wordQty;
+      unit = normalizeUnit(wordQtyUnitOf[2]);
+      itemText = wordQtyUnitOf[3];
+      confidence = 0.90;
     }
   }
 
-  if (!unit) {
-    const unitMatch = normalized.match(QTY_UNIT);
-    if (unitMatch) unit = normalizeUnit(unitMatch[2]);
+  if (quantity == null) {
+    const numQtyUnitOf = compactRaw.match(QTY_UNIT_OF_ITEM);
+    if (numQtyUnitOf) {
+      quantity = toQuantity(numQtyUnitOf[1] ?? numQtyUnitOf[2]);
+      unit = normalizeUnit(numQtyUnitOf[3]);
+      itemText = numQtyUnitOf[4];
+      confidence = 0.92;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Pattern 2: "qty unit item" (no "of") — "2cs salmon"
+  // ---------------------------------------------------------------
+  if (quantity == null) {
+    const qtyUnitItem = compactRaw.match(QTY_UNIT_ITEM_NO_OF);
+    if (qtyUnitItem) {
+      quantity = toQuantity(qtyUnitItem[1] ?? qtyUnitItem[2]);
+      unit = normalizeUnit(qtyUnitItem[3]);
+      itemText = qtyUnitItem[4];
+      confidence = 0.92;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Pattern 3: "item qty unit" — "salmon 2cs", "ground garlic 1 pack"
+  // ---------------------------------------------------------------
+  if (quantity == null) {
+    const itemQtyUnit = compactRaw.match(ITEM_QTY_UNIT);
+    if (itemQtyUnit) {
+      itemText = itemQtyUnit[1];
+      quantity = toQuantity(itemQtyUnit[2] ?? itemQtyUnit[3]);
+      unit = normalizeUnit(itemQtyUnit[4]);
+      confidence = 0.92;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Pattern 4: "qty item" — "2 salmon", "6 shrimp ebi"
+  // ---------------------------------------------------------------
+  if (quantity == null) {
+    const qtyItem = compactRaw.match(QTY_ITEM);
+    if (qtyItem) {
+      quantity = toQuantity(qtyItem[1] ?? qtyItem[2]);
+      itemText = qtyItem[3];
+      confidence = 0.78;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Pattern 5: "item qty" — "salmon 2"
+  // ---------------------------------------------------------------
+  if (quantity == null) {
+    const itemQty = compactRaw.match(ITEM_QTY);
+    if (itemQty) {
+      itemText = itemQty[1];
+      quantity = toQuantity(itemQty[2] ?? itemQty[3]);
+      confidence = 0.74;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Pattern 6: "word-qty item" — "half salmon"
+  // ---------------------------------------------------------------
+  if (quantity == null) {
+    const wordQty = extractWordQuantity(compactRaw);
+    if (wordQty && wordQty[1]) {
+      quantity = wordQty[0];
+      itemText = wordQty[1];
+      confidence = 0.70;
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Final: item-only (no quantity or unit found)
+  // ---------------------------------------------------------------
+  // If still nothing matched, itemText is the full normalized line.
+
+  // Try to extract unit from item text if we missed it.
+  if (!unit && quantity != null) {
+    const unitSuffix = compactRaw.match(QTY_UNIT);
+    if (unitSuffix) unit = normalizeUnit(unitSuffix[3] ?? unitSuffix[2]);
   }
 
   itemText = cleanItemText(itemText);
-  const issue = !itemText ? 'missing_item' : quantity == null ? 'missing_quantity' : unit == null ? 'missing_unit' : undefined;
+  const issue = !itemText
+    ? 'missing_item'
+    : quantity == null
+      ? 'missing_quantity'
+      : unit == null
+        ? 'missing_unit'
+        : undefined;
 
   return {
+    line_id: `line_${index}`,
     raw_text: rawLine,
     normalized_text: normalized,
     item_text: itemText || normalized,
@@ -116,4 +305,3 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
     issue,
   };
 }
-

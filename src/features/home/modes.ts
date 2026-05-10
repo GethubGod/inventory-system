@@ -9,6 +9,7 @@ import type { CartScope } from '@/features/ordering/types';
 export interface HomeScreenMode {
   scope: CartScope;
   cartRoute: string;
+  quickOrderRoute: string;
   identity?: string;
   buildBrowseHref: (options?: BrowseInventoryNavigationOptions) => Href;
 }
@@ -16,6 +17,7 @@ export interface HomeScreenMode {
 export const EMPLOYEE_HOME_MODE: HomeScreenMode = {
   scope: 'employee',
   cartRoute: '/(tabs)/cart',
+  quickOrderRoute: '/(tabs)/quick-order',
   buildBrowseHref: (options = {}) => ({
     pathname: BROWSE_INVENTORY_ROUTE,
     params: createBrowseInventoryRouteParams(options),
@@ -25,6 +27,7 @@ export const EMPLOYEE_HOME_MODE: HomeScreenMode = {
 export const MANAGER_HOME_MODE: HomeScreenMode = {
   scope: 'manager',
   cartRoute: '/(manager)/cart',
+  quickOrderRoute: '/(manager)/quick-order',
   buildBrowseHref: (options = {}) => ({
     pathname: '/(manager)/browse',
     params: createBrowseInventoryRouteParams(options),

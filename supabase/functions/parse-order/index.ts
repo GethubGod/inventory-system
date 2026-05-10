@@ -1,7 +1,7 @@
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
 import { corsHeaders } from '../_shared/cors.ts';
-import { parseQuickOrder } from './orchestrator.ts';
+import { parseQuickOrder, PARSER_VERSION } from './orchestrator.ts';
 import type {
   CatalogItem,
   ParsedItem,
@@ -58,6 +58,11 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 const catalogCache = new Map<string, CachedCatalog>();
+
+/** Development-safe structured logger. Never exposes sensitive data. */
+function devLog(stage: string, detail: Record<string, unknown>): void {
+  console.log(`[parse-order] ${stage}`, JSON.stringify(detail));
+}
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -380,6 +385,8 @@ function safeParseFailureResponse(flags: ParseFlag[] = []): ParseResponse {
     pending_clarifications: [],
     session_state: { total_items: 0, ready_to_submit: false },
     diagnostics: {
+      parser_version: PARSER_VERSION,
+      parse_mode: 'error',
       items_received: 0,
       items_accepted: 0,
       items_rejected: 0,
@@ -399,8 +406,11 @@ Deno.serve(async (req) => {
   let usageProvider: Provider | null = chooseProvider();
 
   try {
+    devLog('request_received', { method: req.method, url: req.url });
+
     const authResult = await getAuthenticatedUser(req);
     if (authResult.error || !authResult.user) {
+      devLog('auth_failed', { error: authResult.error, status: authResult.status });
       return jsonResponse({ error: authResult.error || 'Unauthorized' }, authResult.status);
     }
 
@@ -412,6 +422,13 @@ Deno.serve(async (req) => {
     const authenticatedUserId = authResult.user.id;
     usageUserId = authenticatedUserId;
     usageSessionId = sessionId;
+
+    devLog('request_parsed', {
+      user_id_present: Boolean(authenticatedUserId),
+      location_id: locationId,
+      session_id: sessionId,
+      raw_text_length: rawText?.length ?? 0,
+    });
 
     if (!rawText) return jsonResponse({ error: 'Missing required field: raw_text' }, 400);
     if (!locationId) return jsonResponse({ error: 'Missing required field: location_id' }, 400);
@@ -490,12 +507,45 @@ Deno.serve(async (req) => {
       fetchCorrections(authenticatedUserId, locationId),
     ]);
 
+    devLog('catalog_loaded', {
+      catalog_count: catalog.length,
+      first_5_names: catalog.slice(0, 5).map((item) => item.name),
+      examples_count: examples.length,
+      corrections_count: corrections.length,
+      session_messages_count: sessionContext.messages.length,
+      session_parsed_items_count: sessionContext.parsedItems.length,
+    });
+
     if (catalog.length === 0) {
-      return jsonResponse(safeParseFailureResponse([{
-        type: 'unresolved_item',
-        message: 'No valid item catalog rows were found for this location.',
-      }]));
+      devLog('catalog_empty', { location_id: locationId });
+      const emptyMessage = 'I had trouble loading the item catalog for this location. Please try again.';
+      return jsonResponse({
+        status: 'error',
+        assistant_message: emptyMessage,
+        reply_text: emptyMessage,
+        parsed_items: [],
+        flags: [{ type: 'unresolved_item', message: 'No catalog items found for this location.' }],
+        suggestions: [],
+        pending_actions: [],
+        pending_clarifications: [],
+        session_state: { total_items: 0, ready_to_submit: false },
+        diagnostics: {
+          parser_version: PARSER_VERSION,
+          error_code: 'catalog_empty',
+          parse_mode: 'none',
+          items_received: 0,
+          items_accepted: 0,
+          items_rejected: 0,
+          rejected_reasons: ['catalog_empty'],
+          pending_action_count: 0,
+        },
+      });
     }
+
+    devLog('parser_start', {
+      parser_mode: llmEnabled ? 'deterministic_plus_llm' : 'deterministic_only',
+      raw_text_preview: rawText.slice(0, 100),
+    });
 
     const result = await parseQuickOrder({
       rawText,
@@ -505,6 +555,17 @@ Deno.serve(async (req) => {
       previousMessages: sessionContext.messages,
       existingParsedItems: sessionContext.parsedItems,
       callLlm: llmEnabled ? callLlm : undefined,
+    });
+
+    devLog('parser_result', {
+      parser_version: PARSER_VERSION,
+      status: result.status,
+      parsed_items_count: result.parsed_items.length,
+      flags_count: result.flags.length,
+      pending_clarifications_count: result.pending_clarifications?.length ?? 0,
+      metrics_parse_mode: result.metrics?.parse_mode_used,
+      items_needing_clarification: result.parsed_items.filter((item) => item.needs_clarification).length,
+      items_unresolved: result.parsed_items.filter((item) => item.unresolved).length,
     });
 
     const suggestions = await fetchDowSuggestions({
@@ -533,10 +594,14 @@ Deno.serve(async (req) => {
       metrics: result.metrics ?? {},
     });
 
-    return jsonResponse({
-      ...result,
-      suggestions,
+    const finalResponse = { ...result, suggestions };
+    devLog('response_sent', {
+      status: finalResponse.status,
+      parsed_items_count: finalResponse.parsed_items.length,
+      suggestions_count: suggestions.length,
+      assistant_message_preview: (finalResponse.assistant_message ?? '').slice(0, 80),
     });
+    return jsonResponse(finalResponse);
   } catch (error) {
     console.error('parse-order unexpected error', error);
     if (usageUserId) {

@@ -5,7 +5,7 @@ export { SettingToggle } from './SettingToggle';
 export { MultiOptionToggle } from './MultiOptionToggle';
 export { TimePickerRow } from './TimePickerRow';
 export { ChangePasswordModal } from './ChangePasswordModal';
-export { settingsIconPalettes } from './iconPalettes';
+export { settingsIconPalettes, settingsSectionPalettes } from './iconPalettes';
 export { ReminderModal } from './ReminderModal';
 export { ReminderListItem } from './ReminderListItem';
 export {

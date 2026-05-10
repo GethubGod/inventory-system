@@ -14,7 +14,6 @@ import {
 
 /** Compact row slot used by the bounded Order List FlatList. */
 export const QUICK_ORDER_ROW_MIN_HEIGHT = 44;
-const INFO_BUTTON_SIZE = 28;
 
 type QuickOrderItemRowProps = {
   item: ParsedQuickOrderItem;
@@ -28,7 +27,7 @@ type QuickOrderItemRowProps = {
 
 /**
  * One compact line inside the Order List card:
- * [status icon] [name + info button] [quantity / tappable issue action].
+ * [status icon] [name, tappable to edit] [quantity / tappable issue action].
  *
  * Deliberately a plain `View` with explicit colors and no opacity / transform /
  * layout animation, so the row text is always visible regardless of animation
@@ -84,36 +83,26 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
       </View>
 
       <View style={styles.nameCluster}>
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="tail"
-          style={[
-            styles.name,
-            {
-              fontSize: ds.fontSize(15),
-              color: nameIsPlaceholder ? colors.textSecondary : colors.textPrimary,
-            },
-          ]}
-        >
-          {name}
-        </Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Adjust details for ${name}`}
-          hitSlop={{ top: 10, right: 10, bottom: 10, left: 8 }}
+          hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
           onPress={handleEditPress}
-          style={({ pressed }) => [
-            styles.infoButton,
-            {
-              width: ds.spacing(INFO_BUTTON_SIZE),
-              height: ds.spacing(INFO_BUTTON_SIZE),
-              borderRadius: ds.radius(INFO_BUTTON_SIZE / 2),
-              marginLeft: ds.spacing(6),
-              opacity: pressed ? 0.68 : 1,
-            },
-          ]}
+          style={({ pressed }) => [styles.namePressable, { opacity: pressed ? 0.65 : 1 }]}
         >
-          <Ionicons name="information-circle" size={ds.icon(17)} color={colors.tagBlue} />
+          <Text
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            style={[
+              styles.name,
+              {
+                fontSize: ds.fontSize(15),
+                color: nameIsPlaceholder ? colors.textSecondary : colors.textPrimary,
+              },
+            ]}
+          >
+            {name}
+          </Text>
         </Pressable>
       </View>
 
@@ -167,10 +156,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  namePressable: {
+    flexShrink: 1,
+    minWidth: 0,
+  },
   name: {
     fontWeight: '700',
     letterSpacing: 0,
-    flexShrink: 1,
   },
   trailingText: {
     minWidth: 76,
@@ -189,12 +181,5 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0,
     textDecorationLine: 'underline',
-  },
-  infoButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.tagBlueBg,
-    borderWidth: glassHairlineWidth,
-    borderColor: colors.tagBlue,
   },
 });

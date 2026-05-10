@@ -65,7 +65,7 @@ export const HomeScreenScroll = memo(function HomeScreenScroll({
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingHorizontal: glassSpacing.screen,
-          paddingBottom: glassTabBarHeight + ds.spacing(24),
+          paddingBottom: glassTabBarHeight + ds.spacing(40),
         }}
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}

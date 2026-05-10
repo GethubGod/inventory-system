@@ -5,10 +5,12 @@ export type ParseSource = 'deterministic' | 'fuzzy' | 'llm' | 'manual' | 'correc
 export type ParsedItemStatus =
   | 'valid'
   | 'review'
+  | 'no_match'
   | 'missing_quantity'
   | 'missing_unit'
   | 'ambiguous'
-  | 'invalid';
+  | 'invalid'
+  | 'invalid_unit';
 
 export type MatchType =
   | 'exact_name'
@@ -65,6 +67,7 @@ export type QuickOrderMessage = {
 };
 
 export type CandidateParsedLine = {
+  line_id: string;
   raw_text: string;
   normalized_text: string;
   item_text: string;
@@ -95,11 +98,13 @@ export type CatalogMatchResult = {
 
 export type ParsedItem = {
   id?: string;
+  line_id?: string;
   client_key?: string;
   item_id: string | null;
   item_name: string | null;
   display_name?: string;
   name?: string;
+  item_text?: string;
   raw_token: string;
   raw_text?: string;
   quantity: number | null;
@@ -116,6 +121,26 @@ export type ParsedItem = {
   pending_conflict_id?: string;
   merge_behavior?: 'add_to_existing' | 'replace_existing' | 'keep_separate';
   existing_item_key?: string;
+};
+
+export type QuickOrderOperationType =
+  | 'add'
+  | 'remove'
+  | 'replace'
+  | 'update_quantity'
+  | 'update_unit'
+  | 'clear'
+  | 'no_op';
+
+export type QuickOrderOperation = {
+  type: QuickOrderOperationType;
+  target_item_id: string | null;
+  target_display_name: string;
+  target_item_key?: string;
+  quantity?: number | null;
+  unit?: string | null;
+  status: 'applied' | 'pending' | 'failed';
+  message?: string;
 };
 
 export type ParseFlag = {
@@ -163,7 +188,9 @@ export type PendingQuickOrderClarification = {
     | 'missing_quantity'
     | 'missing_unit'
     | 'ambiguous_item'
-    | 'choose_existing_line';
+    | 'choose_existing_line'
+    | 'remove_ambiguous'
+    | 'item_not_found';
   item_id: string | null;
   item_name: string;
   existing_item_key?: string;
@@ -186,7 +213,14 @@ export type ParserMetrics = {
 };
 
 export type ParseDiagnostics = {
+  parser_version?: string;
   parse_mode?: string;
+  catalog_count?: number;
+  candidate_count?: number;
+  items_before_validation?: number;
+  items_after_validation?: number;
+  valid_count?: number;
+  review_count?: number;
   items_received?: number;
   items_accepted?: number;
   items_rejected?: number;
@@ -194,8 +228,24 @@ export type ParseDiagnostics = {
   pending_action_count?: number;
   unchanged_count?: number;
   repeated_existing_count?: number;
+  llm_lines_sent?: number;
+  llm_replaced_count?: number;
+  replaced_review_count?: number;
+  duplicate_line_count?: number;
+  ignored_llm_extra_count?: number;
+  item_diagnostics?: {
+    line_id?: string;
+    raw_text?: string;
+    item_text?: string;
+    matched_item_name?: string | null;
+    match_type?: MatchType;
+    status?: ParsedItemStatus;
+    reason?: string | null;
+    alternatives?: CatalogAlternative[];
+  }[];
   raw_input_length?: number;
   candidate_lines?: number;
+  error_code?: string;
 };
 
 export type ParseResponse = {
@@ -213,4 +263,5 @@ export type ParseResponse = {
   };
   metrics?: ParserMetrics;
   diagnostics?: ParseDiagnostics;
+  operations?: QuickOrderOperation[];
 };

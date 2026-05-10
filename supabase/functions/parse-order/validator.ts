@@ -22,13 +22,14 @@ export function validateParsedLine(input: {
   const unresolved = !catalogItem;
   let needsClarification = unresolved || match.needs_clarification;
   let issue = match.issue;
+  let invalidUnit = false;
 
   if (!catalogItem) {
     flags.push({
       type: match.alternatives?.length ? 'ambiguous_item' : 'unresolved_item',
       message: match.alternatives?.length
-        ? `Which item did you mean by ${candidate.item_text}?`
-        : `I couldn't match "${candidate.item_text}" to the catalog.`,
+        ? `Which item did you mean by "${candidate.item_text}"?`
+        : `I could not find "${candidate.item_text}" in the inventory catalog.`,
       raw_token: candidate.raw_text,
       possible_matches: match.alternatives,
       reason: match.alternatives?.length ? 'ambiguous' : 'no_match',
@@ -37,10 +38,10 @@ export function validateParsedLine(input: {
 
   if (quantity == null) {
     needsClarification = true;
-    issue = issue ?? 'Missing quantity.';
+    issue = issue ?? (catalogItem ? `How much ${catalogItem.name} would you like?` : 'Missing quantity.');
     flags.push({
       type: 'missing_quantity',
-      message: catalogItem ? `How much ${catalogItem.name}?` : 'Quantity is missing or invalid.',
+      message: catalogItem ? `How much ${catalogItem.name} would you like?` : 'Quantity is missing or invalid.',
       raw_token: candidate.raw_text,
       item_id: catalogItem?.id,
       reason: 'quantity_missing',
@@ -49,16 +50,17 @@ export function validateParsedLine(input: {
 
   if (!unit) {
     needsClarification = true;
-    issue = issue ?? 'Missing unit.';
+    issue = issue ?? (catalogItem ? `What unit would you like for ${catalogItem.name}?` : 'Missing unit.');
     flags.push({
       type: 'missing_unit',
-      message: catalogItem ? `What unit for ${catalogItem.name}?` : 'Unit is missing.',
+      message: catalogItem ? `What unit would you like for ${catalogItem.name}?` : 'Unit is missing.',
       raw_token: candidate.raw_text,
       item_id: catalogItem?.id,
       reason: 'unit_missing',
     });
   } else if (!isKnownUnit(unit)) {
     needsClarification = true;
+    invalidUnit = true;
     issue = issue ?? 'Unit is not supported.';
     flags.push({
       type: 'invalid_unit',
@@ -69,10 +71,11 @@ export function validateParsedLine(input: {
     });
   } else if (catalogItem && !isUnitAllowedForItem(catalogItem, unit)) {
     needsClarification = true;
-    issue = issue ?? `${unit} is not configured for ${catalogItem.name}.`;
+    invalidUnit = true;
+    issue = issue ?? `${catalogItem.name} cannot be ordered in ${unit}. Choose a valid unit.`;
     flags.push({
       type: 'unsupported_unit',
-      message: `${catalogItem.name} is not configured for ${unit}.`,
+      message: `${catalogItem.name} cannot be ordered in ${unit}. Choose a valid unit.`,
       raw_token: candidate.raw_text,
       item_id: catalogItem.id,
       reason: 'unsupported_unit',
@@ -86,10 +89,12 @@ export function validateParsedLine(input: {
   return {
     item: {
       id: `parsed:${candidate.line_index}:${candidate.normalized_text}`,
+      line_id: candidate.line_id,
       item_id: catalogItem?.id ?? null,
       item_name: catalogItem?.name ?? match.item_name ?? null,
       display_name: displayName,
       name: displayName,
+      item_text: candidate.item_text,
       raw_token: candidate.raw_text,
       raw_text: candidate.raw_text,
       quantity,
@@ -104,8 +109,10 @@ export function validateParsedLine(input: {
       status: getParsedItemStatus({
         unresolved,
         matchNeedsClarification: match.needs_clarification,
+        alternatives: match.alternatives,
         quantity,
         unit,
+        invalidUnit,
         issue,
       }),
       match_type: match.match_type,
@@ -117,14 +124,18 @@ export function validateParsedLine(input: {
 function getParsedItemStatus(input: {
   unresolved: boolean;
   matchNeedsClarification: boolean;
+  alternatives?: unknown[];
   quantity: number | null;
   unit: string | null;
+  invalidUnit: boolean;
   issue?: string;
 }) {
-  if (input.unresolved) return input.matchNeedsClarification ? 'ambiguous' : 'review';
+  if (input.unresolved) return input.alternatives?.length ? 'ambiguous' : 'no_match';
   if (input.quantity == null) return 'missing_quantity';
   if (!input.unit) return 'missing_unit';
-  if (input.matchNeedsClarification || input.issue) return 'review';
+  if (input.invalidUnit) return 'invalid_unit';
+  if (input.matchNeedsClarification) return 'ambiguous';
+  if (input.issue) return 'review';
   return 'valid';
 }
 
@@ -156,6 +167,7 @@ export function validateLlmItem(input: {
 
   return validateParsedLine({
     candidate: {
+      line_id: typeof input.raw.line_id === 'string' ? input.raw.line_id : `llm_${rawToken.slice(0, 30)}`,
       raw_text: rawToken,
       normalized_text: rawToken.toLowerCase(),
       item_text: stringValue(input.raw.item_name) ?? rawToken,

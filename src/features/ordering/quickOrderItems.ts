@@ -8,10 +8,12 @@
 
 export type ParsedQuickOrderItem = {
   id?: string;
+  line_id?: string;
   client_key?: string;
   item_id: string | null;
   /** Primary name field returned by the parser. */
   item_name?: string;
+  item_text?: string;
   /** Legacy / alternate name fields seen across parser + persisted payloads. */
   name?: string;
   display_name?: string;
@@ -34,7 +36,7 @@ export type ParsedQuickOrderItem = {
     confidence: number;
   }[];
   parse_source?: 'deterministic' | 'fuzzy' | 'llm' | 'manual' | 'correction';
-  status?: 'valid' | 'review' | 'missing_quantity' | 'missing_unit' | 'ambiguous' | 'invalid';
+  status?: 'valid' | 'review' | 'no_match' | 'missing_quantity' | 'missing_unit' | 'ambiguous' | 'invalid' | 'invalid_unit';
   match_type?: string;
   pending_conflict_id?: string;
   merge_behavior?: 'add_to_existing' | 'replace_existing' | 'keep_separate';
@@ -98,6 +100,7 @@ export type ParsedItemIssueKind =
   | 'choose-item'
   | 'pick-quantity'
   | 'pick-unit'
+  | 'fix-unit'
   | 'needs-clarification';
 
 export type ParsedItemIssue = {
@@ -132,12 +135,13 @@ function firstNonEmptyName(item: ParsedQuickOrderItem): string | null {
  * issue indicator (see {@link getParsedItemIssue}).
  */
 export function getParsedItemDisplayName(item: ParsedQuickOrderItem): string {
-  return firstNonEmptyName(item) || item.raw_token?.trim() || item.raw_text?.trim() || 'Unknown item';
+  if (item.item_id && item.item_name?.trim()) return item.item_name.trim();
+  return item.item_text?.trim() || firstNonEmptyName(item) || item.raw_token?.trim() || item.raw_text?.trim() || 'Unknown item';
 }
 
 /** True when the parser actually attached a name (not just a raw token). */
 export function hasParsedItemName(item: ParsedQuickOrderItem): boolean {
-  return firstNonEmptyName(item) != null;
+  return Boolean(item.item_id && item.item_name?.trim()) || Boolean(item.item_text?.trim()) || firstNonEmptyName(item) != null;
 }
 
 /**
@@ -158,6 +162,21 @@ export function getParsedItemKey(item: ParsedQuickOrderItem): string {
  * resolved before quantity/unit are meaningful.
  */
 export function getParsedItemIssue(item: ParsedQuickOrderItem): ParsedItemIssue | null {
+  if (item.status === 'missing_quantity') {
+    return { kind: 'pick-quantity', label: 'Add quantity' };
+  }
+  if (item.status === 'missing_unit') {
+    return { kind: 'pick-unit', label: 'Choose unit' };
+  }
+  if (item.status === 'invalid_unit' || item.status === 'invalid') {
+    return { kind: 'fix-unit', label: 'Fix unit' };
+  }
+  if (item.status === 'ambiguous' || item.status === 'no_match' || item.status === 'review') {
+    if (!item.item_id || item.unresolved || item.status === 'ambiguous' || item.status === 'no_match') {
+      return { kind: 'choose-item', label: 'Choose item' };
+    }
+    return { kind: 'needs-clarification', label: 'Needs review' };
+  }
   if (!item.item_id || item.unresolved) {
     return { kind: 'choose-item', label: 'Choose item' };
   }
@@ -165,7 +184,7 @@ export function getParsedItemIssue(item: ParsedQuickOrderItem): ParsedItemIssue 
     return { kind: 'pick-quantity', label: 'Add quantity' };
   }
   if (!item.unit || !item.unit.trim()) {
-    return { kind: 'pick-unit', label: 'Pick unit' };
+    return { kind: 'pick-unit', label: 'Choose unit' };
   }
   if (item.needs_clarification) {
     return { kind: 'needs-clarification', label: 'Needs review' };
@@ -251,7 +270,7 @@ export function mergeQuickOrderParsedItemsDetailed(
   const rejectedReasons: string[] = [];
   let unchangedCount = 0;
 
-  for (const item of incoming) {
+  for (const item of dedupeParsedItemsByLineId(incoming)) {
     if (!isRenderableParsedItem(item)) {
       rejectedReasons.push('empty_item');
       continue;
@@ -344,6 +363,40 @@ export function mergeQuickOrderParsedItemsDetailed(
     unchangedCount,
     rejectedReasons,
   };
+}
+
+function dedupeParsedItemsByLineId(items: ParsedQuickOrderItem[]): ParsedQuickOrderItem[] {
+  const byLine = new Map<string, ParsedQuickOrderItem>();
+  const withoutLine: ParsedQuickOrderItem[] = [];
+
+  for (const item of items) {
+    if (!item.line_id) {
+      withoutLine.push(item);
+      continue;
+    }
+    const existing = byLine.get(item.line_id);
+    byLine.set(item.line_id, existing ? chooseBetterParsedItem(existing, item) : item);
+  }
+
+  return [...byLine.values(), ...withoutLine];
+}
+
+function chooseBetterParsedItem(a: ParsedQuickOrderItem, b: ParsedQuickOrderItem): ParsedQuickOrderItem {
+  const aScore = parsedItemResolutionScore(a);
+  const bScore = parsedItemResolutionScore(b);
+  if (aScore !== bScore) return bScore > aScore ? b : a;
+  return (b.confidence ?? 0) > (a.confidence ?? 0) ? b : a;
+}
+
+function parsedItemResolutionScore(item: ParsedQuickOrderItem): number {
+  let score = 0;
+  if (item.item_id) score += 100;
+  if (!item.unresolved) score += 20;
+  if (!getParsedItemIssue(item)) score += 20;
+  if (item.match_type === 'exact_name') score += 12;
+  if (item.match_type === 'exact_alias' || item.match_type === 'normalized') score += 10;
+  if (item.parse_source === 'deterministic') score += 2;
+  return score;
 }
 
 export function detectRepeatedOrderList(
@@ -447,6 +500,13 @@ export function normalizeQuickOrderUnit(value: string | null | undefined): strin
     case 'case':
     case 'cases':
       return 'cs';
+    case 'pack':
+    case 'packs':
+    case 'pk':
+    case 'pkg':
+    case 'package':
+    case 'packages':
+      return 'pack';
     case 'lbs':
     case 'pound':
     case 'pounds':
@@ -520,4 +580,208 @@ const UUID_PATTERN =
 
 export function isUuid(value: string | null | undefined): value is string {
   return Boolean(value && UUID_PATTERN.test(value));
+}
+
+// ---------------------------------------------------------------------------
+// Operations — applied by the frontend when the backend returns command ops.
+// ---------------------------------------------------------------------------
+
+export type QuickOrderOperationType =
+  | 'add'
+  | 'remove'
+  | 'replace'
+  | 'update_quantity'
+  | 'update_unit'
+  | 'clear'
+  | 'no_op';
+
+export type QuickOrderOperation = {
+  type: QuickOrderOperationType;
+  target_item_id: string | null;
+  target_display_name: string;
+  target_item_key?: string;
+  quantity?: number | null;
+  unit?: string | null;
+  status: 'applied' | 'pending' | 'failed';
+  message?: string;
+};
+
+export type QuickOrderOperationResult = {
+  items: ParsedQuickOrderItem[];
+  appliedCount: number;
+  removedCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  skippedReasons: string[];
+};
+
+/**
+ * Applies backend-produced operations (remove, replace, update, clear) to the
+ * local parsed-items state. Called before merging any new parsed items.
+ */
+export function applyQuickOrderOperations(
+  existingItems: ParsedQuickOrderItem[],
+  operations: QuickOrderOperation[],
+): QuickOrderOperationResult {
+  let items = [...existingItems];
+  let appliedCount = 0;
+  let removedCount = 0;
+  let updatedCount = 0;
+  let skippedCount = 0;
+  const skippedReasons: string[] = [];
+
+  for (const op of operations) {
+    if (op.status !== 'applied') {
+      skippedCount += 1;
+      skippedReasons.push(`${op.type}_not_applied`);
+      continue;
+    }
+
+    switch (op.type) {
+      case 'clear': {
+        removedCount += items.length;
+        items = [];
+        appliedCount += 1;
+        break;
+      }
+      case 'remove': {
+        const index = findOperationTargetIndex(items, op);
+        if (index >= 0) {
+          items = items.filter((_, i) => i !== index);
+          removedCount += 1;
+          appliedCount += 1;
+        } else {
+          skippedCount += 1;
+          skippedReasons.push('remove_target_not_found');
+        }
+        break;
+      }
+      case 'replace': {
+        const index = findOperationTargetIndex(items, op);
+        if (index >= 0) {
+          items = items.map((item, i) => {
+            if (i !== index) return item;
+            return {
+              ...item,
+              quantity: op.quantity ?? item.quantity,
+              unit: op.unit ?? item.unit,
+              needs_clarification: false,
+              unresolved: false,
+            };
+          });
+          updatedCount += 1;
+          appliedCount += 1;
+        } else {
+          skippedCount += 1;
+          skippedReasons.push('replace_target_not_found');
+        }
+        break;
+      }
+      case 'update_quantity': {
+        const index = findOperationTargetIndex(items, op);
+        if (index >= 0) {
+          items = items.map((item, i) => {
+            if (i !== index) return item;
+            return {
+              ...item,
+              quantity: op.quantity ?? item.quantity,
+              unit: op.unit ?? item.unit,
+              needs_clarification: false,
+              unresolved: false,
+            };
+          });
+          updatedCount += 1;
+          appliedCount += 1;
+        } else {
+          skippedCount += 1;
+          skippedReasons.push('update_quantity_target_not_found');
+        }
+        break;
+      }
+      case 'update_unit': {
+        const index = findOperationTargetIndex(items, op);
+        if (index >= 0) {
+          items = items.map((item, i) => {
+            if (i !== index) return item;
+            return {
+              ...item,
+              unit: op.unit ?? item.unit,
+              needs_clarification: false,
+              unresolved: false,
+            };
+          });
+          updatedCount += 1;
+          appliedCount += 1;
+        } else {
+          skippedCount += 1;
+          skippedReasons.push('update_unit_target_not_found');
+        }
+        break;
+      }
+      case 'add':
+      case 'no_op':
+      default:
+        // no_op and add don't change existing items here —
+        // add items come through the normal merge path.
+        appliedCount += 1;
+        break;
+    }
+  }
+
+  return { items, appliedCount, removedCount, updatedCount, skippedCount, skippedReasons };
+}
+
+/**
+ * Finds the index of the existing item targeted by an operation, using a
+ * priority cascade: target_item_key → item_id+unit → display_name → parenthetical.
+ */
+function findOperationTargetIndex(
+  items: ParsedQuickOrderItem[],
+  op: QuickOrderOperation,
+): number {
+  // 1. target_item_key exact match.
+  if (op.target_item_key) {
+    const idx = items.findIndex((item) => getParsedItemKey(item) === op.target_item_key);
+    if (idx >= 0) return idx;
+  }
+
+  // 2. item_id + unit match.
+  if (op.target_item_id) {
+    const idx = items.findIndex((item) =>
+      item.item_id === op.target_item_id
+      && (!op.unit || normalizeQuickOrderUnit(item.unit) === normalizeQuickOrderUnit(op.unit)),
+    );
+    if (idx >= 0) return idx;
+
+    // item_id only (any unit).
+    const idIdx = items.findIndex((item) => item.item_id === op.target_item_id);
+    if (idIdx >= 0) return idIdx;
+  }
+
+  // 3. Normalized display name match.
+  const targetName = normalizeItemKeyText(op.target_display_name);
+  if (targetName) {
+    const idx = items.findIndex((item) => {
+      const dn = normalizeItemKeyText(getParsedItemDisplayName(item));
+      const in_ = normalizeItemKeyText(item.item_name ?? '');
+      return dn === targetName || in_ === targetName;
+    });
+    if (idx >= 0) return idx;
+
+    // 4. Raw token match.
+    const rawIdx = items.findIndex((item) => {
+      const raw = normalizeItemKeyText(item.raw_token ?? item.raw_text ?? '');
+      return raw === targetName;
+    });
+    if (rawIdx >= 0) return rawIdx;
+
+    // 5. Parenthetical / substring match.
+    const subIdx = items.findIndex((item) => {
+      const dn = normalizeItemKeyText(getParsedItemDisplayName(item));
+      return dn.includes(targetName) || targetName.includes(dn);
+    });
+    if (subIdx >= 0) return subIdx;
+  }
+
+  return -1;
 }

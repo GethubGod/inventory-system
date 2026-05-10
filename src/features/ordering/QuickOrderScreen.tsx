@@ -54,6 +54,7 @@ import {
 import {
   countUnresolvedItems,
   applyQuickOrderClarificationAction,
+  applyQuickOrderOperations,
   formatParsedItemQuantity,
   getParsedItemDisplayName,
   getParsedItemIssue,
@@ -1006,6 +1007,15 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       activeSessionId = await ensureSession();
       await persistSession(activeSessionId, optimisticMessages, parsedItems);
 
+      if (__DEV__) {
+        console.log('[QuickOrder] Sending parse-order request', {
+          raw_text: rawText,
+          location_id: locationId,
+          session_id: activeSessionId,
+          user_id: userId,
+        });
+      }
+
       const { data, error } = await supabase.functions.invoke('parse-order', {
         body: {
           raw_text: rawText,
@@ -1015,13 +1025,65 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         },
       });
 
+      if (__DEV__) {
+        console.log('[QuickOrder] Raw invoke result', {
+          hasData: data != null,
+          dataType: typeof data,
+          hasError: error != null,
+          errorMessage: error?.message,
+          errorName: error?.name,
+        });
+      }
+
       if (error) {
-        throw error;
+        // Supabase functions.invoke returns FunctionsHttpError for non-2xx,
+        // FunctionsRelayError for relay issues, FunctionsFetchError for network failures.
+        const errorName = (error as { name?: string }).name ?? '';
+        let errorCode = 'ai_unavailable';
+        if (errorName === 'FunctionsHttpError') {
+          // Try to extract the JSON body from the error response
+          try {
+            const errorBody = typeof error.context === 'object' && error.context !== null
+              ? error.context
+              : typeof (error as { message?: string }).message === 'string'
+                ? JSON.parse((error as { message: string }).message)
+                : null;
+            if (errorBody && typeof errorBody === 'object' && 'code' in errorBody) {
+              errorCode = String((errorBody as Record<string, unknown>).code);
+            }
+          } catch {
+            // Error body wasn't JSON — use default code
+          }
+        } else if (errorName === 'FunctionsFetchError') {
+          errorCode = 'network_error';
+        }
+        console.warn(`[QuickOrder] parse-order invoke error: ${errorName}`, error);
+        if (activeSessionId) {
+          await appendErrorMessage(optimisticMessages, activeSessionId, errorCode);
+        }
+        return;
       }
 
       const response = normalizeQuickOrderParseResponse(data);
-      if (response.rawError) {
-        console.warn(`[QuickOrder] parse-order returned an error: ${response.rawError}`);
+
+      if (__DEV__) {
+        console.log('[QuickOrder] Normalized response', {
+          status: response.status,
+          parsedItems_length: response.parsedItems.length,
+          pendingActions_length: response.pendingActions.length,
+          flags_length: response.flags.length,
+          assistantMessage: response.assistantMessage.slice(0, 80),
+          rawError: response.rawError,
+          errorCode: response.errorCode,
+          diagnostics: response.diagnostics,
+        });
+      }
+
+      // Only short-circuit to error path if there are truly no items AND no actions AND no operations.
+      // If the backend returned an error field but also returned parsed items or operations,
+      // process them instead of discarding.
+      if (response.rawError && response.parsedItems.length === 0 && response.pendingActions.length === 0 && response.operations.length === 0) {
+        console.warn(`[QuickOrder] parse-order returned an error with no items: ${response.rawError}`);
         const code = response.errorCode || 'ai_unavailable';
         if (activeSessionId) {
           await appendErrorMessage(optimisticMessages, activeSessionId, code);
@@ -1029,22 +1091,59 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         return;
       }
 
+      // Apply operations first (remove/replace/update/clear).
+      const operations = response.operations;
+      let operationBase = parsedItems;
+      let operationResult = null;
+      if (operations.length > 0) {
+        operationResult = applyQuickOrderOperations(parsedItems, operations);
+        operationBase = operationResult.items;
+        if (__DEV__) {
+          console.log('[QuickOrder] Operations applied', {
+            operations_count: operations.length,
+            applied: operationResult.appliedCount,
+            removed: operationResult.removedCount,
+            updated: operationResult.updatedCount,
+            skipped: operationResult.skippedCount,
+            skippedReasons: operationResult.skippedReasons,
+            items_after: operationBase.length,
+          });
+        }
+      }
+
+      // Then merge any new parsed items onto the post-operation state.
       const responseItems = response.parsedItems;
       const responseSuggestions = normalizeSuggestions(response.suggestions);
       const responseClarifications = response.pendingActions;
-      const mergeResult = mergeQuickOrderParsedItemsDetailed(parsedItems, responseItems);
+      const mergeResult = mergeQuickOrderParsedItemsDetailed(operationBase, responseItems);
       const nextParsedItems = mergeResult.items;
       const nextPendingClarifications = [...pendingClarifications, ...responseClarifications];
       const assistantText = buildQuickOrderAssistantMessage({
         normalized: response,
         mergeResult,
         pendingCount: responseClarifications.length,
+        operationResult,
       });
+
+      if (__DEV__) {
+        console.log('[QuickOrder] Merge result', {
+          parsedItems_before: parsedItems.length,
+          responseItems_count: responseItems.length,
+          merge_added: mergeResult.addedCount,
+          merge_updated: mergeResult.updatedCount,
+          merge_review: mergeResult.reviewCount,
+          merge_unchanged: mergeResult.unchangedCount,
+          merge_rejected_reasons: mergeResult.rejectedReasons,
+          nextParsedItems_count: nextParsedItems.length,
+          pendingClarifications_count: responseClarifications.length,
+          assistantText: assistantText.slice(0, 80),
+        });
+      }
 
       if (
         __DEV__ &&
         response.status === 'ok' &&
-        !hasQuickOrderStateChange(mergeResult, responseClarifications.length)
+        !hasQuickOrderStateChange(mergeResult, responseClarifications.length, operationResult)
       ) {
         console.warn('[QuickOrder] Parser response produced no state change', {
           sessionId: activeSessionId,
@@ -1077,7 +1176,24 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       setParsedItems(nextParsedItems);
       setPendingClarifications(nextPendingClarifications);
       setMessages(nextMessages);
-      await persistSession(activeSessionId, nextMessages, nextParsedItems);
+
+      if (__DEV__) {
+        console.log('[QuickOrder] State updated', {
+          parsedItems_count: nextParsedItems.length,
+          pendingClarifications_count: nextPendingClarifications.length,
+          messages_count: nextMessages.length,
+        });
+      }
+
+      try {
+        await persistSession(activeSessionId, nextMessages, nextParsedItems);
+        if (__DEV__) {
+          console.log('[QuickOrder] Session persisted successfully');
+        }
+      } catch (persistError) {
+        // Session persistence failure should NOT clear local state
+        console.warn('[QuickOrder] session_persist_failed:', persistError);
+      }
 
       // Start nudge timer after a successful parse with items
       if (nextParsedItems.length > 0 && !nudgeSent) {
@@ -1098,6 +1214,13 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       }
     } catch (error) {
       console.warn('[QuickOrder] parse-order failed:', error);
+      if (__DEV__) {
+        console.error('[QuickOrder] Full error detail:', {
+          name: (error as { name?: string })?.name,
+          message: (error as { message?: string })?.message,
+          stack: (error as { stack?: string })?.stack?.split('\n').slice(0, 5),
+        });
+      }
       if (activeSessionId) {
         await appendErrorMessage(optimisticMessages, activeSessionId, 'ai_unavailable');
       }

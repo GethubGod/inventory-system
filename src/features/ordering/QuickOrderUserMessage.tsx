@@ -65,23 +65,24 @@ export const QuickOrderUserMessage = React.memo(function QuickOrderUserMessage({
           { marginTop: ds.spacing(4), opacity: pressed ? 0.5 : 1 },
         ]}
       >
-        <Ionicons
-          name={copied ? 'checkmark' : 'copy-outline'}
-          size={ds.icon(13)}
-          color={copied ? colors.statusGreen : colors.textMuted}
-        />
-        <Text
-          style={[
-            styles.copyText,
-            {
-              fontSize: ds.fontSize(12),
-              marginLeft: ds.spacing(4),
-              color: copied ? colors.statusGreen : colors.textMuted,
-            },
-          ]}
-        >
-          {copied ? 'Copied' : 'Copy'}
-        </Text>
+        <View style={[styles.copyRow, { gap: ds.spacing(6) }]}>
+          <Ionicons
+            name={copied ? 'checkmark' : 'copy-outline'}
+            size={ds.icon(13)}
+            color={copied ? colors.statusGreen : colors.textMuted}
+          />
+          <Text
+            style={[
+              styles.copyText,
+              {
+                fontSize: ds.fontSize(12),
+                color: copied ? colors.statusGreen : colors.textMuted,
+              },
+            ]}
+          >
+            {copied ? 'Copied' : 'Copy'}
+          </Text>
+        </View>
       </Pressable>
     </View>
   );
@@ -102,6 +103,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
   copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  copyRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },

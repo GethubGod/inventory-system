@@ -34,7 +34,6 @@ import {
 import {
   CATEGORY_ORDER,
   getCategoryShortLabel,
-  buildCategoryList,
 } from '@/features/browse/config';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useOrderingCartActions } from '@/hooks/useOrderingCartActions';
@@ -52,6 +51,10 @@ import {
   type HistoricalOrderSummary,
   type PredictedOrderItem,
 } from '@/features/ordering/orderInsights';
+import {
+  ImpactFeedbackStyle,
+  triggerImpactHaptic,
+} from '@/lib/haptics';
 import {
   fetchActiveLocationReminder,
   type LocationReminderBanner,
@@ -132,6 +135,15 @@ interface LoadHomeDataOptions {
 interface SuggestedItemCardProps {
   item: PredictedOrderItem;
   onAdd: (item: PredictedOrderItem) => void;
+}
+
+interface QuickActionRowProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  subtitle: string;
+  accessibilityLabel: string;
+  accessibilityHint: string;
+  onPress: () => void;
 }
 
 const SuggestedItemCard = memo(function SuggestedItemCard({
@@ -262,6 +274,80 @@ const BrowsePreviewRow = memo(function BrowsePreviewRow({
   );
 });
 
+const QuickActionRow = memo(function QuickActionRow({
+  icon,
+  title,
+  subtitle,
+  accessibilityLabel,
+  accessibilityHint,
+  onPress,
+}: QuickActionRowProps) {
+  const ds = useScaledStyles();
+
+  return (
+    <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      onPress={onPress}
+      className="flex-row items-center"
+      style={{
+        paddingHorizontal: ds.spacing(14),
+        paddingVertical: ds.spacing(14),
+        borderRadius: glassRadii.surface,
+        backgroundColor: colors.gray[100],
+        borderWidth: glassHairlineWidth,
+        borderColor: glassColors.cardBorder,
+      }}
+      activeOpacity={0.85}
+    >
+      <View
+        style={{
+          width: ds.icon(36),
+          height: ds.icon(36),
+          borderRadius: glassRadii.iconTile,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: glassColors.accentSoft,
+          marginRight: ds.spacing(12),
+        }}
+      >
+        <Ionicons
+          name={icon}
+          size={ds.icon(18)}
+          color={glassColors.accent}
+        />
+      </View>
+      <View style={{ flex: 1, paddingRight: ds.spacing(10) }}>
+        <Text
+          style={{
+            fontSize: ds.fontSize(15),
+            fontWeight: '600',
+            color: glassColors.textPrimary,
+          }}
+        >
+          {title}
+        </Text>
+        <Text
+          style={{
+            marginTop: ds.spacing(4),
+            fontSize: ds.fontSize(12),
+            color: glassColors.textSecondary,
+          }}
+          numberOfLines={1}
+        >
+          {subtitle}
+        </Text>
+      </View>
+      <Ionicons
+        name="chevron-forward"
+        size={ds.icon(18)}
+        color={glassColors.textSecondary}
+      />
+    </TouchableOpacity>
+  );
+});
+
 function getGreeting(now: Date): string {
   const hour = now.getHours();
   if (hour < 12) {
@@ -353,16 +439,24 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
   const homeDataRefreshPromiseRef = useRef<Promise<void> | null>(null);
   const queuedHomeDataRefreshRef = useRef(false);
   const {
+    user,
+    profile,
+    session,
     location,
     locations,
     setLocation,
     fetchLocations,
+    setViewMode,
   } = useAuthStore(
     useShallow((state) => ({
+      user: state.user,
+      profile: state.profile,
+      session: state.session,
       location: state.location,
       locations: state.locations,
       setLocation: state.setLocation,
       fetchLocations: state.fetchLocations,
+      setViewMode: state.setViewMode,
     })),
   );
   const {
@@ -568,6 +662,14 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
   const homeDate = useMemo(() => new Date(), []);
   const greeting = getGreeting(homeDate);
   const browseSubtitle = `${items.length} items across ${CATEGORY_ORDER.length} categories`;
+  const metadataRole =
+    typeof session?.user?.user_metadata?.role === 'string'
+      ? session.user.user_metadata.role
+      : typeof session?.user?.app_metadata?.role === 'string'
+        ? session.user.app_metadata.role
+        : null;
+  const canSwitchViews =
+    (user?.role ?? profile?.role ?? metadataRole) === 'manager';
   const visibleCollapsedCategories = CATEGORY_ORDER.slice(0, 4);
   const moreCategoryCount = Math.max(
     CATEGORY_ORDER.length - visibleCollapsedCategories.length,
@@ -642,6 +744,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
       return;
     }
 
+    void triggerImpactHaptic(ImpactFeedbackStyle.Light);
     const didReorder = reorderHistoricalOrder(reorderOrder);
     if (!didReorder) {
       return;
@@ -650,9 +753,22 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
     router.push(mode.cartRoute as any);
   }, [mode.cartRoute, reorderHistoricalOrder, reorderOrder]);
 
-  const handleStockCheckPress = useCallback(() => {
-    router.push('/(tabs)/stock-check' as any);
-  }, []);
+  const handleQuickOrderPress = useCallback(() => {
+    void triggerImpactHaptic(ImpactFeedbackStyle.Light);
+    router.push(mode.quickOrderRoute as any);
+  }, [mode.quickOrderRoute]);
+
+  const handleSwitchViewPress = useCallback(() => {
+    void triggerImpactHaptic(ImpactFeedbackStyle.Light);
+    if (mode.scope === 'manager') {
+      setViewMode('employee');
+      router.replace('/(tabs)' as any);
+      return;
+    }
+
+    setViewMode('manager');
+    router.replace('/(manager)' as any);
+  }, [mode.scope, setViewMode]);
 
   const renderSuggestedItem = useCallback(
     ({ item }: { item: PredictedOrderItem }) => (
@@ -768,162 +884,53 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
       />
 
       <View style={{ marginTop: ds.spacing(20) }}>
-        <HomeModuleCard
-          title="Suggestions"
-          actionLabel={predictedItems.length > 0 ? 'Add all' : undefined}
-          onPressAction={predictedItems.length > 0 ? handleAddAllPredicted : undefined}
-        >
-          {hasSuggestedItems ? (
-            <FlashList
-              data={predictedItems}
-              renderItem={renderSuggestedItem}
-              keyExtractor={(item) => `${item.inventoryItemId}:${item.unitType}`}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              ItemSeparatorComponent={() => <View style={{ width: ds.spacing(10) }} />}
-              contentContainerStyle={{
-                paddingRight: ds.spacing(10),
-              }}
-            />
-          ) : (
-            <HomeModuleState
-              icon="sparkles-outline"
-              title={location?.id ? 'Collecting more data' : 'Choose a location'}
-              message={
-                location?.id
-                  ? 'Suggestions will appear here as you place more orders.'
-                  : 'Select a location to see suggested items.'
-              }
-            />
-          )}
-        </HomeModuleCard>
-      </View>
-
-      <View style={{ marginTop: ds.spacing(20) }}>
         <HomeModuleCard title="Quick Actions">
           <View style={{ gap: ds.spacing(10) }}>
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel="Perform stock check"
-              accessibilityHint="Opens the stock check screen to count inventory and build an order"
-              onPress={handleStockCheckPress}
-              className="flex-row items-center"
-              style={{
-                paddingHorizontal: ds.spacing(14),
-                paddingVertical: ds.spacing(14),
-                borderRadius: glassRadii.surface,
-                backgroundColor: colors.gray[100],
-                borderWidth: glassHairlineWidth,
-                borderColor: glassColors.cardBorder,
-              }}
-              activeOpacity={0.85}
-            >
-              <View
-                style={{
-                  width: ds.icon(36),
-                  height: ds.icon(36),
-                  borderRadius: glassRadii.iconTile,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: glassColors.accentSoft,
-                  marginRight: ds.spacing(12),
-                }}
-              >
-                <Ionicons
-                  name="clipboard-outline"
-                  size={ds.icon(18)}
-                  color={glassColors.accent}
-                />
-              </View>
-              <View style={{ flex: 1, paddingRight: ds.spacing(10) }}>
-                <Text
-                  style={{
-                    fontSize: ds.fontSize(15),
-                    fontWeight: '600',
-                    color: glassColors.textPrimary,
-                  }}
-                >
-                  Perform Stock Check
-                </Text>
-                <Text
-                  style={{
-                    marginTop: ds.spacing(4),
-                    fontSize: ds.fontSize(12),
-                    color: glassColors.textSecondary,
-                  }}
-                  numberOfLines={1}
-                >
-                  Walk your storage areas and build an order
-                </Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={ds.icon(18)}
-                color={glassColors.textSecondary}
+            <QuickActionRow
+              icon="flash-outline"
+              title="Quick Order"
+              subtitle="Type an order in seconds"
+              accessibilityLabel="Quick Order"
+              accessibilityHint="Opens the Quick Order screen"
+              onPress={handleQuickOrderPress}
+            />
+
+            {canSwitchViews ? (
+              <QuickActionRow
+                icon="swap-horizontal"
+                title={
+                  mode.scope === 'manager'
+                    ? 'Switch to Employee View'
+                    : 'Switch to Manager View'
+                }
+                subtitle={
+                  mode.scope === 'manager'
+                    ? 'Place orders in employee mode'
+                    : 'Manage orders and fulfillment'
+                }
+                accessibilityLabel={
+                  mode.scope === 'manager'
+                    ? 'Switch to Employee View'
+                    : 'Switch to Manager View'
+                }
+                accessibilityHint={
+                  mode.scope === 'manager'
+                    ? 'Switches to the employee home view'
+                    : 'Switches to the manager home view'
+                }
+                onPress={handleSwitchViewPress}
               />
-            </TouchableOpacity>
+            ) : null}
 
             {reorderOrder ? (
-              <TouchableOpacity
-                accessibilityRole="button"
+              <QuickActionRow
+                icon="star-outline"
+                title={`Reorder last ${formatOrderDayLabel(reorderOrder.createdAt)}`}
+                subtitle={`${reorderOrder.itemCount} items · ${summarizeOrderItems(reorderOrder)}`}
                 accessibilityLabel={`Reorder last ${formatOrderDayLabel(reorderOrder.createdAt)}`}
                 accessibilityHint="Adds the recommended reorder items to your cart and opens the cart"
                 onPress={handleQuickActionPress}
-                className="flex-row items-center"
-                style={{
-                  paddingHorizontal: ds.spacing(14),
-                  paddingVertical: ds.spacing(14),
-                  borderRadius: glassRadii.surface,
-                  backgroundColor: colors.gray[100],
-                  borderWidth: glassHairlineWidth,
-                  borderColor: glassColors.cardBorder,
-                }}
-                activeOpacity={0.85}
-              >
-                <View
-                  style={{
-                    width: ds.icon(36),
-                    height: ds.icon(36),
-                    borderRadius: glassRadii.iconTile,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: glassColors.accentSoft,
-                    marginRight: ds.spacing(12),
-                  }}
-                >
-                  <Ionicons
-                    name="star-outline"
-                    size={ds.icon(18)}
-                    color={glassColors.accent}
-                  />
-                </View>
-                <View style={{ flex: 1, paddingRight: ds.spacing(10) }}>
-                  <Text
-                    style={{
-                      fontSize: ds.fontSize(15),
-                      fontWeight: '600',
-                      color: glassColors.textPrimary,
-                    }}
-                  >
-                    Reorder last {formatOrderDayLabel(reorderOrder.createdAt)}
-                  </Text>
-                  <Text
-                    style={{
-                      marginTop: ds.spacing(4),
-                      fontSize: ds.fontSize(12),
-                      color: glassColors.textSecondary,
-                    }}
-                    numberOfLines={1}
-                  >
-                    {reorderOrder.itemCount} items · {summarizeOrderItems(reorderOrder)}
-                  </Text>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={ds.icon(18)}
-                  color={glassColors.textSecondary}
-                />
-              </TouchableOpacity>
+              />
             ) : null}
           </View>
         </HomeModuleCard>
@@ -1175,6 +1182,38 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
             </View>
           </TouchableOpacity>
         </GlassSurface>
+      </View>
+
+      <View style={{ marginTop: ds.spacing(20) }}>
+        <HomeModuleCard
+          title="Suggestions"
+          actionLabel={predictedItems.length > 0 ? 'Add all' : undefined}
+          onPressAction={predictedItems.length > 0 ? handleAddAllPredicted : undefined}
+        >
+          {hasSuggestedItems ? (
+            <FlashList
+              data={predictedItems}
+              renderItem={renderSuggestedItem}
+              keyExtractor={(item) => `${item.inventoryItemId}:${item.unitType}`}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              ItemSeparatorComponent={() => <View style={{ width: ds.spacing(10) }} />}
+              contentContainerStyle={{
+                paddingRight: ds.spacing(10),
+              }}
+            />
+          ) : (
+            <HomeModuleState
+              icon="sparkles-outline"
+              title={location?.id ? 'Collecting more data' : 'Choose a location'}
+              message={
+                location?.id
+                  ? 'Suggestions will appear here as you place more orders.'
+                  : 'Select a location to see suggested items.'
+              }
+            />
+          )}
+        </HomeModuleCard>
       </View>
     </HomeScreenScroll>
   );

@@ -13,14 +13,13 @@ import {
   SettingsGroup,
   SettingsRow,
   settingsIconPalettes,
-  type SettingsRowProps,
 } from '@/components/settings';
 import { BrandLogo } from '@/components';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
-  buildSettingsHref,
-  EMPLOYEE_SETTINGS_ROOT,
-} from '@/lib/settingsNavigation';
+  buildSettingsGroups,
+  type SettingsGroupModel,
+} from '@/features/settings/settingsSections';
 import {
   glassColors,
   glassSpacing,
@@ -28,18 +27,6 @@ import {
 } from '@/theme/design';
 
 const SETTINGS_DIVIDER_COLOR = '#EAEAEA';
-
-type SettingsItem = Omit<
-  SettingsRowProps,
-  'showBorder' | 'borderColor'
-> & {
-  key: string;
-};
-
-interface SettingsGroupModel {
-  key: string;
-  items: SettingsItem[];
-}
 
 export default function SettingsScreen() {
   const ds = useScaledStyles();
@@ -61,158 +48,14 @@ export default function SettingsScreen() {
   }, [setViewMode]);
 
   const settingsGroups = useMemo<SettingsGroupModel[]>(
-    () => [
-      {
-        key: 'account',
-        items: [
-          {
-            key: 'profile',
-            icon: 'person-outline',
-            iconColor: settingsIconPalettes.profile.icon,
-            iconBgColor: settingsIconPalettes.profile.background,
-            title: 'Profile',
-            subtitle: 'Manage your account details',
-            onPress: () =>
-              router.push(
-                buildSettingsHref('/settings/profile', {
-                  origin: 'employee',
-                  backTo: EMPLOYEE_SETTINGS_ROOT,
-                }),
-              ),
-          },
-        ],
-      },
-      {
-        key: 'preferences',
-        items: [
-          {
-            key: 'display',
-            icon: 'eye-outline',
-            iconColor: settingsIconPalettes.display.icon,
-            iconBgColor: settingsIconPalettes.display.background,
-            title: 'Display & Accessibility',
-            subtitle: 'Text size, button size, and interaction settings',
-            onPress: () =>
-              router.push(
-                buildSettingsHref('/settings/display-accessibility', {
-                  origin: 'employee',
-                  backTo: EMPLOYEE_SETTINGS_ROOT,
-                }),
-              ),
-          },
-          {
-            key: 'notifications',
-            icon: 'notifications-outline',
-            iconColor: settingsIconPalettes.notifications.icon,
-            iconBgColor: settingsIconPalettes.notifications.background,
-            title: 'Notifications',
-            subtitle: 'Control alerts, sounds, and quiet hours',
-            onPress: () =>
-              router.push(
-                buildSettingsHref('/settings/notifications', {
-                  origin: 'employee',
-                  backTo: EMPLOYEE_SETTINGS_ROOT,
-                }),
-              ),
-          },
-          {
-            key: 'reminders',
-            icon: 'alarm-outline',
-            iconColor: settingsIconPalettes.reminders.icon,
-            iconBgColor: settingsIconPalettes.reminders.background,
-            title: 'Reminders',
-            subtitle: 'Configure quick and custom reminders',
-            onPress: () =>
-              router.push(
-                buildSettingsHref('/settings/reminders', {
-                  origin: 'employee',
-                  backTo: EMPLOYEE_SETTINGS_ROOT,
-                }),
-              ),
-          },
-        ],
-      },
-      {
-        key: 'workflows',
-        items: [
-          {
-            key: 'quick-search',
-            icon: 'search-outline',
-            iconColor: settingsIconPalettes.quickSearch.icon,
-            iconBgColor: settingsIconPalettes.quickSearch.background,
-            title: 'Quick Search',
-            subtitle: 'Use the classic item search ordering flow',
-            onPress: () =>
-              router.push(
-                buildSettingsHref('/settings/quick-search', {
-                  origin: 'employee',
-                  backTo: EMPLOYEE_SETTINGS_ROOT,
-                }),
-              ),
-          },
-          {
-            key: 'stock',
-            icon: 'cube-outline',
-            iconColor: settingsIconPalettes.stock.icon,
-            iconBgColor: settingsIconPalettes.stock.background,
-            title: 'Stock',
-            subtitle: 'Tune stock warning preferences',
-            onPress: () =>
-              router.push(
-                buildSettingsHref('/settings/stock-settings', {
-                  origin: 'employee',
-                  backTo: EMPLOYEE_SETTINGS_ROOT,
-                }),
-              ),
-          },
-        ],
-      },
-      {
-        key: 'info-management',
-        items: [
-          {
-            key: 'about-support',
-            icon: 'information-circle-outline',
-            iconColor: settingsIconPalettes.support.icon,
-            iconBgColor: settingsIconPalettes.support.background,
-            title: 'About & Support',
-            subtitle: 'Version info, support, and policies',
-            onPress: () =>
-              router.push(
-                buildSettingsHref('/settings/about-support', {
-                  origin: 'employee',
-                  backTo: EMPLOYEE_SETTINGS_ROOT,
-                }),
-              ),
-          },
-          {
-            key: 'my-orders',
-            icon: 'receipt-outline',
-            iconColor: settingsIconPalettes.orders.icon,
-            iconBgColor: settingsIconPalettes.orders.background,
-            title: 'My Orders',
-            subtitle: 'View your order history',
-            onPress: () =>
-              router.push(
-                `/orders/history?backTo=${encodeURIComponent(EMPLOYEE_SETTINGS_ROOT)}`,
-              ),
-          },
-          ...(isManager
-            ? [
-                {
-                  key: 'switch-manager',
-                  icon: 'swap-horizontal' as const,
-                  iconColor: settingsIconPalettes.switchView.icon,
-                  iconBgColor: settingsIconPalettes.switchView.background,
-                  title: 'Switch to Manager View',
-                  subtitle: 'Manage orders and fulfillment',
-                  onPress: handleSwitchToManager,
-                },
-              ]
-            : []),
-        ],
-      },
-    ],
+    () =>
+      buildSettingsGroups({
+        view: 'employee',
+        canSwitchViews: isManager,
+        onNavigate: (href) => router.push(href as any),
+        onSwitchToEmployee: () => {},
+        onSwitchToManager: handleSwitchToManager,
+      }),
     [handleSwitchToManager, isManager],
   );
 

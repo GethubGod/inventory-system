@@ -25,6 +25,10 @@ const UNIT_ALIASES: Record<string, string> = {
   trays: 'tray',
   pack: 'pack',
   packs: 'pack',
+  pk: 'pack',
+  pkg: 'pack',
+  package: 'pack',
+  packages: 'pack',
 };
 
 export const UNIT_WORDS = Object.keys(UNIT_ALIASES).sort((a, b) => b.length - a.length);

@@ -10,8 +10,9 @@ type SearchEntry = {
   value: string;
   normalized: string;
   compact: string;
+  forms: Set<string>;
   item: CatalogItem;
-  type: 'name' | 'alias' | 'correction';
+  type: 'name' | 'alias' | 'parenthetical' | 'correction';
 };
 
 export function normalizeSearchText(value: string): string {
@@ -25,6 +26,32 @@ export function normalizeSearchText(value: string): string {
 
 function compactSearchText(value: string): string {
   return normalizeSearchText(value).replace(/\s+/g, '');
+}
+
+function singularizeToken(token: string): string {
+  if (token.length <= 3) return token;
+  if (token.endsWith('ies')) return `${token.slice(0, -3)}y`;
+  if (token.endsWith('ches') || token.endsWith('shes') || token.endsWith('xes') || token.endsWith('ses')) {
+    return token.slice(0, -2);
+  }
+  if (token.endsWith('s') && !token.endsWith('ss')) return token.slice(0, -1);
+  return token;
+}
+
+function comparableForms(value: string): Set<string> {
+  const normalized = normalizeSearchText(value);
+  const singular = normalized
+    .split(' ')
+    .filter(Boolean)
+    .map(singularizeToken)
+    .join(' ');
+  const forms = new Set<string>();
+  for (const form of [normalized, singular]) {
+    if (!form) continue;
+    forms.add(form);
+    forms.add(form.replace(/\s+/g, ''));
+  }
+  return forms;
 }
 
 function uniqueAlternatives(entries: { item: CatalogItem; confidence: number }[]): CatalogAlternative[] {
@@ -44,6 +71,58 @@ function uniqueAlternatives(entries: { item: CatalogItem; confidence: number }[]
     .slice(0, 3);
 }
 
+/**
+ * Extracts all searchable name variants from an item name + aliases.
+ *
+ * "White Fish (Izumidai)" → ["white fish (izumidai)", "white fish", "izumidai"]
+ * "Tuna / Maguro"         → ["tuna / maguro", "tuna", "maguro"]
+ * "Item [Alias]"          → ["item [alias]", "item", "alias"]
+ * "Tuna - Maguro"         → ["tuna - maguro", "tuna", "maguro"]
+ * "Tuna, Maguro"          → ["tuna, maguro", "tuna", "maguro"]
+ *
+ * The full name is always included. Sub-terms shorter than 2 characters
+ * are dropped to avoid noise. Results are lowercased but not deduplicated
+ * (the caller handles that via the normalized/compact fields).
+ */
+export function getCatalogSearchTerms(itemName: string, aliases: string[]): string[] {
+  const terms: string[] = [];
+  const seen = new Set<string>();
+
+  function addTerm(raw: string): void {
+    const trimmed = raw.trim();
+    if (trimmed.length < 2) return;
+    const lower = trimmed.toLowerCase();
+    if (seen.has(lower)) return;
+    seen.add(lower);
+    terms.push(trimmed);
+  }
+
+  // Always include the full name.
+  addTerm(itemName);
+
+  // Split on parentheses, brackets, slashes, dashes, commas.
+  const segments = itemName.split(/[()\[\]\/\-,]+/).map((s) => s.trim()).filter(Boolean);
+  if (segments.length > 1) {
+    addTerm(segments.join(' '));
+    for (const segment of segments) {
+      addTerm(segment);
+    }
+  }
+
+  // Include each alias.
+  for (const alias of aliases) {
+    addTerm(alias);
+  }
+
+  for (const term of [...terms]) {
+    const normalized = normalizeSearchText(term);
+    const compact = normalized.replace(/\s+/g, '');
+    if (compact && compact !== normalized) addTerm(compact);
+  }
+
+  return terms;
+}
+
 export function buildCatalogSearchEntries(
   catalog: CatalogItem[],
   corrections: ParserCorrection[] = [],
@@ -52,9 +131,16 @@ export function buildCatalogSearchEntries(
   const entries: SearchEntry[] = [];
 
   for (const item of catalog) {
-    entries.push(makeEntry(item.name, item, 'name'));
-    for (const alias of item.aliases ?? []) {
-      if (alias.trim()) entries.push(makeEntry(alias, item, 'alias'));
+    const terms = getCatalogSearchTerms(item.name, item.aliases ?? []);
+    // First term is always the full name.
+    entries.push(makeEntry(terms[0], item, 'name'));
+    for (let i = 1; i < terms.length; i++) {
+      const term = terms[i];
+      // Check if this term came from an explicit alias.
+      const isAlias = (item.aliases ?? []).some(
+        (alias) => alias.trim().toLowerCase() === term.toLowerCase(),
+      );
+      entries.push(makeEntry(term, item, isAlias ? 'alias' : 'parenthetical'));
     }
   }
 
@@ -72,6 +158,7 @@ function makeEntry(value: string, item: CatalogItem, type: SearchEntry['type']):
     value,
     normalized: normalizeSearchText(value),
     compact: compactSearchText(value),
+    forms: comparableForms(value),
     item,
     type,
   };
@@ -81,7 +168,7 @@ function exactResult(entry: SearchEntry, matchType: MatchType, confidence: numbe
   return {
     item_id: entry.item.id,
     item_name: entry.item.name,
-    matched_alias: entry.type === 'alias' || entry.type === 'correction' ? entry.value : undefined,
+    matched_alias: entry.type === 'alias' || entry.type === 'parenthetical' || entry.type === 'correction' ? entry.value : undefined,
     match_type: matchType,
     confidence,
     needs_clarification: false,
@@ -95,6 +182,7 @@ export function matchCatalogItem(
 ): CatalogMatchResult {
   const normalized = normalizeSearchText(itemText);
   const compact = compactSearchText(itemText);
+  const inputForms = comparableForms(itemText);
   if (!normalized) return unresolved(itemText, 'Missing item name.');
 
   const entries = buildCatalogSearchEntries(catalog, corrections);
@@ -107,17 +195,25 @@ export function matchCatalogItem(
   if (exactAlias.length === 1) return exactResult(exactAlias[0], 'exact_alias', 0.99);
   if (exactAlias.length > 1) return ambiguous(exactAlias.map((entry) => ({ item: entry.item, confidence: 0.98 })), 'Alias matches multiple items.');
 
+  // Parenthetical / bracketed sub-terms (e.g. "Izumidai" from "White Fish (Izumidai)").
+  const exactParenthetical = entries.filter((entry) => entry.type === 'parenthetical' && entry.normalized === normalized);
+  if (exactParenthetical.length === 1) return exactResult(exactParenthetical[0], 'exact_alias', 0.98);
+  if (exactParenthetical.length > 1) return ambiguous(exactParenthetical.map((entry) => ({ item: entry.item, confidence: 0.97 })), 'Parenthetical term matches multiple items.');
+
   const exactCorrection = entries.filter((entry) => entry.type === 'correction' && entry.normalized === normalized);
   if (exactCorrection.length === 1) return exactResult(exactCorrection[0], 'correction', 0.97);
   if (exactCorrection.length > 1) return ambiguous(exactCorrection.map((entry) => ({ item: entry.item, confidence: 0.96 })), 'Recent corrections disagree.');
 
-  const normalizedExact = entries.filter((entry) => entry.compact === compact);
-  if (normalizedExact.length === 1) {
-    const entry = normalizedExact[0];
+  const normalizedExact = entries.filter(
+    (entry) => entry.compact === compact || setsIntersect(inputForms, entry.forms),
+  );
+  const normalizedExactItems = uniqueEntriesByItem(normalizedExact);
+  if (normalizedExactItems.length === 1) {
+    const entry = normalizedExactItems[0];
     return exactResult(entry, entry.type === 'alias' ? 'exact_alias' : 'normalized', 0.94);
   }
-  if (normalizedExact.length > 1) {
-    return ambiguous(normalizedExact.map((entry) => ({ item: entry.item, confidence: 0.93 })), 'Text matches multiple catalog entries.');
+  if (normalizedExactItems.length > 1) {
+    return ambiguous(normalizedExactItems.map((entry) => ({ item: entry.item, confidence: 0.93 })), 'Text matches multiple catalog entries.');
   }
 
   const tokenMatches = entries.filter((entry) => isUnambiguousTokenMatch(normalized, entry.normalized));
@@ -145,6 +241,21 @@ export function matchCatalogItem(
   }
 
   return fuzzyMatch(normalized, entries);
+}
+
+function uniqueEntriesByItem(entries: SearchEntry[]): SearchEntry[] {
+  const byId = new Map<string, SearchEntry>();
+  for (const entry of entries) {
+    if (!byId.has(entry.item.id)) byId.set(entry.item.id, entry);
+  }
+  return [...byId.values()];
+}
+
+function setsIntersect(a: Set<string>, b: Set<string>): boolean {
+  for (const value of a) {
+    if (b.has(value)) return true;
+  }
+  return false;
 }
 
 function isUnambiguousTokenMatch(needle: string, haystack: string): boolean {

@@ -16,6 +16,11 @@ export const QUICK_ORDER_ERROR_MESSAGES: Record<string, string> = {
   ai_unavailable: 'Sorry, having trouble connecting. Please try again.',
   invalid_json: "I couldn't read that order. Try typing it again — one item per line.",
   parser_error: 'I had trouble processing that. Please try again.',
+  catalog_empty: 'I had trouble loading the item catalog for this location. Please try again.',
+  catalog_query_failed: 'I had trouble loading the item catalog. Please try again.',
+  auth_failed: 'Please sign in again to use Quick Order.',
+  network_error: "Couldn't reach the server. Check your connection and try again.",
+  schema_validation_failed: 'I had trouble processing the result. Please try again.',
 };
 
 /** Generic fallback when nothing more specific is known. */
