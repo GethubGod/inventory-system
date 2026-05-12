@@ -58,6 +58,7 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 const catalogCache = new Map<string, CachedCatalog>();
+const globalCatalogCache = new Map<string, CachedCatalog>();
 
 /** Development-safe structured logger. Never exposes sensitive data. */
 function devLog(stage: string, detail: Record<string, unknown>): void {
@@ -194,6 +195,48 @@ async function fetchCatalog(locationId: string): Promise<CatalogItem[]> {
 
   const items = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
   catalogCache.set(locationId, { expiresAt: Date.now() + CATALOG_CACHE_MS, items });
+  return items;
+}
+
+async function fetchGlobalCatalog(): Promise<CatalogItem[]> {
+  const cacheKey = 'global-active-inventory';
+  const cached = globalCatalogCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.items;
+
+  const { data, error } = await supabaseAdmin
+    .from('inventory_items')
+    .select('id, name, aliases, base_unit, pack_unit, allowed_units, active')
+    .eq('active', true)
+    .limit(5000);
+
+  if (error) {
+    console.warn('parse-order global catalog diagnostic fetch failed', error);
+    return [];
+  }
+
+  const items = ((data ?? []) as Record<string, unknown>[])
+    .map((row): CatalogItem | null => {
+      const id = asTrimmedString(row.id);
+      const name = asTrimmedString(row.name);
+      if (!id || !name) return null;
+      return {
+        id,
+        name,
+        aliases: Array.isArray(row.aliases)
+          ? row.aliases.filter((alias): alias is string => typeof alias === 'string')
+          : [],
+        default_unit: asNullableString(row.base_unit) ?? asNullableString(row.pack_unit),
+        base_unit: asNullableString(row.base_unit),
+        pack_unit: asNullableString(row.pack_unit),
+        allowed_units: Array.isArray(row.allowed_units)
+          ? row.allowed_units.filter((unit): unit is string => typeof unit === 'string')
+          : null,
+      };
+    })
+    .filter((item): item is CatalogItem => Boolean(item))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  globalCatalogCache.set(cacheKey, { expiresAt: Date.now() + CATALOG_CACHE_MS, items });
   return items;
 }
 
@@ -500,8 +543,9 @@ Deno.serve(async (req) => {
       }
     }
 
-    const [catalog, examples, sessionContext, corrections] = await Promise.all([
+    const [catalog, globalCatalog, examples, sessionContext, corrections] = await Promise.all([
       fetchCatalog(locationId),
+      fetchGlobalCatalog(),
       fetchExamples(),
       fetchSessionContext(sessionId),
       fetchCorrections(authenticatedUserId, locationId),
@@ -509,6 +553,7 @@ Deno.serve(async (req) => {
 
     devLog('catalog_loaded', {
       catalog_count: catalog.length,
+      global_catalog_count: globalCatalog.length,
       first_5_names: catalog.slice(0, 5).map((item) => item.name),
       examples_count: examples.length,
       corrections_count: corrections.length,
@@ -549,7 +594,9 @@ Deno.serve(async (req) => {
 
     const result = await parseQuickOrder({
       rawText,
+      locationId,
       catalog,
+      globalCatalog,
       examples,
       corrections,
       previousMessages: sessionContext.messages,

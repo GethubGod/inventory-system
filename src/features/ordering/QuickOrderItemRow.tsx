@@ -47,6 +47,7 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
   const nameIsPlaceholder = !hasParsedItemName(item) && !item.raw_token?.trim();
   const accent = issue ? colors.statusAmber : colors.statusGreen;
   const trailingLabel = issue ? issue.label : formatParsedItemQuantity(item);
+  const reviewQuantityLabel = issue ? formatParsedItemQuantity(item) : null;
 
   const handleEditPress = useCallback(() => {
     void triggerSelectionHaptic();
@@ -103,6 +104,15 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
           >
             {name}
           </Text>
+          {reviewQuantityLabel && reviewQuantityLabel !== 'Quantity needed' ? (
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={[styles.reviewQuantityText, { fontSize: ds.fontSize(12), color: colors.textSecondary }]}
+            >
+              {reviewQuantityLabel}
+            </Text>
+          ) : null}
         </Pressable>
       </View>
 
@@ -161,6 +171,11 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   name: {
+    fontWeight: '700',
+    letterSpacing: 0,
+  },
+  reviewQuantityText: {
+    marginTop: 2,
     fontWeight: '700',
     letterSpacing: 0,
   },

@@ -6,7 +6,8 @@ import type {
   ParseFlag,
   ParseSource,
 } from './types.ts';
-import { isKnownUnit, isUnitAllowedForItem, normalizeUnit } from './units.ts';
+import { analyzeSemanticTokens } from './catalog-matcher.ts';
+import { isKnownUnit, isUnitAllowedForItem, normalizeUnit, UNIT_WORDS } from './units.ts';
 
 export function validateParsedLine(input: {
   candidate: CandidateParsedLine;
@@ -86,38 +87,87 @@ export function validateParsedLine(input: {
   const source: ParseSource = input.parseSource ?? (match.match_type === 'fuzzy' ? 'fuzzy' : 'deterministic');
   const displayName = catalogItem?.name ?? match.item_name ?? candidate.item_text ?? 'Unresolved item';
 
-  return {
-    item: {
-      id: `parsed:${candidate.line_index}:${candidate.normalized_text}`,
-      line_id: candidate.line_id,
-      item_id: catalogItem?.id ?? null,
-      item_name: catalogItem?.name ?? match.item_name ?? null,
-      display_name: displayName,
-      name: displayName,
-      item_text: candidate.item_text,
-      raw_token: candidate.raw_text,
-      raw_text: candidate.raw_text,
+  const item: ParsedItem = {
+    id: `parsed:${candidate.line_index}:${candidate.normalized_text}`,
+    line_id: candidate.line_id,
+    item_id: catalogItem?.id ?? null,
+    item_name: catalogItem?.name ?? match.item_name ?? null,
+    display_name: displayName,
+    name: displayName,
+    item_text: candidate.item_text,
+    raw_token: candidate.raw_text,
+    raw_text: candidate.raw_text,
+    quantity,
+    unit,
+    confidence,
+    needs_clarification: needsClarification,
+    unresolved,
+    notes: null,
+    issue,
+    alternatives: match.alternatives,
+    parse_source: source,
+    status: getParsedItemStatus({
+      unresolved,
+      matchNeedsClarification: match.needs_clarification,
+      alternatives: match.alternatives,
       quantity,
       unit,
-      confidence,
-      needs_clarification: needsClarification,
-      unresolved,
-      notes: null,
+      invalidUnit,
       issue,
-      alternatives: match.alternatives,
-      parse_source: source,
-      status: getParsedItemStatus({
-        unresolved,
-        matchNeedsClarification: match.needs_clarification,
-        alternatives: match.alternatives,
-        quantity,
-        unit,
-        invalidUnit,
-        issue,
-      }),
-      match_type: match.match_type,
-    },
+    }),
+    match_type: match.match_type,
+  };
+
+  return {
+    item: normalizeParsedItemStatus(item, catalogItem),
     flags,
+  };
+}
+
+export function normalizeParsedItemStatus(item: ParsedItem, catalogItem: CatalogItem | null | undefined): ParsedItem {
+  const quantity = item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
+    ? item.quantity
+    : null;
+  const unit = normalizeUnit(item.unit);
+  const hasItem = Boolean(item.item_id && catalogItem);
+  let status: ParsedItem['status'];
+  let needsClarification = true;
+  let unresolved = !hasItem;
+  let issue = item.issue;
+
+  if (!hasItem) {
+    status = item.alternatives?.length ? 'ambiguous' : 'no_match';
+    issue = issue ?? (status === 'ambiguous' ? 'Which item did you mean?' : 'Item could not be matched.');
+  } else if (quantity == null) {
+    status = 'missing_quantity';
+    unresolved = false;
+    issue = `How much ${catalogItem?.name ?? item.item_name ?? 'this item'} would you like?`;
+  } else if (!unit) {
+    status = 'missing_unit';
+    unresolved = false;
+    issue = `What unit would you like for ${catalogItem?.name ?? item.item_name ?? 'this item'}?`;
+  } else if (!isKnownUnit(unit) || !isUnitAllowedForItem(catalogItem, unit)) {
+    status = 'invalid_unit';
+    unresolved = false;
+    issue = `${catalogItem?.name ?? item.item_name ?? 'This item'} cannot be ordered in ${unit}. Choose a valid unit.`;
+  } else {
+    status = 'valid';
+    needsClarification = false;
+    unresolved = false;
+    issue = undefined;
+  }
+
+  return {
+    ...item,
+    item_name: catalogItem?.name ?? item.item_name,
+    display_name: catalogItem?.name ?? item.display_name,
+    name: catalogItem?.name ?? item.name,
+    quantity,
+    unit,
+    status,
+    needs_clarification: needsClarification,
+    unresolved,
+    issue,
   };
 }
 
@@ -144,8 +194,11 @@ export function validateLlmItem(input: {
   catalog: CatalogItem[];
 }): { item: ParsedItem; flags: ParseFlag[] } {
   const itemId = typeof input.raw.item_id === 'string' ? input.raw.item_id : null;
-  const catalogItem = itemId ? input.catalog.find((item) => item.id === itemId) ?? null : null;
   const rawToken = stringValue(input.raw.raw_token) ?? stringValue(input.raw.raw_text) ?? stringValue(input.raw.item_name) ?? '';
+  const semanticInput = semanticInputFromRaw(rawToken) || stringValue(input.raw.item_text) || stringValue(input.raw.item_name) || rawToken;
+  const proposedCatalogItem = itemId ? input.catalog.find((item) => item.id === itemId) ?? null : null;
+  const semantic = proposedCatalogItem ? analyzeSemanticTokens(semanticInput, proposedCatalogItem.name) : null;
+  const catalogItem = proposedCatalogItem && semantic?.passed ? proposedCatalogItem : null;
   const quantity = numberValue(input.raw.quantity);
   const unit = normalizeUnit(stringValue(input.raw.unit));
   const match: CatalogMatchResult = catalogItem
@@ -162,7 +215,11 @@ export function validateLlmItem(input: {
       match_type: 'unresolved',
       confidence: 0,
       needs_clarification: true,
-      issue: itemId ? 'LLM returned item outside catalog.' : 'LLM did not resolve item.',
+      issue: itemId
+        ? semantic && !semantic.passed
+          ? `LLM suggestion failed semantic validation: ${semantic.reason}.`
+          : 'LLM returned item outside catalog.'
+        : 'LLM did not resolve item.',
     };
 
   return validateParsedLine({
@@ -170,7 +227,7 @@ export function validateLlmItem(input: {
       line_id: typeof input.raw.line_id === 'string' ? input.raw.line_id : `llm_${rawToken.slice(0, 30)}`,
       raw_text: rawToken,
       normalized_text: rawToken.toLowerCase(),
-      item_text: stringValue(input.raw.item_name) ?? rawToken,
+      item_text: semanticInput,
       quantity,
       unit,
       parse_source: 'deterministic',
@@ -181,6 +238,15 @@ export function validateLlmItem(input: {
     catalog: input.catalog,
     parseSource: 'llm',
   });
+}
+
+function semanticInputFromRaw(value: string): string {
+  const unitPattern = UNIT_WORDS.join('|');
+  return value
+    .replace(/\b\d+(?:\.\d+)?\s*(?:[a-zA-Z]+)?\b/g, ' ')
+    .replace(new RegExp(`\\b(?:${unitPattern})\\b`, 'gi'), ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
 }
 
 function stringValue(value: unknown): string | null {

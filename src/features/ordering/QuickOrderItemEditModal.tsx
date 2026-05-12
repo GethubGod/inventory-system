@@ -110,7 +110,7 @@ function EditModalBody({
 
   const originalName = getParsedItemDisplayName(item);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(item.item_id ?? null);
-  const [search, setSearch] = useState(originalName);
+  const [search, setSearch] = useState(item.item_text?.trim() || item.raw_token?.trim() || originalName);
   const [quantity, setQuantity] = useState(item.quantity != null ? String(item.quantity) : '');
   const [unit, setUnit] = useState(item.unit ?? '');
   const [error, setError] = useState<string | null>(null);
@@ -123,12 +123,31 @@ function EditModalBody({
 
   const selectedInventory = selectedItemId ? inventoryById.get(selectedItemId) ?? null : null;
   const needsItemPick = !item.item_id || item.unresolved;
+  const parserAlternativeIds = useMemo(
+    () => new Set((item.alternatives ?? []).map((alternative) => alternative.item_id)),
+    [item.alternatives],
+  );
 
   const matches = useMemo(() => {
-    const normalized = search.trim().toLowerCase();
+    const normalized = normalizeInventorySearch(search);
     if (!normalized || normalized === selectedInventory?.name.trim().toLowerCase()) return [];
-    return inventoryItems.filter((row) => row.name.toLowerCase().includes(normalized)).slice(0, 8);
-  }, [inventoryItems, search, selectedInventory]);
+    const selectedName = normalizeInventorySearch(selectedInventory?.name ?? '');
+    if (normalized === selectedName) return [];
+
+    const byId = new Map<string, QuickOrderInventoryItem>();
+    for (const row of inventoryItems) {
+      if (parserAlternativeIds.has(row.id)) byId.set(row.id, row);
+    }
+    for (const row of inventoryItems) {
+      const rowName = normalizeInventorySearch(row.name);
+      const compactRowName = rowName.replace(/\s+/g, '');
+      const compactSearch = normalized.replace(/\s+/g, '');
+      if (rowName.includes(normalized) || compactRowName.includes(compactSearch)) {
+        byId.set(row.id, row);
+      }
+    }
+    return [...byId.values()].slice(0, 8);
+  }, [inventoryItems, parserAlternativeIds, search, selectedInventory]);
 
   const issue = getParsedItemIssue(item);
 
@@ -406,6 +425,8 @@ function issueLabelFull(kind: ParsedItemIssueKind): string {
       return 'This item needs a quantity before the order can be sent.';
     case 'pick-unit':
       return 'This item needs a unit (lb, case, pack…).';
+    case 'fix-unit':
+      return 'This unit is not valid for the selected inventory item.';
     case 'needs-clarification':
       return 'The parser flagged this item for review — double-check it.';
     default:
@@ -566,3 +587,13 @@ const styles = StyleSheet.create({
     letterSpacing: 0,
   },
 });
+
+function normalizeInventorySearch(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[()[\]{}\/,\-_]+/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}

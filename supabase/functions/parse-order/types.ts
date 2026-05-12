@@ -16,6 +16,17 @@ export type MatchType =
   | 'exact_name'
   | 'exact_alias'
   | 'correction'
+  | 'parenthetical'
+  | 'parenthetical_or_generated_exact'
+  | 'parenthetical_exact'
+  | 'generated_term_exact'
+  | 'normalized_exact'
+  | 'compact_exact'
+  | 'token_set'
+  | 'prefix'
+  | 'plural_normalized'
+  | 'ambiguous'
+  | 'no_match'
   | 'normalized'
   | 'token'
   | 'fuzzy'
@@ -27,7 +38,8 @@ export type ConflictActionId =
   | 'replace'
   | 'keep_separate'
   | 'cancel'
-  | 'choose_existing';
+  | 'choose_existing'
+  | 'clear_order';
 
 export type CatalogItem = {
   id: string;
@@ -83,16 +95,34 @@ export type CatalogAlternative = {
   item_id: string;
   item_name: string;
   confidence: number;
+  term?: string;
+  matched_term?: string;
+  score?: number;
+  match_type?: MatchType;
+  reason?: string;
+  token_coverage?: number;
+  generic_token_overlap?: string[];
+  specific_token_overlap?: string[];
+  missing_specific_tokens?: string[];
+  semantic_validation_passed?: boolean;
 };
 
 export type CatalogMatchResult = {
   item_id: string | null;
   item_name: string | null;
+  display_name?: string;
   matched_alias?: string;
   match_type: MatchType;
   confidence: number;
   needs_clarification: boolean;
   issue?: string;
+  reason?: string;
+  matched_term?: string;
+  token_coverage?: number;
+  generic_token_overlap?: string[];
+  specific_token_overlap?: string[];
+  missing_specific_tokens?: string[];
+  semantic_validation_passed?: boolean;
   alternatives?: CatalogAlternative[];
 };
 
@@ -189,6 +219,7 @@ export type PendingQuickOrderClarification = {
     | 'missing_unit'
     | 'ambiguous_item'
     | 'choose_existing_line'
+    | 'clear_order'
     | 'remove_ambiguous'
     | 'item_not_found';
   item_id: string | null;
@@ -237,15 +268,59 @@ export type ParseDiagnostics = {
     line_id?: string;
     raw_text?: string;
     item_text?: string;
+    quantity?: number | null;
+    raw_unit?: string | null;
+    normalized_unit?: string | null;
+    matched_item_id?: string | null;
     matched_item_name?: string | null;
     match_type?: MatchType;
-    status?: ParsedItemStatus;
+    match_confidence?: number;
+    status?: ParsedItemStatus | 'no_op' | 'action_applied';
+    action?: string | null;
+    item_id?: string | null;
+    item_name?: string | null;
+    confidence?: number;
     reason?: string | null;
+    issue?: string | null;
     alternatives?: CatalogAlternative[];
+    top_alternatives?: CatalogAlternative[];
+    failure_reason?: string | null;
+    selected_item_id?: string | null;
+    selected_item_name?: string | null;
+    top_candidates?: CatalogAlternative[];
+    ambiguity_reason?: string | null;
+    selected_location_catalog_contains_exact?: boolean;
+    global_catalog_contains_exact?: boolean;
+    was_added_to_order_list?: boolean;
+    no_op_reason?: string | null;
+    pending_action_resolved?: boolean;
+    existing_item_resolved?: boolean;
+    action_type?: string | null;
+    pending_action_id?: string | null;
+    input_tokens?: string[];
+    input_generic_tokens?: string[];
+    input_specific_tokens?: string[];
+    token_coverage?: number;
+    generic_token_overlap?: string[];
+    specific_token_overlap?: string[];
+    missing_specific_tokens?: string[];
+    semantic_validation_passed?: boolean;
+    stale_status_corrected?: boolean;
   }[];
+  catalog_debug?: {
+    location_id?: string;
+    catalog_count: number;
+    global_catalog_count?: number;
+    searched_terms: string[];
+    catalog_contains: Record<string, boolean>;
+    global_contains?: Record<string, boolean>;
+    possible_matches: Record<string, CatalogAlternative[]>;
+  };
   raw_input_length?: number;
   candidate_lines?: number;
   error_code?: string;
+  input_classification?: string;
+  input_classification_reason?: string;
 };
 
 export type ParseResponse = {

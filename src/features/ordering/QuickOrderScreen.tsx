@@ -177,6 +177,38 @@ function normalizeClarifications(value: unknown): PendingQuickOrderClarification
     );
 }
 
+function mergePendingClarificationsAfterParse(
+  existing: PendingQuickOrderClarification[],
+  resolvedItems: ParsedQuickOrderItem[],
+  incoming: PendingQuickOrderClarification[],
+): PendingQuickOrderClarification[] {
+  const resolvedItemIds = new Set(
+    resolvedItems
+      .filter((item) => getParsedItemIssue(item) == null && item.item_id)
+      .map((item) => item.item_id as string),
+  );
+  const resolvedKeys = new Set(
+    resolvedItems
+      .filter((item) => getParsedItemIssue(item) == null)
+      .map(getParsedItemKey),
+  );
+
+  const retained = existing.filter((clarification) => {
+    if (clarification.item_id && resolvedItemIds.has(clarification.item_id)) return false;
+    if (clarification.existing_item_key && resolvedKeys.has(clarification.existing_item_key)) return false;
+    return true;
+  });
+  const byId = new Map<string, PendingQuickOrderClarification>();
+  for (const clarification of [...retained, ...incoming]) {
+    byId.set(clarification.id, clarification);
+  }
+  return [...byId.values()];
+}
+
+function isManualCombineInput(value: string): boolean {
+  return value.trim().toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, '').replace(/\s+/g, ' ') === 'combine';
+}
+
 function mapPersistedMessages(messages: PersistedQuickOrderMessage[]): QuickOrderMessage[] {
   return messages
     .map((message): QuickOrderMessage | null => {
@@ -981,6 +1013,60 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       return;
     }
 
+    if (isManualCombineInput(rawText)) {
+      Keyboard.dismiss();
+      setInputValue('');
+      setIsSending(true);
+      lastUserTextRef.current = rawText;
+
+      const userMessage: QuickOrderMessage = {
+        id: createMessageId(),
+        role: 'user',
+        text: rawText,
+        createdAt: new Date().toISOString(),
+      };
+      const combineClarification = pendingClarifications.find((clarification) =>
+        clarification.type === 'quantity_conflict' &&
+        clarification.actions.some((action) => action.id === 'add'),
+      );
+      const addAction = combineClarification?.actions.find((action) => action.id === 'add');
+      const nextParsedItems = combineClarification && addAction
+        ? applyQuickOrderClarificationAction(parsedItems, combineClarification, addAction)
+        : parsedItems;
+      const nextPendingClarifications = combineClarification && addAction
+        ? pendingClarifications.filter((clarification) => clarification.id !== combineClarification.id)
+        : pendingClarifications;
+      const assistantText = combineClarification && addAction
+        ? `Combined ${combineClarification.item_name}.`
+        : 'There is nothing to combine right now.';
+      const assistantMessage: QuickOrderMessage = {
+        id: createMessageId(),
+        role: 'assistant',
+        text: assistantText,
+        createdAt: new Date().toISOString(),
+      };
+      const nextMessages = [...messages, userMessage, assistantMessage].map((message) => ({
+        ...message,
+        pendingClarifications: combineClarification && addAction
+          ? message.pendingClarifications?.filter((entry) => entry.id !== combineClarification.id)
+          : message.pendingClarifications,
+      }));
+
+      setParsedItems(nextParsedItems);
+      setPendingClarifications(nextPendingClarifications);
+      setMessages(nextMessages);
+
+      try {
+        const activeSessionId = await ensureSession();
+        await persistSession(activeSessionId, nextMessages, nextParsedItems);
+      } catch (error) {
+        console.warn('[QuickOrder] Failed to persist combine action:', error);
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
     Keyboard.dismiss();
     setInputValue('');
     setIsSending(true);
@@ -1117,7 +1203,11 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       const responseClarifications = response.pendingActions;
       const mergeResult = mergeQuickOrderParsedItemsDetailed(operationBase, responseItems);
       const nextParsedItems = mergeResult.items;
-      const nextPendingClarifications = [...pendingClarifications, ...responseClarifications];
+      const nextPendingClarifications = mergePendingClarificationsAfterParse(
+        pendingClarifications,
+        mergeResult.updatedItems,
+        responseClarifications,
+      );
       const assistantText = buildQuickOrderAssistantMessage({
         normalized: response,
         mergeResult,

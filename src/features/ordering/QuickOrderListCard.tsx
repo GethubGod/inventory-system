@@ -140,21 +140,14 @@ export function QuickOrderListCard({
     issueCount > 0 ? ` · ${issueCount} to fix` : ''
   }`;
 
-  // Three visual states for the CTA, mirroring the cart submit button style:
-  // a filled salmon pill when ready, a pale salmon pill when items still need
-  // attention (rows show what), and a faint pill when there's nothing to confirm.
   const confirmEnabled = !confirmDisabled;
-  const confirmLabel = isEmpty ? 'Add items to confirm' : 'Confirm order';
-  const confirmBackground = confirmEnabled
-    ? colors.primary
-    : isEmpty
-      ? colors.primaryPale
-      : colors.primaryLight;
-  const confirmForeground = confirmEnabled
-    ? colors.textOnPrimary
-    : isEmpty
-      ? colors.textMuted
-      : colors.primary;
+  const confirmLabel = isEmpty
+    ? 'Add items to confirm'
+    : issueCount > 0
+      ? 'Fix items to confirm'
+      : 'Confirm order';
+  const confirmBackground = confirmEnabled ? colors.primary : colors.glassCircle;
+  const confirmForeground = confirmEnabled ? colors.textOnPrimary : colors.textMuted;
 
   return (
     <View

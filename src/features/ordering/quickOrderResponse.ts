@@ -2,6 +2,7 @@ import { sanitizeAssistantReply } from './quickOrderErrors';
 import {
   getParsedItemDisplayName,
   getParsedItemIssue,
+  normalizeQuickOrderItemForDisplay,
   type PendingQuickOrderClarification,
   type ParsedQuickOrderItem,
   type QuickOrderMergeResult,
@@ -26,11 +27,15 @@ export type QuickOrderParseDiagnostics = {
   rejected_reasons: string[];
   pending_action_count: number;
   unchanged_count?: number;
+  input_classification?: string;
+  input_classification_reason?: string;
   llm_lines_sent?: number;
   llm_replaced_count?: number;
   replaced_review_count?: number;
   duplicate_line_count?: number;
   ignored_llm_extra_count?: number;
+  catalog_debug?: unknown;
+  item_diagnostics?: unknown;
   error_code?: string;
 };
 
@@ -116,11 +121,15 @@ export function normalizeQuickOrderParseResponse(
       ],
       pending_action_count: pendingActions.length,
       unchanged_count: numberValue(backendDiagnostics.unchanged_count) ?? undefined,
+      input_classification: stringValue(backendDiagnostics.input_classification) ?? undefined,
+      input_classification_reason: stringValue(backendDiagnostics.input_classification_reason) ?? undefined,
       llm_lines_sent: numberValue(backendDiagnostics.llm_lines_sent) ?? undefined,
       llm_replaced_count: numberValue(backendDiagnostics.llm_replaced_count) ?? undefined,
       replaced_review_count: numberValue(backendDiagnostics.replaced_review_count) ?? undefined,
       duplicate_line_count: numberValue(backendDiagnostics.duplicate_line_count) ?? undefined,
       ignored_llm_extra_count: numberValue(backendDiagnostics.ignored_llm_extra_count) ?? undefined,
+      catalog_debug: backendDiagnostics.catalog_debug,
+      item_diagnostics: backendDiagnostics.item_diagnostics,
       error_code: stringValue(backendDiagnostics.error_code) ?? undefined,
     },
     errorCode: stringValue(raw.code) ?? undefined,
@@ -169,6 +178,13 @@ export function buildQuickOrderAssistantMessage(input: {
   }
 
   if (mergeResult.updatedCount > 0 && reviewCount === 0) {
+    if (mergeResult.updatedItems.length === 1) {
+      const item = mergeResult.updatedItems[0];
+      const quantity = item.quantity != null && item.unit
+        ? ` to ${item.quantity} ${item.unit}`
+        : '';
+      return `Updated ${getParsedItemDisplayName(item)}${quantity}.`;
+    }
     return `Updated ${mergeResult.updatedCount} item${mergeResult.updatedCount === 1 ? '' : 's'}.`;
   }
 
@@ -185,10 +201,17 @@ export function buildQuickOrderAssistantMessage(input: {
   }
 
   if (normalized.parsedItems.length === 0 && normalized.pendingActions.length === 0 && normalized.operations.length === 0) {
-    return 'I had trouble reading that order. Please try again or add the items manually.';
+    return isGenericNoChangeMessage(normalized.assistantMessage)
+      ? 'I had trouble reading that order. Please try again or add the items manually.'
+      : normalized.assistantMessage;
   }
 
   return normalized.assistantMessage;
+}
+
+function isGenericNoChangeMessage(message: string): boolean {
+  const normalized = message.trim().toLowerCase();
+  return normalized === '' || normalized === 'got it.' || normalized === 'got it';
 }
 
 export function hasQuickOrderStateChange(
@@ -220,7 +243,7 @@ function normalizeParsedItem(value: unknown): ParsedQuickOrderItem | null {
 
   if (!itemId && !displayName && !rawText && quantity == null && !unit) return null;
 
-  return {
+  return normalizeQuickOrderItemForDisplay({
     id: stringValue(value.id) ?? undefined,
     line_id: stringValue(value.line_id) ?? undefined,
     client_key: stringValue(value.client_key) ?? undefined,
@@ -245,7 +268,7 @@ function normalizeParsedItem(value: unknown): ParsedQuickOrderItem | null {
     pending_conflict_id: stringValue(value.pending_conflict_id) ?? undefined,
     merge_behavior: normalizeMergeBehavior(value.merge_behavior),
     existing_item_key: stringValue(value.existing_item_key) ?? undefined,
-  };
+  });
 }
 
 function normalizeItemStatus(
@@ -314,13 +337,14 @@ function normalizePendingType(value: unknown): PendingQuickOrderClarification['t
     value === 'missing_quantity' ||
     value === 'missing_unit' ||
     value === 'ambiguous_item' ||
-    value === 'choose_existing_line'
+    value === 'choose_existing_line' ||
+    value === 'clear_order'
     ? value
     : 'quantity_conflict';
 }
 
 function normalizeActionId(value: unknown): PendingQuickOrderClarification['actions'][number]['id'] {
-  return value === 'replace' || value === 'keep_separate' || value === 'cancel' || value === 'choose_existing'
+  return value === 'replace' || value === 'keep_separate' || value === 'cancel' || value === 'choose_existing' || value === 'clear_order'
     ? value
     : 'add';
 }
@@ -331,6 +355,11 @@ function normalizeAlternatives(value: unknown): ParsedQuickOrderItem['alternativ
     item_id: stringValue(entry.item_id) ?? '',
     item_name: stringValue(entry.item_name) ?? '',
     confidence: numberValue(entry.confidence) ?? 0,
+    score: numberValue(entry.score) ?? undefined,
+    term: stringValue(entry.term) ?? undefined,
+    matched_term: stringValue(entry.matched_term) ?? undefined,
+    match_type: stringValue(entry.match_type) ?? undefined,
+    reason: stringValue(entry.reason) ?? undefined,
   })).filter((entry) => entry.item_id && entry.item_name);
   return alternatives.length > 0 ? alternatives : undefined;
 }

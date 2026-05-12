@@ -34,6 +34,11 @@ export type ParsedQuickOrderItem = {
     item_id: string;
     item_name: string;
     confidence: number;
+    score?: number;
+    term?: string;
+    matched_term?: string;
+    match_type?: string;
+    reason?: string;
   }[];
   parse_source?: 'deterministic' | 'fuzzy' | 'llm' | 'manual' | 'correction';
   status?: 'valid' | 'review' | 'no_match' | 'missing_quantity' | 'missing_unit' | 'ambiguous' | 'invalid' | 'invalid_unit';
@@ -64,7 +69,7 @@ export type RepeatedOrderListResult = {
 };
 
 export type QuickOrderClarificationAction = {
-  id: 'add' | 'replace' | 'keep_separate' | 'cancel' | 'choose_existing';
+  id: 'add' | 'replace' | 'keep_separate' | 'cancel' | 'choose_existing' | 'clear_order';
   label: string;
   preview?: string;
   existing_item_key?: string;
@@ -78,7 +83,8 @@ export type PendingQuickOrderClarification = {
     | 'missing_quantity'
     | 'missing_unit'
     | 'ambiguous_item'
-    | 'choose_existing_line';
+    | 'choose_existing_line'
+    | 'clear_order';
   item_id: string | null;
   item_name: string;
   existing_item_key?: string;
@@ -162,34 +168,71 @@ export function getParsedItemKey(item: ParsedQuickOrderItem): string {
  * resolved before quantity/unit are meaningful.
  */
 export function getParsedItemIssue(item: ParsedQuickOrderItem): ParsedItemIssue | null {
-  if (item.status === 'missing_quantity') {
+  const normalized = normalizeQuickOrderItemForDisplay(item);
+  if (normalized.status === 'missing_quantity') {
     return { kind: 'pick-quantity', label: 'Add quantity' };
   }
-  if (item.status === 'missing_unit') {
+  if (normalized.status === 'missing_unit') {
     return { kind: 'pick-unit', label: 'Choose unit' };
   }
-  if (item.status === 'invalid_unit' || item.status === 'invalid') {
+  if (normalized.status === 'invalid_unit' || normalized.status === 'invalid') {
     return { kind: 'fix-unit', label: 'Fix unit' };
   }
-  if (item.status === 'ambiguous' || item.status === 'no_match' || item.status === 'review') {
-    if (!item.item_id || item.unresolved || item.status === 'ambiguous' || item.status === 'no_match') {
+  if (normalized.status === 'ambiguous') {
+    return { kind: 'choose-item', label: 'Choose item' };
+  }
+  if (normalized.status === 'no_match' || normalized.status === 'review') {
+    if (!normalized.item_id || normalized.unresolved) {
       return { kind: 'choose-item', label: 'Choose item' };
     }
     return { kind: 'needs-clarification', label: 'Needs review' };
   }
-  if (!item.item_id || item.unresolved) {
+  if (!normalized.item_id || normalized.unresolved) {
     return { kind: 'choose-item', label: 'Choose item' };
   }
-  if (item.quantity == null || !Number.isFinite(item.quantity) || item.quantity <= 0) {
+  if (normalized.quantity == null || !Number.isFinite(normalized.quantity) || normalized.quantity <= 0) {
     return { kind: 'pick-quantity', label: 'Add quantity' };
   }
-  if (!item.unit || !item.unit.trim()) {
+  if (!normalized.unit || !normalized.unit.trim()) {
     return { kind: 'pick-unit', label: 'Choose unit' };
   }
-  if (item.needs_clarification) {
+  if (normalized.needs_clarification) {
     return { kind: 'needs-clarification', label: 'Needs review' };
   }
   return null;
+}
+
+export function normalizeQuickOrderItemForDisplay(item: ParsedQuickOrderItem): ParsedQuickOrderItem {
+  const quantity = item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
+    ? item.quantity
+    : null;
+  const unit = normalizeQuickOrderUnit(item.unit);
+  let status = item.status;
+
+  if (!item.item_id) {
+    status = status === 'ambiguous' ? 'ambiguous' : 'no_match';
+  } else if (status === 'ambiguous') {
+    status = 'ambiguous';
+  } else if (status === 'invalid_unit' || status === 'invalid') {
+    status = 'invalid_unit';
+  } else if (quantity == null) {
+    status = 'missing_quantity';
+  } else if (!unit) {
+    status = 'missing_unit';
+  } else {
+    status = 'valid';
+  }
+
+  const resolved = status === 'valid';
+  return {
+    ...item,
+    quantity,
+    unit,
+    status,
+    needs_clarification: resolved ? false : item.needs_clarification ?? status !== 'valid',
+    unresolved: item.item_id ? false : true,
+    issue: resolved ? undefined : item.issue,
+  };
 }
 
 export function isParsedItemReady(item: ParsedQuickOrderItem): boolean {
@@ -224,19 +267,7 @@ export function updateParsedItem(
   return items.map((item) => {
     if (getParsedItemKey(item) !== key) return item;
 
-    const next: ParsedQuickOrderItem = { ...item, ...patch };
-    const resolved =
-      Boolean(next.item_id) &&
-      next.quantity != null &&
-      Number.isFinite(next.quantity) &&
-      next.quantity > 0 &&
-      Boolean(next.unit && next.unit.trim());
-
-    if (resolved) {
-      next.needs_clarification = false;
-      next.unresolved = false;
-    }
-    return next;
+    return normalizeQuickOrderItemForDisplay({ ...item, ...patch });
   });
 }
 
@@ -259,6 +290,28 @@ export function mergeQuickOrderParsedItems(
   return mergeQuickOrderParsedItemsDetailed(current, incoming).items;
 }
 
+export function resolveClarificationWithIncomingItem(
+  existingItems: ParsedQuickOrderItem[],
+  incomingItem: ParsedQuickOrderItem,
+): { items: ParsedQuickOrderItem[]; resolvedItem: ParsedQuickOrderItem | null } {
+  if (!incomingItem.item_id) return { items: existingItems, resolvedItem: null };
+
+  const existingIndex = existingItems.findIndex((existingItem) =>
+    getParsedItemIssue(existingItem) != null &&
+    canIncomingResolveExistingReview(existingItem, incomingItem)
+  );
+  if (existingIndex < 0) return { items: existingItems, resolvedItem: null };
+
+  let resolvedItem: ParsedQuickOrderItem | null = null;
+  const items = existingItems.map((existingItem, index) => {
+    if (index !== existingIndex) return existingItem;
+    resolvedItem = mergeReviewItemWithIncoming(existingItem, incomingItem);
+    return resolvedItem;
+  });
+
+  return { items, resolvedItem };
+}
+
 export function mergeQuickOrderParsedItemsDetailed(
   current: ParsedQuickOrderItem[],
   incoming: ParsedQuickOrderItem[],
@@ -270,7 +323,8 @@ export function mergeQuickOrderParsedItemsDetailed(
   const rejectedReasons: string[] = [];
   let unchangedCount = 0;
 
-  for (const item of dedupeParsedItemsByLineId(incoming)) {
+  for (const rawItem of dedupeParsedItemsByLineId(incoming)) {
+    const item = normalizeQuickOrderItemForDisplay(rawItem);
     if (!isRenderableParsedItem(item)) {
       rejectedReasons.push('empty_item');
       continue;
@@ -283,14 +337,14 @@ export function mergeQuickOrderParsedItemsDetailed(
         getParsedItemKey(entry) === existingKey
           ? (() => {
             changed = true;
-            const updated = {
+            const updated = normalizeQuickOrderItemForDisplay({
               ...entry,
               ...item,
               quantity: item.quantity,
               client_key: entry.client_key,
               needs_clarification: false,
               unresolved: false,
-            };
+            });
             updatedItems.push(updated);
             return updated;
           })()
@@ -306,19 +360,29 @@ export function mergeQuickOrderParsedItemsDetailed(
         getParsedItemKey(entry) === existingKey
           ? (() => {
             changed = true;
-            const updated = {
+            const updated = normalizeQuickOrderItemForDisplay({
               ...entry,
               ...item,
               client_key: entry.client_key,
               needs_clarification: false,
               unresolved: false,
-            };
+            });
             updatedItems.push(updated);
             return updated;
           })()
           : entry,
       );
       if (!changed) rejectedReasons.push('missing_existing_item_for_replace');
+      continue;
+    }
+
+    const clarificationResolution = resolveClarificationWithIncomingItem(next, item);
+    if (clarificationResolution.resolvedItem) {
+      next = clarificationResolution.items;
+      updatedItems.push(clarificationResolution.resolvedItem);
+      if (getParsedItemIssue(clarificationResolution.resolvedItem)) {
+        reviewItems.push(clarificationResolution.resolvedItem);
+      }
       continue;
     }
 
@@ -339,13 +403,15 @@ export function mergeQuickOrderParsedItemsDetailed(
 
       next = next.map((entry, index) => {
         if (index !== existingIndex) return entry;
-        const updated = { ...entry, ...item, client_key: entry.client_key };
+        const updated = normalizeQuickOrderItemForDisplay({ ...entry, ...item, client_key: entry.client_key });
         updatedItems.push(updated);
         if (getParsedItemIssue(updated)) reviewItems.push(updated);
         return updated;
       });
     } else {
-      const added = item.client_key || item.merge_behavior === 'keep_separate' ? item : { ...item };
+      const added = item.client_key || item.merge_behavior === 'keep_separate'
+        ? item
+        : normalizeQuickOrderItemForDisplay({ ...item });
       next = [...next, added];
       addedItems.push(added);
       if (getParsedItemIssue(added)) reviewItems.push(added);
@@ -394,9 +460,100 @@ function parsedItemResolutionScore(item: ParsedQuickOrderItem): number {
   if (!item.unresolved) score += 20;
   if (!getParsedItemIssue(item)) score += 20;
   if (item.match_type === 'exact_name') score += 12;
-  if (item.match_type === 'exact_alias' || item.match_type === 'normalized') score += 10;
+  if (
+    item.match_type === 'exact_alias' ||
+    item.match_type === 'correction' ||
+    item.match_type === 'parenthetical' ||
+    item.match_type === 'parenthetical_or_generated_exact' ||
+    item.match_type === 'parenthetical_exact' ||
+    item.match_type === 'generated_term_exact'
+  ) score += 11;
+  if (item.match_type === 'normalized_exact' || item.match_type === 'compact_exact' || item.match_type === 'normalized') score += 10;
+  if (item.match_type === 'token_set' || item.match_type === 'prefix' || item.match_type === 'plural_normalized') score += 9;
   if (item.parse_source === 'deterministic') score += 2;
   return score;
+}
+
+function canIncomingResolveExistingReview(
+  existingItem: ParsedQuickOrderItem,
+  incomingItem: ParsedQuickOrderItem,
+): boolean {
+  if (existingItem.item_id && incomingItem.item_id && existingItem.item_id === incomingItem.item_id) {
+    return true;
+  }
+
+  const existingKeys = normalizedItemCandidateKeys(existingItem);
+  const incomingKeys = normalizedItemCandidateKeys(incomingItem);
+  return incomingKeys.some((key) => existingKeys.includes(key));
+}
+
+function mergeReviewItemWithIncoming(
+  existingItem: ParsedQuickOrderItem,
+  incomingItem: ParsedQuickOrderItem,
+): ParsedQuickOrderItem {
+  const merged: ParsedQuickOrderItem = {
+    ...existingItem,
+    ...incomingItem,
+    id: existingItem.id ?? incomingItem.id,
+    client_key: existingItem.client_key ?? incomingItem.client_key,
+    line_id: existingItem.line_id ?? incomingItem.line_id,
+    quantity: incomingItem.quantity ?? existingItem.quantity,
+    unit: incomingItem.unit ?? existingItem.unit,
+    item_id: incomingItem.item_id ?? existingItem.item_id,
+    item_name: incomingItem.item_name ?? existingItem.item_name,
+    item_text: incomingItem.item_text ?? existingItem.item_text,
+    raw_token: incomingItem.raw_token ?? existingItem.raw_token,
+    raw_text: incomingItem.raw_text ?? existingItem.raw_text,
+  };
+  const status = deriveMergedItemStatus(merged, incomingItem.status);
+
+  return normalizeQuickOrderItemForDisplay({
+    ...merged,
+    status,
+    needs_clarification: status !== 'valid',
+    unresolved: status === 'no_match' || status === 'ambiguous' || status === 'review',
+    issue: status === 'valid' ? undefined : merged.issue,
+  });
+}
+
+function deriveMergedItemStatus(
+  item: ParsedQuickOrderItem,
+  incomingStatus: ParsedQuickOrderItem['status'],
+): ParsedQuickOrderItem['status'] {
+  if (!item.item_id) return incomingStatus === 'ambiguous' ? 'ambiguous' : 'no_match';
+  if (item.quantity == null || !Number.isFinite(item.quantity) || item.quantity <= 0) return 'missing_quantity';
+  if (!item.unit?.trim()) return 'missing_unit';
+  if (incomingStatus === 'invalid_unit' || incomingStatus === 'invalid') return 'invalid_unit';
+  return 'valid';
+}
+
+function normalizedItemCandidateKeys(item: ParsedQuickOrderItem): string[] {
+  const values = [
+    item.item_text,
+    item.raw_token,
+    item.raw_text,
+    item.item_name,
+    item.name,
+    item.display_name,
+  ];
+  const keys = new Set<string>();
+  for (const value of values) {
+    if (!value?.trim()) continue;
+    const withoutQuantity = value.replace(/\b\d+(?:\.\d+)?\s*[a-zA-Z]*\b/g, ' ');
+    addNormalizedItemKey(keys, value);
+    addNormalizedItemKey(keys, withoutQuantity);
+    addNormalizedItemKey(keys, value.replace(/\([^)]*\)/g, ' '));
+    const parenthetical = value.match(/\(([^)]*)\)/g) ?? [];
+    for (const segment of parenthetical) {
+      addNormalizedItemKey(keys, segment.replace(/[()]/g, ' '));
+    }
+  }
+  return [...keys];
+}
+
+function addNormalizedItemKey(keys: Set<string>, value: string): void {
+  const normalized = normalizeItemKeyText(value);
+  if (normalized) keys.add(normalized);
 }
 
 export function detectRepeatedOrderList(
@@ -441,6 +598,9 @@ export function applyQuickOrderClarificationAction(
   action: QuickOrderClarificationAction,
 ): ParsedQuickOrderItem[] {
   const incoming = clarification.incoming_item;
+  if (clarification.type === 'clear_order') {
+    return action.id === 'clear_order' ? [] : items;
+  }
   if (!incoming || action.id === 'cancel') return items;
 
   const existingKey = action.existing_item_key ?? clarification.existing_item_key;
@@ -448,26 +608,26 @@ export function applyQuickOrderClarificationAction(
   if (action.id === 'add' && existingKey) {
     return items.map((item) => {
       if (getParsedItemKey(item) !== existingKey) return item;
-      return {
+      return normalizeQuickOrderItemForDisplay({
         ...item,
         quantity: (item.quantity ?? 0) + (incoming.quantity ?? 0),
         unit: item.unit ?? incoming.unit,
         needs_clarification: false,
         unresolved: false,
-      };
+      });
     });
   }
 
   if ((action.id === 'replace' || action.id === 'choose_existing') && existingKey) {
     return items.map((item) =>
       getParsedItemKey(item) === existingKey
-        ? {
+        ? normalizeQuickOrderItemForDisplay({
           ...item,
           ...incoming,
           client_key: item.client_key,
           needs_clarification: false,
           unresolved: false,
-        }
+        })
         : item,
     );
   }
@@ -475,12 +635,12 @@ export function applyQuickOrderClarificationAction(
   if (action.id === 'keep_separate') {
     return [
       ...items,
-      {
+      normalizeQuickOrderItemForDisplay({
         ...incoming,
         client_key: incoming.client_key ?? createQuickOrderClientKey('sep'),
         needs_clarification: false,
         unresolved: false,
-      },
+      }),
     ];
   }
 
@@ -661,13 +821,13 @@ export function applyQuickOrderOperations(
         if (index >= 0) {
           items = items.map((item, i) => {
             if (i !== index) return item;
-            return {
+            return normalizeQuickOrderItemForDisplay({
               ...item,
               quantity: op.quantity ?? item.quantity,
               unit: op.unit ?? item.unit,
               needs_clarification: false,
               unresolved: false,
-            };
+            });
           });
           updatedCount += 1;
           appliedCount += 1;
@@ -682,13 +842,13 @@ export function applyQuickOrderOperations(
         if (index >= 0) {
           items = items.map((item, i) => {
             if (i !== index) return item;
-            return {
+            return normalizeQuickOrderItemForDisplay({
               ...item,
               quantity: op.quantity ?? item.quantity,
               unit: op.unit ?? item.unit,
               needs_clarification: false,
               unresolved: false,
-            };
+            });
           });
           updatedCount += 1;
           appliedCount += 1;
@@ -703,12 +863,12 @@ export function applyQuickOrderOperations(
         if (index >= 0) {
           items = items.map((item, i) => {
             if (i !== index) return item;
-            return {
+            return normalizeQuickOrderItemForDisplay({
               ...item,
               unit: op.unit ?? item.unit,
               needs_clarification: false,
               unresolved: false,
-            };
+            });
           });
           updatedCount += 1;
           appliedCount += 1;

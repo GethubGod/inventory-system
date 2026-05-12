@@ -1,12 +1,23 @@
-import { matchCatalogItem } from './catalog-matcher.ts';
+import {
+  buildCatalogSearchIndex,
+  analyzeSemanticTokens,
+  findCatalogAlternatives,
+  isStrongDeterministicMatch,
+  matchCatalogIndex,
+  normalizeSearchText,
+} from './catalog-matcher.ts';
 import { parseDeterministicOrder } from './deterministic-parser.ts';
 import { detectRepeatedOrderList, resolveParsedItemConflicts } from './conflicts.ts';
-import { detectQuickOrderIntent } from './intent-detector.ts';
+import { classifyQuickOrderInput } from './input-classifier.ts';
+import type { QuickOrderInputClassificationResult } from './input-classifier.ts';
 import { buildCommandOperations } from './operations.ts';
 import { parseWithLlmFallback } from './llm-fallback.ts';
+import { deriveAllowedUnits } from './units.ts';
 import type {
+  CatalogAlternative,
   CatalogItem,
   ParserCorrection,
+  ParseDiagnostics,
   ParserExample,
   ParserMetrics,
   ParsedItem,
@@ -14,11 +25,15 @@ import type {
   ParseResponse,
   QuickOrderMessage,
 } from './types.ts';
-import { validateParsedLine } from './validator.ts';
+import { normalizeParsedItemStatus, validateParsedLine } from './validator.ts';
+
+type CatalogSearchIndex = ReturnType<typeof buildCatalogSearchIndex>;
 
 type OrchestratorInput = {
   rawText: string;
+  locationId?: string;
   catalog: CatalogItem[];
+  globalCatalog?: CatalogItem[];
   examples: ParserExample[];
   corrections: ParserCorrection[];
   previousMessages: QuickOrderMessage[];
@@ -28,6 +43,18 @@ type OrchestratorInput = {
 
 /** Command intents that should be routed to the operations builder. */
 const COMMAND_INTENTS = new Set(['remove', 'replace', 'update', 'increase', 'decrease', 'clear']);
+const COMMAND_ONLY_TERMS = new Set([
+  'combine',
+  'replace',
+  'remove',
+  'delete',
+  'cancel',
+  'change',
+  'update',
+  'set',
+  'clear',
+]);
+const MIN_PLAUSIBLE_REVIEW_CONFIDENCE = 0.75;
 
 /** Hardcoded version string — appears in every response for deployment verification. */
 export const PARSER_VERSION = 'quick-order-parser-v3-line-based';
@@ -36,8 +63,15 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   // ----------------------------------------------------------------
   // 1. Detect intent BEFORE parsing items.
   // ----------------------------------------------------------------
-  const intentResult = detectQuickOrderIntent(input.rawText);
+  const classification = classifyQuickOrderInput(input.rawText, {
+    hasPendingDuplicateAction: input.previousMessages.some((message) =>
+      (message.pending_clarifications ?? []).some((entry) => entry.type === 'quantity_conflict' || entry.type === 'unit_conflict')
+    ),
+  });
+  const intentResult = classification.intentResult;
   const textToParse = intentResult.strippedText || input.rawText;
+  const preParseResponse = buildPreParseResponse(input, classification, buildCatalogDebug(input, buildCatalogSearchIndex(input.catalog, input.corrections)));
+  if (preParseResponse) return preParseResponse;
 
   // ----------------------------------------------------------------
   // 2. Handle confirm intent (no parsing needed).
@@ -52,9 +86,11 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   const candidates = parseDeterministicOrder(textToParse);
   const parsedItems: ParsedItem[] = [];
   const flags: ParseFlag[] = [];
+  const catalogIndex = buildCatalogSearchIndex(input.catalog, input.corrections);
+  const catalogDebug = buildCatalogDebug(input, catalogIndex);
 
   for (const candidate of candidates) {
-    const match = matchCatalogItem(candidate.item_text, input.catalog, input.corrections);
+    const match = matchCatalogIndex(candidate.item_text, catalogIndex);
     const validated = validateParsedLine({ candidate, match, catalog: input.catalog });
     parsedItems.push(validated.item);
     flags.push(...validated.flags);
@@ -109,6 +145,7 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
         items_rejected: 0,
         rejected_reasons: [],
         pending_action_count: opResult.pendingClarifications.length,
+        catalog_debug: catalogDebug,
       },
     };
   }
@@ -119,9 +156,24 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   //    For 'add' intent with explicit keyword, we also treat as additive.
   // ----------------------------------------------------------------
 
+  const orderGate = gateParsedItemsForOrder(parsedItems, catalogIndex);
+  parsedItems.length = 0;
+  parsedItems.push(...orderGate.items);
+  if (candidates.length > 0 && parsedItems.length === 0 && orderGate.noOpDiagnostics.length > 0) {
+    return buildNoOpResponse({
+      input,
+      candidatesCount: candidates.length,
+      catalogDebug,
+      noOpDiagnostics: orderGate.noOpDiagnostics,
+    });
+  }
+
   // Identify only the lines the LLM needs to help with.
   const unresolvedForLlm = parsedItems.filter(
-    (item) => item.unresolved || item.match_type === 'unresolved' || (item.match_type === 'fuzzy' && item.needs_clarification),
+    (item) =>
+      !isStrongDeterministicMatch(item) &&
+      isPlausibleForLlm(item, catalogIndex) &&
+      (item.unresolved || item.match_type === 'unresolved' || item.status === 'ambiguous' || item.status === 'no_match'),
   );
   const needsLlm = unresolvedForLlm.length > 0;
 
@@ -152,6 +204,10 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
     llmFailed = true;
   }
 
+  const normalizedParsedItems = normalizeParsedItemsForResponse(parsedItems, input.catalog);
+  parsedItems.length = 0;
+  parsedItems.push(...normalizedParsedItems);
+
   const readyItems = parsedItems.filter((item) => !item.needs_clarification && !item.unresolved);
   const repeatedList = detectRepeatedOrderList(input.existingParsedItems, readyItems);
   const conflictInput = repeatedList.isRepeatedList
@@ -175,7 +231,7 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
     ...conflictResult.acceptedItems,
     ...conflictResult.updatedItems,
   ]);
-  const finalItems = combined.items;
+  const finalItems = normalizeParsedItemsForResponse(combined.items, input.catalog);
   reconciliationDiagnostics = {
     ...reconciliationDiagnostics,
     duplicate_line_count: reconciliationDiagnostics.duplicate_line_count + combined.duplicateLineCount,
@@ -192,6 +248,12 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
       line_ids: finalItems.map((item) => item.line_id ?? null),
     });
   }
+  const strongRejectedItem = finalItems.find(hasRejectedStrongCandidate);
+  if (!invariantErrorCode && strongRejectedItem) invariantErrorCode = 'strong_match_rejected';
+  const rejectedHighConfidence = finalItems.some((item) =>
+    (item.status === 'no_match' || item.status === 'ambiguous') && (item.alternatives?.[0]?.confidence ?? 0) >= 0.75
+  );
+  if (!invariantErrorCode && rejectedHighConfidence) invariantErrorCode = 'high_confidence_candidate_rejected';
 
   const pendingClarifications = conflictResult.pendingClarifications;
   const unresolvedCount = finalItems.filter((item) => item.needs_clarification || item.unresolved).length;
@@ -218,8 +280,13 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
     llm_failed: llmFailed,
     llm_used: llmUsed,
   };
-  const assistantMessage = buildReplyText(finalItems, pendingClarifications.length, repeatedList.unchangedCount);
-  const diagnostics = {
+  const assistantMessage = buildReplyText(
+    finalItems,
+    pendingClarifications.map((clarification) => clarification.message),
+    repeatedList.unchangedCount,
+    input.catalog,
+  );
+  const diagnostics: ParseDiagnostics = {
     parser_version: PARSER_VERSION,
     parse_mode: metrics.parse_mode_used,
     catalog_count: input.catalog.length,
@@ -240,11 +307,21 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
     pending_action_count: pendingClarifications.length,
     unchanged_count: repeatedList.unchangedCount,
     repeated_existing_count: repeatedList.unchangedCount,
-    item_diagnostics: buildItemDiagnostics(finalItems),
+    item_diagnostics: buildItemDiagnostics(finalItems, catalogIndex, input.globalCatalog ? buildCatalogSearchIndex(input.globalCatalog, input.corrections) : undefined),
+    catalog_debug: catalogDebug,
     raw_input_length: input.rawText.length,
     candidate_lines: candidates.length,
     error_code: invariantErrorCode,
+    input_classification: classification.classification,
+    input_classification_reason: classification.reason,
   };
+
+  diagnostics.item_diagnostics = [
+    ...(diagnostics.item_diagnostics ?? []),
+    ...orderGate.noOpDiagnostics,
+  ];
+
+  logReviewDiagnostics(diagnostics.item_diagnostics ?? []);
 
   return {
     status,
@@ -262,6 +339,426 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
     metrics,
     diagnostics,
   };
+}
+
+type ItemDiagnostic = NonNullable<NonNullable<ParseResponse['diagnostics']>['item_diagnostics']>[number];
+
+function buildPreParseResponse(
+  input: OrchestratorInput,
+  classification: QuickOrderInputClassificationResult,
+  catalogDebug: ReturnType<typeof buildCatalogDebug>,
+): ParseResponse | null {
+  switch (classification.classification) {
+    case 'suggestion_request':
+      return buildNonOrderResponse(input, classification, 'Suggestions are not available in Quick Order yet.');
+    case 'history_request':
+      return buildNonOrderResponse(input, classification, 'Past order lookup is not available in Quick Order yet.');
+    case 'duplicate_resolution_action':
+      if (classification.reason === 'no_pending_duplicate_action') {
+        return buildNonOrderResponse(input, classification, 'There is nothing to combine right now.');
+      }
+      return null;
+    case 'clear_request':
+      if (input.existingParsedItems.length === 0) {
+        return buildNonOrderResponse(input, classification, 'There is no current Quick Order list to clear.');
+      }
+      return {
+        status: 'needs_clarification',
+        assistant_message: 'Clear the current Quick Order list?',
+        reply_text: 'Clear the current Quick Order list?',
+        parsed_items: [],
+        flags: [],
+        suggestions: [],
+        pending_actions: [{
+          id: 'clear_order_confirmation',
+          type: 'clear_order',
+          item_id: null,
+          item_name: 'Quick Order',
+          message: 'Clear the current Quick Order list?',
+          actions: [
+            { id: 'clear_order', label: 'Clear order' },
+            { id: 'cancel', label: 'Cancel' },
+          ],
+        }],
+        pending_clarifications: [{
+          id: 'clear_order_confirmation',
+          type: 'clear_order',
+          item_id: null,
+          item_name: 'Quick Order',
+          message: 'Clear the current Quick Order list?',
+          actions: [
+            { id: 'clear_order', label: 'Clear order' },
+            { id: 'cancel', label: 'Cancel' },
+          ],
+        }],
+        session_state: {
+          total_items: input.existingParsedItems.length,
+          ready_to_submit: false,
+        },
+        diagnostics: buildClassificationDiagnostics(input, classification, catalogDebug),
+      };
+    case 'unknown_non_order':
+      return buildNonOrderResponse(input, classification, 'I couldn’t recognize that as an inventory item.');
+    case 'order_entry':
+    case 'order_command':
+    case 'clarification_answer':
+    case 'confirm_request':
+      return null;
+    default:
+      return null;
+  }
+}
+
+function buildNonOrderResponse(
+  input: OrchestratorInput,
+  classification: QuickOrderInputClassificationResult,
+  message: string,
+): ParseResponse {
+  const catalogIndex = buildCatalogSearchIndex(input.catalog, input.corrections);
+  return {
+    status: 'ok',
+    assistant_message: message,
+    reply_text: message,
+    parsed_items: [],
+    flags: [],
+    suggestions: [],
+    pending_actions: [],
+    pending_clarifications: [],
+    session_state: {
+      total_items: input.existingParsedItems.length,
+      ready_to_submit: false,
+    },
+    diagnostics: {
+      ...buildClassificationDiagnostics(input, classification, buildCatalogDebug(input, catalogIndex)),
+      item_diagnostics: [{
+        raw_text: input.rawText,
+        item_text: input.rawText.trim(),
+        status: 'no_op',
+        action: null,
+        was_added_to_order_list: false,
+        no_op_reason: classification.reason,
+      }],
+    },
+  };
+}
+
+function buildClassificationDiagnostics(
+  input: OrchestratorInput,
+  classification: QuickOrderInputClassificationResult,
+  catalogDebug: ReturnType<typeof buildCatalogDebug>,
+): ParseDiagnostics {
+  return {
+    parser_version: PARSER_VERSION,
+    parse_mode: 'deterministic_only',
+    catalog_count: input.catalog.length,
+    candidate_count: 0,
+    items_before_validation: 0,
+    items_after_validation: 0,
+    valid_count: 0,
+    review_count: 0,
+    items_received: 0,
+    items_accepted: 0,
+    items_rejected: 0,
+    rejected_reasons: [classification.reason],
+    pending_action_count: 0,
+    catalog_debug: catalogDebug,
+    raw_input_length: input.rawText.length,
+    candidate_lines: 0,
+    input_classification: classification.classification,
+    input_classification_reason: classification.reason,
+  };
+}
+
+function normalizeParsedItemsForResponse(items: ParsedItem[], catalog: CatalogItem[]): ParsedItem[] {
+  return items.map((item) => normalizeParsedItemStatus(
+    item,
+    item.item_id ? catalog.find((catalogItem) => catalogItem.id === item.item_id) ?? null : null,
+  ));
+}
+
+function gateParsedItemsForOrder(
+  items: ParsedItem[],
+  catalogIndex: CatalogSearchIndex,
+): { items: ParsedItem[]; noOpDiagnostics: ItemDiagnostic[] } {
+  const keptItems: ParsedItem[] = [];
+  const noOpDiagnostics: ItemDiagnostic[] = [];
+
+  for (const item of items) {
+    const decision = shouldKeepParsedItem(item, catalogIndex);
+    if (decision.keep) {
+      keptItems.push(item);
+      continue;
+    }
+
+    noOpDiagnostics.push(buildNoOpItemDiagnostic(item, catalogIndex, decision.reason));
+  }
+
+  return { items: keptItems, noOpDiagnostics };
+}
+
+function shouldKeepParsedItem(
+  item: ParsedItem,
+  catalogIndex: CatalogSearchIndex,
+): { keep: boolean; reason: string } {
+  const rawText = item.raw_text ?? item.raw_token ?? '';
+  const itemText = item.item_text ?? item.item_name ?? item.raw_token ?? rawText;
+  if (isCommandOnlyText(rawText) || isCommandOnlyText(itemText)) {
+    return { keep: false, reason: commandNoOpReason(rawText || itemText) };
+  }
+
+  const hasQuantityOrUnit = item.quantity != null || Boolean(item.unit?.trim());
+  const isSingleBareWord = isSingleWord(itemText) && !hasQuantityOrUnit;
+  if (item.item_id) {
+    if (item.match_type === 'fuzzy' && !isAcceptableResolvedFuzzyItem(item, itemText, isSingleBareWord)) {
+      return { keep: false, reason: 'weak_fuzzy_match' };
+    }
+    return { keep: true, reason: 'catalog_match' };
+  }
+
+  const topCandidate = topCandidatesForItem(item, catalogIndex)[0];
+  const topConfidence = topCandidate?.confidence ?? topCandidate?.score ?? 0;
+
+  if (item.status === 'ambiguous') {
+    if (topConfidence >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE && !isSingleBareWord) {
+      return { keep: true, reason: 'plausible_ambiguous_match' };
+    }
+    if (topConfidence >= 0.85) return { keep: true, reason: 'strong_single_word_match' };
+    return { keep: false, reason: 'ambiguous_candidate_below_threshold' };
+  }
+
+  if (item.status === 'no_match' || item.unresolved || item.needs_clarification) {
+    if (topConfidence >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE && !isSingleBareWord) {
+      return { keep: true, reason: 'plausible_catalog_candidate' };
+    }
+    if (topConfidence >= 0.85) return { keep: true, reason: 'strong_catalog_candidate' };
+    if (isSingleBareWord) return { keep: false, reason: 'single_word_unknown_without_strong_match' };
+    return { keep: false, reason: 'no_catalog_match_above_threshold' };
+  }
+
+  return { keep: true, reason: 'order_row' };
+}
+
+function isAcceptableResolvedFuzzyItem(
+  item: ParsedItem,
+  itemText: string,
+  isSingleBareWord: boolean,
+): boolean {
+  const confidence = item.confidence ?? 0;
+  if (confidence >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE) return true;
+  const itemName = item.item_name ?? item.display_name ?? '';
+  const semantic = analyzeSemanticTokens(itemText, itemName);
+  if (!isSingleBareWord && semantic.passed && semantic.tokenCoverage >= 0.75) return true;
+  if (!isSingleBareWord) return false;
+
+  const inputToken = normalizeSearchText(itemText);
+  const catalogTokens = normalizeSearchText(itemName).split(/\s+/).filter(Boolean);
+  return catalogTokens.some((token) => isCloseSingleTokenTypo(inputToken, token));
+}
+
+function isCloseSingleTokenTypo(inputToken: string, catalogToken: string): boolean {
+  if (!inputToken || !catalogToken) return false;
+  const lengthGap = Math.abs(inputToken.length - catalogToken.length);
+  if (lengthGap > 2) return false;
+  const longerLength = Math.max(inputToken.length, catalogToken.length);
+  if (longerLength < 4) return inputToken === catalogToken;
+  const distance = levenshteinDistance(inputToken, catalogToken);
+  return distance <= (longerLength <= 6 ? 1 : 2);
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = Array.from({ length: b.length + 1 }, () => 0);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + cost,
+      );
+    }
+    for (let j = 0; j <= b.length; j += 1) previous[j] = current[j];
+  }
+
+  return previous[b.length] ?? 0;
+}
+
+function isPlausibleForLlm(item: ParsedItem, catalogIndex: CatalogSearchIndex): boolean {
+  if (item.item_id || isStrongDeterministicMatch(item)) return false;
+  const rawText = item.raw_text ?? item.raw_token ?? '';
+  const itemText = item.item_text ?? item.item_name ?? item.raw_token ?? rawText;
+  if (isCommandOnlyText(rawText) || isCommandOnlyText(itemText)) return false;
+  const topCandidate = topCandidatesForItem(item, catalogIndex)[0];
+  const topConfidence = topCandidate?.confidence ?? topCandidate?.score ?? 0;
+  if (topConfidence >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE) return true;
+  return false;
+}
+
+function buildNoOpResponse(input: {
+  input: OrchestratorInput;
+  candidatesCount: number;
+  catalogDebug: ReturnType<typeof buildCatalogDebug>;
+  noOpDiagnostics: ItemDiagnostic[];
+}): ParseResponse {
+  const assistantMessage = buildNoOpMessage(input.noOpDiagnostics);
+  const rejectedReasons = input.noOpDiagnostics
+    .map((diagnostic) => diagnostic.no_op_reason)
+    .filter((reason): reason is string => Boolean(reason));
+
+  return {
+    status: 'ok',
+    assistant_message: assistantMessage,
+    reply_text: assistantMessage,
+    parsed_items: [],
+    flags: [],
+    suggestions: [],
+    pending_actions: [],
+    pending_clarifications: [],
+    session_state: {
+      total_items: input.input.existingParsedItems.length,
+      ready_to_submit: false,
+    },
+    metrics: {
+      parse_mode_used: 'deterministic_only',
+      lines_parsed: input.candidatesCount,
+      high_confidence_matches: 0,
+      fuzzy_matches: 0,
+      unresolved_items: 0,
+      conflicts: 0,
+      json_repair_needed: false,
+      llm_failed: false,
+      llm_used: false,
+    },
+    diagnostics: {
+      parser_version: PARSER_VERSION,
+      parse_mode: 'deterministic_only',
+      catalog_count: input.input.catalog.length,
+      candidate_count: input.candidatesCount,
+      items_before_validation: input.candidatesCount,
+      items_after_validation: 0,
+      valid_count: 0,
+      review_count: 0,
+      llm_lines_sent: 0,
+      llm_replaced_count: 0,
+      replaced_review_count: 0,
+      duplicate_line_count: 0,
+      ignored_llm_extra_count: 0,
+      items_received: input.candidatesCount,
+      items_accepted: 0,
+      items_rejected: input.noOpDiagnostics.length,
+      rejected_reasons: rejectedReasons,
+      pending_action_count: 0,
+      item_diagnostics: input.noOpDiagnostics,
+      catalog_debug: input.catalogDebug,
+      raw_input_length: input.input.rawText.length,
+      candidate_lines: input.candidatesCount,
+    },
+  };
+}
+
+function buildNoOpItemDiagnostic(
+  item: ParsedItem,
+  catalogIndex: CatalogSearchIndex,
+  reason: string,
+): ItemDiagnostic {
+  const rawText = item.raw_text ?? item.raw_token ?? '';
+  const itemText = item.item_text ?? item.item_name ?? item.raw_token ?? rawText;
+  const topCandidates = topCandidatesForItem(item, catalogIndex);
+  const semantic = topCandidates[0]?.matched_term
+    ? analyzeSemanticTokens(itemText, topCandidates[0].matched_term)
+    : null;
+  const noOpReason = reason === 'command_without_pending_action'
+    ? reason
+    : semantic && !semantic.passed
+      ? semantic.reason
+      : reason;
+  return {
+    line_id: item.line_id,
+    raw_text: rawText,
+    item_text: itemText,
+    quantity: item.quantity,
+    raw_unit: extractRawUnit(rawText),
+    normalized_unit: item.unit,
+    matched_item_id: item.item_id,
+    matched_item_name: item.item_name,
+    selected_item_id: item.item_id,
+    selected_item_name: item.item_name,
+    item_id: item.item_id,
+    item_name: item.item_name,
+    match_type: item.match_type,
+    match_confidence: item.confidence,
+    confidence: item.confidence,
+    status: 'no_op',
+    action: null,
+    reason: noOpReason,
+    issue: null,
+    alternatives: item.alternatives?.slice(0, 3),
+    top_alternatives: topCandidates,
+    top_candidates: topCandidates,
+    failure_reason: noOpReason,
+    ambiguity_reason: null,
+    selected_location_catalog_contains_exact: catalogHasExact(itemText, catalogIndex),
+    was_added_to_order_list: false,
+    no_op_reason: noOpReason,
+    pending_action_resolved: false,
+    existing_item_resolved: false,
+    action_type: commandNoOpReason(rawText) === 'command_without_pending_action' ? normalizeCommandText(rawText) : null,
+    pending_action_id: null,
+    input_tokens: semantic?.inputTokens,
+    input_generic_tokens: semantic?.inputGenericTokens,
+    input_specific_tokens: semantic?.inputSpecificTokens,
+    token_coverage: semantic?.tokenCoverage,
+    generic_token_overlap: semantic?.genericTokenOverlap,
+    specific_token_overlap: semantic?.specificTokenOverlap,
+    missing_specific_tokens: semantic?.missingSpecificTokens,
+    semantic_validation_passed: semantic?.passed,
+  };
+}
+
+function buildNoOpMessage(diagnostics: ItemDiagnostic[]): string {
+  const first = diagnostics[0];
+  const rawText = first?.raw_text?.trim() ?? '';
+  const itemText = first?.item_text?.trim() ?? rawText;
+  const reason = first?.no_op_reason;
+
+  if (reason === 'command_without_pending_action' && normalizeCommandText(rawText || itemText) === 'combine') {
+    return 'There is nothing to combine right now.';
+  }
+  if (looksLikeKeyboardNoise(itemText)) {
+    return 'I couldn’t recognize that as an inventory item.';
+  }
+  if (isSingleWord(itemText) && itemText) {
+    return `I couldn’t find ${itemText} in this location’s inventory.`;
+  }
+  if ((reason === 'no_catalog_match_above_threshold' || reason === 'missing_specific_token') && itemText) {
+    return `I couldn’t find "${itemText}" in this location’s inventory.`;
+  }
+  return 'I couldn’t recognize that as an inventory item.';
+}
+
+function isCommandOnlyText(value: string): boolean {
+  const normalized = normalizeCommandText(value);
+  return COMMAND_ONLY_TERMS.has(normalized);
+}
+
+function commandNoOpReason(value: string): string {
+  return isCommandOnlyText(value) ? 'command_without_pending_action' : 'no_catalog_match_above_threshold';
+}
+
+function normalizeCommandText(value: string): string {
+  return value.trim().toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, '').replace(/\s+/g, ' ');
+}
+
+function isSingleWord(value: string): boolean {
+  const normalized = normalizeSearchText(value);
+  return Boolean(normalized) && !normalized.includes(' ');
+}
+
+function looksLikeKeyboardNoise(value: string): boolean {
+  const compact = normalizeSearchText(value).replace(/\s+/g, '');
+  return /^(asdf|qwer|zxcv|hjkl)+$/.test(compact);
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +900,7 @@ function shouldReplaceWithLlm(deterministicItem: ParsedItem, llmItem: ParsedItem
 function isExactDeterministicMatch(item: ParsedItem): boolean {
   return (
     item.parse_source === 'deterministic' &&
-    (item.match_type === 'exact_name' || item.match_type === 'exact_alias' || item.match_type === 'normalized')
+    isDeterministicCatalogMatch(item.match_type)
   );
 }
 
@@ -448,11 +945,31 @@ function scoreParsedItem(item: ParsedItem): number {
   if (!item.unresolved) score += 20;
   if (!item.needs_clarification) score += 20;
   if (item.match_type === 'exact_name') score += 12;
-  if (item.match_type === 'exact_alias' || item.match_type === 'normalized') score += 10;
-  if (item.match_type === 'correction') score += 9;
+  if (item.match_type === 'exact_alias' || item.match_type === 'correction' || item.match_type === 'parenthetical') score += 11;
+  if (item.match_type === 'normalized_exact' || item.match_type === 'compact_exact' || item.match_type === 'normalized') score += 10;
+  if (item.match_type === 'token_set' || item.match_type === 'prefix' || item.match_type === 'plural_normalized') score += 9;
   if (item.parse_source === 'deterministic') score += 2;
   if (item.match_type === 'llm') score += 1;
   return score;
+}
+
+function isDeterministicCatalogMatch(matchType: ParsedItem['match_type']): boolean {
+  return (
+    matchType === 'exact_name' ||
+    matchType === 'exact_alias' ||
+    matchType === 'correction' ||
+    matchType === 'parenthetical_or_generated_exact' ||
+    matchType === 'parenthetical_exact' ||
+    matchType === 'generated_term_exact' ||
+    matchType === 'parenthetical' ||
+    matchType === 'normalized_exact' ||
+    matchType === 'compact_exact' ||
+    matchType === 'token_set' ||
+    matchType === 'prefix' ||
+    matchType === 'plural_normalized' ||
+    matchType === 'normalized' ||
+    matchType === 'token'
+  );
 }
 
 function compareParsedLineOrder(a: ParsedItem, b: ParsedItem): number {
@@ -464,22 +981,184 @@ function lineSortIndex(lineId: string | undefined): number {
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
 }
 
-function buildItemDiagnostics(items: ParsedItem[]) {
-  return items.map((item) => ({
-    line_id: item.line_id,
-    raw_text: item.raw_text ?? item.raw_token,
-    item_text: item.item_text ?? item.item_name ?? item.raw_token,
-    matched_item_name: item.item_name,
-    match_type: item.match_type,
-    status: item.status,
-    reason: item.issue ?? null,
-    alternatives: item.alternatives?.slice(0, 3),
-  }));
+function buildItemDiagnostics(items: ParsedItem[], catalogIndex: CatalogSearchIndex, globalIndex?: CatalogSearchIndex) {
+  return items.map((item) => {
+    const itemText = item.item_text ?? item.item_name ?? item.raw_token;
+    const topCandidates = topCandidatesForItem(item, catalogIndex);
+    const matchedTerm = topCandidates[0]?.matched_term ?? topCandidates[0]?.term ?? item.item_name ?? itemText;
+    const semantic = analyzeSemanticTokens(itemText, matchedTerm);
+    return {
+      line_id: item.line_id,
+      raw_text: item.raw_text ?? item.raw_token,
+      item_text: itemText,
+      quantity: item.quantity,
+      raw_unit: extractRawUnit(item.raw_text ?? item.raw_token ?? ''),
+      normalized_unit: item.unit,
+      matched_item_id: item.item_id,
+      selected_item_id: item.item_id,
+      item_id: item.item_id,
+      matched_item_name: item.item_name,
+      selected_item_name: item.item_name,
+      item_name: item.item_name,
+      match_type: item.match_type,
+      match_confidence: item.confidence,
+      confidence: item.confidence,
+      status: item.status,
+      action: actionForItem(item),
+      reason: item.issue ?? null,
+      issue: item.issue ?? null,
+      alternatives: item.alternatives?.slice(0, 3),
+      top_alternatives: topCandidates,
+      top_candidates: topCandidates,
+      failure_reason: item.status === 'no_match' ? item.issue ?? 'no_match' : null,
+      ambiguity_reason: item.status === 'ambiguous' ? item.issue ?? 'ambiguous' : null,
+      selected_location_catalog_contains_exact: catalogHasExact(itemText, catalogIndex),
+      global_catalog_contains_exact: globalIndex ? catalogHasExact(itemText, globalIndex) : undefined,
+      was_added_to_order_list: true,
+      no_op_reason: null,
+      pending_action_resolved: false,
+      existing_item_resolved: false,
+      action_type: null,
+      pending_action_id: null,
+      input_tokens: semantic.inputTokens,
+      input_generic_tokens: semantic.inputGenericTokens,
+      input_specific_tokens: semantic.inputSpecificTokens,
+      token_coverage: semantic.tokenCoverage,
+      generic_token_overlap: semantic.genericTokenOverlap,
+      specific_token_overlap: semantic.specificTokenOverlap,
+      missing_specific_tokens: semantic.missingSpecificTokens,
+      semantic_validation_passed: semantic.passed,
+      stale_status_corrected: false,
+    };
+  });
 }
 
-function buildReplyText(items: ParsedItem[], conflictCount: number, unchangedCount = 0): string {
+function actionForItem(item: ParsedItem): string | null {
+  if (item.status === 'no_match' || item.status === 'ambiguous' || item.status === 'review') return 'Choose item';
+  if (item.status === 'missing_quantity') return 'Add quantity';
+  if (item.status === 'missing_unit') return 'Choose unit';
+  if (item.status === 'invalid_unit' || item.status === 'invalid') return 'Fix unit';
+  if (!item.item_id || item.unresolved) return 'Choose item';
+  if (item.quantity == null || item.quantity <= 0) return 'Add quantity';
+  if (!item.unit?.trim()) return 'Choose unit';
+  return null;
+}
+
+function topCandidatesForItem(item: ParsedItem, catalogIndex: CatalogSearchIndex): CatalogAlternative[] {
+  if (item.alternatives?.length) return item.alternatives.slice(0, 3);
+  return findCatalogAlternatives(item.item_text ?? item.item_name ?? item.raw_token, catalogIndex, 3);
+}
+
+function hasRejectedStrongCandidate(item: ParsedItem): boolean {
+  if (item.status !== 'ambiguous' && item.status !== 'no_match') return false;
+  const top = item.alternatives?.[0];
+  return Boolean(top && (top.confidence >= 0.9 || top.score != null && top.score >= 0.9) && isStrongCandidateMatchType(top.match_type));
+}
+
+function isStrongCandidateMatchType(matchType: CatalogAlternative['match_type']): boolean {
+  return (
+    matchType === 'exact_name' ||
+    matchType === 'exact_alias' ||
+    matchType === 'correction' ||
+    matchType === 'parenthetical_or_generated_exact' ||
+    matchType === 'parenthetical_exact' ||
+    matchType === 'generated_term_exact' ||
+    matchType === 'parenthetical' ||
+    matchType === 'normalized_exact' ||
+    matchType === 'compact_exact'
+  );
+}
+
+function logReviewDiagnostics(diagnostics: NonNullable<ParseResponse['diagnostics']>['item_diagnostics']): void {
+  const runtimeProcess = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+  if (runtimeProcess?.env?.NODE_ENV === 'test' || runtimeProcess?.env?.JEST_WORKER_ID) return;
+  const reviewDiagnostics = (diagnostics ?? []).filter((item) =>
+    item.status === 'ambiguous' ||
+    item.status === 'no_match' ||
+    item.status === 'missing_quantity' ||
+    item.status === 'missing_unit' ||
+    item.status === 'invalid_unit'
+  );
+  if (reviewDiagnostics.length === 0) return;
+  console.warn('[parse-order] review_item_diagnostics', JSON.stringify(reviewDiagnostics));
+}
+
+function extractRawUnit(rawText: string): string | null {
+  const match = rawText.match(/(?:^|\s)(?:\d+(?:\.\d+)?|\d+\/\d+)\s*([a-zA-Z]+)\s*$/);
+  return match?.[1] ?? null;
+}
+
+function buildCatalogDebug(input: OrchestratorInput, catalogIndex: CatalogSearchIndex) {
+  const searchedTerms = ['crawfish', 'soft shell crab', 'izumidai', 'canadian clam'];
+  const selectedContains = {
+    crawfish: catalogHasMatch('crawfish', catalogIndex),
+    soft_shell_crab: catalogHasMatch('soft shell crab', catalogIndex),
+    white_fish_izumidai: catalogHasMatch('izumidai', catalogIndex),
+    canadian_clam: catalogHasMatch('canadian clam', catalogIndex),
+  };
+  const possibleMatches = Object.fromEntries(
+    searchedTerms.map((term) => [normalizeDebugKey(term), findCatalogAlternatives(term, catalogIndex, 3)]),
+  ) as Record<string, CatalogAlternative[]>;
+
+  const globalIndex = input.globalCatalog ? buildCatalogSearchIndex(input.globalCatalog, input.corrections) : null;
+  const globalContains = globalIndex
+    ? {
+      crawfish: catalogHasMatch('crawfish', globalIndex),
+      soft_shell_crab: catalogHasMatch('soft shell crab', globalIndex),
+      white_fish_izumidai: catalogHasMatch('izumidai', globalIndex),
+      canadian_clam: catalogHasMatch('canadian clam', globalIndex),
+    }
+    : undefined;
+
+  return {
+    location_id: input.locationId,
+    catalog_count: input.catalog.length,
+    global_catalog_count: input.globalCatalog?.length,
+    searched_terms: searchedTerms,
+    catalog_contains: selectedContains,
+    global_contains: globalContains,
+    possible_matches: possibleMatches,
+  };
+}
+
+function catalogHasMatch(term: string, index: CatalogSearchIndex): boolean {
+  const normalized = normalizeSearchText(term);
+  if (!normalized) return false;
+  return index.entries.some((entry) =>
+    entry.normalized === normalized ||
+    entry.compact === normalized.replace(/\s+/g, '') ||
+    entry.term === normalized
+  );
+}
+
+function catalogHasExact(term: string, index: CatalogSearchIndex): boolean {
+  const normalized = normalizeSearchText(term);
+  if (!normalized) return false;
+  const compact = normalized.replace(/\s+/g, '');
+  return index.entries.some((entry) =>
+    entry.normalized === normalized ||
+    entry.compact === compact
+  );
+}
+
+function normalizeDebugKey(term: string): string {
+  if (term === 'izumidai') return 'white_fish_izumidai';
+  return term.trim().toLowerCase().replace(/\s+/g, '_');
+}
+
+function buildReplyText(
+  items: ParsedItem[],
+  pendingMessages: string[],
+  unchangedCount = 0,
+  catalog: CatalogItem[] = [],
+): string {
   const goodCount = items.filter((item) => !item.needs_clarification && !item.unresolved).length;
+  const conflictCount = pendingMessages.length;
   const reviewCount = items.length - goodCount + conflictCount;
+  if (pendingMessages.length > 0) return pendingMessages[0];
+  if (items.length === 1 && reviewCount === 1) {
+    return buildSingleReviewReplyText(items[0], catalog);
+  }
   if (goodCount === 0 && reviewCount === 0 && unchangedCount > 0) {
     return unchangedCount === 1
       ? 'That item is already in your order.'
@@ -496,6 +1175,30 @@ function buildReplyText(items: ParsedItem[], conflictCount: number, unchangedCou
   if (items.length === 0 && conflictCount === 0) return 'I had trouble reading that. Please try again or add the item manually.';
   if (reviewCount === 0) return goodCount === 1 ? 'Got this item.' : `Got ${goodCount} items.`;
   return `Got ${goodCount} item${goodCount === 1 ? '' : 's'}, but ${reviewCount} need${reviewCount === 1 ? 's' : ''} review.`;
+}
+
+function buildSingleReviewReplyText(item: ParsedItem, catalog: CatalogItem[]): string {
+  const displayName = item.display_name ?? item.item_name ?? item.item_text ?? item.raw_token;
+  if (item.status === 'missing_quantity') {
+    if (!item.unit) return `I found ${displayName}, but I need the quantity and unit.`;
+    return `How much ${displayName} would you like?`;
+  }
+  if (item.status === 'missing_unit') {
+    return `What unit would you like for ${displayName}?`;
+  }
+  if (item.status === 'invalid_unit') {
+    const catalogItem = item.item_id ? catalog.find((candidate) => candidate.id === item.item_id) : null;
+    const allowedUnits = deriveAllowedUnits(catalogItem);
+    const allowedLabel = allowedUnits.length ? ` Choose a valid unit: ${allowedUnits.join(', ')}.` : ' Choose a valid unit.';
+    return `${displayName} cannot be ordered in ${item.unit ?? 'that unit'}.${allowedLabel}`;
+  }
+  if (item.status === 'ambiguous') {
+    return `I couldn’t find an exact match for "${item.item_text ?? item.raw_token}". Did you mean one of these?`;
+  }
+  if (item.status === 'no_match' || item.unresolved) {
+    return `I couldn’t find "${item.item_text ?? item.raw_token}" in this location’s inventory.`;
+  }
+  return `Got this item, but it needs review.`;
 }
 
 /**

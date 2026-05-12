@@ -18,6 +18,7 @@ import {
   getParsedItemDisplayName,
   getParsedItemIssue,
   getParsedItemKey,
+  normalizeQuickOrderItemForDisplay,
   mergeQuickOrderParsedItemsDetailed,
   mergeQuickOrderParsedItems,
   type ParsedQuickOrderItem,
@@ -93,7 +94,7 @@ describe('deterministic quick order parser', () => {
 
 describe('catalog matcher', () => {
   test('prioritizes exact item names and aliases over fuzzy matches', () => {
-    expect(matchCatalogItem('salmon', catalog).match_type).toBe('exact_name');
+    expect(matchCatalogItem('salmon', catalog).match_type).toBe('normalized_exact');
     expect(matchCatalogItem('hamachi', catalog)).toMatchObject({
       item_id: 'yellowtail-id',
       match_type: 'exact_alias',
@@ -229,7 +230,7 @@ describe('repeated item conflicts', () => {
 });
 
 describe('quick order orchestration', () => {
-  test('mixed multiline order preserves successes and unresolved tai', async () => {
+  test('mixed multiline order preserves successes and rejects low-confidence tai', async () => {
     const result = await parseQuickOrder({
       rawText: 'Tuna loin 1cs\n1pc salmon\n1cs tai\nUnii 1 oz\nBeef brisket 4lb\n1 lb escolar',
       catalog,
@@ -247,9 +248,10 @@ describe('quick order orchestration', () => {
       'brisket-id',
       'escolar-id',
     ]);
-    expect(result.parsed_items.find((item) => item.raw_token === '1cs tai')).toMatchObject({
-      item_id: null,
-      needs_clarification: true,
+    expect(result.parsed_items.find((item) => item.raw_token === '1cs tai')).toBeUndefined();
+    expect(result.diagnostics?.item_diagnostics?.find((item) => item.raw_text === '1cs tai')).toMatchObject({
+      status: 'no_op',
+      was_added_to_order_list: false,
     });
   });
 
@@ -309,7 +311,11 @@ describe('quick order orchestration', () => {
 
     expect(result.reply_text).not.toContain('LLM did not return');
     expect(result.parsed_items.some((item) => item.item_id === 'salmon-id')).toBe(true);
-    expect(result.flags.some((flag) => flag.type === 'invalid_json')).toBe(true);
+    expect(result.flags.some((flag) => flag.type === 'invalid_json')).toBe(false);
+    expect(result.diagnostics?.item_diagnostics?.find((item) => item.raw_text === 'mystery thing 2lb')).toMatchObject({
+      status: 'no_op',
+      was_added_to_order_list: false,
+    });
   });
 
   test('LLM output replaces unresolved deterministic row by line_id instead of appending', () => {
@@ -398,7 +404,8 @@ describe('frontend quick order merge and clarification helpers', () => {
     const result = mergeQuickOrderParsedItemsDetailed(existingItems, incomingItems);
     expect(repeated).toMatchObject({ isRepeatedList: true, unchangedCount: 4 });
     expect(result.items).toHaveLength(5);
-    expect(result.addedItems).toEqual([{ item_id: 'uni-id', item_name: 'Uni', quantity: 7, unit: 'pc' }]);
+    expect(result.addedItems).toHaveLength(1);
+    expect(result.addedItems[0]).toMatchObject({ item_id: 'uni-id', item_name: 'Uni', quantity: 7, unit: 'pc' });
     expect(result.unchangedCount).toBe(4);
   });
 
@@ -459,6 +466,7 @@ describe('frontend quick order merge and clarification helpers', () => {
     expect(getParsedItemIssue({ item_id: 'shrimp-id', item_name: 'Shrimp', quantity: 1, unit: null, status: 'missing_unit' })?.label).toBe('Choose unit');
     expect(getParsedItemIssue({ item_id: 'shrimp-id', item_name: 'Shrimp', quantity: 1, unit: 'pack', status: 'invalid_unit', needs_clarification: true })?.label).toBe('Fix unit');
     expect(getParsedItemIssue({ item_id: null, item_text: 'mystery fish', quantity: 1, unit: 'pack', status: 'no_match', unresolved: true })?.label).toBe('Choose item');
+    expect(getParsedItemIssue({ item_id: 'shrimp-id', item_name: 'Shrimp', quantity: 1, unit: 'pack', status: 'no_match', needs_clarification: true })?.label).not.toBe('Choose item');
     expect(getParsedItemIssue({ item_id: 'edamame-id', item_name: 'Edamame', quantity: 1, unit: 'cs', status: 'valid' })).toBeNull();
   });
 
@@ -507,6 +515,68 @@ describe('frontend quick order merge and clarification helpers', () => {
     expect(result.items).toHaveLength(1);
     expect(result.items[0].item_id).toBe('ground-garlic-id');
     expect(result.reviewCount).toBe(0);
+  });
+
+  test('incoming complete item resolves existing missing-quantity review row', () => {
+    const existingReview: ParsedQuickOrderItem = {
+      client_key: 'row-shrimp',
+      item_id: 'shrimp-ebi-id',
+      item_name: 'Shrimp Ebi',
+      item_text: 'Shrimp',
+      raw_token: 'Shrimp',
+      quantity: null,
+      unit: null,
+      status: 'missing_quantity',
+      needs_clarification: true,
+      unresolved: false,
+    };
+    const incomingComplete: ParsedQuickOrderItem = {
+      item_id: 'shrimp-ebi-id',
+      item_name: 'Shrimp Ebi',
+      item_text: 'Shrimp',
+      raw_token: 'Shrimp 5pk',
+      quantity: 5,
+      unit: 'pack',
+      status: 'valid',
+      needs_clarification: false,
+      unresolved: false,
+    };
+
+    const result = mergeQuickOrderParsedItemsDetailed([existingReview], [incomingComplete]);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({
+      client_key: 'row-shrimp',
+      item_id: 'shrimp-ebi-id',
+      quantity: 5,
+      unit: 'pack',
+      status: 'valid',
+      needs_clarification: false,
+      unresolved: false,
+    });
+    expect(result.updatedCount).toBe(1);
+    expect(result.addedCount).toBe(0);
+    expect(getParsedItemIssue(result.items[0])).toBeNull();
+  });
+
+  test('frontend normalizer removes impossible Add quantity state when quantity and unit exist', () => {
+    const stale: ParsedQuickOrderItem = {
+      item_id: 'shrimp-ebi-id',
+      item_name: 'Shrimp Ebi',
+      quantity: 4,
+      unit: 'case',
+      status: 'missing_quantity',
+      needs_clarification: true,
+      unresolved: false,
+      issue: 'How much Shrimp Ebi would you like?',
+    };
+    const normalized = normalizeQuickOrderItemForDisplay(stale);
+    expect(normalized).toMatchObject({
+      status: 'valid',
+      needs_clarification: false,
+      unresolved: false,
+    });
+    expect(normalized.issue).toBeUndefined();
+    expect(getParsedItemIssue(stale)).toBeNull();
   });
 
   test('confirm availability follows review count', () => {
@@ -590,7 +660,7 @@ describe('baseline Salmon 2cs through full pipeline', () => {
     expect(result.diagnostics?.items_accepted).toBe(1);
   });
 
-  test('unknown item with valid quantity/unit becomes review item, not dropped', async () => {
+  test('unknown low-confidence item with valid quantity/unit is rejected without polluting the order list', async () => {
     const result = await parseQuickOrder({
       rawText: 'Harare 1pc',
       catalog,
@@ -600,13 +670,12 @@ describe('baseline Salmon 2cs through full pipeline', () => {
       existingParsedItems: [],
     });
 
-    // Harare is not in the catalog — should still appear as an item
-    expect(result.parsed_items.length).toBeGreaterThanOrEqual(1);
-    const harare = result.parsed_items.find((item) => item.raw_token?.toLowerCase().includes('harare'));
-    expect(harare).toBeDefined();
-    expect(harare?.needs_clarification).toBe(true);
-    expect(harare?.quantity).toBe(1);
-    expect(harare?.unit).toBe('pc');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.diagnostics?.item_diagnostics?.[0]).toMatchObject({
+      raw_text: 'Harare 1pc',
+      status: 'no_op',
+      was_added_to_order_list: false,
+    });
   });
 
   test('one invalid line does not fail valid lines', async () => {
@@ -623,7 +692,11 @@ describe('baseline Salmon 2cs through full pipeline', () => {
     expect(validItems.length).toBeGreaterThanOrEqual(2);
     expect(validItems.map((item) => item.item_id)).toContain('salmon-id');
     expect(validItems.map((item) => item.item_id)).toContain('tuna-id');
-    expect(result.parsed_items.length).toBeGreaterThanOrEqual(3);
+    expect(result.parsed_items.length).toBe(2);
+    expect(result.diagnostics?.item_diagnostics?.find((item) => item.raw_text === 'Harare 1pc')).toMatchObject({
+      status: 'no_op',
+      was_added_to_order_list: false,
+    });
   });
 });
 
@@ -1028,7 +1101,7 @@ describe('command operations through orchestration', () => {
     expect(result.assistant_message).toContain("couldn't find");
   });
 
-  test('"clear order" produces clear operation', async () => {
+  test('"clear order" produces clear confirmation instead of immediate operation', async () => {
     const result = await parseQuickOrder({
       rawText: 'clear order',
       catalog: catalogWithParens,
@@ -1037,11 +1110,13 @@ describe('command operations through orchestration', () => {
       previousMessages: [],
       existingParsedItems: [existingSalmon, existingWhitefish],
     });
-    expect(result.operations).toBeDefined();
-    const clearOp = result.operations!.find((op) => op.type === 'clear');
-    expect(clearOp).toBeDefined();
-    expect(clearOp!.status).toBe('applied');
-    expect(result.assistant_message).toContain('Cleared');
+    expect(result.operations).toBeUndefined();
+    expect(result.pending_clarifications?.[0]).toMatchObject({
+      type: 'clear_order',
+      message: 'Clear the current Quick Order list?',
+    });
+    expect(result.pending_clarifications?.[0].actions.map((action) => action.id)).toEqual(['clear_order', 'cancel']);
+    expect(result.assistant_message).toContain('Clear the current Quick Order list?');
   });
 
   test('"confirm" with items returns ready-to-submit', async () => {
@@ -1255,6 +1330,41 @@ const extendedCatalog: CatalogItem[] = [
   { id: 'crab-mix-id', name: 'Crab Mix', aliases: ['crab mix'], default_unit: 'box', base_unit: 'box', pack_unit: 'box', allowed_units: ['box', 'lb'] },
   { id: 'ground-tuna-id', name: 'Ground Tuna', aliases: ['ground tuna'], default_unit: 'box', base_unit: 'box', pack_unit: 'box', allowed_units: ['box', 'lb'] },
 ];
+
+const robustCatalog: CatalogItem[] = extendedCatalog.map((item) => {
+  switch (item.id) {
+    case 'crawfish-id':
+      return { ...item, name: 'Crawfish (Crayfish)', aliases: [], base_unit: 'pack', pack_unit: 'case', default_unit: 'pack', allowed_units: ['pack', 'cs'] };
+    case 'whitefish-id':
+      return { ...item, name: 'White Fish (Izumidai)', aliases: [], base_unit: 'pack', pack_unit: null, default_unit: 'pack', allowed_units: ['pack'] };
+    case 'soft-shell-crab-id':
+      return { ...item, name: 'Soft Shell Crab', aliases: [], base_unit: 'pack', pack_unit: 'case', default_unit: 'pack', allowed_units: ['pack', 'cs'] };
+    case 'canadian-clam-id':
+      return { ...item, name: 'Canadian Clam', aliases: [], base_unit: 'pack', pack_unit: 'case', default_unit: 'pack', allowed_units: ['pack', 'cs'] };
+    case 'octopus-id':
+      return { ...item, name: 'Tako (Octopus)', aliases: [], base_unit: 'pack', pack_unit: 'case', default_unit: 'pack', allowed_units: ['pack', 'cs'] };
+    case 'escolar-id':
+      return { ...item, name: 'Escolar (White Tuna)', aliases: [], base_unit: 'pack', pack_unit: 'case', default_unit: 'pack', allowed_units: ['pack', 'cs'] };
+    case 'soy-paper-id':
+      return { ...item, name: 'Soy Paper', aliases: [], base_unit: 'cs', pack_unit: 'pack', default_unit: 'cs', allowed_units: ['cs', 'pack'] };
+    default:
+      return item;
+  }
+});
+
+const semanticCatalog: CatalogItem[] = [
+  ...robustCatalog,
+  { id: 'sapporo-small-id', name: 'Sapporo Small', aliases: [], default_unit: 'cs', base_unit: 'cs', pack_unit: null, allowed_units: ['cs'] },
+  { id: 'sapporo-large-id', name: 'Sapporo Large', aliases: [], default_unit: 'cs', base_unit: 'cs', pack_unit: null, allowed_units: ['cs'] },
+  { id: 'wasabi-powder-id', name: 'Wasabi Powder', aliases: [], default_unit: 'cs', base_unit: 'cs', pack_unit: null, allowed_units: ['cs'] },
+  { id: 'paper-towels-id', name: 'Paper Towels', aliases: [], default_unit: 'cs', base_unit: 'cs', pack_unit: null, allowed_units: ['cs'] },
+];
+
+const strictSalmonCatalog: CatalogItem[] = semanticCatalog.map((item) =>
+  item.id === 'salmon-id'
+    ? { ...item, default_unit: 'lb', base_unit: 'lb', pack_unit: null, allowed_units: ['lb', 'pc'] }
+    : item
+);
 
 // ===========================================================================
 // Fraction and word quantity parsing
@@ -1637,6 +1747,513 @@ Tuna loin 1 cs`;
   });
 });
 
+describe('robust selected-location catalog matching', () => {
+  test.each([
+    ['Crawfish 2 packs', 'crawfish-id', 'Crawfish (Crayfish)', 2, 'pack', 'parenthetical_or_generated_exact'],
+    ['Crayfish 2 packs', 'crawfish-id', 'Crawfish (Crayfish)', 2, 'pack', 'parenthetical_or_generated_exact'],
+    ['Soft shell crab 1 pack', 'soft-shell-crab-id', 'Soft Shell Crab', 1, 'pack', 'normalized_exact'],
+    ['softshell crab 1 pk', 'soft-shell-crab-id', 'Soft Shell Crab', 1, 'pack', 'compact_exact'],
+    ['soft shell crb 1 pack', 'soft-shell-crab-id', 'Soft Shell Crab', 1, 'pack', 'fuzzy'],
+    ['Izumidai 8 packs', 'whitefish-id', 'White Fish (Izumidai)', 8, 'pack', 'parenthetical_or_generated_exact'],
+    ['White fish 8 packs', 'whitefish-id', 'White Fish (Izumidai)', 8, 'pack', 'parenthetical_or_generated_exact'],
+    ['izumi dai 8 packs', 'whitefish-id', 'White Fish (Izumidai)', 8, 'pack', 'compact_exact'],
+    ['izumdi 8 packs', 'whitefish-id', 'White Fish (Izumidai)', 8, 'pack', 'fuzzy'],
+    ['Canadian clam 1 pack', 'canadian-clam-id', 'Canadian Clam', 1, 'pack', 'normalized_exact'],
+    ['Canadian Clam 1 case', 'canadian-clam-id', 'Canadian Clam', 1, 'cs', 'exact_name'],
+    ['canadien clam 1 pack', 'canadian-clam-id', 'Canadian Clam', 1, 'pack', 'fuzzy'],
+    ['canadian clm 1 pack', 'canadian-clam-id', 'Canadian Clam', 1, 'pack', 'fuzzy'],
+    ['Soy paper 1 cs', 'soy-paper-id', 'Soy Paper', 1, 'cs', 'normalized_exact'],
+    ['soypaper 1 cs', 'soy-paper-id', 'Soy Paper', 1, 'cs', 'parenthetical_or_generated_exact'],
+    ['Crab stick 1 pack', 'crab-stick-id', 'Crab Stick', 1, 'pack', 'exact_alias'],
+    ['crabstick 1 pack', 'crab-stick-id', 'Crab Stick', 1, 'pack', 'exact_alias'],
+    ['Tuna loin 1 cs', 'tuna-loin-id', 'Tuna Loin', 1, 'cs', 'exact_alias'],
+    ['Albacore 1 cs', 'albacore-id', 'Albacore', 1, 'cs', 'exact_name'],
+    ['Octopus 3 packs', 'octopus-id', 'Tako (Octopus)', 3, 'pack', 'parenthetical_or_generated_exact'],
+    ['Escolar 3 packs', 'escolar-id', 'Escolar (White Tuna)', 3, 'pack', 'parenthetical_or_generated_exact'],
+  ])('%s matches selected catalog item', async (rawText, itemId, itemName, quantity, unit, matchType) => {
+    const result = await parseQuickOrder({
+      rawText,
+      catalog: robustCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: itemId,
+      item_name: itemName,
+      quantity,
+      unit,
+      status: 'valid',
+      match_type: matchType,
+      needs_clarification: false,
+    });
+    expect(getParsedItemIssue(result.parsed_items[0] as ParsedQuickOrderItem)).toBeNull();
+  });
+
+  test('exact generated term wins over weaker fuzzy alternatives', async () => {
+    const noisyCatalog: CatalogItem[] = [
+      ...robustCatalog,
+      { id: 'random-fish-id', name: 'Random Fish', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: null, allowed_units: ['pack'] },
+      { id: 'crab-claw-id', name: 'Crab Claw', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: null, allowed_units: ['pack'] },
+    ];
+    const result = await parseQuickOrder({
+      rawText: 'Crawfish 2 packs\nIzumidai 8 packs',
+      catalog: noisyCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+      callLlm: jest.fn<Promise<string>, [string]>(async () => JSON.stringify({ parsed_items: [] })),
+    });
+
+    expect(result.parsed_items).toHaveLength(2);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: 'crawfish-id',
+      match_type: 'parenthetical_or_generated_exact',
+      status: 'valid',
+    });
+    expect(result.parsed_items[1]).toMatchObject({
+      item_id: 'whitefish-id',
+      match_type: 'parenthetical_or_generated_exact',
+      status: 'valid',
+    });
+    expect(result.diagnostics?.llm_lines_sent).toBe(0);
+  });
+
+  test('matched item with unsupported unit is invalid_unit rather than Choose item', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'Izumidai 8 cs',
+      catalog: robustCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: 'whitefish-id',
+      item_name: 'White Fish (Izumidai)',
+      status: 'invalid_unit',
+      unresolved: false,
+    });
+    expect(getParsedItemIssue(result.parsed_items[0] as ParsedQuickOrderItem)?.label).toBe('Fix unit');
+  });
+
+  test('Sapporo small matches the exact multiword variant while Sapporo alone is ambiguous', async () => {
+    const small = await parseQuickOrder({
+      rawText: 'Sapporo small',
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(small.parsed_items).toHaveLength(1);
+    expect(small.parsed_items[0]).toMatchObject({
+      item_id: 'sapporo-small-id',
+      item_name: 'Sapporo Small',
+      status: 'missing_quantity',
+    });
+    expect(getParsedItemIssue(small.parsed_items[0] as ParsedQuickOrderItem)?.label).toBe('Add quantity');
+
+    const ambiguous = await parseQuickOrder({
+      rawText: 'Sapporo',
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(ambiguous.parsed_items).toHaveLength(1);
+    expect(ambiguous.parsed_items[0]).toMatchObject({
+      item_id: null,
+      status: 'ambiguous',
+    });
+    expect(ambiguous.parsed_items[0].alternatives?.map((item) => item.item_id)).toEqual(
+      expect.arrayContaining(['sapporo-small-id', 'sapporo-large-id']),
+    );
+  });
+
+  test('Sapporo smal fuzzy-matches Sapporo Small with strict token coverage', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'Sapporo smal',
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: 'sapporo-small-id',
+      item_name: 'Sapporo Small',
+      status: 'missing_quantity',
+    });
+  });
+
+  test('semantic token coverage prevents mango powder from matching wasabi powder', async () => {
+    const mango = await parseQuickOrder({
+      rawText: '1cs mango powder',
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(mango.parsed_items).toHaveLength(0);
+    expect(mango.reply_text).toBe('I couldn’t find "mango powder" in this location’s inventory.');
+    expect(mango.diagnostics?.item_diagnostics?.[0]).toMatchObject({
+      status: 'no_op',
+      no_op_reason: 'missing_specific_token',
+      missing_specific_tokens: ['mango'],
+      semantic_validation_passed: false,
+    });
+
+    const wasabi = await parseQuickOrder({
+      rawText: '1cs wasabi powder',
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(wasabi.parsed_items).toHaveLength(1);
+    expect(wasabi.parsed_items[0]).toMatchObject({
+      item_id: 'wasabi-powder-id',
+      item_name: 'Wasabi Powder',
+      quantity: 1,
+      unit: 'cs',
+      status: 'valid',
+    });
+  });
+
+  test('generic paper token does not make paper towels match soy paper', async () => {
+    const withoutPaperTowels = semanticCatalog.filter((item) => item.id !== 'paper-towels-id');
+    const noMatch = await parseQuickOrder({
+      rawText: 'Paper towels 1cs',
+      catalog: withoutPaperTowels,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(noMatch.parsed_items).toHaveLength(0);
+    expect(noMatch.diagnostics?.item_diagnostics?.[0]).toMatchObject({
+      status: 'no_op',
+      semantic_validation_passed: false,
+    });
+
+    const matched = await parseQuickOrder({
+      rawText: 'Paper towels 1cs',
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(matched.parsed_items).toHaveLength(1);
+    expect(matched.parsed_items[0]).toMatchObject({
+      item_id: 'paper-towels-id',
+      item_name: 'Paper Towels',
+      status: 'valid',
+    });
+  });
+
+  test('full 17-line order matches real catalog variants with only Shrimp needing details', async () => {
+    const fullOrder = `Ground garlic 1 pack
+Edamame 1 cs
+Crawfish 2 packs
+Soft shell crab 1 pack
+Escolar 3 packs
+Izumidai 8 packs
+Shrimp
+Octopus 3 packs
+Soy paper 1 cs
+Canadian clam 1 pack
+Squid 1 pack
+Crab stick 1 pack
+Tamago 1 pack
+Masago 1 pack
+Mackerel 4 packs
+Albacore 1 cs
+Tuna loin 1 cs`;
+
+    const result = await parseQuickOrder({
+      rawText: fullOrder,
+      locationId: 'test-location',
+      catalog: robustCatalog,
+      globalCatalog: robustCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+
+    expect(result.parsed_items).toHaveLength(17);
+    expect(new Set(result.parsed_items.map((item) => item.line_id)).size).toBe(17);
+    expect(result.diagnostics?.error_code).toBeUndefined();
+    expect(result.diagnostics?.catalog_debug?.catalog_contains).toMatchObject({
+      crawfish: true,
+      soft_shell_crab: true,
+      white_fish_izumidai: true,
+      canadian_clam: true,
+    });
+    const izumidaiDiagnostics = result.diagnostics?.item_diagnostics?.find((item) => item.raw_text === 'Izumidai 8 packs');
+    expect(izumidaiDiagnostics).toMatchObject({
+      match_type: 'parenthetical_or_generated_exact',
+      selected_location_catalog_contains_exact: true,
+      global_catalog_contains_exact: true,
+    });
+    expect(izumidaiDiagnostics?.top_candidates?.[0]).toMatchObject({
+      item_name: 'White Fish (Izumidai)',
+      match_type: 'parenthetical_or_generated_exact',
+    });
+    expect(result.parsed_items.find((item) => item.raw_text === 'Crawfish 2 packs')).toMatchObject({ item_name: 'Crawfish (Crayfish)', status: 'valid' });
+    expect(result.parsed_items.find((item) => item.raw_text === 'Soft shell crab 1 pack')).toMatchObject({ item_name: 'Soft Shell Crab', status: 'valid' });
+    expect(result.parsed_items.find((item) => item.raw_text === 'Izumidai 8 packs')).toMatchObject({ item_name: 'White Fish (Izumidai)', status: 'valid' });
+    expect(result.parsed_items.find((item) => item.raw_text === 'Canadian clam 1 pack')).toMatchObject({ item_name: 'Canadian Clam', status: 'valid' });
+    const reviewItems = result.parsed_items.filter((item) => getParsedItemIssue(item as ParsedQuickOrderItem));
+    expect(reviewItems).toHaveLength(1);
+    expect(reviewItems[0]).toMatchObject({ item_id: 'shrimp-ebi-id', status: 'missing_quantity' });
+    expect(getParsedItemIssue(reviewItems[0] as ParsedQuickOrderItem)?.label).toBe('Add quantity');
+  });
+
+  test('LLM fallback skips strong matches and low-confidence unknown text', async () => {
+    const callLlm = jest.fn<Promise<string>, [string]>(async () => JSON.stringify({ parsed_items: [] }));
+    const result = await parseQuickOrder({
+      rawText: 'Crawfish 2 packs\nBacon',
+      catalog: robustCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+      callLlm,
+    });
+
+    expect(callLlm).not.toHaveBeenCalled();
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items.find((item) => item.raw_text === 'Crawfish 2 packs')).toMatchObject({
+      item_name: 'Crawfish (Crayfish)',
+      status: 'valid',
+    });
+    expect(result.diagnostics?.item_diagnostics?.find((item) => item.raw_text === 'Bacon')).toMatchObject({
+      status: 'no_op',
+      was_added_to_order_list: false,
+    });
+  });
+
+  test.each([
+    ['Bacon', 'I couldn’t find Bacon in this location’s inventory.'],
+    ['asdfasdf', 'I couldn’t recognize that as an inventory item.'],
+    ['Combine', 'There is nothing to combine right now.'],
+  ])('%s does not create a persistent junk row', async (rawText, message) => {
+    const result = await parseQuickOrder({
+      rawText,
+      catalog: robustCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.reply_text).toBe(message);
+    expect(result.diagnostics?.item_diagnostics?.[0]).toMatchObject({
+      status: 'no_op',
+      was_added_to_order_list: false,
+    });
+  });
+
+  test('fuzzy item-only input does not infer quantity or unit from catalog defaults', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'salmo',
+      catalog: strictSalmonCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+      callLlm: jest.fn<Promise<string>, [string]>(async () => JSON.stringify({ parsed_items: [] })),
+    });
+
+    expect(result.diagnostics?.llm_lines_sent).toBe(0);
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+      quantity: null,
+      unit: null,
+      status: 'missing_quantity',
+    });
+    expect(result.reply_text).toBe('I found Salmon, but I need the quantity and unit.');
+  });
+
+  test('fuzzy explicit quantity and unit can resolve to a valid catalog row', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'salmo 2lb',
+      catalog: strictSalmonCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+      quantity: 2,
+      unit: 'lb',
+      status: 'valid',
+    });
+  });
+
+  test('duplicate valid same-unit item asks add versus replace', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'Salmon 2lb',
+      catalog: strictSalmonCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [parsed({
+        item_id: 'salmon-id',
+        item_name: 'Salmon',
+        display_name: 'Salmon',
+        quantity: 1,
+        unit: 'lb',
+        status: 'valid',
+        needs_clarification: false,
+        unresolved: false,
+      })],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.pending_clarifications?.[0]).toMatchObject({ type: 'quantity_conflict' });
+    expect(result.assistant_message).toContain('already in the order');
+  });
+
+  test('unsupported duplicate unit returns a specific invalid-unit review instead of a generic parser error', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'Salmon 2cs',
+      catalog: strictSalmonCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [parsed({
+        item_id: 'salmon-id',
+        item_name: 'Salmon',
+        display_name: 'Salmon',
+        quantity: 1,
+        unit: 'lb',
+        status: 'valid',
+        needs_clarification: false,
+        unresolved: false,
+      })],
+    });
+
+    expect(result.pending_clarifications ?? []).toHaveLength(0);
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+      quantity: 2,
+      unit: 'cs',
+      status: 'invalid_unit',
+    });
+    expect(result.assistant_message).toContain('Salmon cannot be ordered in cs');
+    expect(result.assistant_message).not.toContain('trouble');
+  });
+
+  test('long unrelated words do not match short catalog names by prefix', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'Unicorn',
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.reply_text).toBe('I couldn’t find Unicorn in this location’s inventory.');
+  });
+
+  test.each([
+    ['Give me some suggestions', 'Suggestions are not available in Quick Order yet.', 'suggestion_request'],
+    ['What did I order last week', 'Past order lookup is not available in Quick Order yet.', 'history_request'],
+  ])('%s is classified before item parsing', async (rawText, message, classification) => {
+    const result = await parseQuickOrder({
+      rawText,
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.reply_text).toBe(message);
+    expect(result.diagnostics?.input_classification).toBe(classification);
+  });
+
+  test('clear with no items returns specific no-op message and no item rows', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'Clear',
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.pending_clarifications ?? []).toHaveLength(0);
+    expect(result.reply_text).toBe('There is no current Quick Order list to clear.');
+    expect(result.diagnostics?.input_classification).toBe('clear_request');
+  });
+
+  test('clear with items returns a structured clear confirmation action', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'Clear',
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [parsed({
+        item_id: 'salmon-id',
+        item_name: 'Salmon',
+        quantity: 1,
+        unit: 'lb',
+        status: 'valid',
+      })],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.pending_clarifications?.[0]).toMatchObject({ type: 'clear_order' });
+    expect(result.pending_clarifications?.[0].actions.map((action) => action.id)).toEqual(['clear_order', 'cancel']);
+  });
+
+  test('frontend counts rows and fixes from parser output', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'Crawfish 2 packs\nShrimp',
+      catalog: robustCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    const normalized = normalizeQuickOrderParseResponse({
+      status: result.status,
+      parsed_items: result.parsed_items,
+      diagnostics: result.diagnostics,
+    });
+    expect(normalized.parsedItems).toHaveLength(2);
+    expect(countUnresolvedItems(normalized.parsedItems)).toBe(1);
+    expect(getParsedItemIssue(normalized.parsedItems[0])).toBeNull();
+    expect(getParsedItemIssue(normalized.parsedItems[1])?.label).toBe('Add quantity');
+  });
+});
+
 // ===========================================================================
 // Edge cases: missing quantities, units, unknown items
 // ===========================================================================
@@ -1709,30 +2326,33 @@ describe('edge case parsing', () => {
     expect(result.status).not.toBe('error');
   });
 
-  test('unknown item becomes review item, not error', async () => {
+  test('low-confidence unknown item is rejected without adding a review row', async () => {
     const result = await parseQuickOrder({
-      rawText: 'Randomfish 2cs',
+      rawText: 'asdfasdf 2cs',
       catalog: extendedCatalog,
       examples: [],
       corrections: [],
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(result.parsed_items.length).toBe(1);
+    expect(result.parsed_items.length).toBe(0);
     expect(result.status).not.toBe('error');
-    expect(result.parsed_items[0].needs_clarification).toBe(true);
+    expect(result.diagnostics?.item_diagnostics?.[0]).toMatchObject({
+      status: 'no_op',
+      was_added_to_order_list: false,
+    });
   });
 
-  test('mixed valid and unknown items: valid items are not lost', async () => {
+  test('mixed valid and low-confidence unknown items: valid items are not lost', async () => {
     const result = await parseQuickOrder({
-      rawText: 'Salmon 2cs\nRandomfish 1pk\nEdamame 1cs',
+      rawText: 'Salmon 2cs\nasdfasdf 1pk\nEdamame 1cs',
       catalog: extendedCatalog,
       examples: [],
       corrections: [],
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(result.parsed_items.length).toBe(3);
+    expect(result.parsed_items.length).toBe(2);
     expect(result.status).not.toBe('error');
     const salmon = result.parsed_items.find((item) => item.item_id === 'salmon-id');
     expect(salmon).toBeDefined();
