@@ -23,6 +23,13 @@ export type QuantityUnitOption = {
   value: string;
   /** Human-friendly label shown in the segment (e.g. "case", "lb"). */
   label: string;
+  /**
+   * Whether this unit is actually orderable for the current item. The sheet
+   * always renders the four standard units (`pack` / `case` / `lb` / `each`)
+   * so the layout stays consistent — units the catalog doesn't support are
+   * rendered as a disabled, grayed-out segment.
+   */
+  available: boolean;
 };
 
 export type QuantityUnitResolution = {
@@ -46,6 +53,19 @@ export type QuantityFlowState = {
 
 /** Last-resort unit choices when the catalog/parser give us nothing to work with. */
 const FALLBACK_UNITS = ['lb', 'case', 'pack', 'each'] as const;
+
+/**
+ * The four units the sheet always renders, in display order. Anything an item
+ * doesn't support is still shown — disabled and grayed — so every item gets
+ * the same segmented layout. Non-standard units (e.g. "bottle") get appended
+ * after these in {@link resolveQuantityUnitOptions}.
+ */
+const STANDARD_UNITS: ReadonlyArray<{ canonical: string; value: string; label: string }> = [
+  { canonical: 'pack', value: 'pack', label: 'pack' },
+  { canonical: 'cs', value: 'case', label: 'case' },
+  { canonical: 'lb', value: 'lb', label: 'lb' },
+  { canonical: 'pc', value: 'each', label: 'each' },
+];
 
 /**
  * Keys of every parsed row whose only outstanding problem is a missing quantity
@@ -90,11 +110,14 @@ export function formatAddQuantityCta(quantity: number, unitLabel: string): strin
 }
 
 /**
- * Builds the unit choices for an item, preferring the catalog's allowed/order/
- * default/pack/base units, then any units the parser flagged as valid, and only falling back to a small
- * common set when nothing else is known. Also resolves a sensible default
- * selection: the row's current unit, else the catalog pack unit, else the
- * catalog base unit, else the first option.
+ * Builds the unit choices for an item. The sheet's segmented control always
+ * shows the four standard units (`pack` / `case` / `lb` / `each`), with each
+ * one marked `available: true` when the catalog/parser actually supports it.
+ * Non-standard units (e.g. `bottle`) get appended as additional available
+ * segments so we never hide a real option. When nothing is known about the
+ * item at all (no catalog row, no parser units), every standard unit is
+ * treated as available. Pre-selects the row's current unit when valid,
+ * falling back to the catalog pack/base unit, then the first available.
  */
 export function resolveQuantityUnitOptions(input: {
   item: ParsedQuickOrderItem;
@@ -103,37 +126,64 @@ export function resolveQuantityUnitOptions(input: {
 }): QuantityUnitResolution {
   const { item, inventoryItem } = input;
 
-  const ordered: string[] = [];
-  const push = (value: string | null | undefined) => {
-    if (value && value.trim()) ordered.push(value.trim());
+  // Collect everything the catalog / parser says this item supports, keyed by
+  // canonical form so duplicates collapse. The first raw value we see wins so
+  // the user-visible label matches whatever the catalog uses.
+  const derived = new Map<string, string>();
+  const note = (value: string | null | undefined) => {
+    if (!value?.trim()) return;
+    const key = normalizeQuickOrderUnit(value);
+    if (!key || derived.has(key)) return;
+    derived.set(key, value.trim());
   };
-  push(inventoryItem?.pack_unit);
-  push(inventoryItem?.base_unit);
-  deriveQuickOrderAllowedUnits(item, inventoryItem).forEach(push);
-  push(item.unit);
-  if (ordered.length === 0) FALLBACK_UNITS.forEach(push);
+  note(inventoryItem?.pack_unit);
+  note(inventoryItem?.base_unit);
+  deriveQuickOrderAllowedUnits(item, inventoryItem).forEach(note);
+  note(item.unit);
+
+  const nothingKnown = derived.size === 0;
+  if (nothingKnown) FALLBACK_UNITS.forEach(note);
 
   const options: QuantityUnitOption[] = [];
-  const seen = new Set<string>();
-  for (const raw of ordered) {
-    const key = normalizeQuickOrderUnit(raw);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    options.push({ value: raw, label: prettifyUnitLabel(raw) });
+  const consumed = new Set<string>();
+  for (const std of STANDARD_UNITS) {
+    const raw = derived.get(std.canonical);
+    const available = nothingKnown || derived.has(std.canonical);
+    if (raw) consumed.add(std.canonical);
+    options.push({
+      value: raw ?? std.value,
+      label: raw ? prettifyUnitLabel(raw) : std.label,
+      available,
+    });
+  }
+  // Any item-specific unit that isn't one of the four standards (e.g. `bottle`)
+  // gets appended as an available segment.
+  for (const [canonical, raw] of derived) {
+    if (consumed.has(canonical)) continue;
+    options.push({ value: raw, label: prettifyUnitLabel(raw), available: true });
   }
 
-  const findOption = (target: string | null | undefined): string | null => {
+  const findAvailable = (target: string | null | undefined): string | null => {
     const key = normalizeQuickOrderUnit(target ?? null);
     if (!key) return null;
-    return options.find((option) => normalizeQuickOrderUnit(option.value) === key)?.value ?? null;
+    const match = options.find(
+      (option) => option.available && normalizeQuickOrderUnit(option.value) === key,
+    );
+    return match?.value ?? null;
   };
 
-  const defaultValue =
-    findOption(item.unit) ??
-    findOption(inventoryItem?.pack_unit) ??
-    findOption(inventoryItem?.base_unit) ??
-    options[0]?.value ??
+  // No-catalog fallback uses the original FALLBACK_UNITS ordering (`lb` first)
+  // rather than display order (`pack` first) so existing items don't shift.
+  const firstAvailableByPreference =
+    FALLBACK_UNITS.map((value) => findAvailable(value)).find(Boolean) ??
+    options.find((option) => option.available)?.value ??
     null;
+
+  const defaultValue =
+    findAvailable(item.unit) ??
+    findAvailable(inventoryItem?.pack_unit) ??
+    findAvailable(inventoryItem?.base_unit) ??
+    firstAvailableByPreference;
 
   return { options, defaultValue };
 }
@@ -148,13 +198,22 @@ export function findUnitOption(
   return options.find((option) => normalizeQuickOrderUnit(option.value) === key) ?? null;
 }
 
+/** Same as {@link findUnitOption} but skips segments marked unavailable. */
+function findAvailableUnitOption(
+  options: readonly QuantityUnitOption[],
+  value: string | null | undefined,
+): QuantityUnitOption | null {
+  const match = findUnitOption(options, value);
+  return match?.available ? match : null;
+}
+
 export function getUsablePreviousQuantitySuggestion(
   suggestion: PreviousQuantitySuggestion | null | undefined,
   options: readonly QuantityUnitOption[],
 ): PreviousQuantitySuggestion | null {
   if (!suggestion) return null;
   if (!Number.isFinite(suggestion.quantity) || suggestion.quantity <= 0) return null;
-  return findUnitOption(options, suggestion.unit) ? suggestion : null;
+  return findAvailableUnitOption(options, suggestion.unit) ? suggestion : null;
 }
 
 export function getQuantitySheetInitialState(input: {
@@ -166,13 +225,13 @@ export function getQuantitySheetInitialState(input: {
   const typedQuantity = input.item.quantity != null && Number.isFinite(input.item.quantity) && input.item.quantity > 0
     ? input.item.quantity
     : null;
-  const typedUnit = findUnitOption(input.options, input.item.unit)?.value ?? input.defaultValue;
+  const typedUnit = findAvailableUnitOption(input.options, input.item.unit)?.value ?? input.defaultValue;
   const suggestion = getUsablePreviousQuantitySuggestion(input.suggestion, input.options);
 
   if (typedQuantity == null && suggestion) {
     return {
       quantity: suggestion.quantity,
-      unit: findUnitOption(input.options, suggestion.unit)?.value ?? typedUnit,
+      unit: findAvailableUnitOption(input.options, suggestion.unit)?.value ?? typedUnit,
       suggestion,
     };
   }

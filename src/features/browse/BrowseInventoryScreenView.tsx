@@ -136,8 +136,8 @@ export function BrowseInventoryScreenView({
   const { activeLocationId, addInventoryItem } = useOrderingCartActions(mode.scope);
   const tabBarSafeBottomPadding =
     60 + Math.max(insets.bottom, glassSpacing.tabBarBottom) + ds.spacing(24);
-  const headerBackButtonSize = Math.max(44, ds.icon(40));
-  const headerCartButtonSize = Math.max(52, ds.icon(48));
+  const headerBackButtonSize = Math.max(48, ds.icon(44));
+  const headerCartButtonSize = headerBackButtonSize;
   const scrollToItemViewOffset = ds.spacing(4);
 
   useEffect(() => {
@@ -675,6 +675,8 @@ export function BrowseInventoryScreenView({
               <HeaderCartButton
                 count={totalCartCount}
                 onPress={() => router.push(mode.cartRoute as any)}
+                size={headerCartButtonSize}
+                iconSize={ds.icon(22)}
               />
             </View>
             <View

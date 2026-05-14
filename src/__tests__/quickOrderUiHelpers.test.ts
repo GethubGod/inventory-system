@@ -3,12 +3,11 @@ import { getQuickOrderEmptyStateLayout } from '../features/ordering/quickOrderEm
 import { QUICK_ORDER_SHORTCUTS } from '../features/ordering/quickOrderShortcuts';
 
 describe('Quick Order shortcut helpers', () => {
-  it('defines the four Pressable shortcut intents shown outside the Order List card', () => {
+  it('defines the three Pressable shortcut intents shown outside the Order List card', () => {
     expect(QUICK_ORDER_SHORTCUTS.map((shortcut) => shortcut.label)).toEqual([
       'Reorder recent',
       'Last week',
       'Usual order',
-      'Get suggestions',
     ]);
     expect(QUICK_ORDER_SHORTCUTS.every((shortcut) => shortcut.intent.length > 0 && shortcut.icon.length > 0)).toBe(true);
   });

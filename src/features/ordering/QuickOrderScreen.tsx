@@ -11,8 +11,6 @@ import {
   FlatList,
   InteractionManager,
   Keyboard,
-  KeyboardEvent,
-  LayoutAnimation,
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -20,14 +18,13 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
-  useWindowDimensions,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import Animated, {
   Easing,
+  LinearTransition,
   ZoomIn,
   useAnimatedStyle,
   useSharedValue,
@@ -70,6 +67,7 @@ import {
   type QuickOrderQuantitySheetItem,
 } from "./QuickOrderQuantitySheet";
 import { QuickOrderShortcutChips } from "./QuickOrderShortcutChips";
+import { QuickOrderComposerBar } from "./QuickOrderComposerBar";
 import {
   advanceQuantityFlow,
   getQuantityFixQueue,
@@ -86,12 +84,8 @@ import {
   toFriendlyQuickOrderError,
 } from "./quickOrderErrors";
 import {
-  buildKeyboardHideSnapDelays,
-  buildKeyboardShowSnapDelays,
   buildSendSnapDelays,
-  calculateComposerInputMaxHeight,
   calculateQuickOrderBottomPadding,
-  prepareQuickOrderSendDraft,
   shouldAutoStickToBottom,
 } from "./quickOrderChatLayout";
 import {
@@ -201,14 +195,6 @@ const CARD_TIMING = {
   easing: Easing.bezier(0.22, 1, 0.36, 1),
 } as const;
 const CHAT_NEAR_BOTTOM_THRESHOLD = 160;
-const COMPOSER_KEYBOARD_GAP = 8;
-// Upper bound on the composer's visible height in terms of text lines before it
-// switches to internal scrolling. We pick a generously high number so multi-line
-// pasted orders expand to show the full message; the screen-aware cap from
-// `calculateComposerInputMaxHeight` still prevents it from ever covering the
-// chat or extending past the safe area.
-const COMPOSER_MAX_VISIBLE_LINES = 14;
-const COMPOSER_HEIGHT_ANIMATION_MS = 140;
 
 type ChatSnapOptions = {
   active?: boolean;
@@ -313,16 +299,6 @@ function mergePendingClarificationsAfterParse(
     byId.set(clarification.id, clarification);
   }
   return [...byId.values()];
-}
-
-function isManualCombineInput(value: string): boolean {
-  return (
-    value
-      .trim()
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s]+/gu, "")
-      .replace(/\s+/g, " ") === "combine"
-  );
 }
 
 function mapPersistedMessages(
@@ -596,7 +572,7 @@ const ClarificationCard = React.memo(function ClarificationCard({
 
 type SuggestionCardProps = {
   suggestion: QuickOrderSuggestion;
-  onAdd: (suggestion: QuickOrderSuggestion) => void;
+  onAdd: (suggestion: QuickOrderSuggestion) => void | Promise<void>;
   onLayout?: (event: LayoutChangeEvent) => void;
 };
 
@@ -622,8 +598,10 @@ const SuggestionCard = React.memo(function SuggestionCard({
   onLayout,
 }: SuggestionCardProps) {
   const ds = useScaledStyles();
+  const [isAdded, setIsAdded] = useState(false);
   const items = getSuggestionItems(suggestion);
   const title = suggestion.title ?? suggestion.item_name ?? "Suggestion";
+  const addedTitle = items.length === 1 ? items[0].item_name : title;
   const message =
     suggestion.message ??
     suggestion.reason ??
@@ -632,101 +610,140 @@ const SuggestionCard = React.memo(function SuggestionCard({
       .slice(0, 3)
       .join(", ");
 
+  const handleAdd = useCallback(() => {
+    if (isAdded) return;
+    void triggerSelectionHaptic();
+    setIsAdded(true);
+    void onAdd(suggestion);
+  }, [isAdded, onAdd, suggestion]);
+
   return (
-    <View
+    <Animated.View
+      layout={LinearTransition.duration(220).easing(Easing.out(Easing.cubic))}
       onLayout={onLayout}
       style={[
         styles.suggestionCard,
+        isAdded && styles.suggestionCardAdded,
         {
           borderRadius: ds.radius(16),
-          padding: ds.spacing(12),
+          paddingVertical: isAdded ? ds.spacing(9) : ds.spacing(12),
+          paddingHorizontal: ds.spacing(12),
           marginTop: ds.spacing(10),
         },
       ]}
     >
-      <View style={styles.suggestionHeader}>
-        <Ionicons
-          name="sparkles-outline"
-          size={ds.icon(18)}
-          color={colors.primary}
-        />
-        <View style={styles.suggestionTextCluster}>
+      {isAdded ? (
+        <View style={styles.suggestionAddedRow}>
+          <View
+            style={[
+              styles.suggestionAddedCheck,
+              {
+                width: ds.spacing(24),
+                height: ds.spacing(24),
+                borderRadius: ds.radius(12),
+              },
+            ]}
+          >
+            <Ionicons
+              name="checkbox"
+              size={ds.icon(22)}
+              color={colors.statusGreen}
+            />
+          </View>
           <Text
-            style={[styles.suggestionTitle, { fontSize: ds.fontSize(15) }]}
+            style={[styles.suggestionAddedText, { fontSize: ds.fontSize(14) }]}
             numberOfLines={1}
           >
-            {title}
-          </Text>
-          <Text
-            style={[styles.suggestionMessage, { fontSize: ds.fontSize(13) }]}
-            numberOfLines={2}
-          >
-            {message}
+            {addedTitle}
           </Text>
         </View>
-      </View>
-      <View style={[styles.suggestionItems, { marginTop: ds.spacing(8) }]}>
-        <Text
-          style={[styles.suggestionItemText, { fontSize: ds.fontSize(12) }]}
-          numberOfLines={2}
-        >
-          {items
-            .slice(0, 4)
-            .map(
-              (item) =>
-                `${item.item_name} ${item.quantity}${item.unit ? ` ${item.unit}` : ""}`,
-            )
-            .join(" · ")}
-          {items.length > 4 ? ` · +${items.length - 4} more` : ""}
-        </Text>
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Add ${title}`}
-        onPress={() => onAdd(suggestion)}
-        style={({ pressed }) => [
-          styles.suggestionButton,
-          {
-            borderRadius: ds.radius(12),
-            paddingHorizontal: ds.spacing(12),
-            paddingVertical: ds.spacing(8),
-            marginTop: ds.spacing(10),
-            opacity: pressed ? 0.72 : 1,
-          },
-        ]}
-      >
-        <Text
-          style={[styles.suggestionButtonText, { fontSize: ds.fontSize(13) }]}
-        >
-          Add to order
-        </Text>
-      </Pressable>
-    </View>
+      ) : (
+        <>
+          <View style={styles.suggestionHeader}>
+            <Ionicons
+              name="sparkles-outline"
+              size={ds.icon(18)}
+              color={colors.primary}
+            />
+            <View style={styles.suggestionTextCluster}>
+              <Text
+                style={[styles.suggestionTitle, { fontSize: ds.fontSize(15) }]}
+              >
+                {title}
+              </Text>
+              <Text
+                style={[
+                  styles.suggestionMessage,
+                  { fontSize: ds.fontSize(13) },
+                ]}
+              >
+                {message}
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.suggestionItems, { marginTop: ds.spacing(8) }]}>
+            <Text
+              style={[
+                styles.suggestionItemText,
+                { fontSize: ds.fontSize(12) },
+              ]}
+            >
+              {items
+                .slice(0, 4)
+                .map(
+                  (item) =>
+                    `${item.item_name} ${item.quantity}${item.unit ? ` ${item.unit}` : ""}`,
+                )
+                .join(" · ")}
+              {items.length > 4 ? ` · +${items.length - 4} more` : ""}
+            </Text>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Add ${title}`}
+            accessibilityState={{ selected: isAdded }}
+            onPress={handleAdd}
+            style={({ pressed }) => [
+              styles.suggestionButton,
+              {
+                borderRadius: ds.radius(12),
+                paddingHorizontal: ds.spacing(12),
+                paddingVertical: ds.spacing(8),
+                marginTop: ds.spacing(10),
+                opacity: pressed ? 0.72 : 1,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.suggestionButtonText,
+                { fontSize: ds.fontSize(13) },
+              ]}
+            >
+              Add to order
+            </Text>
+          </Pressable>
+        </>
+      )}
+    </Animated.View>
   );
 });
 
 export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const ds = useScaledStyles();
   const insets = useSafeAreaInsets();
-  const { height: screenHeight } = useWindowDimensions();
   const chatListRef = useRef<FlatList<QuickOrderMessage> | null>(null);
   const user = useAuthStore((state) => state.user);
   const allLocations = useAuthStore((state) => state.locations);
   const setAuthLocation = useAuthStore((state) => state.setLocation);
   const { location } = useResolvedActiveLocation();
   const tabBarHeight = 60 + getTabBarBottomInset(insets.bottom);
-  const closedComposerOffset = tabBarHeight + ds.spacing(14);
+  const shortcutChipsBottomOffset = tabBarHeight + ds.spacing(14);
 
   const addToCart = useOrderStore((state) => state.addToCart);
 
-  const [inputValue, setInputValue] = useState("");
-  const [composerHeight, setComposerHeight] = useState(0);
-  const [composerInputContentHeight, setComposerInputContentHeight] =
-    useState(0);
   const [shortcutChipsHeight, setShortcutChipsHeight] = useState(0);
-  /** Height of the software keyboard while it is visible (0 when hidden). */
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [composerHeight, setComposerHeight] = useState(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<QuickOrderMessage[]>([]);
   const [parsedItems, setParsedItems] = useState<ParsedQuickOrderItem[]>([]);
@@ -763,7 +780,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const isChatNearBottomRef = useRef(true);
   const lastChatSnapReasonRef = useRef("initial");
 
-  const composerBottomOffset = useSharedValue(closedComposerOffset);
   const userId = user?.id ?? null;
   const locationId = location?.id ?? null;
 
@@ -870,13 +886,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     [scheduleChatScrollToEnd],
   );
 
-  const handleInputFocus = useCallback(() => {
-    scheduleChatScrollToEnd("input-focus", true, [0, 80, 180, 320], {
-      active: true,
-      afterInteractions: true,
-    });
-  }, [scheduleChatScrollToEnd]);
-
   const handleChatLayout = useCallback(
     (event: LayoutChangeEvent) => {
       chatScrollMetricsRef.current = {
@@ -895,89 +904,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       afterInteractions: true,
     });
   }, [scheduleChatScrollToEnd]);
-
-  // Keyboard-aware composer + chat. The composer is absolutely positioned and
-  // its `bottom` is animated to sit just above the real keyboard height; the
-  // chat list's bottom padding (see `chatContentStyle`) is widened by the same
-  // amount so the newest message is never hidden behind the keyboard/composer.
-  useEffect(() => {
-    const isIos = Platform.OS === "ios";
-    const showEvent = isIos ? "keyboardWillShow" : "keyboardDidShow";
-    const hideEvent = isIos ? "keyboardWillHide" : "keyboardDidHide";
-
-    const handleShow = (event: KeyboardEvent) => {
-      const height = event.endCoordinates?.height ?? 0;
-      const duration = event.duration ?? 250;
-      setKeyboardHeight(height);
-      setKeyboardVisible(true);
-      composerBottomOffset.value = withTiming(
-        height + ds.spacing(COMPOSER_KEYBOARD_GAP),
-        {
-          duration,
-          easing: Easing.out(Easing.cubic),
-        },
-      );
-      scheduleChatScrollToEnd(
-        "keyboard-show",
-        true,
-        buildKeyboardShowSnapDelays(duration),
-        {
-          active: true,
-          afterInteractions: true,
-        },
-      );
-    };
-
-    const handleHide = (event: KeyboardEvent) => {
-      const duration = event.duration ?? 220;
-      setKeyboardHeight(0);
-      setKeyboardVisible(false);
-      composerBottomOffset.value = withTiming(closedComposerOffset, {
-        duration,
-        easing: Easing.out(Easing.cubic),
-      });
-      scheduleChatScrollToEnd(
-        "keyboard-hide",
-        true,
-        buildKeyboardHideSnapDelays(duration),
-        {
-          active: true,
-          afterInteractions: true,
-        },
-      );
-    };
-
-    const subscriptions = [
-      Keyboard.addListener(showEvent, handleShow),
-      Keyboard.addListener(hideEvent, handleHide),
-    ];
-    if (isIos) {
-      // One more scroll pass once the keyboard frame has fully settled.
-      subscriptions.push(
-        Keyboard.addListener("keyboardDidShow", () => {
-          scheduleChatScrollToEnd("keyboard-did-show", true, [0, 120, 260], {
-            active: true,
-            afterInteractions: true,
-          });
-        }),
-        Keyboard.addListener("keyboardDidHide", () => {
-          scheduleChatScrollToEnd("keyboard-did-hide", true, [0, 120, 260], {
-            active: true,
-            afterInteractions: true,
-          });
-        }),
-      );
-    }
-
-    return () => subscriptions.forEach((subscription) => subscription.remove());
-  }, [closedComposerOffset, composerBottomOffset, ds, scheduleChatScrollToEnd]);
-
-  useEffect(() => {
-    if (!keyboardVisible) {
-      composerBottomOffset.value = closedComposerOffset;
-      setKeyboardHeight(0);
-    }
-  }, [closedComposerOffset, composerBottomOffset, keyboardVisible]);
 
   useEffect(() => {
     if (!userId || !locationId) {
@@ -1055,8 +981,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     isSending,
     messages.length,
     parsedItems,
-    composerHeight,
-    composerInputContentHeight,
     shortcutChipsHeight,
     floatingCardHeight,
     scheduleChatScrollToEnd,
@@ -1109,87 +1033,27 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   );
   const shortcutChipsVisible =
     emptyStateLayout.showShortcutChipsOutsideOrderCard;
-  const composerInputFontSize = ds.fontSize(16);
-  const composerInputLineHeight = Math.ceil(composerInputFontSize * 1.32);
-  const composerInputVerticalPadding = ds.spacing(6);
-  // Sized so the outer pill (TextInput height + vertical padding * 2) lands at
-  // ~44pt for a single line — the chat-app standard. Lets descenders sit clean
-  // and keeps the send button aligned to the input baseline.
-  const composerInputMinHeight = Math.max(
-    ds.spacing(32),
-    composerInputLineHeight,
-  );
 
   const chatContentStyle = useMemo(
     () => ({
       paddingBottom: calculateQuickOrderBottomPadding({
-        composerHeight,
-        keyboardVisible,
-        keyboardHeight,
-        closedComposerOffset,
+        bottomOffset: shortcutChipsBottomOffset,
         shortcutChipsHeight,
         shortcutChipsVisible,
         safeAreaBottom: insets.bottom,
-        keyboardGap: ds.spacing(COMPOSER_KEYBOARD_GAP),
         breathingRoom: ds.spacing(28),
+        composerHeight,
       }),
     }),
     [
-      closedComposerOffset,
-      composerHeight,
+      shortcutChipsBottomOffset,
       ds,
       insets.bottom,
-      keyboardHeight,
-      keyboardVisible,
       shortcutChipsHeight,
       shortcutChipsVisible,
+      composerHeight,
     ],
   );
-
-  const composerInputMaxHeight = useMemo(
-    () =>
-      calculateComposerInputMaxHeight({
-        screenHeight,
-        keyboardVisible,
-        keyboardHeight,
-        closedComposerOffset,
-        topReservedHeight:
-          floatingCardHeight + ds.spacing(CARD_TO_CHAT_GAP + 64),
-        safeAreaTop: insets.top,
-        safeAreaBottom: insets.bottom,
-        minHeight: composerInputMinHeight,
-        breathingRoom: ds.spacing(36),
-      }),
-    [
-      closedComposerOffset,
-      composerInputMinHeight,
-      ds,
-      floatingCardHeight,
-      insets.bottom,
-      insets.top,
-      keyboardHeight,
-      keyboardVisible,
-      screenHeight,
-    ],
-  );
-
-  const composerInputVisibleMaxHeight = Math.min(
-    composerInputMaxHeight,
-    composerInputLineHeight * COMPOSER_MAX_VISIBLE_LINES,
-  );
-  const composerInputHeight = Math.min(
-    composerInputVisibleMaxHeight,
-    Math.max(
-      composerInputMinHeight,
-      Math.ceil(composerInputContentHeight || composerInputMinHeight),
-    ),
-  );
-  const composerInputScrollEnabled =
-    composerInputContentHeight > composerInputVisibleMaxHeight;
-
-  const composerAnimatedStyle = useAnimatedStyle(() => ({
-    bottom: composerBottomOffset.value,
-  }));
 
   // The chat FlatList reserves a top spacer equal to the floating card's measured
   // height (plus a small gap) so the first message is never trapped behind the card.
@@ -1280,12 +1144,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   );
 
   const handleClear = useCallback(async () => {
-    Keyboard.dismiss();
     if (nudgeTimerRef.current) {
       clearTimeout(nudgeTimerRef.current);
       nudgeTimerRef.current = null;
     }
-    setInputValue("");
     setMessages([]);
     setParsedItems([]);
     setPendingClarifications([]);
@@ -1553,7 +1415,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     scheduleChatScrollToEnd(
       "quantity-sheet-close",
       true,
-      buildKeyboardHideSnapDelays(220),
+      [0, 80, 300, 440],
       {
         active: true,
         afterInteractions: true,
@@ -1678,13 +1540,11 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   );
 
   const handleSubmitMore = useCallback(
-    async (rawOverride?: string) => {
-      const draft = prepareQuickOrderSendDraft(rawOverride ?? inputValue);
-      if (!draft.canSend || isSending) {
+    async (rawText: string) => {
+      const trimmed = rawText.trim();
+      if (!trimmed || isSending) {
         return;
       }
-      const rawText = draft.text;
-      const trimmedText = draft.trimmedText;
 
       if (!userId || !locationId) {
         const errorMessage: QuickOrderMessage = {
@@ -1706,85 +1566,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         return;
       }
 
-      if (isManualCombineInput(trimmedText)) {
-        Keyboard.dismiss();
-        setInputValue("");
-        setComposerInputContentHeight(0);
-        setIsSending(true);
-        lastUserTextRef.current = rawText;
-
-        const userMessage: QuickOrderMessage = {
-          id: createMessageId(),
-          role: "user",
-          text: rawText,
-          createdAt: new Date().toISOString(),
-        };
-        const combineClarification = pendingClarifications.find(
-          (clarification) =>
-            clarification.type === "quantity_conflict" &&
-            clarification.actions.some((action) => action.id === "add"),
-        );
-        const addAction = combineClarification?.actions.find(
-          (action) => action.id === "add",
-        );
-        const nextParsedItems =
-          combineClarification && addAction
-            ? applyQuickOrderClarificationAction(
-                parsedItems,
-                combineClarification,
-                addAction,
-              )
-            : parsedItems;
-        const nextPendingClarifications =
-          combineClarification && addAction
-            ? pendingClarifications.filter(
-                (clarification) => clarification.id !== combineClarification.id,
-              )
-            : pendingClarifications;
-        const assistantText =
-          combineClarification && addAction
-            ? `Combined ${combineClarification.item_name}.`
-            : "There is nothing to combine right now.";
-        const assistantMessage: QuickOrderMessage = {
-          id: createMessageId(),
-          role: "assistant",
-          text: assistantText,
-          createdAt: new Date().toISOString(),
-        };
-        const nextMessages = [...messages, userMessage, assistantMessage].map(
-          (message) => ({
-            ...message,
-            pendingClarifications:
-              combineClarification && addAction
-                ? message.pendingClarifications?.filter(
-                    (entry) => entry.id !== combineClarification.id,
-                  )
-                : message.pendingClarifications,
-          }),
-        );
-
-        setParsedItems(nextParsedItems);
-        setPendingClarifications(nextPendingClarifications);
-        setMessages(nextMessages);
-        scheduleChatScrollToEnd("manual-combine", true, buildSendSnapDelays(), {
-          active: true,
-          afterInteractions: true,
-        });
-
-        try {
-          const activeSessionId = await ensureSession();
-          await persistSession(activeSessionId, nextMessages, nextParsedItems);
-        } catch (error) {
-          console.warn("[QuickOrder] Failed to persist combine action:", error);
-        } finally {
-          setIsSending(false);
-        }
-        return;
-      }
-
-      Keyboard.dismiss();
-      setInputValue("");
-      setComposerInputContentHeight(0);
       setIsSending(true);
       lastUserTextRef.current = rawText;
 
@@ -2114,7 +1895,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     [
       appendErrorMessage,
       ensureSession,
-      inputValue,
       isSending,
       locationId,
       messages,
@@ -2132,10 +1912,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const handleRetry = useCallback(() => {
     const lastText = lastUserTextRef.current;
     if (!lastText || isSending) return;
-    setInputValue(lastText);
-    requestAnimationFrame(() => {
-      void handleSubmitMore();
-    });
+    void handleSubmitMore(lastText);
   }, [handleSubmitMore, isSending]);
 
   const handleStarterSuggestion = useCallback(
@@ -2363,7 +2140,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         }
       }
 
-      setInputValue("");
       setMessages([]);
       setParsedItems([]);
       setPendingClarifications([]);
@@ -2492,27 +2268,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   const keyExtractor = useCallback((item: QuickOrderMessage) => item.id, []);
 
-  const handleInputChange = useCallback(
-    (value: string) => {
-      setInputValue(value);
-      scheduleChatScrollToEnd("input-change", true, [0, 80], {
-        active: true,
-      });
-    },
-    [scheduleChatScrollToEnd],
-  );
-
-  const handleComposerCardLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      setComposerHeight(event.nativeEvent.layout.height);
-      scheduleChatScrollToEnd("composer-layout", false, [0, 80], {
-        active: true,
-        afterInteractions: true,
-      });
-    },
-    [scheduleChatScrollToEnd],
-  );
-
   const handleShortcutChipsLayout = useCallback(
     (event: LayoutChangeEvent) => {
       setShortcutChipsHeight(event.nativeEvent.layout.height + ds.spacing(10));
@@ -2524,25 +2279,15 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     [ds, scheduleChatScrollToEnd],
   );
 
-  const handleComposerInputContentSizeChange = useCallback(
-    (event: { nativeEvent: { contentSize: { height: number } } }) => {
-      const nextHeight = Math.ceil(event.nativeEvent.contentSize.height);
-      setComposerInputContentHeight((currentHeight) => {
-        if (Math.abs(currentHeight - nextHeight) < 1) return currentHeight;
-        if (!ds.reduceMotion) {
-          LayoutAnimation.configureNext({
-            duration: COMPOSER_HEIGHT_ANIMATION_MS,
-            update: { type: LayoutAnimation.Types.easeInEaseOut },
-          });
-        }
-        return nextHeight;
-      });
-      scheduleChatScrollToEnd("composer-content-size", true, [0, 80, 180], {
-        active: true,
-        afterInteractions: true,
-      });
+  const handleComposerHeightChange = useCallback((next: number) => {
+    setComposerHeight((prev) => (Math.abs(prev - next) < 1 ? prev : next));
+  }, []);
+
+  const handleComposerSubmit = useCallback(
+    (text: string) => {
+      void handleSubmitMore(text);
     },
-    [ds.reduceMotion, scheduleChatScrollToEnd],
+    [handleSubmitMore],
   );
 
   const handleOrderCardHeightChange = useCallback(
@@ -2656,112 +2401,32 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           />
         </View>
 
-        <Animated.View
-          onLayout={() =>
-            scheduleChatScrollToEnd(
-              "composer-container-layout",
-              false,
-              [0, 80],
-              {
-                active: true,
-                afterInteractions: true,
-              },
-            )
-          }
-          style={[
-            styles.composer,
-            {
-              left: ds.spacing(16),
-              right: ds.spacing(16),
-            },
-            composerAnimatedStyle,
-          ]}
-        >
-          {shortcutChipsVisible ? (
-            <View
-              onLayout={handleShortcutChipsLayout}
-              style={{ marginBottom: ds.spacing(10) }}
-            >
-              <QuickOrderShortcutChips
-                onSelect={handleStarterSuggestion}
-                disabled={isSending}
-              />
-            </View>
-          ) : null}
+        {shortcutChipsVisible ? (
           <View
-            onLayout={handleComposerCardLayout}
-            style={[styles.composerRow, { gap: ds.spacing(10) }]}
+            onLayout={handleShortcutChipsLayout}
+            style={[
+              styles.shortcutChips,
+              {
+                left: ds.spacing(16),
+                right: ds.spacing(16),
+                bottom: shortcutChipsBottomOffset + composerHeight,
+              },
+            ]}
           >
-            <View
-              style={[
-                styles.inputPill,
-                {
-                  minHeight:
-                    composerInputMinHeight + composerInputVerticalPadding * 2,
-                  maxHeight:
-                    composerInputVisibleMaxHeight +
-                    composerInputVerticalPadding * 2,
-                  borderRadius: ds.radius(22),
-                  paddingLeft: ds.spacing(18),
-                  paddingRight: ds.spacing(14),
-                  paddingVertical: composerInputVerticalPadding,
-                },
-              ]}
-            >
-              <TextInput
-                value={inputValue}
-                onChangeText={handleInputChange}
-                placeholder={
-                  messages.length === 0 ? "Type order..." : "Add more..."
-                }
-                placeholderTextColor={colors.textMuted}
-                multiline
-                scrollEnabled={composerInputScrollEnabled}
-                onContentSizeChange={handleComposerInputContentSizeChange}
-                onFocus={handleInputFocus}
-                submitBehavior="newline"
-                editable={!isSending}
-                textAlignVertical={inputValue ? "top" : "center"}
-                style={[
-                  styles.input,
-                  {
-                    fontSize: composerInputFontSize,
-                    height: composerInputHeight,
-                    lineHeight: composerInputLineHeight,
-                    maxHeight: composerInputVisibleMaxHeight,
-                    minHeight: composerInputMinHeight,
-                  },
-                ]}
-              />
-            </View>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Send message"
-              onPress={() => void handleSubmitMore()}
-              disabled={isSending || !inputValue.trim()}
-              hitSlop={8}
-              style={[
-                styles.sendButton,
-                {
-                  width: ds.spacing(44),
-                  height: ds.spacing(44),
-                  borderRadius: ds.radius(22),
-                  backgroundColor:
-                    isSending || !inputValue.trim()
-                      ? colors.textMuted
-                      : colors.primary,
-                  opacity: isSending ? 0.5 : 1,
-                },
-              ]}
-            >
-              <Ionicons
-                name="arrow-up"
-                size={20}
-                color={colors.textOnPrimary}
-              />
-            </Pressable>
+            <QuickOrderShortcutChips
+              onSelect={handleStarterSuggestion}
+              disabled={isSending}
+            />
           </View>
-        </Animated.View>
+        ) : null}
+
+        <QuickOrderComposerBar
+          onSubmit={handleComposerSubmit}
+          isSending={isSending}
+          bottomInset={insets.bottom}
+          tabBarHeight={tabBarHeight}
+          onHeightChange={handleComposerHeightChange}
+        />
 
         <QuickOrderItemEditModal
           visible={Boolean(editingState)}
@@ -2907,10 +2572,15 @@ const styles = StyleSheet.create({
   },
   suggestionCard: {
     alignSelf: "flex-start",
-    maxWidth: "94%",
+    width: "94%",
     backgroundColor: colors.white,
     borderWidth: glassHairlineWidth,
     borderColor: glassColors.cardBorder,
+  },
+  suggestionCardAdded: {
+    width: "auto",
+    maxWidth: "94%",
+    backgroundColor: colors.glassCircle,
   },
   suggestionHeader: {
     flexDirection: "row",
@@ -2952,42 +2622,21 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0,
   },
-  composer: {
-    position: "absolute",
-  },
-  composerRow: {
+  suggestionAddedRow: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
   },
-  inputPill: {
-    flex: 1,
-    justifyContent: "center",
-    backgroundColor: colors.white,
-    overflow: "hidden",
-    shadowColor: colors.textPrimary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.03,
-    shadowRadius: 12,
-    elevation: 1,
-  },
-  input: {
-    color: colors.textPrimary,
-    fontWeight: "600",
-    minHeight: 36,
-    letterSpacing: 0,
-    textAlignVertical: "top",
-    paddingTop: 0,
-    paddingBottom: 0,
-    paddingRight: 6,
-    includeFontPadding: false,
-  },
-  sendButton: {
+  suggestionAddedCheck: {
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: colors.textPrimary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 1,
+  },
+  suggestionAddedText: {
+    marginLeft: 8,
+    color: colors.textPrimary,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  shortcutChips: {
+    position: "absolute",
   },
 });

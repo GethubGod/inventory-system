@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerSelectionHaptic } from '@/lib/haptics';
-import { colors, glassHairlineWidth } from '@/theme/design';
+import { colors, glassHairlineWidth, grayScale } from '@/theme/design';
 import type { PreviousQuantitySuggestion } from './quickOrderHistorySuggestions';
 import { formatQuantityWithUnit } from './quickOrderQuantityFlow';
 
@@ -43,10 +43,10 @@ export function PreviousQuantitySuggestionCard({ suggestion, onUse, disabled = f
       style={[
         styles.card,
         {
-          borderRadius: ds.radius(16),
-          paddingVertical: ds.spacing(12),
-          paddingLeft: ds.spacing(16),
-          paddingRight: ds.spacing(8),
+          borderRadius: ds.radius(20),
+          paddingVertical: ds.spacing(14),
+          paddingLeft: ds.spacing(18),
+          paddingRight: ds.spacing(12),
           gap: ds.spacing(12),
         },
       ]}
@@ -72,8 +72,8 @@ export function PreviousQuantitySuggestionCard({ suggestion, onUse, disabled = f
           styles.useButton,
           {
             borderRadius: ds.radius(999),
-            paddingHorizontal: ds.spacing(18),
-            paddingVertical: ds.spacing(10),
+            paddingHorizontal: ds.spacing(20),
+            paddingVertical: ds.spacing(11),
             opacity: disabled ? 0.6 : pressed ? 0.85 : 1,
           },
         ]}
@@ -89,8 +89,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.white,
-    borderWidth: glassHairlineWidth,
-    borderColor: colors.primaryLight,
+    borderWidth: 1,
+    borderColor: grayScale[200],
   },
   textColumn: {
     flex: 1,
@@ -109,6 +109,11 @@ const styles = StyleSheet.create({
   },
   useButton: {
     backgroundColor: colors.primary,
+    flexShrink: 0,
+    alignSelf: 'center',
+    minWidth: 96,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   useButtonText: {
     color: colors.textOnPrimary,

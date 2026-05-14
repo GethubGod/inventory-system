@@ -209,7 +209,7 @@ export function QuickOrderListCard({
               ]}
             >
               <MaterialCommunityIcons
-                name="keyboard-outline"
+                name="gesture-tap"
                 size={ds.icon(18)}
                 color={colors.textMuted}
               />
@@ -217,7 +217,7 @@ export function QuickOrderListCard({
                 style={[styles.emptyText, { fontSize: ds.fontSize(13) }]}
                 numberOfLines={1}
               >
-                Type below or tap a shortcut
+                Tap a shortcut to start
               </Text>
             </View>
           ) : (

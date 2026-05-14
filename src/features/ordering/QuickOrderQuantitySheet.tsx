@@ -452,7 +452,7 @@ function SheetBody({
                 minHeight: ds.spacing(56),
                 backgroundColor: canSubmit
                   ? colors.primary
-                  : colors.glassCircle,
+                  : grayScale[200],
                 opacity: canSubmit && pressed ? 0.86 : 1,
               },
             ]}
@@ -481,7 +481,7 @@ function SheetBody({
                   name="arrow-forward"
                   size={ds.icon(18)}
                   color={canSubmit ? colors.textOnPrimary : colors.textMuted}
-                  style={{ marginLeft: ds.spacing(10) }}
+                  style={{ marginLeft: ds.spacing(8) }}
                 />
               </View>
             )}

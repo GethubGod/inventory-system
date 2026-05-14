@@ -95,25 +95,32 @@ describe('formatQuantityWithUnit / formatAddQuantityCta', () => {
 });
 
 describe('resolveQuantityUnitOptions', () => {
-  it('offers the single catalog unit and pre-selects it', () => {
+  it('always renders the four standard units, marking unsupported ones unavailable', () => {
     const result = resolveQuantityUnitOptions({
       item: item({ item_id: 'a' }),
       inventoryItem: inventory({ base_unit: 'lb' }),
       suggestion: null,
     });
-    expect(result.options).toEqual([{ value: 'lb', label: 'lb' }]);
+    expect(result.options).toEqual([
+      { value: 'pack', label: 'pack', available: false },
+      { value: 'case', label: 'case', available: false },
+      { value: 'lb', label: 'lb', available: true },
+      { value: 'each', label: 'each', available: false },
+    ]);
     expect(result.defaultValue).toBe('lb');
   });
 
-  it('offers pack then base, defaulting to the pack unit', () => {
+  it('marks pack + base as available and defaults to the pack unit', () => {
     const result = resolveQuantityUnitOptions({
       item: item({ item_id: 'a' }),
       inventoryItem: inventory({ base_unit: 'lb', pack_unit: 'case' }),
       suggestion: null,
     });
     expect(result.options).toEqual([
-      { value: 'case', label: 'case' },
-      { value: 'lb', label: 'lb' },
+      { value: 'pack', label: 'pack', available: false },
+      { value: 'case', label: 'case', available: true },
+      { value: 'lb', label: 'lb', available: true },
+      { value: 'each', label: 'each', available: false },
     ]);
     expect(result.defaultValue).toBe('case');
   });
@@ -125,6 +132,21 @@ describe('resolveQuantityUnitOptions', () => {
       suggestion: null,
     });
     expect(result.defaultValue).toBe('lb');
+  });
+
+  it('appends non-standard available units after the four standards', () => {
+    const result = resolveQuantityUnitOptions({
+      item: item({ item_id: 'a', valid_units: ['bottle'] }),
+      inventoryItem: inventory({ base_unit: 'lb' }),
+      suggestion: null,
+    });
+    expect(result.options).toEqual([
+      { value: 'pack', label: 'pack', available: false },
+      { value: 'case', label: 'case', available: false },
+      { value: 'lb', label: 'lb', available: true },
+      { value: 'each', label: 'each', available: false },
+      { value: 'bottle', label: 'bottle', available: true },
+    ]);
   });
 
   it('prefills from a valid prior-order suggestion when no quantity was typed', () => {
@@ -191,13 +213,18 @@ describe('resolveQuantityUnitOptions', () => {
     })).toMatchObject({ quantity: 5, unit: 'case' });
   });
 
-  it('falls back to a small common set when the catalog gives nothing', () => {
+  it('falls back to all four standard units when the catalog gives nothing', () => {
     const result = resolveQuantityUnitOptions({
       item: item({ item_id: 'a' }),
       inventoryItem: null,
       suggestion: null,
     });
-    expect(result.options.map((option) => option.value)).toEqual(['lb', 'case', 'pack', 'each']);
+    expect(result.options).toEqual([
+      { value: 'pack', label: 'pack', available: true },
+      { value: 'case', label: 'case', available: true },
+      { value: 'lb', label: 'lb', available: true },
+      { value: 'each', label: 'each', available: true },
+    ]);
     expect(result.defaultValue).toBe('lb');
   });
 });

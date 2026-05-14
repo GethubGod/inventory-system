@@ -1,8 +1,9 @@
-import { Redirect, Tabs } from "expo-router";
+import { Redirect, Tabs, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useOrderStore, useDraftStore } from "@/store";
 import { AuthLoadingScreen } from "@/components";
 import { useProtectedAuthGuard } from "@/hooks";
+import { colors } from "@/theme/design";
 import {
   TabButton,
   getTabBarScreenOptions,
@@ -18,6 +19,8 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = getTabBarBottomInset(insets.bottom);
   const guard = useProtectedAuthGuard();
+  const pathname = usePathname();
+  const isBrowseRoute = pathname.includes("inventory-browse");
 
   if (guard.isChecking) {
     return <AuthLoadingScreen />;
@@ -35,7 +38,13 @@ export default function TabsLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="home-outline" label="Home" size={size} color={color} focused={focused} />
+            <TabButton
+              name="home-outline"
+              label="Home"
+              size={size}
+              color={isBrowseRoute ? colors.primary : color}
+              focused={focused || isBrowseRoute}
+            />
           ),
         }}
       />

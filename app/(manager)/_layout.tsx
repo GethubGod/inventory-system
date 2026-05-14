@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Redirect, Tabs } from "expo-router";
+import { Redirect, Tabs, usePathname } from "expo-router";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthStore, useDraftStore } from "@/store";
 import { supabase } from "@/lib/supabase";
 import { AuthLoadingScreen } from "@/components";
 import { useProtectedAuthGuard } from "@/hooks";
+import { colors } from "@/theme/design";
 import {
   TabButton,
   getTabBarScreenOptions,
@@ -25,6 +26,8 @@ export default function ManagerLayout() {
   const guard = useProtectedAuthGuard({ requireManager: true });
   const resolvedRole = guard.resolvedRole;
   const tabBarBottomInset = getTabBarBottomInset(insets.bottom);
+  const pathname = usePathname();
+  const isBrowseRoute = pathname.includes("browse");
 
   const refreshPendingFulfillmentCount = useCallback(async () => {
     if (!session || resolvedRole !== "manager") {
@@ -148,7 +151,13 @@ export default function ManagerLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="home-outline" label="Home" size={size} color={color} focused={focused} />
+            <TabButton
+              name="home-outline"
+              label="Home"
+              size={size}
+              color={isBrowseRoute ? colors.primary : color}
+              focused={focused || isBrowseRoute}
+            />
           ),
         }}
       />

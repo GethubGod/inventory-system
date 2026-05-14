@@ -11,14 +11,19 @@ import {
 interface HeaderCartButtonProps {
   count: number;
   onPress: () => void;
+  size?: number;
+  iconSize?: number;
 }
 
 export function HeaderCartButton({
   count,
   onPress,
+  size,
+  iconSize,
 }: HeaderCartButtonProps) {
   const ds = useScaledStyles();
-  const buttonSize = Math.max(52, ds.icon(48));
+  const buttonSize = size ?? Math.max(52, ds.icon(48));
+  const resolvedIconSize = iconSize ?? ds.icon(26);
 
   return (
     <View style={{ width: buttonSize, height: buttonSize }}>
@@ -39,7 +44,7 @@ export function HeaderCartButton({
       >
         <Ionicons
           name="bag-handle-outline"
-          size={ds.icon(26)}
+          size={resolvedIconSize}
           color={glassColors.textPrimary}
         />
       </TouchableOpacity>

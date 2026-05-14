@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerSelectionHaptic } from '@/lib/haptics';
-import { colors, glassColors, glassHairlineWidth } from '@/theme/design';
+import { colors, glassHairlineWidth, grayScale } from '@/theme/design';
 import type { QuantityUnitOption } from './quickOrderQuantityFlow';
 
 type UnitSegmentedControlProps = {
@@ -27,14 +27,32 @@ export function UnitSegmentedControl({ options, value, onChange, disabled = fals
     <View style={[styles.row, { gap: ds.spacing(8) }]}>
       {options.map((option) => {
         const selected = option.value === value;
+        const unavailable = option.available === false;
+        const segmentDisabled = disabled || unavailable;
+        const background = selected
+          ? colors.primary
+          : unavailable
+            ? grayScale[100]
+            : grayScale[100];
+        const borderColor = selected
+          ? colors.primary
+          : unavailable
+            ? grayScale[200]
+            : grayScale[200];
+        const textColor = selected
+          ? colors.textOnPrimary
+          : unavailable
+            ? colors.textMuted
+            : colors.textPrimary;
         return (
           <Pressable
             key={option.value}
             accessibilityRole="button"
-            accessibilityState={{ selected, disabled }}
+            accessibilityState={{ selected, disabled: segmentDisabled }}
             accessibilityLabel={`Use unit ${option.label}`}
-            disabled={disabled}
+            disabled={segmentDisabled}
             onPress={() => {
+              if (segmentDisabled) return;
               void triggerSelectionHaptic();
               onChange(option.value);
             }}
@@ -43,18 +61,15 @@ export function UnitSegmentedControl({ options, value, onChange, disabled = fals
               {
                 borderRadius: ds.radius(999),
                 paddingHorizontal: ds.spacing(14),
-                paddingVertical: ds.spacing(11),
-                backgroundColor: selected ? colors.primary : colors.white,
-                borderColor: selected ? colors.primary : glassColors.cardBorder,
-                opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
+                paddingVertical: ds.spacing(12),
+                backgroundColor: background,
+                borderColor,
+                opacity: disabled ? 0.5 : unavailable ? 1 : pressed ? 0.7 : 1,
               },
             ]}
           >
             <Text
-              style={[
-                styles.segmentText,
-                { fontSize: ds.fontSize(14), color: selected ? colors.textOnPrimary : colors.textPrimary },
-              ]}
+              style={[styles.segmentText, { fontSize: ds.fontSize(14), color: textColor }]}
               numberOfLines={1}
             >
               {option.label}

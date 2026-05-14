@@ -6,7 +6,6 @@ import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   glassColors,
   glassRadii,
-  glassSpacing,
 } from '@/theme/design';
 
 interface LocationSelectorButtonProps {
@@ -21,14 +20,13 @@ export function LocationSelectorButton({
   onPress,
 }: LocationSelectorButtonProps) {
   const ds = useScaledStyles();
-  const buttonSize = Math.max(44, ds.icon(40));
+  const buttonSize = Math.max(48, ds.icon(44));
 
   return (
     <GlassSurface
       intensity="medium"
       style={{
-        flexShrink: 1,
-        marginRight: glassSpacing.gap,
+        flex: 1,
         borderRadius: glassRadii.pill,
       }}
     >
@@ -37,26 +35,26 @@ export function LocationSelectorButton({
         className="flex-row items-center"
         style={{
           minHeight: buttonSize,
-          paddingHorizontal: ds.spacing(14),
+          paddingHorizontal: ds.spacing(16),
         }}
         activeOpacity={0.7}
       >
         <View
           style={{
-            width: 8,
-            height: 8,
+            width: 10,
+            height: 10,
             borderRadius: glassRadii.round,
             backgroundColor: glassColors.accent,
-            marginRight: ds.spacing(8),
+            marginRight: ds.spacing(10),
           }}
         />
         <Text
           style={{
-            fontSize: ds.fontSize(14),
-            fontWeight: '600',
+            flex: 1,
+            fontSize: ds.fontSize(16),
+            fontWeight: '700',
             color: glassColors.textPrimary,
-            marginRight: ds.spacing(6),
-            maxWidth: ds.spacing(170),
+            marginRight: ds.spacing(8),
           }}
           numberOfLines={1}
           ellipsizeMode="tail"
@@ -65,7 +63,7 @@ export function LocationSelectorButton({
         </Text>
         <Ionicons
           name={expanded ? 'chevron-up' : 'chevron-down'}
-          size={ds.icon(13)}
+          size={ds.icon(18)}
           color={glassColors.textSecondary}
         />
       </TouchableOpacity>

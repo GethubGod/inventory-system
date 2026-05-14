@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerSelectionHaptic } from '@/lib/haptics';
-import { colors, glassColors, glassHairlineWidth } from '@/theme/design';
+import { colors, glassHairlineWidth, grayScale } from '@/theme/design';
 
 type QuantityStepperProps = {
   value: number;
@@ -68,7 +68,7 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
     <View
       style={[
         styles.card,
-        { borderRadius: ds.radius(20), padding: ds.spacing(16), gap: ds.spacing(14) },
+        { borderRadius: ds.radius(24), padding: ds.spacing(18), gap: ds.spacing(16) },
       ]}
     >
       <View style={styles.valueRow}>
@@ -77,9 +77,9 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
           accessibilityLabel="Decrease quantity"
           disabled={!canDecrement}
           onPress={() => bump(-1)}
-          size={ds.spacing(40)}
-          radius={ds.radius(20)}
-          iconSize={ds.icon(20)}
+          size={ds.spacing(56)}
+          radius={ds.radius(28)}
+          iconSize={ds.icon(24)}
         />
 
         <View style={styles.valueColumn}>
@@ -94,14 +94,14 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
               returnKeyType="done"
               placeholder="0"
               placeholderTextColor={colors.textMuted}
-              style={[styles.valueInput, { fontSize: ds.fontSize(34), minWidth: ds.spacing(80) }]}
+              style={[styles.valueInput, { fontSize: ds.fontSize(40), minWidth: ds.spacing(80) }]}
             />
           ) : (
-            <Text style={[styles.valueText, { fontSize: ds.fontSize(34) }]} numberOfLines={1}>
+            <Text style={[styles.valueText, { fontSize: ds.fontSize(40) }]} numberOfLines={1}>
               {formatStepperValue(value)}
             </Text>
           )}
-          <Text style={[styles.unitText, { fontSize: ds.fontSize(13) }]} numberOfLines={1}>
+          <Text style={[styles.unitText, { fontSize: ds.fontSize(14) }]} numberOfLines={1}>
             {unitLabel || ' '}
           </Text>
         </View>
@@ -111,9 +111,9 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
           accessibilityLabel="Increase quantity"
           disabled={disabled}
           onPress={() => bump(1)}
-          size={ds.spacing(40)}
-          radius={ds.radius(20)}
-          iconSize={ds.icon(20)}
+          size={ds.spacing(56)}
+          radius={ds.radius(28)}
+          iconSize={ds.icon(24)}
           accent
         />
       </View>
@@ -130,13 +130,13 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
               styles.chip,
               {
                 borderRadius: ds.radius(999),
-                paddingHorizontal: ds.spacing(14),
-                paddingVertical: ds.spacing(8),
+                paddingHorizontal: ds.spacing(18),
+                paddingVertical: ds.spacing(10),
                 opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
               },
             ]}
           >
-            <Text style={[styles.chipText, { fontSize: ds.fontSize(13) }]}>{`+${amount}`}</Text>
+            <Text style={[styles.chipText, { fontSize: ds.fontSize(14) }]}>{`+${amount}`}</Text>
           </Pressable>
         ))}
         <Pressable
@@ -158,9 +158,10 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
             styles.chip,
             {
               borderRadius: ds.radius(999),
-              paddingHorizontal: ds.spacing(14),
-              paddingVertical: ds.spacing(8),
-              backgroundColor: typing ? colors.primaryLight : colors.glassCircle,
+              paddingHorizontal: ds.spacing(18),
+              paddingVertical: ds.spacing(10),
+              backgroundColor: typing ? colors.primaryLight : grayScale[200],
+              borderColor: typing ? colors.primary : grayScale[300],
               opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
             },
           ]}
@@ -168,7 +169,7 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
           <Text
             style={[
               styles.chipText,
-              { fontSize: ds.fontSize(13), color: typing ? colors.primary : colors.textSecondary },
+              { fontSize: ds.fontSize(14), color: typing ? colors.primary : colors.textPrimary },
             ]}
           >
             Type
@@ -205,7 +206,8 @@ function StepperRoundButton({ icon, accessibilityLabel, disabled, onPress, size,
           width: size,
           height: size,
           borderRadius: radius,
-          backgroundColor: accent ? colors.primaryLight : colors.glassCircle,
+          backgroundColor: accent ? colors.primaryLight : grayScale[100],
+          borderColor: accent ? colors.primaryLight : grayScale[200],
           opacity: disabled ? 0.4 : pressed ? 0.7 : 1,
         },
       ]}
@@ -219,7 +221,7 @@ const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.white,
     borderWidth: glassHairlineWidth,
-    borderColor: glassColors.cardBorder,
+    borderColor: grayScale[200],
   },
   valueRow: {
     flexDirection: 'row',
@@ -254,12 +256,12 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   chip: {
-    backgroundColor: colors.glassCircle,
+    backgroundColor: grayScale[100],
     borderWidth: glassHairlineWidth,
-    borderColor: glassColors.cardBorder,
+    borderColor: grayScale[200],
   },
   chipText: {
-    color: colors.textSecondary,
+    color: colors.textPrimary,
     fontWeight: '800',
     letterSpacing: 0,
   },
@@ -267,6 +269,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: glassHairlineWidth,
-    borderColor: glassColors.cardBorder,
   },
 });
