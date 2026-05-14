@@ -1,0 +1,228 @@
+/**
+ * Pure-function tests for the Quick Order missing-quantity correction flow:
+ * which rows get queued, single vs. progress mode, unit-option resolution,
+ * CTA formatting, advancing/skipping, and the "update the existing row, never
+ * a duplicate" guarantee.
+ */
+
+import {
+  advanceQuantityFlow,
+  formatAddQuantityCta,
+  formatQuantityWithUnit,
+  getQuantityFixQueue,
+  getQuantitySheetInitialState,
+  getUsablePreviousQuantitySuggestion,
+  isMultiItemQuantityFlow,
+  resolveQuantityUnitOptions,
+} from '../features/ordering/quickOrderQuantityFlow';
+import {
+  getParsedItemIssue,
+  getParsedItemKey,
+  updateParsedItem,
+  type ParsedQuickOrderItem,
+  type QuickOrderInventoryItem,
+} from '../features/ordering/quickOrderItems';
+
+function item(partial: Partial<ParsedQuickOrderItem>): ParsedQuickOrderItem {
+  return { item_id: null, item_name: undefined, quantity: null, unit: null, ...partial };
+}
+
+const inventory = (
+  partial: Partial<QuickOrderInventoryItem>,
+): QuickOrderInventoryItem => ({ id: 'inv', name: 'Item', base_unit: null, pack_unit: null, ...partial });
+
+describe('getQuantityFixQueue', () => {
+  const missingQty = item({ item_id: 'a', item_name: 'Shrimp', quantity: null, unit: 'case' });
+  const missingQtyAndUnit = item({ item_id: 'b', item_name: 'Salmon', quantity: null, unit: null });
+  const valid = item({ item_id: 'c', item_name: 'Tuna', quantity: 2, unit: 'lb' });
+  const missingUnitOnly = item({ item_id: 'd', item_name: 'Crab', quantity: 3, unit: null });
+  const invalidUnit = item({ item_id: 'e', item_name: 'Eel', quantity: 1, unit: 'lb', status: 'invalid_unit' });
+  const noMatch = item({ item_id: null, raw_token: 'wasbi', quantity: null, unit: null, status: 'no_match' });
+
+  it('queues only rows whose sole problem is a missing quantity', () => {
+    const queue = getQuantityFixQueue([missingQty, missingQtyAndUnit, valid, missingUnitOnly, invalidUnit, noMatch]);
+    expect(queue).toEqual([getParsedItemKey(missingQty), getParsedItemKey(missingQtyAndUnit)]);
+  });
+
+  it('preserves the order of the source list', () => {
+    const queue = getQuantityFixQueue([missingQtyAndUnit, valid, missingQty]);
+    expect(queue).toEqual([getParsedItemKey(missingQtyAndUnit), getParsedItemKey(missingQty)]);
+  });
+
+  it('returns an empty queue when nothing needs a quantity', () => {
+    expect(getQuantityFixQueue([valid, invalidUnit, noMatch])).toEqual([]);
+  });
+});
+
+describe('isMultiItemQuantityFlow', () => {
+  it('is false for a single-item queue and true for several', () => {
+    expect(isMultiItemQuantityFlow(['a'])).toBe(false);
+    expect(isMultiItemQuantityFlow(['a', 'b'])).toBe(true);
+    expect(isMultiItemQuantityFlow([])).toBe(false);
+  });
+});
+
+describe('advanceQuantityFlow', () => {
+  it('advances the index until the queue is exhausted', () => {
+    const state = { queue: ['a', 'b', 'c'], index: 0 };
+    expect(advanceQuantityFlow(state)).toEqual({ index: 1 });
+    expect(advanceQuantityFlow({ ...state, index: 1 })).toEqual({ index: 2 });
+    expect(advanceQuantityFlow({ ...state, index: 2 })).toBeNull();
+  });
+
+  it('does not mutate the input state', () => {
+    const state = { queue: ['a', 'b'], index: 0 };
+    advanceQuantityFlow(state);
+    expect(state).toEqual({ queue: ['a', 'b'], index: 0 });
+  });
+});
+
+describe('formatQuantityWithUnit / formatAddQuantityCta', () => {
+  it('pluralizes regular units but not abbreviations / "each"', () => {
+    expect(formatQuantityWithUnit(2, 'case')).toBe('2 cases');
+    expect(formatQuantityWithUnit(1, 'case')).toBe('1 case');
+    expect(formatQuantityWithUnit(3, 'pack')).toBe('3 packs');
+    expect(formatQuantityWithUnit(5, 'lb')).toBe('5 lb');
+    expect(formatQuantityWithUnit(4, 'each')).toBe('4 each');
+    expect(formatQuantityWithUnit(2, 'pieces')).toBe('2 pieces');
+  });
+
+  it('prefixes the CTA with "Add"', () => {
+    expect(formatAddQuantityCta(2, 'case')).toBe('Add 2 cases');
+    expect(formatAddQuantityCta(1, 'case')).toBe('Add 1 case');
+    expect(formatAddQuantityCta(5, 'lb')).toBe('Add 5 lb');
+  });
+});
+
+describe('resolveQuantityUnitOptions', () => {
+  it('offers the single catalog unit and pre-selects it', () => {
+    const result = resolveQuantityUnitOptions({
+      item: item({ item_id: 'a' }),
+      inventoryItem: inventory({ base_unit: 'lb' }),
+      suggestion: null,
+    });
+    expect(result.options).toEqual([{ value: 'lb', label: 'lb' }]);
+    expect(result.defaultValue).toBe('lb');
+  });
+
+  it('offers pack then base, defaulting to the pack unit', () => {
+    const result = resolveQuantityUnitOptions({
+      item: item({ item_id: 'a' }),
+      inventoryItem: inventory({ base_unit: 'lb', pack_unit: 'case' }),
+      suggestion: null,
+    });
+    expect(result.options).toEqual([
+      { value: 'case', label: 'case' },
+      { value: 'lb', label: 'lb' },
+    ]);
+    expect(result.defaultValue).toBe('case');
+  });
+
+  it("uses the row's existing unit as the default when present", () => {
+    const result = resolveQuantityUnitOptions({
+      item: item({ item_id: 'a', unit: 'lb' }),
+      inventoryItem: inventory({ base_unit: 'lb', pack_unit: 'case' }),
+      suggestion: null,
+    });
+    expect(result.defaultValue).toBe('lb');
+  });
+
+  it('prefills from a valid prior-order suggestion when no quantity was typed', () => {
+    const suggestion = {
+      item_id: 'a',
+      item_name: 'Shrimp',
+      quantity: 2,
+      unit: 'lb',
+      label: 'LAST ORDER',
+      source_order_id: 'o1',
+      ordered_at: '2026-05-01T00:00:00.000Z',
+    };
+    const result = resolveQuantityUnitOptions({
+      item: item({ item_id: 'a' }),
+      inventoryItem: inventory({ base_unit: 'lb', pack_unit: 'case' }),
+      suggestion,
+    });
+    expect(getQuantitySheetInitialState({
+      item: item({ item_id: 'a' }),
+      options: result.options,
+      defaultValue: result.defaultValue,
+      suggestion,
+    })).toMatchObject({ quantity: 2, unit: 'lb', suggestion });
+  });
+
+  it('ignores a prior-order suggestion whose unit is no longer valid', () => {
+    const result = resolveQuantityUnitOptions({
+      item: item({ item_id: 'a' }),
+      inventoryItem: inventory({ base_unit: 'lb', pack_unit: 'case' }),
+      suggestion: null,
+    });
+    expect(getUsablePreviousQuantitySuggestion({
+      item_id: 'a',
+      item_name: 'Shrimp',
+      quantity: 2,
+      unit: 'bottle',
+      label: 'LAST ORDER',
+      source_order_id: 'o1',
+      ordered_at: '2026-05-01T00:00:00.000Z',
+    }, result.options)).toBeNull();
+  });
+
+  it('does not override a manually typed quantity with history', () => {
+    const suggestion = {
+      item_id: 'a',
+      item_name: 'Shrimp',
+      quantity: 2,
+      unit: 'lb',
+      label: 'LAST ORDER',
+      source_order_id: 'o1',
+      ordered_at: '2026-05-01T00:00:00.000Z',
+    };
+    const typed = item({ item_id: 'a', quantity: 5, unit: 'case' });
+    const result = resolveQuantityUnitOptions({
+      item: typed,
+      inventoryItem: inventory({ base_unit: 'lb', pack_unit: 'case' }),
+      suggestion,
+    });
+    expect(getQuantitySheetInitialState({
+      item: typed,
+      options: result.options,
+      defaultValue: result.defaultValue,
+      suggestion,
+    })).toMatchObject({ quantity: 5, unit: 'case' });
+  });
+
+  it('falls back to a small common set when the catalog gives nothing', () => {
+    const result = resolveQuantityUnitOptions({
+      item: item({ item_id: 'a' }),
+      inventoryItem: null,
+      suggestion: null,
+    });
+    expect(result.options.map((option) => option.value)).toEqual(['lb', 'case', 'pack', 'each']);
+    expect(result.defaultValue).toBe('lb');
+  });
+});
+
+describe('applying a quantity', () => {
+  it('updates the existing row in place — never adds a duplicate', () => {
+    const pending = item({ item_id: 'a', item_name: 'Shrimp (Frozen)', quantity: null, unit: 'case' });
+    const others = [item({ item_id: 'b', item_name: 'Salmon', quantity: 1, unit: 'lb' })];
+    const before = [pending, ...others];
+
+    expect(getParsedItemIssue(pending)?.kind).toBe('pick-quantity');
+
+    const after = updateParsedItem(before, getParsedItemKey(pending), { quantity: 2, unit: 'case' });
+
+    expect(after).toHaveLength(before.length);
+    const resolved = after.find((entry) => entry.item_id === 'a');
+    expect(resolved?.quantity).toBe(2);
+    expect(getParsedItemIssue(resolved as ParsedQuickOrderItem)).toBeNull();
+  });
+
+  it('leaves a skipped row unresolved (still needs a quantity)', () => {
+    const queue = { queue: ['k1', 'k2'], index: 0 };
+    const skipped = item({ item_id: 'a', item_name: 'Shrimp', quantity: null, unit: 'case' });
+    // Skipping just advances the flow without touching the row.
+    expect(advanceQuantityFlow(queue)).toEqual({ index: 1 });
+    expect(getParsedItemIssue(skipped)?.kind).toBe('pick-quantity');
+  });
+});

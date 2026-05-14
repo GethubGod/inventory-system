@@ -77,7 +77,7 @@ const GENERIC_TOKENS = new Set([
 
 export function normalizeCatalogText(value: string): string {
   return value
-    .normalize('NFKD')
+    .normalize('NFKC')
     .replace(SMART_QUOTES, "'")
     .replace(/&/g, ' and ')
     .replace(SPLIT_PATTERN, ' ')

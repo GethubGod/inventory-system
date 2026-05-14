@@ -1,13 +1,14 @@
 import type {
   CandidateParsedLine,
+  CatalogAlternative,
   CatalogItem,
   CatalogMatchResult,
   ParsedItem,
   ParseFlag,
   ParseSource,
 } from './types.ts';
-import { analyzeSemanticTokens } from './catalog-matcher.ts';
-import { isKnownUnit, isUnitAllowedForItem, normalizeUnit, UNIT_WORDS } from './units.ts';
+import { matchCatalogItem } from './catalog-matcher.ts';
+import { deriveAllowedUnits, isKnownUnit, isUnitAllowedForItem, normalizeUnit, UNIT_WORDS } from './units.ts';
 
 export function validateParsedLine(input: {
   candidate: CandidateParsedLine;
@@ -19,7 +20,9 @@ export function validateParsedLine(input: {
   const flags: ParseFlag[] = [];
   const catalogItem = match.item_id ? catalog.find((item) => item.id === match.item_id) ?? null : null;
   const quantity = candidate.quantity != null && candidate.quantity > 0 ? candidate.quantity : null;
-  const unit = candidate.unit ? normalizeUnit(candidate.unit) : null;
+  const rawUnit = candidate.unit_raw ?? candidate.unit;
+  const normalizedUnit = normalizeUnit(candidate.unit);
+  const unit = normalizedUnit ?? rawUnit?.trim().toLowerCase() ?? null;
   const unresolved = !catalogItem;
   let needsClarification = unresolved || match.needs_clarification;
   let issue = match.issue;
@@ -62,7 +65,11 @@ export function validateParsedLine(input: {
   } else if (!isKnownUnit(unit)) {
     needsClarification = true;
     invalidUnit = true;
-    issue = issue ?? 'Unit is not supported.';
+    const validUnits = deriveAllowedUnits(catalogItem);
+    const unitList = validUnits.length > 0 ? ` Choose: ${validUnits.join(', ')}.` : ' Choose a valid unit.';
+    issue = issue ?? (catalogItem
+      ? `${catalogItem.name} cannot be ordered in ${unit}.${unitList}`
+      : `"${unit}" is not a recognized order unit.`);
     flags.push({
       type: 'invalid_unit',
       message: `"${unit}" is not a recognized order unit.`,
@@ -73,7 +80,9 @@ export function validateParsedLine(input: {
   } else if (catalogItem && !isUnitAllowedForItem(catalogItem, unit)) {
     needsClarification = true;
     invalidUnit = true;
-    issue = issue ?? `${catalogItem.name} cannot be ordered in ${unit}. Choose a valid unit.`;
+    const validUnits = deriveAllowedUnits(catalogItem);
+    const unitList = validUnits.length > 0 ? ` Choose: ${validUnits.join(', ')}.` : ' Choose a valid unit.';
+    issue = issue ?? `${catalogItem.name} cannot be ordered in ${unit}.${unitList}`;
     flags.push({
       type: 'unsupported_unit',
       message: `${catalogItem.name} cannot be ordered in ${unit}. Choose a valid unit.`,
@@ -89,7 +98,9 @@ export function validateParsedLine(input: {
 
   const item: ParsedItem = {
     id: `parsed:${candidate.line_index}:${candidate.normalized_text}`,
+    client_id: `parsed:${candidate.line_index}:${candidate.normalized_text}`,
     line_id: candidate.line_id,
+    source_text: candidate.raw_text,
     item_id: catalogItem?.id ?? null,
     item_name: catalogItem?.name ?? match.item_name ?? null,
     display_name: displayName,
@@ -99,12 +110,18 @@ export function validateParsedLine(input: {
     raw_text: candidate.raw_text,
     quantity,
     unit,
+    unit_raw: rawUnit,
+    unit_normalized: normalizedUnit,
+    valid_units: deriveAllowedUnits(catalogItem),
     confidence,
     needs_clarification: needsClarification,
     unresolved,
     notes: null,
     issue,
+    issue_code: undefined,
+    action: null,
     alternatives: match.alternatives,
+    candidate_matches: match.alternatives,
     parse_source: source,
     status: getParsedItemStatus({
       unresolved,
@@ -116,6 +133,13 @@ export function validateParsedLine(input: {
       issue,
     }),
     match_type: match.match_type,
+    diagnostics: {
+      match_type: match.match_type,
+      match_confidence: match.confidence,
+      token_coverage: match.token_coverage,
+      semantic_validation_passed: match.semantic_validation_passed,
+      unit_validation_result: invalidUnit ? 'invalid' : unit ? 'valid_or_unchecked' : 'missing',
+    },
   };
 
   return {
@@ -128,47 +152,106 @@ export function normalizeParsedItemStatus(item: ParsedItem, catalogItem: Catalog
   const quantity = item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
     ? item.quantity
     : null;
-  const unit = normalizeUnit(item.unit);
+  const rawUnit = item.unit_raw ?? item.unit;
+  const normalizedUnit = normalizeUnit(item.unit);
+  const unit = normalizedUnit ?? rawUnit?.trim().toLowerCase() ?? null;
   const hasItem = Boolean(item.item_id && catalogItem);
   let status: ParsedItem['status'];
   let needsClarification = true;
   let unresolved = !hasItem;
   let issue = item.issue;
+  let issueCode: ParsedItem['issue_code'];
 
   if (!hasItem) {
-    status = item.alternatives?.length ? 'ambiguous' : 'no_match';
-    issue = issue ?? (status === 'ambiguous' ? 'Which item did you mean?' : 'Item could not be matched.');
+    status = hasStrongCandidateMatch(item.alternatives) ? 'ambiguous' : 'no_match';
+    issueCode = status;
+    issue = issue ?? (status === 'ambiguous'
+      ? `Which ${item.item_text ?? item.raw_token ?? 'item'} did you mean?`
+      : `I couldn’t find "${item.item_text ?? item.raw_token ?? 'that item'}" in this location’s inventory.`);
+  } else if (quantity == null && !unit && deriveAllowedUnits(catalogItem).length === 0) {
+    status = 'missing_quantity_and_unit';
+    unresolved = false;
+    issueCode = status;
+    issue = `How much ${catalogItem?.name ?? item.item_name ?? 'this item'} would you like, and what unit?`;
   } else if (quantity == null) {
     status = 'missing_quantity';
     unresolved = false;
+    issueCode = status;
     issue = `How much ${catalogItem?.name ?? item.item_name ?? 'this item'} would you like?`;
   } else if (!unit) {
     status = 'missing_unit';
     unresolved = false;
+    issueCode = status;
     issue = `What unit would you like for ${catalogItem?.name ?? item.item_name ?? 'this item'}?`;
   } else if (!isKnownUnit(unit) || !isUnitAllowedForItem(catalogItem, unit)) {
     status = 'invalid_unit';
     unresolved = false;
-    issue = `${catalogItem?.name ?? item.item_name ?? 'This item'} cannot be ordered in ${unit}. Choose a valid unit.`;
+    issueCode = status;
+    const validUnits = deriveAllowedUnits(catalogItem);
+    const unitList = validUnits.length > 0 ? ` Choose: ${validUnits.join(', ')}.` : ' Choose a valid unit.';
+    issue = `${catalogItem?.name ?? item.item_name ?? 'This item'} cannot be ordered in ${unit}.${unitList}`;
   } else {
     status = 'valid';
     needsClarification = false;
     unresolved = false;
     issue = undefined;
+    issueCode = undefined;
   }
 
   return {
     ...item,
+    client_id: item.client_id ?? item.id ?? item.line_id,
+    source_text: item.source_text ?? item.raw_text ?? item.raw_token,
     item_name: catalogItem?.name ?? item.item_name,
     display_name: catalogItem?.name ?? item.display_name,
     name: catalogItem?.name ?? item.name,
     quantity,
     unit,
+    unit_raw: rawUnit,
+    unit_normalized: normalizedUnit,
+    valid_units: deriveAllowedUnits(catalogItem),
     status,
     needs_clarification: needsClarification,
     unresolved,
     issue,
+    issue_code: issueCode,
+    action: actionForStatus(status),
+    candidate_matches: item.candidate_matches ?? item.alternatives,
+    diagnostics: {
+      ...(item.diagnostics ?? {}),
+      final_status: status,
+      unit_validation_result: status === 'invalid_unit' ? 'invalid' : unit ? 'valid' : 'missing',
+      valid_units: deriveAllowedUnits(catalogItem),
+    },
   };
+}
+
+function hasStrongCandidateMatch(alternatives: CatalogAlternative[] | undefined): boolean {
+  return Boolean(alternatives?.some((alternative) =>
+    (alternative.confidence ?? alternative.score ?? 0) >= 0.75 &&
+    alternative.semantic_validation_passed !== false
+  ));
+}
+
+export function actionForStatus(status: ParsedItem['status']): ParsedItem['action'] {
+  switch (status) {
+    case 'valid':
+      return null;
+    case 'missing_quantity':
+    case 'missing_quantity_and_unit':
+      return 'Add quantity';
+    case 'missing_unit':
+      return 'Choose unit';
+    case 'invalid_unit':
+      return 'Fix unit';
+    case 'no_match':
+    case 'ambiguous':
+      return 'Choose item';
+    case 'duplicate_needs_decision':
+      return 'Add or replace';
+    default:
+      return null;
+  }
 }
 
 function getParsedItemStatus(input: {
@@ -181,11 +264,11 @@ function getParsedItemStatus(input: {
   issue?: string;
 }) {
   if (input.unresolved) return input.alternatives?.length ? 'ambiguous' : 'no_match';
+  if (input.quantity == null && !input.unit) return 'missing_quantity_and_unit';
   if (input.quantity == null) return 'missing_quantity';
   if (!input.unit) return 'missing_unit';
   if (input.invalidUnit) return 'invalid_unit';
   if (input.matchNeedsClarification) return 'ambiguous';
-  if (input.issue) return 'review';
   return 'valid';
 }
 
@@ -193,33 +276,30 @@ export function validateLlmItem(input: {
   raw: Record<string, unknown>;
   catalog: CatalogItem[];
 }): { item: ParsedItem; flags: ParseFlag[] } {
-  const itemId = typeof input.raw.item_id === 'string' ? input.raw.item_id : null;
   const rawToken = stringValue(input.raw.raw_token) ?? stringValue(input.raw.raw_text) ?? stringValue(input.raw.item_name) ?? '';
   const semanticInput = semanticInputFromRaw(rawToken) || stringValue(input.raw.item_text) || stringValue(input.raw.item_name) || rawToken;
-  const proposedCatalogItem = itemId ? input.catalog.find((item) => item.id === itemId) ?? null : null;
-  const semantic = proposedCatalogItem ? analyzeSemanticTokens(semanticInput, proposedCatalogItem.name) : null;
-  const catalogItem = proposedCatalogItem && semantic?.passed ? proposedCatalogItem : null;
   const quantity = numberValue(input.raw.quantity);
-  const unit = normalizeUnit(stringValue(input.raw.unit));
-  const match: CatalogMatchResult = catalogItem
+  const rawUnit = stringValue(input.raw.unit);
+  const unit = normalizeUnit(rawUnit) ?? rawUnit;
+  const match = matchCatalogItem(semanticInput, input.catalog);
+  const catalogItem = match.item_id ? input.catalog.find((item) => item.id === match.item_id) ?? null : null;
+  const validatedMatch: CatalogMatchResult = catalogItem
     ? {
       item_id: catalogItem.id,
       item_name: catalogItem.name,
       match_type: 'llm',
-      confidence: numberValue(input.raw.confidence) ?? 0.7,
+      confidence: Math.min(numberValue(input.raw.confidence) ?? 0.7, match.confidence),
       needs_clarification: false,
+      alternatives: match.alternatives,
     }
     : {
       item_id: null,
-      item_name: stringValue(input.raw.item_name) ?? rawToken,
+      item_name: semanticInput || rawToken,
       match_type: 'unresolved',
       confidence: 0,
       needs_clarification: true,
-      issue: itemId
-        ? semantic && !semantic.passed
-          ? `LLM suggestion failed semantic validation: ${semantic.reason}.`
-          : 'LLM returned item outside catalog.'
-        : 'LLM did not resolve item.',
+      issue: 'LLM extraction did not resolve to a validated catalog item.',
+      alternatives: match.alternatives,
     };
 
   return validateParsedLine({
@@ -234,7 +314,7 @@ export function validateLlmItem(input: {
       parse_confidence: numberValue(input.raw.confidence) ?? 0.7,
       line_index: 0,
     },
-    match,
+    match: validatedMatch,
     catalog: input.catalog,
     parseSource: 'llm',
   });

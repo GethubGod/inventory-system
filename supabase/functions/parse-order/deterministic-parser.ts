@@ -1,5 +1,5 @@
 import type { CandidateParsedLine } from './types.ts';
-import { normalizeUnit, UNIT_WORDS } from './units.ts';
+import { getUnitWords, normalizeUnit } from './units.ts';
 
 // ---------------------------------------------------------------------------
 // Quantity patterns — supports numeric, fractional, and word quantities
@@ -37,11 +37,43 @@ const WORD_QTY_KEYS = Object.keys(WORD_QUANTITIES).sort((a, b) => b.length - a.l
 // Unit patterns
 // ---------------------------------------------------------------------------
 
-const UNIT = UNIT_WORDS.map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-
-/** Combined quantity regex: numeric OR fraction. */
-const QTY_UNIT = new RegExp(`(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${UNIT})\\b`, 'i');
 const QTY_ONLY = new RegExp(`\\b(?:${NUMERIC_QTY}|${FRACTION_QTY})\\b`, 'i');
+
+function escapedUnitPattern(): string {
+  return getUnitWords().map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+}
+
+function qtyUnitRegex(): RegExp {
+  return new RegExp(`(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern()})\\b`, 'i');
+}
+
+function qtyUnitOfItemRegex(): RegExp {
+  return new RegExp(
+    `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern()})\\s+(?:of\\s+)(.+)$`,
+    'i',
+  );
+}
+
+function wordQtyUnitOfItemRegex(): RegExp {
+  return new RegExp(
+    `^\\s*(${WORD_QTY_PATTERN})\\s+(${escapedUnitPattern()})\\s+(?:of\\s+)(.+)$`,
+    'i',
+  );
+}
+
+function qtyUnitItemNoOfRegex(): RegExp {
+  return new RegExp(
+    `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern()})\\s+(.+)$`,
+    'i',
+  );
+}
+
+function itemQtyUnitRegex(): RegExp {
+  return new RegExp(
+    `^(.+?)\\s+(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern()})\\s*$`,
+    'i',
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Intent stripping
@@ -54,30 +86,9 @@ const TRAILING_INTENT = /\s+(?:to|instead)$/i;
 // "qty unit of item" pattern: "1 box of crab mix", "half box of ground tuna"
 // ---------------------------------------------------------------------------
 
-const QTY_UNIT_OF_ITEM = new RegExp(
-  `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${UNIT})\\s+(?:of\\s+)(.+)$`,
-  'i',
-);
-
 // Build word-qty leading regex for "half box of crab mix", "half a box of ..."
 const WORD_QTY_REGEX_PARTS = WORD_QTY_KEYS.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 const WORD_QTY_PATTERN = WORD_QTY_REGEX_PARTS.join('|');
-const WORD_QTY_UNIT_OF_ITEM = new RegExp(
-  `^\\s*(${WORD_QTY_PATTERN})\\s+(${UNIT})\\s+(?:of\\s+)(.+)$`,
-  'i',
-);
-
-// "qty unit item" without "of" — e.g. "2cs salmon"
-const QTY_UNIT_ITEM_NO_OF = new RegExp(
-  `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${UNIT})\\s+(.+)$`,
-  'i',
-);
-
-// "item qty unit" — e.g. "salmon 2cs", "ground garlic 1 pack"
-const ITEM_QTY_UNIT = new RegExp(
-  `^(.+?)\\s+(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${UNIT})\\s*$`,
-  'i',
-);
 
 // "item qty" — e.g. "salmon 2", "tuna loin 1"
 const ITEM_QTY = new RegExp(
@@ -97,6 +108,7 @@ const QTY_ITEM = new RegExp(
 
 export function normalizeOrderText(value: string): string {
   return value
+    .normalize('NFKC')
     .replace(/\r\n?/g, '\n')
     .split('\n')
     .map((line) => line.trim().replace(/[ \t]+/g, ' ').toLowerCase())
@@ -105,7 +117,7 @@ export function normalizeOrderText(value: string): string {
 }
 
 function hasQuantitySignal(value: string): boolean {
-  return QTY_UNIT.test(value) || QTY_ONLY.test(value);
+  return qtyUnitRegex().test(value) || QTY_ONLY.test(value);
 }
 
 function splitSafeAnd(segment: string): string[] {
@@ -116,6 +128,7 @@ function splitSafeAnd(segment: string): string[] {
 
 export function splitOrderLines(rawText: string): string[] {
   const primary = rawText
+    .normalize('NFKC')
     .replace(/\r\n?/g, '\n')
     .split(/\n|,|;/)
     .map((line) => line.trim().replace(/[ \t]+/g, ' '))
@@ -184,27 +197,30 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
   let itemText = compactRaw;
   let quantity: number | null = null;
   let unit: string | null = null;
+  let unitRaw: string | null = null;
   let confidence = 0.55;
 
   // ---------------------------------------------------------------
   // Pattern 1: "qty unit of item" — "1 box of crab mix", "half box of ground tuna"
   // ---------------------------------------------------------------
-  const wordQtyUnitOf = compactRaw.match(WORD_QTY_UNIT_OF_ITEM);
+  const wordQtyUnitOf = compactRaw.match(wordQtyUnitOfItemRegex());
   if (wordQtyUnitOf) {
     const wordQty = WORD_QUANTITIES[wordQtyUnitOf[1].toLowerCase()];
     if (wordQty != null) {
       quantity = wordQty;
-      unit = normalizeUnit(wordQtyUnitOf[2]);
+      unitRaw = wordQtyUnitOf[2];
+      unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
       itemText = wordQtyUnitOf[3];
       confidence = 0.90;
     }
   }
 
   if (quantity == null) {
-    const numQtyUnitOf = compactRaw.match(QTY_UNIT_OF_ITEM);
+    const numQtyUnitOf = compactRaw.match(qtyUnitOfItemRegex());
     if (numQtyUnitOf) {
       quantity = toQuantity(numQtyUnitOf[1] ?? numQtyUnitOf[2]);
-      unit = normalizeUnit(numQtyUnitOf[3]);
+      unitRaw = numQtyUnitOf[3];
+      unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
       itemText = numQtyUnitOf[4];
       confidence = 0.92;
     }
@@ -214,10 +230,11 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
   // Pattern 2: "qty unit item" (no "of") — "2cs salmon"
   // ---------------------------------------------------------------
   if (quantity == null) {
-    const qtyUnitItem = compactRaw.match(QTY_UNIT_ITEM_NO_OF);
+    const qtyUnitItem = compactRaw.match(qtyUnitItemNoOfRegex());
     if (qtyUnitItem) {
       quantity = toQuantity(qtyUnitItem[1] ?? qtyUnitItem[2]);
-      unit = normalizeUnit(qtyUnitItem[3]);
+      unitRaw = qtyUnitItem[3];
+      unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
       itemText = qtyUnitItem[4];
       confidence = 0.92;
     }
@@ -227,11 +244,12 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
   // Pattern 3: "item qty unit" — "salmon 2cs", "ground garlic 1 pack"
   // ---------------------------------------------------------------
   if (quantity == null) {
-    const itemQtyUnit = compactRaw.match(ITEM_QTY_UNIT);
+    const itemQtyUnit = compactRaw.match(itemQtyUnitRegex());
     if (itemQtyUnit) {
       itemText = itemQtyUnit[1];
       quantity = toQuantity(itemQtyUnit[2] ?? itemQtyUnit[3]);
-      unit = normalizeUnit(itemQtyUnit[4]);
+      unitRaw = itemQtyUnit[4];
+      unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
       confidence = 0.92;
     }
   }
@@ -260,6 +278,18 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
     }
   }
 
+  // "item qty unknown-unit" — "Salmon 2 bottle".
+  if (quantity == null) {
+    const itemQtyUnknownUnit = compactRaw.match(/^(.+?)\s+(\d+(?:\.\d+)?|\.\d+|\d+\s*\/\s*\d+)\s+([\p{L}][\p{L}\p{N}'-]*)\s*$/iu);
+    if (itemQtyUnknownUnit) {
+      itemText = itemQtyUnknownUnit[1];
+      quantity = toQuantity(itemQtyUnknownUnit[2]);
+      unitRaw = itemQtyUnknownUnit[3];
+      unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
+      confidence = 0.72;
+    }
+  }
+
   // ---------------------------------------------------------------
   // Pattern 6: "word-qty item" — "half salmon"
   // ---------------------------------------------------------------
@@ -279,8 +309,11 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
 
   // Try to extract unit from item text if we missed it.
   if (!unit && quantity != null) {
-    const unitSuffix = compactRaw.match(QTY_UNIT);
-    if (unitSuffix) unit = normalizeUnit(unitSuffix[3] ?? unitSuffix[2]);
+    const unitSuffix = compactRaw.match(qtyUnitRegex());
+    if (unitSuffix) {
+      unitRaw = unitSuffix[3] ?? unitSuffix[2];
+      unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
+    }
   }
 
   itemText = cleanItemText(itemText);
@@ -299,6 +332,8 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
     item_text: itemText || normalized,
     quantity,
     unit,
+    unit_raw: unitRaw,
+    unit_normalized: normalizeUnit(unit),
     parse_source: 'deterministic',
     parse_confidence: issue ? Math.min(confidence, 0.65) : confidence,
     line_index: index,

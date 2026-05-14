@@ -2,6 +2,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
 import { corsHeaders } from '../_shared/cors.ts';
 import { parseQuickOrder, PARSER_VERSION } from './orchestrator.ts';
+import { configureUnitAliases } from './units.ts';
 import type {
   CatalogItem,
   ParsedItem,
@@ -42,6 +43,7 @@ const LLM_TIMEOUT_MS = 8000;
 const MAX_EXAMPLES = 25;
 const MAX_PREVIOUS_MESSAGES = 20;
 const MAX_CORRECTIONS = 25;
+const HISTORY_ORDER_LIMIT = 10;
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -327,14 +329,29 @@ async function fetchDowSuggestions(input: {
         const itemId = asNullableString(row.item_id);
         if (!itemId || parsedItemIds.has(itemId)) return null;
         const quantity = asNumber(row.suggested_qty) ?? 1;
+        const itemName = asNullableString(row.item_name) ?? 'Suggested item';
+        const unit = asNullableString(row.unit);
+        const unitType = asNullableString(row.unit_type);
+        const confidence = clampConfidence(row.frequency ?? row.confidence ?? 0.5);
         return {
+          type: 'usual_item',
+          title: itemName,
+          message: `${itemName} is usually ordered for this location.`,
+          items: [{
+            item_id: itemId,
+            item_name: itemName,
+            quantity: Math.max(1, Math.round(quantity)),
+            unit,
+            unit_type: unitType,
+          }],
+          confidence,
+          action: 'add',
           item_id: itemId,
-          item_name: asNullableString(row.item_name) ?? 'Suggested item',
+          item_name: itemName,
           suggested_qty: Math.max(1, Math.round(quantity)),
-          unit: asNullableString(row.unit),
-          unit_type: asNullableString(row.unit_type),
+          unit,
+          unit_type: unitType,
           reason: asNullableString(row.reason) ?? 'Usually ordered on this day',
-          confidence: clampConfidence(row.frequency ?? row.confidence ?? 0.5),
         };
       })
       .filter((row: ParseSuggestion | null): row is ParseSuggestion => Boolean(row))
@@ -343,6 +360,228 @@ async function fetchDowSuggestions(input: {
     console.warn('parse-order get_dow_suggestions unexpected failure', error);
     return [];
   }
+}
+
+async function fetchUsualOrderSuggestions(input: {
+  locationId: string;
+  userId: string;
+  parsedItems: ParsedItem[];
+}): Promise<ParseSuggestion[]> {
+  const parsedItemIds = new Set(input.parsedItems.map((item) => item.item_id).filter(Boolean));
+
+  try {
+    const { data, error } = await supabaseAdmin.rpc('get_usual_order', {
+      p_location_id: input.locationId,
+      p_min_frequency: 0.25,
+      p_lookback_months: 6,
+      p_user_id: input.userId,
+      p_limit: 12,
+    });
+
+    if (error) {
+      console.warn('parse-order get_usual_order failed', error);
+      return [];
+    }
+
+    return parseJsonRows(data)
+      .map((row: unknown): ParseSuggestion | null => {
+        if (!isRecord(row)) return null;
+        const itemId = asNullableString(row.item_id);
+        if (!itemId || parsedItemIds.has(itemId)) return null;
+        const quantity = asNumber(row.suggested_qty) ?? asNumber(row.avg_qty) ?? 1;
+        const itemName = asNullableString(row.item_name) ?? 'Suggested item';
+        const unit = asNullableString(row.unit);
+        const unitType = asNullableString(row.unit_type);
+        const confidence = clampConfidence(row.frequency ?? row.confidence ?? 0.5);
+        return {
+          type: 'usual_item',
+          title: itemName,
+          message: `${itemName} is part of your usual order for this location.`,
+          items: [{
+            item_id: itemId,
+            item_name: itemName,
+            quantity: Math.max(1, Math.round(quantity)),
+            unit,
+            unit_type: unitType,
+          }],
+          confidence,
+          action: 'add',
+          item_id: itemId,
+          item_name: itemName,
+          suggested_qty: Math.max(1, Math.round(quantity)),
+          unit,
+          unit_type: unitType,
+          reason: asNullableString(row.reason) ?? 'Usually ordered at this location',
+        };
+      })
+      .filter((row: ParseSuggestion | null): row is ParseSuggestion => Boolean(row))
+      .slice(0, 6);
+  } catch (error) {
+    console.warn('parse-order get_usual_order unexpected failure', error);
+    return [];
+  }
+}
+
+type HistoryOrderItem = {
+  item_id: string;
+  item_name: string;
+  quantity: number;
+  unit_type: string | null;
+  unit: string | null;
+};
+
+type HistoryOrder = {
+  id: string;
+  created_at: string;
+  items: HistoryOrderItem[];
+};
+
+function parseJsonRows(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function normalizeHistoryOrder(value: unknown): HistoryOrder | null {
+  if (!isRecord(value)) return null;
+  const id = asNullableString(value.id);
+  const createdAt = asNullableString(value.created_at);
+  const items = parseJsonRows(value.items)
+    .map((entry): HistoryOrderItem | null => {
+      if (!isRecord(entry)) return null;
+      const itemId = asNullableString(entry.item_id);
+      const itemName = asNullableString(entry.item_name);
+      const quantity = asNumber(entry.quantity);
+      if (!itemId || !itemName || quantity == null || quantity <= 0) return null;
+      return {
+        item_id: itemId,
+        item_name: itemName,
+        quantity,
+        unit_type: asNullableString(entry.unit_type),
+        unit: asNullableString(entry.unit),
+      };
+    })
+    .filter((entry): entry is HistoryOrderItem => Boolean(entry));
+  if (!id || !createdAt || items.length === 0) return null;
+  return { id, created_at: createdAt, items };
+}
+
+async function fetchRecentOrders(input: { locationId: string; userId: string; limit?: number }): Promise<HistoryOrder[]> {
+  const { data, error } = await supabaseAdmin.rpc('get_recent_orders', {
+    p_location_id: input.locationId,
+    p_limit: input.limit ?? HISTORY_ORDER_LIMIT,
+    p_user_id: input.userId,
+  });
+  if (error) {
+    console.warn('parse-order get_recent_orders failed', error);
+    return [];
+  }
+  return parseJsonRows(data).map(normalizeHistoryOrder).filter((row): row is HistoryOrder => Boolean(row));
+}
+
+function orderToSuggestion(order: HistoryOrder, type: 'reorder_recent' | 'reorder_last_week', title: string, message: string): ParseSuggestion {
+  return {
+    type,
+    title,
+    message,
+    items: order.items.map((item) => ({
+      item_id: item.item_id,
+      item_name: item.item_name,
+      quantity: item.quantity,
+      unit: item.unit,
+      unit_type: item.unit_type,
+    })),
+    confidence: 0.95,
+    action: 'preview',
+    reason: order.id,
+  };
+}
+
+async function buildIntentSuggestions(input: {
+  classification?: string;
+  rawText: string;
+  locationId: string;
+  userId: string;
+  parsedItems: ParsedItem[];
+}): Promise<{ suggestions: ParseSuggestion[]; message: string | null; historyResult?: string }> {
+  const normalized = input.rawText.normalize('NFKC').trim().toLowerCase();
+  const wantsLastWeek = /\blast week\b/.test(normalized);
+  const wantsRecent = /\breorder recent\b|\blast order\b|\brecent order\b/.test(normalized);
+  const wantsUsual = /\busual\b|usually order/.test(normalized);
+
+  if (input.classification === 'history_request' || wantsLastWeek || wantsRecent || wantsUsual) {
+    const orders = await fetchRecentOrders({ locationId: input.locationId, userId: input.userId, limit: HISTORY_ORDER_LIMIT });
+    if (wantsLastWeek) {
+      const target = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const lastWeekOrder = orders
+        .map((order) => ({ order, distance: Math.abs(new Date(order.created_at).getTime() - target) }))
+        .filter((entry) => Number.isFinite(entry.distance))
+        .sort((a, b) => a.distance - b.distance)[0]?.order ?? null;
+      if (!lastWeekOrder || Math.abs(new Date(lastWeekOrder.created_at).getTime() - target) > 4 * 24 * 60 * 60 * 1000) {
+        return { suggestions: [], message: 'No matching order from last week was found for this location.', historyResult: 'not_found' };
+      }
+      return {
+        suggestions: [orderToSuggestion(lastWeekOrder, 'reorder_last_week', 'Reorder last week', 'Preview the closest order from last week.')],
+        message: 'I found an order from last week. Preview it before adding.',
+        historyResult: 'found',
+      };
+    }
+
+    if (wantsUsual) {
+      const usual = await fetchUsualOrderSuggestions({
+        locationId: input.locationId,
+        userId: input.userId,
+        parsedItems: input.parsedItems,
+      });
+      const fallback = usual.length > 0
+        ? []
+        : await fetchDowSuggestions({
+          locationId: input.locationId,
+          userId: input.userId,
+          parsedItems: input.parsedItems,
+          previousMessages: [],
+        });
+      const suggestions = usual.length > 0 ? usual : fallback;
+      return {
+        suggestions,
+        message: suggestions.length > 0 ? 'Here are items you usually order for this location.' : 'I don’t have enough history to suggest a usual order yet.',
+        historyResult: suggestions.length > 0 ? 'found' : 'not_found',
+      };
+    }
+
+    const recent = orders[0] ?? null;
+    if (!recent) {
+      return { suggestions: [], message: 'I couldn’t find a recent order for this location yet.', historyResult: 'not_found' };
+    }
+    return {
+      suggestions: [orderToSuggestion(recent, 'reorder_recent', 'Reorder recent', 'Preview your most recent order before adding it.')],
+      message: 'I found your most recent order. Preview it before adding.',
+      historyResult: 'found',
+    };
+  }
+
+  if (input.classification === 'suggestion_request') {
+    const suggestions = await fetchDowSuggestions({
+      locationId: input.locationId,
+      userId: input.userId,
+      parsedItems: input.parsedItems,
+      previousMessages: [],
+    });
+    return {
+      suggestions,
+      message: suggestions.length > 0 ? 'Here are suggestions for this location.' : 'I don’t have enough order history to suggest a usual order yet.',
+      historyResult: suggestions.length > 0 ? 'found' : 'not_found',
+    };
+  }
+
+  return { suggestions: [], message: null };
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
@@ -487,6 +726,7 @@ Deno.serve(async (req) => {
         'quick_order_daily_limit_per_user',
         'quick_order_monthly_token_budget',
         'quick_order_token_warning_threshold',
+        'quick_order_unit_synonyms',
       ]);
 
     const config: Record<string, unknown> = {};
@@ -513,6 +753,7 @@ Deno.serve(async (req) => {
     const parserMode = typeof config.quick_order_parser_mode === 'string'
       ? config.quick_order_parser_mode
       : 'auto';
+    configureUnitAliases(isRecord(config.quick_order_unit_synonyms) ? config.quick_order_unit_synonyms : null);
     const hasApiKey = Boolean(geminiApiKey || anthropicApiKey);
     const llmEnabled = parserMode === 'live' || (parserMode === 'auto' && hasApiKey);
 
@@ -615,12 +856,22 @@ Deno.serve(async (req) => {
       items_unresolved: result.parsed_items.filter((item) => item.unresolved).length,
     });
 
-    const suggestions = await fetchDowSuggestions({
+    const baseSuggestions = await fetchDowSuggestions({
       locationId,
       userId: authenticatedUserId,
       parsedItems: [...sessionContext.parsedItems, ...result.parsed_items],
       previousMessages: sessionContext.messages,
     });
+    const intentSuggestionResult = await buildIntentSuggestions({
+      classification: result.diagnostics?.input_classification,
+      rawText,
+      locationId,
+      userId: authenticatedUserId,
+      parsedItems: [...sessionContext.parsedItems, ...result.parsed_items],
+    });
+    const suggestions = intentSuggestionResult.suggestions.length > 0 || intentSuggestionResult.message
+      ? intentSuggestionResult.suggestions
+      : baseSuggestions;
 
     const durationMs = Date.now() - callStartTime;
     const promptTokens = result.metrics?.llm_used ? Math.ceil(rawText.length / 4) : 0;
@@ -641,7 +892,17 @@ Deno.serve(async (req) => {
       metrics: result.metrics ?? {},
     });
 
-    const finalResponse = { ...result, suggestions };
+    const finalResponse = {
+      ...result,
+      suggestions,
+      assistant_message: intentSuggestionResult.message ?? result.assistant_message,
+      reply_text: intentSuggestionResult.message ?? result.reply_text,
+      diagnostics: {
+        ...(result.diagnostics ?? {}),
+        suggestion_count: suggestions.length,
+        history_lookup_result: intentSuggestionResult.historyResult,
+      },
+    };
     devLog('response_sent', {
       status: finalResponse.status,
       parsed_items_count: finalResponse.parsed_items.length,

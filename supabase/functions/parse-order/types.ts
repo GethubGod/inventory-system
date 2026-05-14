@@ -4,13 +4,21 @@ export type ParseSource = 'deterministic' | 'fuzzy' | 'llm' | 'manual' | 'correc
 
 export type ParsedItemStatus =
   | 'valid'
-  | 'review'
   | 'no_match'
   | 'missing_quantity'
   | 'missing_unit'
+  | 'missing_quantity_and_unit'
   | 'ambiguous'
-  | 'invalid'
-  | 'invalid_unit';
+  | 'invalid_unit'
+  | 'duplicate_needs_decision';
+
+export type ParsedItemAction =
+  | null
+  | 'Add quantity'
+  | 'Choose unit'
+  | 'Fix unit'
+  | 'Choose item'
+  | 'Add or replace';
 
 export type MatchType =
   | 'exact_name'
@@ -50,6 +58,7 @@ export type CatalogItem = {
   pack_unit?: string | null;
   order_unit?: string | null;
   allowed_units?: string[] | null;
+  unit_options?: string[] | null;
 };
 
 export type ParserExample = {
@@ -85,6 +94,8 @@ export type CandidateParsedLine = {
   item_text: string;
   quantity: number | null;
   unit: string | null;
+  unit_raw?: string | null;
+  unit_normalized?: string | null;
   parse_source: 'deterministic';
   parse_confidence: number;
   line_index: number;
@@ -128,8 +139,10 @@ export type CatalogMatchResult = {
 
 export type ParsedItem = {
   id?: string;
+  client_id?: string;
   line_id?: string;
   client_key?: string;
+  source_text?: string;
   item_id: string | null;
   item_name: string | null;
   display_name?: string;
@@ -139,15 +152,22 @@ export type ParsedItem = {
   raw_text?: string;
   quantity: number | null;
   unit: string | null;
+  unit_raw?: string | null;
+  unit_normalized?: string | null;
+  valid_units?: string[];
   confidence: number;
   needs_clarification: boolean;
   unresolved: boolean;
   notes: string | null;
   issue?: string;
+  issue_code?: ParsedItemStatus | 'unsupported_unit' | 'invalid_unit' | 'quantity_missing' | 'unit_missing' | 'item_not_found';
+  action?: ParsedItemAction;
   alternatives?: CatalogAlternative[];
+  candidate_matches?: CatalogAlternative[];
   parse_source?: ParseSource;
   status?: ParsedItemStatus;
   match_type?: MatchType;
+  diagnostics?: Record<string, unknown>;
   pending_conflict_id?: string;
   merge_behavior?: 'add_to_existing' | 'replace_existing' | 'keep_separate';
   existing_item_key?: string;
@@ -193,14 +213,27 @@ export type ParseFlag = {
   reason?: string;
 };
 
-export type ParseSuggestion = {
+export type ParseSuggestionItem = {
   item_id: string;
   item_name: string;
-  suggested_qty: number;
+  quantity: number;
   unit: string | null;
   unit_type: string | null;
-  reason: string | null;
+};
+
+export type ParseSuggestion = {
+  type: 'reorder_recent' | 'reorder_last_week' | 'usual_item' | 'missing_item';
+  title: string;
+  message: string;
+  items: ParseSuggestionItem[];
   confidence: number;
+  action: 'preview' | 'add';
+  item_id?: string;
+  item_name?: string;
+  suggested_qty?: number;
+  unit?: string | null;
+  unit_type?: string | null;
+  reason?: string | null;
 };
 
 export type PendingQuickOrderAction = {
@@ -321,6 +354,8 @@ export type ParseDiagnostics = {
   error_code?: string;
   input_classification?: string;
   input_classification_reason?: string;
+  suggestion_count?: number;
+  history_lookup_result?: string;
 };
 
 export type ParseResponse = {

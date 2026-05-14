@@ -196,11 +196,14 @@ function EditModalBody({
 
   const unitPresets = useMemo(() => {
     const presets = new Set<string>();
+    item.valid_units?.forEach((value) => {
+      if (value?.trim()) presets.add(value.trim());
+    });
     if (selectedInventory?.base_unit) presets.add(selectedInventory.base_unit);
     if (selectedInventory?.pack_unit) presets.add(selectedInventory.pack_unit);
     ['lb', 'case', 'pack', 'each'].forEach((value) => presets.add(value));
     return Array.from(presets).filter(Boolean).slice(0, 6);
-  }, [selectedInventory]);
+  }, [item.valid_units, selectedInventory]);
 
   return (
     <KeyboardAvoidingView
@@ -450,7 +453,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: glassHairlineWidth,
     borderColor: glassColors.cardBorder,
-    shadowColor: '#111111',
+    shadowColor: colors.textPrimary,
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.08,
     shadowRadius: 18,

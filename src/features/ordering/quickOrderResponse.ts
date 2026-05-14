@@ -256,11 +256,14 @@ function normalizeParsedItem(value: unknown): ParsedQuickOrderItem | null {
     raw_text: rawText || stringValue(value.raw_token) || displayName,
     quantity,
     unit,
+    valid_units: arrayOfStrings(value.valid_units),
     confidence: numberValue(value.confidence) ?? undefined,
     needs_clarification: Boolean(value.needs_clarification) || status !== 'valid',
     unresolved: Boolean(value.unresolved) || !itemId,
     notes: stringValue(value.notes),
     issue: stringValue(value.issue) ?? undefined,
+    issue_code: stringValue(value.issue_code) ?? undefined,
+    action: normalizeItemAction(value.action),
     alternatives: normalizeAlternatives(value.alternatives),
     parse_source: normalizeParseSource(value.parse_source),
     status,
@@ -280,20 +283,30 @@ function normalizeItemStatus(
 ): ParsedQuickOrderItem['status'] {
   if (
     value === 'valid' ||
-    value === 'review' ||
     value === 'no_match' ||
     value === 'missing_quantity' ||
     value === 'missing_unit' ||
+    value === 'missing_quantity_and_unit' ||
     value === 'ambiguous' ||
-    value === 'invalid' ||
-    value === 'invalid_unit'
+    value === 'invalid_unit' ||
+    value === 'duplicate_needs_decision'
   ) {
     return value;
   }
   if (!itemId) return 'no_match';
   if (quantity == null) return 'missing_quantity';
   if (!unit) return 'missing_unit';
-  return needsClarification ? 'review' : 'valid';
+  return 'valid';
+}
+
+function normalizeItemAction(value: unknown): ParsedQuickOrderItem['action'] {
+  return value === 'Add quantity' ||
+    value === 'Choose unit' ||
+    value === 'Fix unit' ||
+    value === 'Choose item' ||
+    value === 'Add or replace'
+    ? value
+    : null;
 }
 
 function normalizeParseSource(value: unknown): ParsedQuickOrderItem['parse_source'] {

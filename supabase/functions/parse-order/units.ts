@@ -1,6 +1,6 @@
 import type { CatalogItem } from './types.ts';
 
-const UNIT_ALIASES: Record<string, string> = {
+const DEFAULT_UNIT_ALIASES: Record<string, string> = {
   cs: 'cs',
   case: 'cs',
   cases: 'cs',
@@ -15,8 +15,8 @@ const UNIT_ALIASES: Record<string, string> = {
   pcs: 'pc',
   piece: 'pc',
   pieces: 'pc',
-  ea: 'ea',
-  each: 'ea',
+  ea: 'pc',
+  each: 'pc',
   box: 'box',
   boxes: 'box',
   bag: 'bag',
@@ -31,12 +31,37 @@ const UNIT_ALIASES: Record<string, string> = {
   packages: 'pack',
 };
 
-export const UNIT_WORDS = Object.keys(UNIT_ALIASES).sort((a, b) => b.length - a.length);
+let configuredUnitAliases: Record<string, string> = { ...DEFAULT_UNIT_ALIASES };
+
+function normalizeUnitKey(value: string): string {
+  return value.normalize('NFKC').trim().toLowerCase().replace(/\.$/, '');
+}
+
+export function configureUnitAliases(extraAliases: Record<string, unknown> | null | undefined): void {
+  configuredUnitAliases = { ...DEFAULT_UNIT_ALIASES };
+  if (!extraAliases) return;
+
+  for (const [rawAlias, rawUnit] of Object.entries(extraAliases)) {
+    if (typeof rawUnit !== 'string' || !rawAlias.trim() || !rawUnit.trim()) continue;
+    const normalizedUnit = normalizeUnit(rawUnit) ?? normalizeUnitKey(rawUnit);
+    configuredUnitAliases[normalizeUnitKey(rawAlias)] = normalizedUnit;
+  }
+}
+
+export function getUnitAliases(): Record<string, string> {
+  return { ...configuredUnitAliases };
+}
+
+export function getUnitWords(): string[] {
+  return Object.keys(configuredUnitAliases).sort((a, b) => b.length - a.length);
+}
+
+export const UNIT_WORDS = getUnitWords();
 
 export function normalizeUnit(value: string | null | undefined): string | null {
   if (!value) return null;
-  const key = value.trim().toLowerCase().replace(/\.$/, '');
-  return UNIT_ALIASES[key] ?? null;
+  const key = normalizeUnitKey(value);
+  return configuredUnitAliases[key] ?? null;
 }
 
 export function normalizeUnitForComparison(value: string | null | undefined): string | null {
@@ -51,6 +76,7 @@ export function deriveAllowedUnits(item: CatalogItem | null | undefined): string
   if (!item) return [];
   const values = [
     ...(Array.isArray(item.allowed_units) ? item.allowed_units : []),
+    ...(Array.isArray(item.unit_options) ? item.unit_options : []),
     item.order_unit,
     item.default_unit,
     item.base_unit,
@@ -73,4 +99,3 @@ export function isUnitAllowedForItem(
   const allowed = deriveAllowedUnits(item);
   return allowed.length === 0 || allowed.includes(normalizedUnit);
 }
-

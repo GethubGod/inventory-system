@@ -30,10 +30,16 @@ const SUGGESTION_PATTERNS = [
 
 const HISTORY_PATTERNS = [
   /\bwhat did i order\b/i,
+  /\breorder recent\b/i,
+  /\brecent order\b/i,
   /\blast (?:week|time|order)\b/i,
   /\bprevious order\b/i,
   /\bpast order\b/i,
-  /\busual order\b/i,
+  /\bsame as last time\b/i,
+  /\bsame as usual\b/i,
+  /\bthe usual\b/i,
+  /\bmy usual\b/i,
+  /\busual(?: order)?\b/i,
   /\breorder last\b/i,
 ];
 
@@ -43,18 +49,19 @@ export function classifyQuickOrderInput(
   rawText: string,
   context: QuickOrderInputClassifierContext = {},
 ): QuickOrderInputClassificationResult {
-  const normalizedText = rawText.trim().toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, '').replace(/\s+/g, ' ');
-  const intentResult = detectQuickOrderIntent(rawText);
+  const nfkcText = rawText.normalize('NFKC');
+  const normalizedText = nfkcText.trim().toLowerCase().replace(/[^\p{L}\p{N}\s]+/gu, '').replace(/\s+/g, ' ');
+  const intentResult = detectQuickOrderIntent(nfkcText);
 
   if (!normalizedText) {
     return { classification: 'unknown_non_order', intentResult, normalizedText, reason: 'empty_input' };
   }
 
-  if (SUGGESTION_PATTERNS.some((pattern) => pattern.test(rawText))) {
+  if (SUGGESTION_PATTERNS.some((pattern) => pattern.test(nfkcText))) {
     return { classification: 'suggestion_request', intentResult, normalizedText, reason: 'suggestion_phrase' };
   }
 
-  if (HISTORY_PATTERNS.some((pattern) => pattern.test(rawText))) {
+  if (HISTORY_PATTERNS.some((pattern) => pattern.test(nfkcText))) {
     return { classification: 'history_request', intentResult, normalizedText, reason: 'history_phrase' };
   }
 
@@ -79,7 +86,7 @@ export function classifyQuickOrderInput(
     return { classification: 'order_command', intentResult, normalizedText, reason: `${intentResult.intent}_command` };
   }
 
-  if (QUESTION_PATTERN.test(rawText)) {
+  if (QUESTION_PATTERN.test(nfkcText)) {
     return { classification: 'unknown_non_order', intentResult, normalizedText, reason: 'question_like_text' };
   }
 

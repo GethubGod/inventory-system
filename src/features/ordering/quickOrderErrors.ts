@@ -50,6 +50,21 @@ const TECHNICAL_PATTERNS: RegExp[] = [
   /\bedge function\b/i,
 ];
 
+const PLACEHOLDER_RESPONSES: { pattern: RegExp; message: string }[] = [
+  {
+    pattern: /suggestions? (?:are|is) not available in quick order yet/i,
+    message: 'I don’t have enough order history to suggest a usual order yet.',
+  },
+  {
+    pattern: /past order lookup is not available in quick order yet/i,
+    message: 'I couldn’t find a recent order for this location yet.',
+  },
+  {
+    pattern: /not available in quick order yet/i,
+    message: 'Try typing the items you need, and I’ll build the order list.',
+  },
+];
+
 function looksTechnical(value: string): boolean {
   return TECHNICAL_PATTERNS.some((pattern) => pattern.test(value));
 }
@@ -68,6 +83,8 @@ export function toFriendlyQuickOrderError(rawText?: string | null, code?: string
   }
 
   const trimmed = typeof rawText === 'string' ? rawText.trim() : '';
+  const placeholder = PLACEHOLDER_RESPONSES.find((entry) => entry.pattern.test(trimmed));
+  if (placeholder) return placeholder.message;
   if (!trimmed) {
     return code ? GENERIC_QUICK_ORDER_ERROR : UNREADABLE_ORDER_MESSAGE;
   }
@@ -84,6 +101,8 @@ export function toFriendlyQuickOrderError(rawText?: string | null, code?: string
  */
 export function sanitizeAssistantReply(replyText?: string | null, fallback?: string): string {
   const trimmed = typeof replyText === 'string' ? replyText.trim() : '';
+  const placeholder = PLACEHOLDER_RESPONSES.find((entry) => entry.pattern.test(trimmed));
+  if (placeholder) return placeholder.message;
   if (!trimmed || looksTechnical(trimmed)) {
     return fallback ?? UNREADABLE_ORDER_MESSAGE;
   }

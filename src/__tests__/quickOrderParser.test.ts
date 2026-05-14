@@ -230,7 +230,7 @@ describe('repeated item conflicts', () => {
 });
 
 describe('quick order orchestration', () => {
-  test('mixed multiline order preserves successes and rejects low-confidence tai', async () => {
+  test('mixed multiline order preserves successes and returns low-confidence tai as no_match review', async () => {
     const result = await parseQuickOrder({
       rawText: 'Tuna loin 1cs\n1pc salmon\n1cs tai\nUnii 1 oz\nBeef brisket 4lb\n1 lb escolar',
       catalog,
@@ -248,10 +248,10 @@ describe('quick order orchestration', () => {
       'brisket-id',
       'escolar-id',
     ]);
-    expect(result.parsed_items.find((item) => item.raw_token === '1cs tai')).toBeUndefined();
-    expect(result.diagnostics?.item_diagnostics?.find((item) => item.raw_text === '1cs tai')).toMatchObject({
-      status: 'no_op',
-      was_added_to_order_list: false,
+    expect(result.parsed_items.find((item) => item.raw_token === '1cs tai')).toMatchObject({
+      item_id: null,
+      status: 'no_match',
+      action: 'Choose item',
     });
   });
 
@@ -313,8 +313,8 @@ describe('quick order orchestration', () => {
     expect(result.parsed_items.some((item) => item.item_id === 'salmon-id')).toBe(true);
     expect(result.flags.some((flag) => flag.type === 'invalid_json')).toBe(false);
     expect(result.diagnostics?.item_diagnostics?.find((item) => item.raw_text === 'mystery thing 2lb')).toMatchObject({
-      status: 'no_op',
-      was_added_to_order_list: false,
+      status: 'no_match',
+      was_added_to_order_list: true,
     });
   });
 
@@ -384,7 +384,7 @@ describe('frontend quick order merge and clarification helpers', () => {
       status: 'ambiguous',
     };
     const result = mergeQuickOrderParsedItemsDetailed([], [review]);
-    expect(result.items).toEqual([review]);
+    expect(result.items[0]).toMatchObject(review);
     expect(result.reviewCount).toBe(1);
   });
 
@@ -660,7 +660,7 @@ describe('baseline Salmon 2cs through full pipeline', () => {
     expect(result.diagnostics?.items_accepted).toBe(1);
   });
 
-  test('unknown low-confidence item with valid quantity/unit is rejected without polluting the order list', async () => {
+  test('unknown item with valid quantity/unit returns a no_match review row', async () => {
     const result = await parseQuickOrder({
       rawText: 'Harare 1pc',
       catalog,
@@ -670,11 +670,11 @@ describe('baseline Salmon 2cs through full pipeline', () => {
       existingParsedItems: [],
     });
 
-    expect(result.parsed_items).toHaveLength(0);
-    expect(result.diagnostics?.item_diagnostics?.[0]).toMatchObject({
-      raw_text: 'Harare 1pc',
-      status: 'no_op',
-      was_added_to_order_list: false,
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: null,
+      status: 'no_match',
+      action: 'Choose item',
     });
   });
 
@@ -692,10 +692,10 @@ describe('baseline Salmon 2cs through full pipeline', () => {
     expect(validItems.length).toBeGreaterThanOrEqual(2);
     expect(validItems.map((item) => item.item_id)).toContain('salmon-id');
     expect(validItems.map((item) => item.item_id)).toContain('tuna-id');
-    expect(result.parsed_items.length).toBe(2);
+    expect(result.parsed_items.length).toBe(3);
     expect(result.diagnostics?.item_diagnostics?.find((item) => item.raw_text === 'Harare 1pc')).toMatchObject({
-      status: 'no_op',
-      was_added_to_order_list: false,
+      status: 'no_match',
+      was_added_to_order_list: true,
     });
   });
 });
@@ -1901,11 +1901,15 @@ describe('robust selected-location catalog matching', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(mango.parsed_items).toHaveLength(0);
-    expect(mango.reply_text).toBe('I couldn’t find "mango powder" in this location’s inventory.');
+    expect(mango.parsed_items).toHaveLength(1);
+    expect(mango.parsed_items[0]).toMatchObject({
+      item_id: null,
+      status: 'no_match',
+      action: 'Choose item',
+    });
+    expect(mango.reply_text).toContain('mango powder');
     expect(mango.diagnostics?.item_diagnostics?.[0]).toMatchObject({
-      status: 'no_op',
-      no_op_reason: 'missing_specific_token',
+      status: 'no_match',
       missing_specific_tokens: ['mango'],
       semantic_validation_passed: false,
     });
@@ -1938,9 +1942,9 @@ describe('robust selected-location catalog matching', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(noMatch.parsed_items).toHaveLength(0);
+    expect(noMatch.parsed_items).toHaveLength(1);
     expect(noMatch.diagnostics?.item_diagnostics?.[0]).toMatchObject({
-      status: 'no_op',
+      status: 'no_match',
       semantic_validation_passed: false,
     });
 
@@ -2079,13 +2083,17 @@ Tuna loin 1 cs`;
     expect(result.diagnostics?.llm_lines_sent).toBe(0);
     expect(result.parsed_items).toHaveLength(1);
     expect(result.parsed_items[0]).toMatchObject({
-      item_id: 'salmon-id',
-      item_name: 'Salmon',
+      item_id: null,
       quantity: null,
       unit: null,
-      status: 'missing_quantity',
+      status: 'ambiguous',
+      action: 'Choose item',
     });
-    expect(result.reply_text).toBe('I found Salmon, but I need the quantity and unit.');
+    expect(result.parsed_items[0].candidate_matches?.[0]).toMatchObject({
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+    });
+    expect(result.reply_text).toBe('Did you mean Salmon?');
   });
 
   test('fuzzy explicit quantity and unit can resolve to a valid catalog row', async () => {
@@ -2179,8 +2187,10 @@ Tuna loin 1 cs`;
   });
 
   test.each([
-    ['Give me some suggestions', 'Suggestions are not available in Quick Order yet.', 'suggestion_request'],
-    ['What did I order last week', 'Past order lookup is not available in Quick Order yet.', 'history_request'],
+    ['Give me some suggestions', 'I don’t have enough order history to suggest a usual order yet.', 'suggestion_request'],
+    ['What did I order last week', 'No matching order from last week was found for this location.', 'history_request'],
+    ['reorder recent', 'I couldn’t find a recent order for this location yet.', 'history_request'],
+    ['usual order', 'I don’t have enough history to suggest a usual order yet.', 'history_request'],
   ])('%s is classified before item parsing', async (rawText, message, classification) => {
     const result = await parseQuickOrder({
       rawText,
@@ -2326,7 +2336,7 @@ describe('edge case parsing', () => {
     expect(result.status).not.toBe('error');
   });
 
-  test('low-confidence unknown item is rejected without adding a review row', async () => {
+  test('unknown item with quantity is returned as no_match review row', async () => {
     const result = await parseQuickOrder({
       rawText: 'asdfasdf 2cs',
       catalog: extendedCatalog,
@@ -2335,15 +2345,15 @@ describe('edge case parsing', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(result.parsed_items.length).toBe(0);
+    expect(result.parsed_items.length).toBe(1);
     expect(result.status).not.toBe('error');
-    expect(result.diagnostics?.item_diagnostics?.[0]).toMatchObject({
-      status: 'no_op',
-      was_added_to_order_list: false,
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: null,
+      status: 'no_match',
     });
   });
 
-  test('mixed valid and low-confidence unknown items: valid items are not lost', async () => {
+  test('mixed valid and unknown items: valid items are not lost and unknown asks review', async () => {
     const result = await parseQuickOrder({
       rawText: 'Salmon 2cs\nasdfasdf 1pk\nEdamame 1cs',
       catalog: extendedCatalog,
@@ -2352,7 +2362,7 @@ describe('edge case parsing', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(result.parsed_items.length).toBe(2);
+    expect(result.parsed_items.length).toBe(3);
     expect(result.status).not.toBe('error');
     const salmon = result.parsed_items.find((item) => item.item_id === 'salmon-id');
     expect(salmon).toBeDefined();
@@ -2427,5 +2437,228 @@ describe('response normalization for review items', () => {
       pendingCount: 0,
     });
     expect(message).not.toContain('I had trouble reading that order');
+  });
+});
+
+describe('Quick Order end-to-end acceptance cases', () => {
+  test.each([
+    ['Salmon 1cs', 'salmon-id', 1, 'cs'],
+    ['Salmon 5cs', 'salmon-id', 5, 'cs'],
+    ['Salmon 5 case', 'salmon-id', 5, 'cs'],
+    ['Salmon 5 cases', 'salmon-id', 5, 'cs'],
+    ['salmon 2cs', 'salmon-id', 2, 'cs'],
+    ['2cs salmon', 'salmon-id', 2, 'cs'],
+    ['1 case albacore', 'albacore-id', 1, 'cs'],
+    ['Albacore 1cs', 'albacore-id', 1, 'cs'],
+    ['Tuna loin 1 cs', 'tuna-loin-id', 1, 'cs'],
+    ['Mackerel 4 packs', 'mackerel-id', 4, 'pack'],
+    ['Yellowtail 9 lb', 'yellowtail-id', 9, 'lb'],
+  ])('%s becomes a valid matched row', async (rawText, itemId, quantity, unit) => {
+    const result = await parseQuickOrder({
+      rawText,
+      catalog: extendedCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: itemId,
+      quantity,
+      unit,
+      status: 'valid',
+      action: null,
+      needs_clarification: false,
+      unresolved: false,
+    });
+    expect(getParsedItemIssue(result.parsed_items[0] as ParsedQuickOrderItem)).toBeNull();
+  });
+
+  test('Shrimp then Shrimp 5pk updates the same pending row without stale issue state', async () => {
+    const first = await parseQuickOrder({
+      rawText: 'Shrimp',
+      catalog: extendedCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(first.parsed_items[0]).toMatchObject({
+      item_id: 'shrimp-ebi-id',
+      status: 'missing_quantity',
+      action: 'Add quantity',
+    });
+
+    const second = await parseQuickOrder({
+      rawText: 'Shrimp 5pk',
+      catalog: extendedCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: first.parsed_items,
+    });
+    const merge = mergeQuickOrderParsedItemsDetailed(first.parsed_items as ParsedQuickOrderItem[], second.parsed_items as ParsedQuickOrderItem[]);
+    expect(merge.items).toHaveLength(1);
+    expect(merge.items[0]).toMatchObject({
+      item_id: 'shrimp-ebi-id',
+      quantity: 5,
+      unit: 'pack',
+      status: 'valid',
+      action: null,
+      needs_clarification: false,
+      unresolved: false,
+    });
+    expect(merge.items[0].issue).toBeUndefined();
+    expect(getParsedItemIssue(merge.items[0])).toBeNull();
+  });
+
+  test('"2 salmon" asks for unit, while "Salmon 5 bottle" asks to fix unit', async () => {
+    const missingUnit = await parseQuickOrder({
+      rawText: '2 salmon',
+      catalog: extendedCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(missingUnit.parsed_items[0]).toMatchObject({
+      item_id: 'salmon-id',
+      quantity: 2,
+      status: 'missing_unit',
+      action: 'Choose unit',
+    });
+
+    const invalidUnit = await parseQuickOrder({
+      rawText: 'Salmon 5 bottle',
+      catalog: extendedCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(invalidUnit.parsed_items[0]).toMatchObject({
+      item_id: 'salmon-id',
+      quantity: 5,
+      unit: 'bottle',
+      status: 'invalid_unit',
+      action: 'Fix unit',
+      unresolved: false,
+    });
+    expect(invalidUnit.assistant_message).toContain('Salmon cannot be ordered in bottle');
+    expect(invalidUnit.parsed_items[0].issue).toContain('Choose:');
+  });
+
+  test('bare tuna is ambiguous when multiple tuna catalog items exist', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'tuna',
+      catalog: extendedCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: null,
+      status: 'ambiguous',
+      action: 'Choose item',
+    });
+    expect(result.parsed_items[0].alternatives?.map((item) => item.item_id)).toEqual(
+      expect.arrayContaining(['tuna-id', 'tuna-loin-id']),
+    );
+  });
+
+  test('absent crab mix and ground tuna return no_match rows when absent from catalog', async () => {
+    const catalogWithoutItems = extendedCatalog.filter((item) => item.id !== 'crab-mix-id' && item.id !== 'ground-tuna-id');
+    const result = await parseQuickOrder({
+      rawText: '1 box of crab mix, half box of ground tuna',
+      catalog: catalogWithoutItems,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(result.parsed_items).toHaveLength(2);
+    expect(result.parsed_items.map((item) => item.status)).toEqual(['no_match', 'no_match']);
+    expect(result.parsed_items.every((item) => item.item_id === null && item.action === 'Choose item')).toBe(true);
+  });
+
+  test.each([
+    ['clear', 'clear_request'],
+    ['combine', 'duplicate_resolution_action'],
+    ['give me suggestions', 'suggestion_request'],
+    ['reorder recent', 'history_request'],
+    ['recent order', 'history_request'],
+    ['last order', 'history_request'],
+    ['reorder last week', 'history_request'],
+    ['last week', 'history_request'],
+    ['what did I order last week', 'history_request'],
+    ['usual order', 'history_request'],
+    ['the usual', 'history_request'],
+  ])('%s is classified before item matching', async (rawText, classification) => {
+    const result = await parseQuickOrder({
+      rawText,
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.diagnostics?.input_classification).toBe(classification);
+  });
+
+  test('confirm readiness requires valid rows and no pending action state', () => {
+    const valid: ParsedQuickOrderItem = {
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+      quantity: 1,
+      unit: 'cs',
+      status: 'valid',
+      action: null,
+    };
+    const invalid: ParsedQuickOrderItem = {
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+      quantity: 1,
+      unit: 'bottle',
+      status: 'invalid_unit',
+      action: 'Fix unit',
+      needs_clarification: true,
+    };
+    expect(countUnresolvedItems([valid])).toBe(0);
+    expect(countUnresolvedItems([valid, invalid])).toBe(1);
+    expect(normalizeQuickOrderItemForDisplay({
+      ...valid,
+      issue: 'stale issue',
+      issue_code: 'missing_quantity',
+      action: 'Add quantity',
+      needs_clarification: true,
+    })).toMatchObject({
+      status: 'valid',
+      issue: undefined,
+      issue_code: undefined,
+      action: null,
+      needs_clarification: false,
+    });
+    expect(normalizeQuickOrderItemForDisplay({
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+      quantity: 5,
+      unit: 'case',
+      valid_units: ['lb', 'cs'],
+      status: 'invalid_unit',
+      action: 'Fix unit',
+      needs_clarification: true,
+      issue: 'stale invalid unit',
+    })).toMatchObject({
+      quantity: 5,
+      unit: 'cs',
+      status: 'valid',
+      action: null,
+      issue: undefined,
+      needs_clarification: false,
+    });
   });
 });

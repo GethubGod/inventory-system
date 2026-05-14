@@ -7,7 +7,7 @@ import {
   normalizeSearchText,
 } from './catalog-matcher.ts';
 import { parseDeterministicOrder } from './deterministic-parser.ts';
-import { detectRepeatedOrderList, resolveParsedItemConflicts } from './conflicts.ts';
+import { detectRepeatedOrderList, getParserItemKey, resolveParsedItemConflicts } from './conflicts.ts';
 import { classifyQuickOrderInput } from './input-classifier.ts';
 import type { QuickOrderInputClassificationResult } from './input-classifier.ts';
 import { buildCommandOperations } from './operations.ts';
@@ -90,7 +90,8 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   const catalogDebug = buildCatalogDebug(input, catalogIndex);
 
   for (const candidate of candidates) {
-    const match = matchCatalogIndex(candidate.item_text, catalogIndex);
+    const baseMatch = matchCatalogIndex(candidate.item_text, catalogIndex);
+    const match = maybeAmbiguousBareCatalogToken(candidate, baseMatch, catalogIndex);
     const validated = validateParsedLine({ candidate, match, catalog: input.catalog });
     parsedItems.push(validated.item);
     flags.push(...validated.flags);
@@ -172,6 +173,7 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   const unresolvedForLlm = parsedItems.filter(
     (item) =>
       !isStrongDeterministicMatch(item) &&
+      item.issue !== 'Item spelling needs confirmation.' &&
       isPlausibleForLlm(item, catalogIndex) &&
       (item.unresolved || item.match_type === 'unresolved' || item.status === 'ambiguous' || item.status === 'no_match'),
   );
@@ -209,10 +211,12 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   parsedItems.push(...normalizedParsedItems);
 
   const readyItems = parsedItems.filter((item) => !item.needs_clarification && !item.unresolved);
-  const repeatedList = detectRepeatedOrderList(input.existingParsedItems, readyItems);
+  const reviewResolution = resolveExistingReviewRows(input.existingParsedItems, readyItems);
+  const itemsForDuplicateDetection = reviewResolution.remainingItems;
+  const repeatedList = detectRepeatedOrderList(input.existingParsedItems, itemsForDuplicateDetection);
   const conflictInput = repeatedList.isRepeatedList
     ? [...repeatedList.changedItems, ...repeatedList.newItems]
-    : readyItems;
+    : itemsForDuplicateDetection;
 
   // For explicit 'add' intent, inject additive language into rawText so conflict
   // resolution auto-adds instead of asking.
@@ -228,6 +232,7 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   const unresolvedItems = parsedItems.filter((item) => item.needs_clarification || item.unresolved);
   const combined = combineParsedItemsByLine([
     ...unresolvedItems,
+    ...reviewResolution.resolvedItems,
     ...conflictResult.acceptedItems,
     ...conflictResult.updatedItems,
   ]);
@@ -341,6 +346,98 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   };
 }
 
+function resolveExistingReviewRows(
+  existingItems: ParsedItem[],
+  incomingReadyItems: ParsedItem[],
+): { resolvedItems: ParsedItem[]; remainingItems: ParsedItem[] } {
+  const consumedExistingKeys = new Set<string>();
+  const resolvedItems: ParsedItem[] = [];
+  const remainingItems: ParsedItem[] = [];
+
+  for (const incoming of incomingReadyItems) {
+    const existing = existingItems.find((item) => {
+      if (consumedExistingKeys.has(getParserItemKey(item))) return false;
+      if (!item.needs_clarification && !item.unresolved) return false;
+      if (incoming.item_id && item.item_id === incoming.item_id) return true;
+      const existingName = normalizeSearchText(item.item_name ?? item.display_name ?? item.item_text ?? item.raw_token ?? '');
+      const incomingName = normalizeSearchText(incoming.item_name ?? incoming.display_name ?? incoming.item_text ?? incoming.raw_token ?? '');
+      return Boolean(existingName && incomingName && existingName === incomingName);
+    });
+
+    if (!existing) {
+      remainingItems.push(incoming);
+      continue;
+    }
+
+    consumedExistingKeys.add(getParserItemKey(existing));
+    resolvedItems.push({
+      ...incoming,
+      client_key: existing.client_key ?? incoming.client_key,
+      existing_item_key: getParserItemKey(existing),
+      merge_behavior: 'replace_existing',
+      needs_clarification: false,
+      unresolved: false,
+      status: 'valid',
+      issue: undefined,
+      issue_code: undefined,
+      action: null,
+    });
+  }
+
+  return { resolvedItems, remainingItems };
+}
+
+function maybeAmbiguousBareCatalogToken(
+  candidate: ReturnType<typeof parseDeterministicOrder>[number],
+  match: ReturnType<typeof matchCatalogIndex>,
+  catalogIndex: CatalogSearchIndex,
+): ReturnType<typeof matchCatalogIndex> {
+  if (!match.item_id || candidate.quantity != null || candidate.unit) return match;
+  const normalized = normalizeSearchText(candidate.item_text);
+  if (!normalized || normalized.includes(' ')) return match;
+
+  if (match.match_type === 'fuzzy') {
+    const matchedTerm = normalizeSearchText(match.matched_term ?? match.item_name ?? '');
+    const lengthRatio = matchedTerm
+      ? Math.min(normalized.length, matchedTerm.length) / Math.max(normalized.length, matchedTerm.length)
+      : 0;
+    if (lengthRatio < 0.65) return match;
+    const alternatives = findCatalogAlternatives(candidate.item_text, catalogIndex, 3);
+    if (alternatives.length > 0) {
+      return {
+        item_id: null,
+        item_name: null,
+        display_name: candidate.item_text,
+        match_type: 'ambiguous',
+        confidence: match.confidence,
+        needs_clarification: true,
+        issue: 'Item spelling needs confirmation.',
+        alternatives,
+      };
+    }
+  }
+
+  const entries = catalogIndex.entries.filter((entry) => {
+    if (entry.type !== 'name' && entry.type !== 'alias' && entry.type !== 'parenthetical' && entry.type !== 'generated') return false;
+    return entry.normalized === normalized ||
+      entry.normalized.startsWith(`${normalized} `) ||
+      entry.normalized.endsWith(` ${normalized}`);
+  });
+  const itemIds = new Set(entries.map((entry) => entry.item.id));
+  if (itemIds.size <= 1) return match;
+
+  return {
+    item_id: null,
+    item_name: null,
+    display_name: candidate.item_text,
+    match_type: 'ambiguous',
+    confidence: 0.9,
+    needs_clarification: true,
+    issue: 'Item text matches multiple catalog items.',
+    alternatives: findCatalogAlternatives(candidate.item_text, catalogIndex, 5),
+  };
+}
+
 type ItemDiagnostic = NonNullable<NonNullable<ParseResponse['diagnostics']>['item_diagnostics']>[number];
 
 function buildPreParseResponse(
@@ -350,9 +447,9 @@ function buildPreParseResponse(
 ): ParseResponse | null {
   switch (classification.classification) {
     case 'suggestion_request':
-      return buildNonOrderResponse(input, classification, 'Suggestions are not available in Quick Order yet.');
+      return buildNonOrderResponse(input, classification, 'I don’t have enough order history to suggest a usual order yet.');
     case 'history_request':
-      return buildNonOrderResponse(input, classification, 'Past order lookup is not available in Quick Order yet.');
+      return buildNonOrderResponse(input, classification, getHistoryPlaceholderMessage(classification.normalizedText));
     case 'duplicate_resolution_action':
       if (classification.reason === 'no_pending_duplicate_action') {
         return buildNonOrderResponse(input, classification, 'There is nothing to combine right now.');
@@ -407,6 +504,16 @@ function buildPreParseResponse(
     default:
       return null;
   }
+}
+
+function getHistoryPlaceholderMessage(normalizedText: string): string {
+  if (/\breorder recent\b|\brecent order\b|\blast order\b/.test(normalizedText)) {
+    return 'I couldn’t find a recent order for this location yet.';
+  }
+  if (/\busual\b/.test(normalizedText)) {
+    return 'I don’t have enough history to suggest a usual order yet.';
+  }
+  return 'No matching order from last week was found for this location.';
 }
 
 function buildNonOrderResponse(
@@ -519,7 +626,7 @@ function shouldKeepParsedItem(
   const topConfidence = topCandidate?.confidence ?? topCandidate?.score ?? 0;
 
   if (item.status === 'ambiguous') {
-    if (topConfidence >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE && !isSingleBareWord) {
+    if (!isSingleBareWord || hasQuantityOrUnit) {
       return { keep: true, reason: 'plausible_ambiguous_match' };
     }
     if (topConfidence >= 0.85) return { keep: true, reason: 'strong_single_word_match' };
@@ -527,6 +634,9 @@ function shouldKeepParsedItem(
   }
 
   if (item.status === 'no_match' || item.unresolved || item.needs_clarification) {
+    if (!item.item_id && (hasQuantityOrUnit || !isSingleBareWord)) {
+      return { keep: true, reason: 'item_like_no_match' };
+    }
     if (topConfidence >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE && !isSingleBareWord) {
       return { keep: true, reason: 'plausible_catalog_candidate' };
     }
@@ -543,16 +653,16 @@ function isAcceptableResolvedFuzzyItem(
   itemText: string,
   isSingleBareWord: boolean,
 ): boolean {
-  const confidence = item.confidence ?? 0;
-  if (confidence >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE) return true;
   const itemName = item.item_name ?? item.display_name ?? '';
-  const semantic = analyzeSemanticTokens(itemText, itemName);
-  if (!isSingleBareWord && semantic.passed && semantic.tokenCoverage >= 0.75) return true;
-  if (!isSingleBareWord) return false;
-
   const inputToken = normalizeSearchText(itemText);
   const catalogTokens = normalizeSearchText(itemName).split(/\s+/).filter(Boolean);
-  return catalogTokens.some((token) => isCloseSingleTokenTypo(inputToken, token));
+  if (isSingleBareWord) return catalogTokens.some((token) => isCloseSingleTokenTypo(inputToken, token));
+
+  const confidence = item.confidence ?? 0;
+  if (confidence >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE) return true;
+  const semantic = analyzeSemanticTokens(itemText, itemName);
+  if (semantic.passed && semantic.tokenCoverage >= 0.75) return true;
+  return false;
 }
 
 function isCloseSingleTokenTypo(inputToken: string, catalogToken: string): boolean {
@@ -1034,10 +1144,13 @@ function buildItemDiagnostics(items: ParsedItem[], catalogIndex: CatalogSearchIn
 }
 
 function actionForItem(item: ParsedItem): string | null {
-  if (item.status === 'no_match' || item.status === 'ambiguous' || item.status === 'review') return 'Choose item';
+  if (item.action) return item.action;
+  if (item.status === 'no_match' || item.status === 'ambiguous') return 'Choose item';
+  if (item.status === 'missing_quantity_and_unit') return 'Add quantity';
   if (item.status === 'missing_quantity') return 'Add quantity';
   if (item.status === 'missing_unit') return 'Choose unit';
-  if (item.status === 'invalid_unit' || item.status === 'invalid') return 'Fix unit';
+  if (item.status === 'invalid_unit') return 'Fix unit';
+  if (item.status === 'duplicate_needs_decision') return 'Add or replace';
   if (!item.item_id || item.unresolved) return 'Choose item';
   if (item.quantity == null || item.quantity <= 0) return 'Add quantity';
   if (!item.unit?.trim()) return 'Choose unit';
@@ -1180,8 +1293,10 @@ function buildReplyText(
 function buildSingleReviewReplyText(item: ParsedItem, catalog: CatalogItem[]): string {
   const displayName = item.display_name ?? item.item_name ?? item.item_text ?? item.raw_token;
   if (item.status === 'missing_quantity') {
-    if (!item.unit) return `I found ${displayName}, but I need the quantity and unit.`;
     return `How much ${displayName} would you like?`;
+  }
+  if (item.status === 'missing_quantity_and_unit') {
+    return `I found ${displayName}, but I need the quantity and unit.`;
   }
   if (item.status === 'missing_unit') {
     return `What unit would you like for ${displayName}?`;
@@ -1193,10 +1308,19 @@ function buildSingleReviewReplyText(item: ParsedItem, catalog: CatalogItem[]): s
     return `${displayName} cannot be ordered in ${item.unit ?? 'that unit'}.${allowedLabel}`;
   }
   if (item.status === 'ambiguous') {
-    return `I couldn’t find an exact match for "${item.item_text ?? item.raw_token}". Did you mean one of these?`;
+    if (item.issue === 'Item spelling needs confirmation.' && item.alternatives?.[0]?.item_name) {
+      return `Did you mean ${item.alternatives[0].item_name}?`;
+    }
+    if ((item.alternatives?.length ?? 0) === 1) {
+      return `Did you mean ${item.alternatives?.[0]?.item_name ?? displayName}?`;
+    }
+    return `Which ${item.item_text ?? item.raw_token} did you mean?`;
   }
   if (item.status === 'no_match' || item.unresolved) {
-    return `I couldn’t find "${item.item_text ?? item.raw_token}" in this location’s inventory.`;
+    const name = item.item_text ?? item.raw_token;
+    return item.alternatives?.length
+      ? `I couldn’t find "${name}" in this location’s inventory. Did you mean one of these?`
+      : `I couldn’t find "${name}" in this location’s inventory. Please choose an item or ask a manager to add it.`;
   }
   return `Got this item, but it needs review.`;
 }

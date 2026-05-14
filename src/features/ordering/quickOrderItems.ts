@@ -25,11 +25,14 @@ export type ParsedQuickOrderItem = {
   raw_text?: string;
   quantity: number | null;
   unit: string | null;
+  valid_units?: string[];
   confidence?: number;
   needs_clarification?: boolean;
   unresolved?: boolean;
   notes?: string | null;
   issue?: string;
+  issue_code?: string;
+  action?: null | 'Add quantity' | 'Choose unit' | 'Fix unit' | 'Choose item' | 'Add or replace';
   alternatives?: {
     item_id: string;
     item_name: string;
@@ -41,7 +44,7 @@ export type ParsedQuickOrderItem = {
     reason?: string;
   }[];
   parse_source?: 'deterministic' | 'fuzzy' | 'llm' | 'manual' | 'correction';
-  status?: 'valid' | 'review' | 'no_match' | 'missing_quantity' | 'missing_unit' | 'ambiguous' | 'invalid' | 'invalid_unit';
+  status?: 'valid' | 'no_match' | 'missing_quantity' | 'missing_unit' | 'missing_quantity_and_unit' | 'ambiguous' | 'invalid_unit' | 'duplicate_needs_decision';
   match_type?: string;
   pending_conflict_id?: string;
   merge_behavior?: 'add_to_existing' | 'replace_existing' | 'keep_separate';
@@ -100,6 +103,9 @@ export type QuickOrderInventoryItem = {
   name: string;
   base_unit: string | null;
   pack_unit: string | null;
+  default_unit?: string | null;
+  order_unit?: string | null;
+  allowed_units?: string[] | null;
 };
 
 export type ParsedItemIssueKind =
@@ -172,16 +178,22 @@ export function getParsedItemIssue(item: ParsedQuickOrderItem): ParsedItemIssue 
   if (normalized.status === 'missing_quantity') {
     return { kind: 'pick-quantity', label: 'Add quantity' };
   }
+  if (normalized.status === 'missing_quantity_and_unit') {
+    return { kind: 'pick-quantity', label: 'Add quantity' };
+  }
   if (normalized.status === 'missing_unit') {
     return { kind: 'pick-unit', label: 'Choose unit' };
   }
-  if (normalized.status === 'invalid_unit' || normalized.status === 'invalid') {
+  if (normalized.status === 'invalid_unit') {
     return { kind: 'fix-unit', label: 'Fix unit' };
   }
   if (normalized.status === 'ambiguous') {
     return { kind: 'choose-item', label: 'Choose item' };
   }
-  if (normalized.status === 'no_match' || normalized.status === 'review') {
+  if (normalized.status === 'duplicate_needs_decision') {
+    return { kind: 'needs-clarification', label: 'Add or replace' };
+  }
+  if (normalized.status === 'no_match') {
     if (!normalized.item_id || normalized.unresolved) {
       return { kind: 'choose-item', label: 'Choose item' };
     }
@@ -208,15 +220,18 @@ export function normalizeQuickOrderItemForDisplay(item: ParsedQuickOrderItem): P
     : null;
   const unit = normalizeQuickOrderUnit(item.unit);
   let status = item.status;
+  const validUnitKeys = new Set((item.valid_units ?? []).map(normalizeQuickOrderUnit).filter(Boolean));
+  const hasKnownValidUnits = validUnitKeys.size > 0;
+  const staleInvalidUnit = status === 'invalid_unit' && Boolean(unit && validUnitKeys.has(unit));
 
   if (!item.item_id) {
     status = status === 'ambiguous' ? 'ambiguous' : 'no_match';
   } else if (status === 'ambiguous') {
     status = 'ambiguous';
-  } else if (status === 'invalid_unit' || status === 'invalid') {
+  } else if (status === 'invalid_unit' && !staleInvalidUnit) {
     status = 'invalid_unit';
   } else if (quantity == null) {
-    status = 'missing_quantity';
+    status = !unit && !hasKnownValidUnits ? 'missing_quantity_and_unit' : 'missing_quantity';
   } else if (!unit) {
     status = 'missing_unit';
   } else {
@@ -232,7 +247,31 @@ export function normalizeQuickOrderItemForDisplay(item: ParsedQuickOrderItem): P
     needs_clarification: resolved ? false : item.needs_clarification ?? status !== 'valid',
     unresolved: item.item_id ? false : true,
     issue: resolved ? undefined : item.issue,
+    issue_code: resolved ? undefined : item.issue_code,
+    action: resolved ? null : actionForStatus(status),
+    alternatives: resolved ? undefined : item.alternatives,
   };
+}
+
+export function actionForStatus(status: ParsedQuickOrderItem['status']) {
+  switch (status) {
+    case 'valid':
+      return null;
+    case 'missing_quantity':
+    case 'missing_quantity_and_unit':
+      return 'Add quantity' as const;
+    case 'missing_unit':
+      return 'Choose unit' as const;
+    case 'invalid_unit':
+      return 'Fix unit' as const;
+    case 'no_match':
+    case 'ambiguous':
+      return 'Choose item' as const;
+    case 'duplicate_needs_decision':
+      return 'Add or replace' as const;
+    default:
+      return null;
+  }
 }
 
 export function isParsedItemReady(item: ParsedQuickOrderItem): boolean {
@@ -511,7 +550,7 @@ function mergeReviewItemWithIncoming(
     ...merged,
     status,
     needs_clarification: status !== 'valid',
-    unresolved: status === 'no_match' || status === 'ambiguous' || status === 'review',
+    unresolved: status === 'no_match' || status === 'ambiguous',
     issue: status === 'valid' ? undefined : merged.issue,
   });
 }
@@ -521,9 +560,11 @@ function deriveMergedItemStatus(
   incomingStatus: ParsedQuickOrderItem['status'],
 ): ParsedQuickOrderItem['status'] {
   if (!item.item_id) return incomingStatus === 'ambiguous' ? 'ambiguous' : 'no_match';
-  if (item.quantity == null || !Number.isFinite(item.quantity) || item.quantity <= 0) return 'missing_quantity';
+  if (item.quantity == null || !Number.isFinite(item.quantity) || item.quantity <= 0) {
+    return !item.unit?.trim() && (item.valid_units?.length ?? 0) === 0 ? 'missing_quantity_and_unit' : 'missing_quantity';
+  }
   if (!item.unit?.trim()) return 'missing_unit';
-  if (incomingStatus === 'invalid_unit' || incomingStatus === 'invalid') return 'invalid_unit';
+  if (incomingStatus === 'invalid_unit') return 'invalid_unit';
   return 'valid';
 }
 
@@ -674,15 +715,47 @@ export function normalizeQuickOrderUnit(value: string | null | undefined): strin
     case 'pcs':
     case 'piece':
     case 'pieces':
+    case 'each':
+    case 'ea':
       return 'pc';
     case 'ounce':
     case 'ounces':
       return 'oz';
-    case 'each':
-      return 'ea';
     default:
       return key;
   }
+}
+
+export function areQuickOrderUnitsEquivalent(
+  left: string | null | undefined,
+  right: string | null | undefined,
+): boolean {
+  const leftKey = normalizeQuickOrderUnit(left);
+  const rightKey = normalizeQuickOrderUnit(right);
+  return Boolean(leftKey && rightKey && leftKey === rightKey);
+}
+
+export function deriveQuickOrderAllowedUnits(
+  item: ParsedQuickOrderItem | null | undefined,
+  inventoryItem?: QuickOrderInventoryItem | null,
+): string[] {
+  const values = [
+    ...(Array.isArray(inventoryItem?.allowed_units) ? inventoryItem.allowed_units : []),
+    inventoryItem?.order_unit,
+    inventoryItem?.default_unit,
+    inventoryItem?.base_unit,
+    inventoryItem?.pack_unit,
+    ...(Array.isArray(item?.valid_units) ? item.valid_units : []),
+  ];
+  const units: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const key = normalizeQuickOrderUnit(value);
+    if (!value?.trim() || !key || seen.has(key)) continue;
+    seen.add(key);
+    units.push(value.trim());
+  }
+  return units;
 }
 
 function normalizeUnitKey(value: string | null | undefined): string | null {

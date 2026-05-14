@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { LayoutChangeEvent, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -12,6 +12,7 @@ const COPIED_RESET_MS = 1200;
 type QuickOrderUserMessageProps = {
   /** The exact text the user typed (line breaks preserved on copy). */
   text: string;
+  onLayout?: (event: LayoutChangeEvent) => void;
 };
 
 /**
@@ -21,6 +22,7 @@ type QuickOrderUserMessageProps = {
  */
 export const QuickOrderUserMessage = React.memo(function QuickOrderUserMessage({
   text,
+  onLayout,
 }: QuickOrderUserMessageProps) {
   const ds = useScaledStyles();
   const [copied, setCopied] = useState(false);
@@ -42,7 +44,7 @@ export const QuickOrderUserMessage = React.memo(function QuickOrderUserMessage({
   }, [text]);
 
   return (
-    <View style={[styles.wrapper, { marginTop: ds.spacing(10) }]}>
+    <View onLayout={onLayout} style={[styles.wrapper, { marginTop: ds.spacing(10) }]}>
       <View
         style={[
           styles.bubble,
