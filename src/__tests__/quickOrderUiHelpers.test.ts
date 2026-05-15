@@ -1,23 +1,10 @@
 import { sanitizeAssistantReply } from '../features/ordering/quickOrderErrors';
 import { getQuickOrderEmptyStateLayout } from '../features/ordering/quickOrderEmptyStateLayout';
-import { QUICK_ORDER_SHORTCUTS } from '../features/ordering/quickOrderShortcuts';
-
-describe('Quick Order shortcut helpers', () => {
-  it('defines the three Pressable shortcut intents shown outside the Order List card', () => {
-    expect(QUICK_ORDER_SHORTCUTS.map((shortcut) => shortcut.label)).toEqual([
-      'Reorder recent',
-      'Last week',
-      'Usual order',
-    ]);
-    expect(QUICK_ORDER_SHORTCUTS.every((shortcut) => shortcut.intent.length > 0 && shortcut.icon.length > 0)).toBe(true);
-  });
-});
 
 describe('Quick Order empty-state layout helper', () => {
-  it('places shortcut chips outside and keeps the disabled confirm action inside the Order List card when empty', () => {
+  it('keeps the disabled confirm action inside the Order List card when empty', () => {
     expect(getQuickOrderEmptyStateLayout(0)).toEqual({
       isEmpty: true,
-      showShortcutChipsOutsideOrderCard: true,
       showConfirmHintOutsideOrderCard: false,
       showConfirmButtonInsideOrderCard: true,
     });
@@ -26,7 +13,6 @@ describe('Quick Order empty-state layout helper', () => {
   it('keeps the confirm button inside the populated Order List card', () => {
     expect(getQuickOrderEmptyStateLayout(2)).toEqual({
       isEmpty: false,
-      showShortcutChipsOutsideOrderCard: false,
       showConfirmHintOutsideOrderCard: false,
       showConfirmButtonInsideOrderCard: true,
     });

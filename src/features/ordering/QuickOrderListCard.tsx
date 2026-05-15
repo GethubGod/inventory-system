@@ -11,10 +11,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
 import { triggerConfirmationHaptic } from "@/lib/haptics";
-import { colors, glassColors, glassHairlineWidth } from "@/theme/design";
+import { colors, glassColors, glassHairlineWidth, grayScale } from "@/theme/design";
 import {
   QUICK_ORDER_ROW_MIN_HEIGHT,
   QuickOrderItemRow,
@@ -201,23 +201,22 @@ export function QuickOrderListCard({
               style={[
                 styles.emptyPanel,
                 {
-                  borderRadius: ds.radius(14),
-                  paddingVertical: ds.spacing(10),
+                  paddingVertical: ds.spacing(24),
                   paddingHorizontal: ds.spacing(12),
-                  gap: ds.spacing(6),
+                  gap: ds.spacing(10),
                 },
               ]}
             >
-              <MaterialCommunityIcons
-                name="gesture-tap"
-                size={ds.icon(18)}
-                color={colors.textMuted}
+              <Ionicons
+                name="keypad-outline"
+                size={ds.icon(28)}
+                color={grayScale[400]}
               />
               <Text
-                style={[styles.emptyText, { fontSize: ds.fontSize(13) }]}
+                style={[styles.emptyText, { fontSize: ds.fontSize(14) }]}
                 numberOfLines={1}
               >
-                Tap a shortcut to start
+                Type below or tap a shortcut
               </Text>
             </View>
           ) : (
@@ -508,16 +507,13 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
   emptyPanel: {
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    flexDirection: "row",
-    backgroundColor: colors.background,
-    borderWidth: glassHairlineWidth,
-    borderColor: glassColors.cardBorder,
   },
   emptyText: {
-    color: colors.textSecondary,
-    fontWeight: "700",
+    color: grayScale[500],
+    fontWeight: "600",
     letterSpacing: 0,
   },
   scrollHintWrap: {

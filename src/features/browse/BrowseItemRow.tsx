@@ -20,6 +20,7 @@ import { AddButton } from '@/components/AddButton';
 import { GlassSurface } from '@/components/ui/GlassSurface';
 import { getCategoryLabel } from '@/constants';
 import {
+  colors,
   glassColors,
   glassHairlineWidth,
   glassRadii,
@@ -131,7 +132,7 @@ function getCompactSummary(item: InventoryItem, cartItem: CartItem) {
     return `Remaining ${formatNumericValue(cartItem.remainingReported ?? 0)} ${getUnitLabel(item, cartItem.unitType)}`;
   }
 
-  return `${formatNumericValue(cartItem.quantityRequested ?? cartItem.quantity ?? 0)} ${getUnitLabel(item, cartItem.unitType)} in cart`;
+  return `${formatNumericValue(cartItem.quantityRequested ?? cartItem.quantity ?? 0)} ${getUnitLabel(item, cartItem.unitType)}`;
 }
 
 function ActionIconButton({
@@ -532,23 +533,12 @@ function BrowseItemRowInner({
                 {item.name}
               </Text>
               {isInCart ? (
-                <View
-                  style={{
-                    marginLeft: ds.spacing(8),
-                    width: ds.icon(20),
-                    height: ds.icon(20),
-                    borderRadius: glassRadii.round,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: glassColors.successSoft,
-                  }}
-                >
-                  <Ionicons
-                    name="checkmark"
-                    size={ds.icon(12)}
-                    color={glassColors.successText}
-                  />
-                </View>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={ds.icon(19)}
+                  color={colors.statusGreen}
+                  style={{ marginLeft: ds.spacing(8) }}
+                />
               ) : null}
             </View>
             <Text
@@ -623,23 +613,18 @@ function BrowseItemRowInner({
                 accessibilityRole="button"
                 accessibilityLabel={`Edit ${item.name}`}
                 onPress={handleActivateEditor}
-                activeOpacity={0.82}
+                activeOpacity={0.6}
+                hitSlop={{ top: 8, right: 4, bottom: 8, left: 8 }}
                 style={{
                   maxWidth: ds.spacing(132),
-                  paddingHorizontal: ds.spacing(12),
                   paddingVertical: ds.spacing(8),
-                  borderRadius: glassRadii.pill,
-                  backgroundColor: glassColors.successSoft,
-                  borderWidth: glassHairlineWidth,
-                  borderColor: 'rgba(46, 125, 50, 0.18)',
                 }}
               >
                 <Text
                   numberOfLines={1}
                   style={{
-                    fontSize: ds.fontSize(12),
-                    fontWeight: '600',
-                    color: glassColors.successText,
+                    fontSize: ds.fontSize(14),
+                    color: colors.textSecondary,
                   }}
                 >
                   {compactSummary}

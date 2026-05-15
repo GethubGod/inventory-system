@@ -5,22 +5,9 @@ import {
 } from '../features/ordering/quickOrderChatLayout';
 
 describe('calculateQuickOrderBottomPadding', () => {
-  it('reserves the bottom offset, shortcut chips, safe area, and breathing room', () => {
+  it('reserves the bottom offset, safe area, and breathing room', () => {
     expect(calculateQuickOrderBottomPadding({
       bottomOffset: 94,
-      shortcutChipsHeight: 40,
-      shortcutChipsVisible: true,
-      safeAreaBottom: 34,
-      breathingRoom: 28,
-      composerHeight: 0,
-    })).toBe(196);
-  });
-
-  it('drops the shortcut chip reserve when chips are hidden', () => {
-    expect(calculateQuickOrderBottomPadding({
-      bottomOffset: 94,
-      shortcutChipsHeight: 40,
-      shortcutChipsVisible: false,
       safeAreaBottom: 34,
       breathingRoom: 28,
       composerHeight: 0,
@@ -30,19 +17,15 @@ describe('calculateQuickOrderBottomPadding', () => {
   it('adds the composer height to the reserved padding', () => {
     expect(calculateQuickOrderBottomPadding({
       bottomOffset: 94,
-      shortcutChipsHeight: 40,
-      shortcutChipsVisible: true,
       safeAreaBottom: 34,
       breathingRoom: 28,
       composerHeight: 60,
-    })).toBe(256);
+    })).toBe(216);
   });
 
   it('treats a non-finite composer height as zero contribution', () => {
     expect(calculateQuickOrderBottomPadding({
       bottomOffset: 94,
-      shortcutChipsHeight: 40,
-      shortcutChipsVisible: false,
       safeAreaBottom: 34,
       breathingRoom: 28,
       composerHeight: Number.NaN,

@@ -66,7 +66,6 @@ import {
   type QuickOrderQuantityResult,
   type QuickOrderQuantitySheetItem,
 } from "./QuickOrderQuantitySheet";
-import { QuickOrderShortcutChips } from "./QuickOrderShortcutChips";
 import { QuickOrderComposerBar } from "./QuickOrderComposerBar";
 import {
   advanceQuantityFlow,
@@ -77,7 +76,6 @@ import {
   fetchPreviousQuantitySuggestions,
   type PreviousQuantitySuggestion,
 } from "./quickOrderHistorySuggestions";
-import { getQuickOrderEmptyStateLayout } from "./quickOrderEmptyStateLayout";
 import { QuickOrderUserMessage } from "./QuickOrderUserMessage";
 import {
   sanitizeAssistantReply,
@@ -738,11 +736,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const setAuthLocation = useAuthStore((state) => state.setLocation);
   const { location } = useResolvedActiveLocation();
   const tabBarHeight = 60 + getTabBarBottomInset(insets.bottom);
-  const shortcutChipsBottomOffset = tabBarHeight + ds.spacing(14);
+  const composerBottomOffset = tabBarHeight + ds.spacing(14);
 
   const addToCart = useOrderStore((state) => state.addToCart);
 
-  const [shortcutChipsHeight, setShortcutChipsHeight] = useState(0);
   const [composerHeight, setComposerHeight] = useState(0);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<QuickOrderMessage[]>([]);
@@ -981,7 +978,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     isSending,
     messages.length,
     parsedItems,
-    shortcutChipsHeight,
     floatingCardHeight,
     scheduleChatScrollToEnd,
   ]);
@@ -1027,32 +1023,16 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     });
   }, [inventoryItems, parsedItems, quantityFlowState, quantitySuggestions]);
 
-  const emptyStateLayout = useMemo(
-    () => getQuickOrderEmptyStateLayout(parsedItems.length),
-    [parsedItems.length],
-  );
-  const shortcutChipsVisible =
-    emptyStateLayout.showShortcutChipsOutsideOrderCard;
-
   const chatContentStyle = useMemo(
     () => ({
       paddingBottom: calculateQuickOrderBottomPadding({
-        bottomOffset: shortcutChipsBottomOffset,
-        shortcutChipsHeight,
-        shortcutChipsVisible,
+        bottomOffset: composerBottomOffset,
         safeAreaBottom: insets.bottom,
         breathingRoom: ds.spacing(28),
         composerHeight,
       }),
     }),
-    [
-      shortcutChipsBottomOffset,
-      ds,
-      insets.bottom,
-      shortcutChipsHeight,
-      shortcutChipsVisible,
-      composerHeight,
-    ],
+    [composerBottomOffset, ds, insets.bottom, composerHeight],
   );
 
   // The chat FlatList reserves a top spacer equal to the floating card's measured
@@ -1915,14 +1895,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     void handleSubmitMore(lastText);
   }, [handleSubmitMore, isSending]);
 
-  const handleStarterSuggestion = useCallback(
-    (text: string) => {
-      if (isSending) return;
-      void handleSubmitMore(text);
-    },
-    [handleSubmitMore, isSending],
-  );
-
   const handleClarificationAction = useCallback(
     async (
       clarification: PendingQuickOrderClarification,
@@ -2268,17 +2240,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   const keyExtractor = useCallback((item: QuickOrderMessage) => item.id, []);
 
-  const handleShortcutChipsLayout = useCallback(
-    (event: LayoutChangeEvent) => {
-      setShortcutChipsHeight(event.nativeEvent.layout.height + ds.spacing(10));
-      scheduleChatScrollToEnd("shortcut-layout", false, [0, 80], {
-        active: true,
-        afterInteractions: true,
-      });
-    },
-    [ds, scheduleChatScrollToEnd],
-  );
-
   const handleComposerHeightChange = useCallback((next: number) => {
     setComposerHeight((prev) => (Math.abs(prev - next) < 1 ? prev : next));
   }, []);
@@ -2400,25 +2361,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
             onHeightChange={handleOrderCardHeightChange}
           />
         </View>
-
-        {shortcutChipsVisible ? (
-          <View
-            onLayout={handleShortcutChipsLayout}
-            style={[
-              styles.shortcutChips,
-              {
-                left: ds.spacing(16),
-                right: ds.spacing(16),
-                bottom: shortcutChipsBottomOffset + composerHeight,
-              },
-            ]}
-          >
-            <QuickOrderShortcutChips
-              onSelect={handleStarterSuggestion}
-              disabled={isSending}
-            />
-          </View>
-        ) : null}
 
         <QuickOrderComposerBar
           onSubmit={handleComposerSubmit}
@@ -2635,8 +2577,5 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontWeight: "800",
     letterSpacing: 0,
-  },
-  shortcutChips: {
-    position: "absolute",
   },
 });

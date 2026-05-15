@@ -1,7 +1,5 @@
 export type QuickOrderBottomPaddingInput = {
   bottomOffset: number;
-  shortcutChipsHeight: number;
-  shortcutChipsVisible: boolean;
   safeAreaBottom: number;
   breathingRoom: number;
   composerHeight: number;
@@ -26,12 +24,9 @@ export function buildSendSnapDelays(): number[] {
 }
 
 export function calculateQuickOrderBottomPadding(input: QuickOrderBottomPaddingInput): number {
-  const shortcutReserve = input.shortcutChipsVisible ? finiteOrZero(input.shortcutChipsHeight) : 0;
-
   return (
     finiteOrZero(input.bottomOffset) +
     finiteOrZero(input.composerHeight) +
-    shortcutReserve +
     finiteOrZero(input.safeAreaBottom) +
     finiteOrZero(input.breathingRoom)
   );

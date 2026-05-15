@@ -62,17 +62,6 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Stock Check */}
-      <Tabs.Screen
-        name="stock-check"
-        options={{
-          title: "Stock",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="clipboard-outline" label="Stock" size={size} color={color} focused={focused} />
-          ),
-        }}
-      />
-
       {/* Cart */}
       <Tabs.Screen
         name="cart"
@@ -83,6 +72,17 @@ export default function TabsLayout() {
           ),
           tabBarBadge: cartTotal > 0 ? cartTotal : undefined,
           tabBarBadgeStyle: tabBarBadgeStyle,
+        }}
+      />
+
+      {/* Stock Check */}
+      <Tabs.Screen
+        name="stock-check"
+        options={{
+          title: "Stock",
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabButton name="clipboard-outline" label="Stock" size={size} color={color} focused={focused} />
+          ),
         }}
       />
 
