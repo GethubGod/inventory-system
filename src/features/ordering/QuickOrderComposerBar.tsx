@@ -37,9 +37,11 @@ const LINE_HEIGHT = 22;
 // = 22) + 2 * padding (7) equals SEND_BUTTON_SIZE (36), so the input pill is
 // visually the same height as the send button at rest.
 const INPUT_VERTICAL_PADDING = 7;
-const MIN_INPUT_HEIGHT = LINE_HEIGHT + INPUT_VERTICAL_PADDING * 2;
-const MAX_INPUT_LINES = 35;
-const MAX_INPUT_HEIGHT = LINE_HEIGHT * MAX_INPUT_LINES + INPUT_VERTICAL_PADDING * 2;
+const MIN_TEXT_INPUT_HEIGHT = LINE_HEIGHT;
+const MIN_INPUT_HEIGHT = MIN_TEXT_INPUT_HEIGHT + INPUT_VERTICAL_PADDING * 2;
+const MAX_INPUT_LINES = 20;
+const MAX_TEXT_INPUT_HEIGHT = LINE_HEIGHT * MAX_INPUT_LINES;
+const MAX_INPUT_HEIGHT = MAX_TEXT_INPUT_HEIGHT + INPUT_VERTICAL_PADDING * 2;
 const TRANSITION_MS = 180;
 const KEYBOARD_FALLBACK_MS = 220;
 
@@ -161,9 +163,8 @@ function QuickOrderComposerBarImpl({
           paddingBottom: safeBottomPadding,
           gap: ds.spacing(8),
         },
-        // The wrapper handles minHeight/maxHeight; the TextInput inside is
-        // unsized so it auto-grows up to maxHeight, then RN's native
-        // scrolling kicks in.
+        // The TextInput auto-grows naturally up to this wrapper cap. Once the
+        // content is taller than 20 lines, native multiline scrolling takes over.
         inputWrapper: {
           borderRadius: ds.radius(18),
           paddingHorizontal: ds.spacing(14),
@@ -173,6 +174,8 @@ function QuickOrderComposerBarImpl({
         },
         input: {
           fontSize: ds.fontSize(16),
+          minHeight: MIN_TEXT_INPUT_HEIGHT,
+          maxHeight: MAX_TEXT_INPUT_HEIGHT,
         },
         sendButton: {
           width: SEND_BUTTON_SIZE,
@@ -242,6 +245,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: 'transparent',
+    zIndex: 20,
+    elevation: 20,
   },
   bar: {
     flexDirection: 'row',
@@ -253,6 +258,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: grayScale[200],
     justifyContent: 'flex-start',
+    overflow: 'hidden',
   },
   input: {
     color: colors.textPrimary,

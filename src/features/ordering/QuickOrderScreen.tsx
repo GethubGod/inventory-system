@@ -976,6 +976,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     return () => cancelAnimationFrame(handle);
   }, [
     isSending,
+    composerHeight,
     messages.length,
     parsedItems,
     floatingCardHeight,
