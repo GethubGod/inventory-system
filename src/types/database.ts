@@ -343,6 +343,56 @@ export interface StockUpdate {
   created_at: string;
 }
 
+export interface ItemOrderLimit {
+  id: string;
+  item_id: string;
+  location_id: string | null;
+  supplier_id: string | null;
+  default_order_unit: string | null;
+  typical_min_quantity: number | null;
+  typical_max_quantity: number | null;
+  soft_max_quantity: number | null;
+  hard_max_quantity: number | null;
+  manager_approval_quantity: number | null;
+  allow_employee_override: boolean;
+  allow_manager_override: boolean;
+  max_single_order_quantity: number | null;
+  max_daily_quantity: number | null;
+  max_weekly_quantity: number | null;
+  historical_median_quantity: number | null;
+  historical_p95_quantity: number | null;
+  historical_max_quantity: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ItemAllowedUnit {
+  id: string;
+  item_id: string;
+  unit: string;
+  is_default: boolean;
+  conversion_to_base_unit: number | null;
+  min_quantity: number | null;
+  soft_max_quantity: number | null;
+  hard_max_quantity: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CurrentStockSnapshot {
+  id: string;
+  location_id: string;
+  item_id: string;
+  quantity: number;
+  unit: string | null;
+  source_message: string | null;
+  source: 'typed' | 'voice';
+  entered_by_user_id: string | null;
+  quick_order_session_id: string | null;
+  confidence: number;
+  created_at: string;
+}
+
 export interface StockCheckSession {
   id: string;
   area_id: string;
@@ -466,6 +516,21 @@ export interface Database {
         StockUpdate,
         Omit<StockUpdate, 'id' | 'created_at'>,
         Partial<Omit<StockUpdate, 'id' | 'created_at'>>
+      >;
+      item_order_limits: DatabaseTable<
+        ItemOrderLimit,
+        Omit<ItemOrderLimit, 'id' | 'created_at' | 'updated_at'>,
+        Partial<Omit<ItemOrderLimit, 'id' | 'created_at' | 'updated_at'>>
+      >;
+      item_allowed_units: DatabaseTable<
+        ItemAllowedUnit,
+        Omit<ItemAllowedUnit, 'id' | 'created_at' | 'updated_at'>,
+        Partial<Omit<ItemAllowedUnit, 'id' | 'created_at' | 'updated_at'>>
+      >;
+      current_stock_snapshots: DatabaseTable<
+        CurrentStockSnapshot,
+        Omit<CurrentStockSnapshot, 'id' | 'created_at'>,
+        Partial<Omit<CurrentStockSnapshot, 'id' | 'created_at'>>
       >;
       stock_check_sessions: DatabaseTable<
         StockCheckSession,

@@ -1,10 +1,14 @@
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
 import { corsHeaders } from '../_shared/cors.ts';
-import { parseQuickOrder, PARSER_VERSION } from './orchestrator.ts';
+import { PARSER_VERSION } from './orchestrator.ts';
+import { getModelConfig } from './model-router.ts';
+import { processQuickOrderMessage } from './process-message.ts';
 import { configureUnitAliases } from './units.ts';
 import type {
   CatalogItem,
+  ItemAllowedUnitRule,
+  ItemOrderLimit,
   ParsedItem,
   ParserCorrection,
   ParserExample,
@@ -23,9 +27,14 @@ type Provider = 'gemini' | 'claude';
 
 type ParseRequest = {
   raw_text?: unknown;
+  message?: unknown;
+  source?: unknown;
   location_id?: unknown;
   session_id?: unknown;
   user_id?: unknown;
+  existing_items?: unknown;
+  recent_messages?: unknown;
+  voice_metadata?: unknown;
 };
 
 type CachedCatalog = {
@@ -50,6 +59,8 @@ const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const geminiApiKey = Deno.env.get('GEMINI_API_KEY') ?? Deno.env.get('GOOGLE_API_KEY');
 const anthropicApiKey = Deno.env.get('ANTHROPIC_API_KEY');
 const configuredProvider = (Deno.env.get('PARSE_ORDER_LLM_PROVIDER') ?? '').toLowerCase();
+const modelConfig = getModelConfig(Deno.env);
+const debugTimings = Deno.env.get('QUICK_ORDER_DEBUG_TIMINGS') === 'true';
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
@@ -97,6 +108,22 @@ function clampConfidence(value: unknown): number {
   return Math.max(0, Math.min(1, parsed));
 }
 
+function normalizeSource(value: unknown): 'typed' | 'voice' {
+  return value === 'voice' ? 'voice' : 'typed';
+}
+
+function normalizeParsedItemArray(value: unknown): ParsedItem[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is ParsedItem => Boolean(entry && typeof entry === 'object'))
+    : [];
+}
+
+function normalizeMessageArray(value: unknown): QuickOrderMessage[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is QuickOrderMessage => Boolean(entry && typeof entry === 'object'))
+    : [];
+}
+
 function chooseProvider(): Provider | null {
   if (configuredProvider === 'gemini') return geminiApiKey ? 'gemini' : null;
   if (configuredProvider === 'claude') return anthropicApiKey ? 'claude' : null;
@@ -133,7 +160,7 @@ async function getAuthenticatedUser(req: Request) {
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('is_suspended')
+    .select('is_suspended, role')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -145,7 +172,7 @@ async function getAuthenticatedUser(req: Request) {
     };
   }
 
-  return { error: null, status: 200, user };
+  return { error: null, status: 200, user, role: typeof profile?.role === 'string' ? profile.role : null };
 }
 
 async function fetchCatalog(locationId: string): Promise<CatalogItem[]> {
@@ -292,6 +319,82 @@ async function fetchCorrections(userId: string, locationId: string): Promise<Par
 
   if (error) throw new Error(`Unable to load parser corrections: ${error.message}`);
   return (data ?? []) as ParserCorrection[];
+}
+
+async function fetchItemOrderLimits(locationId: string): Promise<ItemOrderLimit[]> {
+  const { data, error } = await supabaseAdmin
+    .from('item_order_limits')
+    .select(`
+      id,
+      item_id,
+      location_id,
+      supplier_id,
+      default_order_unit,
+      typical_min_quantity,
+      typical_max_quantity,
+      soft_max_quantity,
+      hard_max_quantity,
+      manager_approval_quantity,
+      allow_employee_override,
+      allow_manager_override,
+      max_single_order_quantity,
+      max_daily_quantity,
+      max_weekly_quantity,
+      historical_median_quantity,
+      historical_p95_quantity,
+      historical_max_quantity
+    `)
+    .or(`location_id.is.null,location_id.eq.${locationId}`);
+
+  if (error) {
+    console.warn('parse-order item_order_limits unavailable', error);
+    return [];
+  }
+  return (data ?? []) as ItemOrderLimit[];
+}
+
+async function fetchItemAllowedUnitRules(): Promise<ItemAllowedUnitRule[]> {
+  const { data, error } = await supabaseAdmin
+    .from('item_allowed_units')
+    .select('id,item_id,unit,is_default,conversion_to_base_unit,min_quantity,soft_max_quantity,hard_max_quantity');
+
+  if (error) {
+    console.warn('parse-order item_allowed_units unavailable', error);
+    return [];
+  }
+  return (data ?? []) as ItemAllowedUnitRule[];
+}
+
+async function persistCurrentStockSnapshots(input: {
+  locationId: string;
+  userId: string;
+  sessionId: string | null;
+  updates: {
+    item_id: string;
+    quantity: number;
+    unit: string | null;
+    source: 'typed' | 'voice';
+    confidence: number;
+    original_text: string;
+  }[];
+}): Promise<void> {
+  if (input.updates.length === 0) return;
+  const { error } = await supabaseAdmin.from('current_stock_snapshots').insert(
+    input.updates.map((update) => ({
+      location_id: input.locationId,
+      item_id: update.item_id,
+      quantity: update.quantity,
+      unit: update.unit,
+      source_message: update.original_text,
+      source: update.source,
+      entered_by_user_id: input.userId,
+      confidence: update.confidence,
+      quick_order_session_id: sessionIdOrNull(input.sessionId),
+    })),
+  );
+  if (error) {
+    console.warn('parse-order current_stock_snapshots insert failed', error);
+  }
 }
 
 async function fetchDowSuggestions(input: {
@@ -449,6 +552,10 @@ function parseJsonRows(value: unknown): unknown[] {
   return [];
 }
 
+function sessionIdOrNull(value: string | null): string | null {
+  return value && /^[0-9a-f-]{36}$/i.test(value) ? value : null;
+}
+
 function normalizeHistoryOrder(value: unknown): HistoryOrder | null {
   if (!isRecord(value)) return null;
   const id = asNullableString(value.id);
@@ -594,10 +701,11 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: numbe
   }
 }
 
-async function callGemini(prompt: string) {
+async function callGemini(prompt: string, model: string | null = null) {
   if (!geminiApiKey) throw new Error('GEMINI_API_KEY is not configured');
+  const modelName = model || modelConfig.fallbackModel || 'gemini-2.5-flash';
   const response = await fetchWithTimeout(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${geminiApiKey}`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -618,7 +726,7 @@ async function callGemini(prompt: string) {
   return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
 
-async function callClaude(prompt: string) {
+async function callClaude(prompt: string, model: string | null = null) {
   if (!anthropicApiKey) throw new Error('ANTHROPIC_API_KEY is not configured');
   const response = await fetchWithTimeout(
     'https://api.anthropic.com/v1/messages',
@@ -630,7 +738,7 @@ async function callClaude(prompt: string) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-3-5-haiku-20241022',
+        model: model || 'claude-3-5-haiku-20241022',
         max_tokens: 1200,
         temperature: 0,
         system: 'Return strict JSON only.',
@@ -648,10 +756,10 @@ async function callClaude(prompt: string) {
   return firstText ?? '';
 }
 
-async function callLlm(prompt: string) {
+async function callLlm(prompt: string, model: string | null = null) {
   const provider = chooseProvider();
   if (!provider) throw new Error('No LLM provider configured.');
-  return provider === 'gemini' ? await callGemini(prompt) : await callClaude(prompt);
+  return provider === 'gemini' ? await callGemini(prompt, model) : await callClaude(prompt, model);
 }
 
 function safeParseFailureResponse(flags: ParseFlag[] = []): ParseResponse {
@@ -697,7 +805,8 @@ Deno.serve(async (req) => {
     }
 
     const payload = (await req.json().catch(() => ({}))) as ParseRequest;
-    const rawText = asTrimmedString(payload.raw_text);
+    const rawText = asTrimmedString(payload.message) ?? asTrimmedString(payload.raw_text);
+    const source = normalizeSource(payload.source);
     const locationId = asTrimmedString(payload.location_id);
     const sessionId = asNullableString(payload.session_id);
     const requestedUserId = asTrimmedString(payload.user_id);
@@ -709,10 +818,11 @@ Deno.serve(async (req) => {
       user_id_present: Boolean(authenticatedUserId),
       location_id: locationId,
       session_id: sessionId,
+      source,
       raw_text_length: rawText?.length ?? 0,
     });
 
-    if (!rawText) return jsonResponse({ error: 'Missing required field: raw_text' }, 400);
+    if (!rawText) return jsonResponse({ error: 'Missing required field: message' }, 400);
     if (!locationId) return jsonResponse({ error: 'Missing required field: location_id' }, 400);
     if (!requestedUserId) return jsonResponse({ error: 'Missing required field: user_id' }, 400);
     if (requestedUserId !== authenticatedUserId) return jsonResponse({ error: 'Authenticated user mismatch' }, 403);
@@ -727,12 +837,39 @@ Deno.serve(async (req) => {
         'quick_order_monthly_token_budget',
         'quick_order_token_warning_threshold',
         'quick_order_unit_synonyms',
+        'quick_order_voice_enabled',
+        'quick_order_advanced_model_routing_enabled',
       ]);
 
     const config: Record<string, unknown> = {};
     for (const row of configRows ?? []) config[row.key] = row.value;
     if (config.quick_order_enabled === false) {
       return jsonResponse({ error: 'Quick Order is temporarily disabled.', code: 'feature_disabled' }, 503);
+    }
+    const voiceEnabled = Deno.env.get('ENABLE_QUICK_ORDER_VOICE') === 'true'
+      || config.quick_order_voice_enabled === true;
+    if (source === 'voice' && !voiceEnabled) {
+      return jsonResponse({
+        status: 'blocked',
+        error: 'Quick Order voice is disabled.',
+        code: 'quick_order_voice_disabled',
+        display_message: 'Voice Quick Order is not enabled for this location yet.',
+        speech_message: 'Voice Quick Order is not enabled yet.',
+        parsed_items: [],
+        cart_operations: [],
+        stock_updates: [],
+        recommendations: [],
+        clarifications: [],
+        safety_warnings: [],
+        blocked_operations: [{
+          type: 'feature_disabled',
+          message: 'Quick Order voice is disabled.',
+          original_text: rawText,
+        }],
+        model_used: 'none',
+        confidence: 0,
+        timings: { total_ms: Date.now() - callStartTime },
+      }, 403);
     }
 
     const dailyLimit = typeof config.quick_order_daily_limit_per_user === 'number'
@@ -784,12 +921,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    const [catalog, globalCatalog, examples, sessionContext, corrections] = await Promise.all([
+    const [catalog, globalCatalog, examples, sessionContext, corrections, limits, allowedUnitRules, recentOrders] = await Promise.all([
       fetchCatalog(locationId),
       fetchGlobalCatalog(),
       fetchExamples(),
       fetchSessionContext(sessionId),
       fetchCorrections(authenticatedUserId, locationId),
+      fetchItemOrderLimits(locationId),
+      fetchItemAllowedUnitRules(),
+      fetchRecentOrders({ locationId, userId: authenticatedUserId, limit: HISTORY_ORDER_LIMIT }),
     ]);
 
     devLog('catalog_loaded', {
@@ -798,6 +938,8 @@ Deno.serve(async (req) => {
       first_5_names: catalog.slice(0, 5).map((item) => item.name),
       examples_count: examples.length,
       corrections_count: corrections.length,
+      limits_count: limits.length,
+      allowed_unit_rules_count: allowedUnitRules.length,
       session_messages_count: sessionContext.messages.length,
       session_parsed_items_count: sessionContext.parsedItems.length,
     });
@@ -833,16 +975,45 @@ Deno.serve(async (req) => {
       raw_text_preview: rawText.slice(0, 100),
     });
 
-    const result = await parseQuickOrder({
-      rawText,
-      locationId,
+    const requestExistingItems = normalizeParsedItemArray(payload.existing_items);
+    const requestRecentMessages = normalizeMessageArray(payload.recent_messages);
+    const result = await processQuickOrderMessage({
+      request: {
+        source,
+        message: rawText,
+        session_id: sessionId,
+        location_id: locationId,
+        user_id: authenticatedUserId,
+        existing_items: requestExistingItems,
+        recent_messages: requestRecentMessages.length > 0 ? requestRecentMessages : undefined,
+        voice_metadata: isRecord(payload.voice_metadata) ? {
+          transcript_confidence: asNumber(payload.voice_metadata.transcript_confidence) ?? undefined,
+          raw_transcript: asNullableString(payload.voice_metadata.raw_transcript) ?? undefined,
+          language: asNullableString(payload.voice_metadata.language) ?? undefined,
+        } : undefined,
+      },
       catalog,
       globalCatalog,
       examples,
       corrections,
       previousMessages: sessionContext.messages,
-      existingParsedItems: sessionContext.parsedItems,
+      existingParsedItems: requestExistingItems.length > 0 ? requestExistingItems : sessionContext.parsedItems,
+      limits,
+      allowedUnitRules,
+      recentOrders,
+      userRole: authResult.role,
+      modelConfig: {
+        ...modelConfig,
+        advancedEnabled: config.quick_order_advanced_model_routing_enabled !== false && modelConfig.advancedEnabled,
+      },
       callLlm: llmEnabled ? callLlm : undefined,
+      persistStockUpdates: (updates) => persistCurrentStockSnapshots({
+        locationId,
+        userId: authenticatedUserId,
+        sessionId,
+        updates,
+      }),
+      debugTimings,
     });
 
     devLog('parser_result', {
@@ -852,6 +1023,9 @@ Deno.serve(async (req) => {
       flags_count: result.flags.length,
       pending_clarifications_count: result.pending_clarifications?.length ?? 0,
       metrics_parse_mode: result.metrics?.parse_mode_used,
+      model_used: result.model_used,
+      stock_updates_count: result.stock_updates.length,
+      recommendations_count: result.recommendations.length,
       items_needing_clarification: result.parsed_items.filter((item) => item.needs_clarification).length,
       items_unresolved: result.parsed_items.filter((item) => item.unresolved).length,
     });
@@ -869,9 +1043,12 @@ Deno.serve(async (req) => {
       userId: authenticatedUserId,
       parsedItems: [...sessionContext.parsedItems, ...result.parsed_items],
     });
-    const suggestions = intentSuggestionResult.suggestions.length > 0 || intentSuggestionResult.message
-      ? intentSuggestionResult.suggestions
-      : baseSuggestions;
+    const shouldUseIntentSuggestionMessage = result.recommendations.length === 0 && result.stock_updates.length === 0;
+    const suggestions = result.recommendations.length > 0 || result.stock_updates.length > 0
+      ? []
+      : intentSuggestionResult.suggestions.length > 0 || (shouldUseIntentSuggestionMessage && intentSuggestionResult.message)
+        ? intentSuggestionResult.suggestions
+        : baseSuggestions;
 
     const durationMs = Date.now() - callStartTime;
     const promptTokens = result.metrics?.llm_used ? Math.ceil(rawText.length / 4) : 0;
@@ -895,8 +1072,10 @@ Deno.serve(async (req) => {
     const finalResponse = {
       ...result,
       suggestions,
-      assistant_message: intentSuggestionResult.message ?? result.assistant_message,
-      reply_text: intentSuggestionResult.message ?? result.reply_text,
+      assistant_message: shouldUseIntentSuggestionMessage ? intentSuggestionResult.message ?? result.assistant_message : result.assistant_message,
+      reply_text: shouldUseIntentSuggestionMessage ? intentSuggestionResult.message ?? result.reply_text : result.reply_text,
+      display_message: shouldUseIntentSuggestionMessage ? intentSuggestionResult.message ?? result.display_message : result.display_message,
+      speech_message: shouldUseIntentSuggestionMessage ? intentSuggestionResult.message ?? result.speech_message : result.speech_message,
       diagnostics: {
         ...(result.diagnostics ?? {}),
         suggestion_count: suggestions.length,

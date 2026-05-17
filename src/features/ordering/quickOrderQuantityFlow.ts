@@ -68,15 +68,18 @@ const STANDARD_UNITS: ReadonlyArray<{ canonical: string; value: string; label: s
 ];
 
 /**
- * Keys of every parsed row whose only outstanding problem is a missing quantity
- * (covers both `missing_quantity` and `missing_quantity_and_unit`). Rows that
- * need an item picked, a bad unit fixed, or a duplicate decision are *not*
- * included — those are handled by other surfaces and must not auto-open this
- * sheet.
+ * Keys of every parsed row whose outstanding problem is a missing quantity or
+ * missing unit — both are handled by the same focused sheet (the segmented
+ * unit control + the stepper). Rows that need an item picked, a bad unit
+ * fixed, or a duplicate decision are *not* included — those are handled by
+ * other surfaces and must not auto-open this sheet.
  */
 export function getQuantityFixQueue(items: ParsedQuickOrderItem[]): string[] {
   return items
-    .filter((item) => getParsedItemIssue(item)?.kind === 'pick-quantity')
+    .filter((item) => {
+      const kind = getParsedItemIssue(item)?.kind;
+      return kind === 'pick-quantity' || kind === 'pick-unit';
+    })
     .map(getParsedItemKey);
 }
 

@@ -12,6 +12,7 @@ const COPIED_RESET_MS = 1200;
 type QuickOrderUserMessageProps = {
   /** The exact text the user typed (line breaks preserved on copy). */
   text: string;
+  source?: 'typed' | 'voice';
   onLayout?: (event: LayoutChangeEvent) => void;
 };
 
@@ -22,6 +23,7 @@ type QuickOrderUserMessageProps = {
  */
 export const QuickOrderUserMessage = React.memo(function QuickOrderUserMessage({
   text,
+  source = 'typed',
   onLayout,
 }: QuickOrderUserMessageProps) {
   const ds = useScaledStyles();
@@ -69,7 +71,7 @@ export const QuickOrderUserMessage = React.memo(function QuickOrderUserMessage({
       >
         <View style={[styles.copyRow, { gap: ds.spacing(6) }]}>
           <Ionicons
-            name={copied ? 'checkmark' : 'copy-outline'}
+            name={copied ? 'checkmark' : source === 'voice' ? 'mic-outline' : 'copy-outline'}
             size={ds.icon(13)}
             color={copied ? colors.statusGreen : colors.textMuted}
           />
@@ -82,7 +84,7 @@ export const QuickOrderUserMessage = React.memo(function QuickOrderUserMessage({
               },
             ]}
           >
-            {copied ? 'Copied' : 'Copy'}
+            {copied ? 'Copied' : source === 'voice' ? 'Voice' : 'Copy'}
           </Text>
         </View>
       </Pressable>

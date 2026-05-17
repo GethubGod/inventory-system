@@ -16,12 +16,21 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
-import {
-  colors,
-  glassColors,
-  glassHairlineWidth,
-  grayScale,
-} from "@/theme/design";
+
+// Hardcoded so the mockup colors render reliably regardless of theme-token
+// drift. These match the visual values used in PreviousQuantitySuggestionCard,
+// QuantityStepper, and UnitSegmentedControl so the sheet reads as one piece.
+const SHEET_BG = "#F2F0EB";
+const SHEET_BORDER = "rgba(0, 0, 0, 0.04)";
+const SCRIM = "rgba(0, 0, 0, 0.45)";
+const PRIMARY = "#E8503A";
+const TEXT_PRIMARY = "#1C1C1E";
+const TEXT_SECONDARY = "#8E8E93";
+const TEXT_MUTED = "#AEAEB2";
+const TEXT_ON_PRIMARY = "#FFFFFF";
+const WHITE = "#FFFFFF";
+const TRACK_BG = "#E5E1DC";
+const STATUS_RED = "#A32D2D";
 import {
   getParsedItemDisplayName,
   getParsedItemIssue,
@@ -259,9 +268,7 @@ function SheetBody({
         ]}
       >
         <View style={styles.grabberRow}>
-          <View
-            style={[styles.grabber, { backgroundColor: colors.textMuted }]}
-          />
+          <View style={styles.grabber} />
         </View>
 
         {isMulti ? (
@@ -303,11 +310,7 @@ function SheetBody({
                 },
               ]}
             >
-              <Ionicons
-                name="close"
-                size={ds.icon(18)}
-                color={colors.textPrimary}
-              />
+              <Ionicons name="close" size={ds.icon(18)} color={TEXT_PRIMARY} />
             </Pressable>
           </View>
         ) : null}
@@ -320,7 +323,7 @@ function SheetBody({
         >
           <View style={styles.headerTextCluster}>
             <Text
-              style={[styles.title, { fontSize: ds.fontSize(26) }]}
+              style={[styles.title, { fontSize: ds.fontSize(28) }]}
               numberOfLines={2}
             >
               {name}
@@ -329,14 +332,12 @@ function SheetBody({
               <View
                 style={[
                   styles.issueRow,
-                  { marginTop: ds.spacing(6), gap: ds.spacing(6) },
+                  { marginTop: ds.spacing(8), gap: ds.spacing(7) },
                 ]}
               >
-                <View
-                  style={[styles.issueDot, { backgroundColor: colors.primary }]}
-                />
+                <View style={styles.issueDot} />
                 <Text
-                  style={[styles.issueText, { fontSize: ds.fontSize(14) }]}
+                  style={[styles.issueText, { fontSize: ds.fontSize(15) }]}
                   numberOfLines={1}
                 >
                   {issueLabel}
@@ -360,11 +361,7 @@ function SheetBody({
                 },
               ]}
             >
-              <Ionicons
-                name="close"
-                size={ds.icon(20)}
-                color={colors.textPrimary}
-              />
+              <Ionicons name="close" size={ds.icon(20)} color={TEXT_PRIMARY} />
             </Pressable>
           ) : null}
         </View>
@@ -414,7 +411,7 @@ function SheetBody({
         <View
           style={[
             styles.footer,
-            { marginTop: ds.spacing(16), gap: ds.spacing(10) },
+            { marginTop: ds.spacing(18), gap: ds.spacing(10) },
           ]}
         >
           {isMulti ? (
@@ -427,7 +424,8 @@ function SheetBody({
                 styles.secondaryButton,
                 {
                   borderRadius: ds.radius(999),
-                  minHeight: ds.spacing(52),
+                  minHeight: ds.spacing(56),
+                  paddingHorizontal: ds.spacing(20),
                   opacity: isSaving ? 0.6 : pressed ? 0.82 : 1,
                 },
               ]}
@@ -447,31 +445,24 @@ function SheetBody({
             onPress={handleApply}
             style={({ pressed }) => [
               styles.primaryButton,
+              isMulti ? styles.primaryButtonMulti : styles.primaryButtonSingle,
               {
-                borderRadius: ds.radius(999),
-                minHeight: ds.spacing(56),
-                backgroundColor: canSubmit
-                  ? colors.primary
-                  : grayScale[200],
-                opacity: canSubmit && pressed ? 0.86 : 1,
+                borderRadius: 999,
+                minHeight: ds.spacing(58),
+                paddingHorizontal: ds.spacing(24),
+                backgroundColor: PRIMARY,
+                opacity: !canSubmit ? 0.45 : pressed ? 0.86 : 1,
               },
             ]}
           >
             {isSaving ? (
-              <ActivityIndicator
-                color={canSubmit ? colors.textOnPrimary : colors.textMuted}
-              />
+              <ActivityIndicator color={TEXT_ON_PRIMARY} />
             ) : (
               <View style={styles.primaryInner}>
                 <Text
                   style={[
                     styles.primaryText,
-                    {
-                      fontSize: ds.fontSize(16),
-                      color: canSubmit
-                        ? colors.textOnPrimary
-                        : colors.textMuted,
-                    },
+                    { fontSize: ds.fontSize(17), color: TEXT_ON_PRIMARY },
                   ]}
                   numberOfLines={1}
                 >
@@ -480,7 +471,7 @@ function SheetBody({
                 <Ionicons
                   name="arrow-forward"
                   size={ds.icon(18)}
-                  color={canSubmit ? colors.textOnPrimary : colors.textMuted}
+                  color={TEXT_ON_PRIMARY}
                   style={{ marginLeft: ds.spacing(8) }}
                 />
               </View>
@@ -501,26 +492,27 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     flex: 1,
-    backgroundColor: colors.scrim,
+    backgroundColor: SCRIM,
   },
   sheet: {
-    backgroundColor: colors.background,
-    borderWidth: glassHairlineWidth,
-    borderColor: glassColors.cardBorder,
-    shadowColor: colors.textPrimary,
+    backgroundColor: SHEET_BG,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: SHEET_BORDER,
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 12,
+    shadowOpacity: 0.12,
+    shadowRadius: 20,
+    elevation: 14,
   },
   grabberRow: {
     alignItems: "center",
     paddingBottom: 10,
   },
   grabber: {
-    width: 42,
-    height: 4,
-    borderRadius: 2,
+    width: 40,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: "#C7C7CC",
   },
   progressRow: {
     flexDirection: "row",
@@ -535,7 +527,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   progressLabel: {
-    color: colors.textSecondary,
+    color: TEXT_SECONDARY,
     fontWeight: "800",
     letterSpacing: 0,
     flexShrink: 0,
@@ -544,26 +536,31 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     height: 6,
-    backgroundColor: grayScale[200],
+    backgroundColor: TRACK_BG,
     overflow: "hidden",
   },
   progressFill: {
     height: 6,
-    backgroundColor: colors.primary,
+    backgroundColor: PRIMARY,
   },
   closeButton: {
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    backgroundColor: colors.white,
+    backgroundColor: WHITE,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
   },
   title: {
-    color: colors.textPrimary,
+    color: TEXT_PRIMARY,
     fontWeight: "800",
-    letterSpacing: 0,
+    letterSpacing: -0.4,
   },
   subtitle: {
-    color: colors.textSecondary,
+    color: TEXT_SECONDARY,
     fontWeight: "600",
     letterSpacing: 0,
   },
@@ -572,52 +569,58 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   issueDot: {
-    width: 7,
-    height: 7,
+    width: 8,
+    height: 8,
     borderRadius: 4,
+    backgroundColor: PRIMARY,
   },
   issueText: {
-    color: colors.primary,
+    color: PRIMARY,
     fontWeight: "700",
     letterSpacing: 0,
   },
   sectionLabel: {
-    color: colors.textSecondary,
+    color: TEXT_SECONDARY,
     fontWeight: "800",
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
   errorText: {
-    color: colors.statusRed,
+    color: STATUS_RED,
     fontWeight: "700",
     letterSpacing: 0,
   },
   footer: {
     flexDirection: "row",
+    alignItems: "stretch",
   },
   secondaryButton: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.glassCircle,
-    borderWidth: glassHairlineWidth,
-    borderColor: glassColors.cardBorder,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: "#E5E5EA",
   },
   secondaryText: {
-    color: colors.textPrimary,
+    color: TEXT_PRIMARY,
     fontWeight: "800",
     letterSpacing: 0,
   },
   primaryButton: {
-    flex: 2,
     alignItems: "center",
     justifyContent: "center",
+  },
+  primaryButtonSingle: {
+    flex: 1,
+  },
+  primaryButtonMulti: {
+    flex: 1.6,
   },
   primaryInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
   },
   primaryText: {
     fontWeight: "800",

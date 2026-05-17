@@ -6,6 +6,7 @@ import {
   Platform,
   Pressable,
   StyleSheet,
+  Text,
   TextInput,
   View,
 } from 'react-native';
@@ -28,7 +29,14 @@ type QuickOrderComposerBarProps = {
   bottomInset: number;
   tabBarHeight: number;
   onHeightChange?: (height: number) => void;
+  onBottomOffsetChange?: (bottomOffset: number) => void;
   placeholder?: string;
+  voiceEnabled?: boolean;
+  isVoiceListening?: boolean;
+  voiceTranscript?: string;
+  voiceError?: string | null;
+  onStartVoice?: () => void;
+  onStopVoice?: () => void;
 };
 
 const SEND_BUTTON_SIZE = 36;
@@ -53,7 +61,14 @@ function QuickOrderComposerBarImpl({
   bottomInset,
   tabBarHeight,
   onHeightChange,
+  onBottomOffsetChange,
   placeholder = 'Type an order…',
+  voiceEnabled = false,
+  isVoiceListening = false,
+  voiceTranscript = '',
+  voiceError = null,
+  onStartVoice,
+  onStopVoice,
 }: QuickOrderComposerBarProps) {
   const ds = useScaledStyles();
 
@@ -91,15 +106,27 @@ function QuickOrderComposerBarImpl({
   // (instead of KeyboardAvoidingView) keeps the animation in lockstep with the
   // OS keyboard on iOS and avoids fighting Android's adjustResize.
   const restingBottomRef = useRef(tabBarHeight);
+  const reportedBottomOffsetRef = useRef(tabBarHeight);
   const keyboardBottom = useSharedValue(tabBarHeight);
+
+  const reportBottomOffset = useCallback(
+    (next: number) => {
+      const safeNext = Number.isFinite(next) ? Math.max(0, next) : 0;
+      if (Math.abs(reportedBottomOffsetRef.current - safeNext) < 1) return;
+      reportedBottomOffsetRef.current = safeNext;
+      onBottomOffsetChange?.(safeNext);
+    },
+    [onBottomOffsetChange],
+  );
 
   useEffect(() => {
     restingBottomRef.current = tabBarHeight;
+    reportBottomOffset(tabBarHeight);
     keyboardBottom.value = withTiming(tabBarHeight, {
       duration: TRANSITION_MS,
       easing: Easing.out(Easing.cubic),
     });
-  }, [keyboardBottom, tabBarHeight]);
+  }, [keyboardBottom, reportBottomOffset, tabBarHeight]);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -110,6 +137,7 @@ function QuickOrderComposerBarImpl({
       const duration = event.duration && event.duration > 0
         ? event.duration
         : KEYBOARD_FALLBACK_MS;
+      reportBottomOffset(target);
       keyboardBottom.value = withTiming(target, {
         duration,
         easing: Easing.out(Easing.cubic),
@@ -119,6 +147,7 @@ function QuickOrderComposerBarImpl({
       const duration = event?.duration && event.duration > 0
         ? event.duration
         : KEYBOARD_FALLBACK_MS;
+      reportBottomOffset(restingBottomRef.current);
       keyboardBottom.value = withTiming(restingBottomRef.current, {
         duration,
         easing: Easing.out(Easing.cubic),
@@ -131,7 +160,7 @@ function QuickOrderComposerBarImpl({
       showSub.remove();
       hideSub.remove();
     };
-  }, [keyboardBottom]);
+  }, [keyboardBottom, reportBottomOffset]);
 
   const containerAnimatedStyle = useAnimatedStyle(() => ({
     bottom: keyboardBottom.value,
@@ -151,6 +180,15 @@ function QuickOrderComposerBarImpl({
     onSubmit(trimmed);
     setText('');
   }, [isSending, onSubmit, text]);
+
+  const handleVoicePress = useCallback(() => {
+    if (!voiceEnabled || isSending) return;
+    if (isVoiceListening) {
+      onStopVoice?.();
+    } else {
+      onStartVoice?.();
+    }
+  }, [isSending, isVoiceListening, onStartVoice, onStopVoice, voiceEnabled]);
 
   const safeBottomPadding = bottomInset > 0 ? ds.spacing(8) : ds.spacing(10);
 
@@ -193,6 +231,18 @@ function QuickOrderComposerBarImpl({
       onLayout={handleLayout}
     >
       <View style={[styles.bar, dynamicStyles.bar]}>
+        {voiceEnabled && (voiceTranscript || voiceError || isVoiceListening) ? (
+          <View style={styles.voicePreview}>
+            <Ionicons
+              name={voiceError ? 'alert-circle-outline' : isVoiceListening ? 'mic' : 'mic-outline'}
+              size={14}
+              color={voiceError ? colors.statusAmber : colors.primary}
+            />
+            <Text style={styles.voicePreviewText} numberOfLines={1}>
+              {voiceError || voiceTranscript || 'Listening...'}
+            </Text>
+          </View>
+        ) : null}
         <View style={[styles.inputWrapper, dynamicStyles.inputWrapper]}>
           <TextInput
             value={text}
@@ -210,6 +260,30 @@ function QuickOrderComposerBarImpl({
             blurOnSubmit={false}
           />
         </View>
+        {voiceEnabled ? (
+          <Pressable
+            onPress={handleVoicePress}
+            disabled={isSending}
+            accessibilityRole="button"
+            accessibilityLabel={isVoiceListening ? 'Stop voice input' : 'Start voice input'}
+            accessibilityState={{ selected: isVoiceListening, disabled: isSending }}
+            hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+            style={({ pressed }) => [
+              styles.voiceButton,
+              dynamicStyles.sendButton,
+              {
+                backgroundColor: isVoiceListening ? colors.primary : grayScale[200],
+                opacity: isSending ? 0.5 : pressed ? 0.85 : 1,
+              },
+            ]}
+          >
+            <Ionicons
+              name={isVoiceListening ? 'stop' : 'mic-outline'}
+              size={20}
+              color={isVoiceListening ? colors.textOnPrimary : colors.textMuted}
+            />
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={handleSubmit}
           disabled={!submittable}
@@ -251,6 +325,22 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'flex-end',
+    flexWrap: 'wrap',
+  },
+  voicePreview: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 6,
+    paddingBottom: 2,
+  },
+  voicePreviewText: {
+    flex: 1,
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 0,
   },
   inputWrapper: {
     flex: 1,
@@ -276,6 +366,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
+  voiceButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   sendButtonFill: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -289,6 +383,13 @@ export const QuickOrderComposerBar = React.memo(
     prev.bottomInset === next.bottomInset &&
     prev.tabBarHeight === next.tabBarHeight &&
     prev.placeholder === next.placeholder &&
+    prev.voiceEnabled === next.voiceEnabled &&
+    prev.isVoiceListening === next.isVoiceListening &&
+    prev.voiceTranscript === next.voiceTranscript &&
+    prev.voiceError === next.voiceError &&
     prev.onSubmit === next.onSubmit &&
-    prev.onHeightChange === next.onHeightChange,
+    prev.onStartVoice === next.onStartVoice &&
+    prev.onStopVoice === next.onStopVoice &&
+    prev.onHeightChange === next.onHeightChange &&
+    prev.onBottomOffsetChange === next.onBottomOffsetChange,
 );

@@ -3,6 +3,10 @@ import { detectQuickOrderIntent, type IntentDetectionResult } from './intent-det
 export type QuickOrderInputClassification =
   | 'order_entry'
   | 'order_command'
+  | 'current_stock_update'
+  | 'recommend_order_request'
+  | 'mixed_stock_and_order_request'
+  | 'mixed_stock_and_recommendation_request'
   | 'clarification_answer'
   | 'duplicate_resolution_action'
   | 'suggestion_request'
@@ -24,8 +28,23 @@ export type QuickOrderInputClassificationResult = {
 
 const SUGGESTION_PATTERNS = [
   /\bsuggestions?\b/i,
+];
+
+const RECOMMEND_ORDER_PATTERNS = [
   /\bwhat should i order\b/i,
-  /\brecommend\b/i,
+  /\bwhat should we order\b/i,
+  /\brecommend(?:ed)? order\b/i,
+  /\bsuggest what to order\b/i,
+  /\bmake (?:the|my|an?) order\b/i,
+];
+
+const STOCK_PATTERNS = [
+  /\b(?:we have|i have|have|has)\b.+\b(?:left|remaining|on hand)\b/i,
+  /\b(?:left|remaining|on hand)\b/i,
+  /\bout of\b/i,
+  /\bcounted\b/i,
+  /\bcurrent stock\b/i,
+  /\bno\s+[\p{L}\p{N}' -]+\b/iu,
 ];
 
 const HISTORY_PATTERNS = [
@@ -57,12 +76,40 @@ export function classifyQuickOrderInput(
     return { classification: 'unknown_non_order', intentResult, normalizedText, reason: 'empty_input' };
   }
 
-  if (SUGGESTION_PATTERNS.some((pattern) => pattern.test(nfkcText))) {
-    return { classification: 'suggestion_request', intentResult, normalizedText, reason: 'suggestion_phrase' };
+  const hasStockSignal = STOCK_PATTERNS.some((pattern) => pattern.test(nfkcText));
+  const hasRecommendationSignal = RECOMMEND_ORDER_PATTERNS.some((pattern) => pattern.test(nfkcText));
+  if (hasStockSignal && hasRecommendationSignal) {
+    return {
+      classification: 'mixed_stock_and_recommendation_request',
+      intentResult,
+      normalizedText,
+      reason: 'stock_and_recommendation_phrase',
+    };
+  }
+
+  if (hasStockSignal && intentResult.intent !== 'unknown' && intentResult.intent !== 'confirm') {
+    return {
+      classification: 'mixed_stock_and_order_request',
+      intentResult,
+      normalizedText,
+      reason: 'stock_and_order_command',
+    };
+  }
+
+  if (hasStockSignal) {
+    return { classification: 'current_stock_update', intentResult, normalizedText, reason: 'stock_phrase' };
+  }
+
+  if (hasRecommendationSignal) {
+    return { classification: 'recommend_order_request', intentResult, normalizedText, reason: 'recommendation_phrase' };
   }
 
   if (HISTORY_PATTERNS.some((pattern) => pattern.test(nfkcText))) {
     return { classification: 'history_request', intentResult, normalizedText, reason: 'history_phrase' };
+  }
+
+  if (SUGGESTION_PATTERNS.some((pattern) => pattern.test(nfkcText))) {
+    return { classification: 'suggestion_request', intentResult, normalizedText, reason: 'suggestion_phrase' };
   }
 
   if (normalizedText === 'combine') {

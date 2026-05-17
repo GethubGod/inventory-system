@@ -12,6 +12,49 @@ import {
 
 export type QuickOrderParseStatus = 'ok' | 'needs_review' | 'needs_clarification' | 'error';
 
+export type QuickOrderMessageSource = 'typed' | 'voice';
+
+export type QuickOrderStockUpdate = {
+  item_id: string;
+  item_name: string;
+  quantity: number;
+  unit: string | null;
+  source: QuickOrderMessageSource;
+  confidence: number;
+  original_text: string;
+};
+
+export type QuickOrderSafetyWarning = {
+  type: string;
+  message: string;
+  item_id?: string | null;
+  item_name?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  severity?: 'info' | 'warning' | 'blocked';
+};
+
+export type QuickOrderBlockedOperation = {
+  type: string;
+  item_id?: string | null;
+  item_name?: string | null;
+  attempted_quantity?: number | null;
+  unit?: string | null;
+  reason: string;
+  message: string;
+};
+
+export type QuickOrderRecommendation = {
+  item_id: string;
+  item_name: string;
+  suggested_quantity: number;
+  unit: string | null;
+  confidence: number;
+  reason: string;
+  inputs?: Record<string, unknown>;
+  safety_status: 'normal' | 'confirm' | 'manager_approval' | 'blocked';
+};
+
 export type QuickOrderParseDiagnostics = {
   parser_version?: string;
   parse_mode?: string;
@@ -40,14 +83,26 @@ export type QuickOrderParseDiagnostics = {
 };
 
 export type RawQuickOrderParseResponse = {
-  status?: QuickOrderParseStatus;
+  status?: unknown;
+  legacy_status?: unknown;
   assistant_message?: unknown;
   reply_text?: unknown;
+  display_message?: unknown;
+  speech_message?: unknown;
   parsed_items?: unknown;
   pending_actions?: unknown;
   pending_clarifications?: unknown;
+  clarifications?: unknown;
   flags?: unknown;
   suggestions?: unknown;
+  stock_updates?: unknown;
+  recommendations?: unknown;
+  safety_warnings?: unknown;
+  blocked_operations?: unknown;
+  cart_operations?: unknown;
+  model_used?: unknown;
+  confidence?: unknown;
+  timings?: unknown;
   diagnostics?: Partial<QuickOrderParseDiagnostics> | null;
   error?: unknown;
   detail?: unknown;
@@ -57,10 +112,19 @@ export type RawQuickOrderParseResponse = {
 export type NormalizedQuickOrderParseResponse = {
   status: QuickOrderParseStatus;
   assistantMessage: string;
+  displayMessage: string;
+  speechMessage: string;
   parsedItems: ParsedQuickOrderItem[];
   pendingActions: PendingQuickOrderClarification[];
   flags: { type: string; message: string; raw_token?: string; item_id?: string }[];
   suggestions: unknown[];
+  stockUpdates: QuickOrderStockUpdate[];
+  recommendations: QuickOrderRecommendation[];
+  safetyWarnings: QuickOrderSafetyWarning[];
+  blockedOperations: QuickOrderBlockedOperation[];
+  modelUsed: string;
+  confidence: number;
+  timings: Record<string, unknown>;
   diagnostics: QuickOrderParseDiagnostics;
   errorCode?: string;
   rawError?: string;
@@ -84,14 +148,18 @@ export function normalizeQuickOrderParseResponse(
     }
   });
 
-  const pendingActions = normalizePendingActions(raw.pending_actions ?? raw.pending_clarifications);
-  const operations = normalizeOperations((raw as Record<string, unknown>).operations);
-  const status = normalizeStatus(raw.status, parsedItems, pendingActions, raw.error);
+  const pendingActions = normalizePendingActions(raw.pending_actions ?? raw.pending_clarifications ?? raw.clarifications);
+  const operations = normalizeOperations((raw as Record<string, unknown>).operations ?? raw.cart_operations);
+  const status = normalizeStatus(raw.legacy_status ?? raw.status, parsedItems, pendingActions, raw.error);
   const assistantMessage = sanitizeAssistantReply(
-    stringValue(raw.assistant_message) ?? stringValue(raw.reply_text),
+    stringValue(raw.display_message) ?? stringValue(raw.assistant_message) ?? stringValue(raw.reply_text),
     status === 'error'
       ? 'I had trouble reading that order. Please try again.'
       : 'I had trouble reading that order. Please try again or add the items manually.',
+  );
+  const speechMessage = sanitizeAssistantReply(
+    stringValue(raw.speech_message) ?? assistantMessage,
+    assistantMessage,
   );
   const backendDiagnostics = isRecord(raw.diagnostics) ? raw.diagnostics : {};
   const flags = normalizeFlags(raw.flags);
@@ -99,10 +167,19 @@ export function normalizeQuickOrderParseResponse(
   return {
     status,
     assistantMessage,
+    displayMessage: assistantMessage,
+    speechMessage,
     parsedItems,
     pendingActions,
     flags,
     suggestions: Array.isArray(raw.suggestions) ? raw.suggestions : [],
+    stockUpdates: normalizeStockUpdates(raw.stock_updates),
+    recommendations: normalizeRecommendations(raw.recommendations),
+    safetyWarnings: normalizeSafetyWarnings(raw.safety_warnings),
+    blockedOperations: normalizeBlockedOperations(raw.blocked_operations),
+    modelUsed: stringValue(raw.model_used) ?? 'none',
+    confidence: numberValue(raw.confidence) ?? 0.8,
+    timings: isRecord(raw.timings) ? raw.timings : {},
     diagnostics: {
       parser_version: stringValue(backendDiagnostics.parser_version) ?? undefined,
       parse_mode: stringValue(backendDiagnostics.parse_mode) ?? undefined,
@@ -387,6 +464,63 @@ function normalizeFlags(value: unknown): NormalizedQuickOrderParseResponse['flag
   }));
 }
 
+function normalizeStockUpdates(value: unknown): QuickOrderStockUpdate[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map((entry) => ({
+    item_id: stringValue(entry.item_id) ?? '',
+    item_name: stringValue(entry.item_name) ?? 'Item',
+    quantity: numberValue(entry.quantity) ?? 0,
+    unit: stringValue(entry.unit),
+    source: (entry.source === 'voice' ? 'voice' : 'typed') as QuickOrderMessageSource,
+    confidence: numberValue(entry.confidence) ?? 0.8,
+    original_text: stringValue(entry.original_text) ?? '',
+  })).filter((entry) => entry.item_id && entry.item_name);
+}
+
+function normalizeRecommendations(value: unknown): QuickOrderRecommendation[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map((entry) => ({
+    item_id: stringValue(entry.item_id) ?? '',
+    item_name: stringValue(entry.item_name) ?? 'Item',
+    suggested_quantity: numberValue(entry.suggested_quantity) ?? 0,
+    unit: stringValue(entry.unit),
+    confidence: numberValue(entry.confidence) ?? 0.7,
+    reason: stringValue(entry.reason) ?? 'Suggested from recent history.',
+    inputs: isRecord(entry.inputs) ? entry.inputs : undefined,
+    safety_status: normalizeRecommendationSafety(entry.safety_status),
+  })).filter((entry) => entry.item_id && entry.suggested_quantity > 0);
+}
+
+function normalizeSafetyWarnings(value: unknown): QuickOrderSafetyWarning[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map((entry) => ({
+    type: stringValue(entry.type) ?? 'warning',
+    message: stringValue(entry.message) ?? 'Review this item.',
+    item_id: stringValue(entry.item_id),
+    item_name: stringValue(entry.item_name),
+    quantity: numberValue(entry.quantity),
+    unit: stringValue(entry.unit),
+    severity: entry.severity === 'blocked' || entry.severity === 'info' ? entry.severity : 'warning',
+  }));
+}
+
+function normalizeBlockedOperations(value: unknown): QuickOrderBlockedOperation[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map((entry) => ({
+    type: stringValue(entry.type) ?? 'operation',
+    item_id: stringValue(entry.item_id),
+    item_name: stringValue(entry.item_name),
+    attempted_quantity: numberValue(entry.attempted_quantity),
+    unit: stringValue(entry.unit),
+    reason: stringValue(entry.reason) ?? 'blocked',
+    message: stringValue(entry.message) ?? 'This operation was blocked.',
+  }));
+}
+
+function normalizeRecommendationSafety(value: unknown): QuickOrderRecommendation['safety_status'] {
+  return value === 'confirm' || value === 'manager_approval' || value === 'blocked' ? value : 'normal';
+}
+
 function normalizeOperations(value: unknown): QuickOrderOperation[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isRecord).map((entry) => ({
@@ -424,6 +558,8 @@ function normalizeStatus(
   error: unknown,
 ): QuickOrderParseStatus {
   if (value === 'ok' || value === 'needs_review' || value === 'needs_clarification' || value === 'error') return value;
+  if (value === 'success') return 'ok';
+  if (value === 'partial_success' || value === 'blocked') return 'needs_clarification';
   if (error) return 'error';
   if (pendingActions.length > 0) return 'needs_clarification';
   if (items.some((item) => getParsedItemIssue(item))) return 'needs_review';

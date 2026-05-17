@@ -1,8 +1,7 @@
 export type QuickOrderBottomPaddingInput = {
-  bottomOffset: number;
-  safeAreaBottom: number;
-  breathingRoom: number;
+  composerBottomOffset: number;
   composerHeight: number;
+  gap: number;
 };
 
 export type AutoStickInput = {
@@ -11,6 +10,11 @@ export type AutoStickInput = {
   visibleHeight: number;
   offsetY: number;
   threshold?: number;
+};
+
+export type BottomScrollOffsetInput = {
+  contentHeight: number;
+  visibleHeight: number;
 };
 
 const DEFAULT_NEAR_BOTTOM_THRESHOLD = 140;
@@ -25,11 +29,21 @@ export function buildSendSnapDelays(): number[] {
 
 export function calculateQuickOrderBottomPadding(input: QuickOrderBottomPaddingInput): number {
   return (
-    finiteOrZero(input.bottomOffset) +
+    finiteOrZero(input.composerBottomOffset) +
     finiteOrZero(input.composerHeight) +
-    finiteOrZero(input.safeAreaBottom) +
-    finiteOrZero(input.breathingRoom)
+    finiteOrZero(input.gap)
   );
+}
+
+export function calculateQuickOrderBottomScrollOffset({
+  contentHeight,
+  visibleHeight,
+}: BottomScrollOffsetInput): number {
+  const safeContentHeight = finiteOrZero(contentHeight);
+  const safeVisibleHeight = finiteOrZero(visibleHeight);
+
+  if (safeContentHeight <= 0 || safeVisibleHeight <= 0) return 0;
+  return Math.max(0, safeContentHeight - safeVisibleHeight);
 }
 
 export function shouldAutoStickToBottom({

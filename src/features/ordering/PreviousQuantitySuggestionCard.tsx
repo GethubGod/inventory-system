@@ -2,8 +2,12 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerSelectionHaptic } from '@/lib/haptics';
-import { colors, glassHairlineWidth, grayScale } from '@/theme/design';
 import type { PreviousQuantitySuggestion } from './quickOrderHistorySuggestions';
+
+const PRIMARY = '#E8503A';
+const TEXT_PRIMARY = '#1C1C1E';
+const TEXT_SECONDARY = '#8E8E93';
+const WHITE = '#FFFFFF';
 import { formatQuantityWithUnit } from './quickOrderQuantityFlow';
 
 type PreviousQuantitySuggestionCardProps = {
@@ -52,10 +56,10 @@ export function PreviousQuantitySuggestionCard({ suggestion, onUse, disabled = f
       ]}
     >
       <View style={styles.textColumn}>
-        <Text style={[styles.heading, { fontSize: ds.fontSize(11) }]} numberOfLines={1}>
+        <Text style={[styles.heading, { fontSize: ds.fontSize(12), color: TEXT_SECONDARY }]} numberOfLines={1}>
           {heading}
         </Text>
-        <Text style={[styles.value, { fontSize: ds.fontSize(17), marginTop: ds.spacing(2) }]} numberOfLines={1}>
+        <Text style={[styles.value, { fontSize: ds.fontSize(18), marginTop: ds.spacing(2) }]} numberOfLines={1}>
           {value}
         </Text>
       </View>
@@ -88,27 +92,30 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: grayScale[200],
+    backgroundColor: WHITE,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
   },
   textColumn: {
     flex: 1,
     minWidth: 0,
   },
   heading: {
-    color: colors.textSecondary,
+    color: TEXT_PRIMARY,
     letterSpacing: 0.6,
-    fontWeight: '800',
+    fontWeight: '700',
     textTransform: 'uppercase',
   },
   value: {
-    color: colors.textPrimary,
+    color: TEXT_PRIMARY,
     fontWeight: '800',
     letterSpacing: 0,
   },
   useButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: PRIMARY,
     flexShrink: 0,
     alignSelf: 'center',
     minWidth: 96,
@@ -116,7 +123,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   useButtonText: {
-    color: colors.textOnPrimary,
+    color: WHITE,
     fontWeight: '800',
     letterSpacing: 0,
   },

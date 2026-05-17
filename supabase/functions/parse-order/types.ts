@@ -1,5 +1,20 @@
 export type ParseStatus = 'ok' | 'needs_review' | 'needs_clarification' | 'error';
 
+export type QuickOrderSource = 'typed' | 'voice';
+
+export type ProcessQuickOrderStatus =
+  | 'success'
+  | 'needs_clarification'
+  | 'blocked'
+  | 'partial_success'
+  | 'error';
+
+export type QuickOrderModelUsed =
+  | 'none'
+  | 'gemini-2.5-flash'
+  | 'gemini-3.1-pro'
+  | 'other';
+
 export type ParseSource = 'deterministic' | 'fuzzy' | 'llm' | 'manual' | 'correction';
 
 export type ParsedItemStatus =
@@ -59,6 +74,38 @@ export type CatalogItem = {
   order_unit?: string | null;
   allowed_units?: string[] | null;
   unit_options?: string[] | null;
+};
+
+export type ItemOrderLimit = {
+  id?: string;
+  item_id: string;
+  location_id: string | null;
+  supplier_id?: string | null;
+  default_order_unit?: string | null;
+  typical_min_quantity?: number | null;
+  typical_max_quantity?: number | null;
+  soft_max_quantity?: number | null;
+  hard_max_quantity?: number | null;
+  manager_approval_quantity?: number | null;
+  allow_employee_override?: boolean | null;
+  allow_manager_override?: boolean | null;
+  max_single_order_quantity?: number | null;
+  max_daily_quantity?: number | null;
+  max_weekly_quantity?: number | null;
+  historical_median_quantity?: number | null;
+  historical_p95_quantity?: number | null;
+  historical_max_quantity?: number | null;
+};
+
+export type ItemAllowedUnitRule = {
+  id?: string;
+  item_id: string;
+  unit: string;
+  is_default?: boolean | null;
+  conversion_to_base_unit?: number | null;
+  min_quantity?: number | null;
+  soft_max_quantity?: number | null;
+  hard_max_quantity?: number | null;
 };
 
 export type ParserExample = {
@@ -193,6 +240,62 @@ export type QuickOrderOperation = {
   message?: string;
 };
 
+export type StockOperation = {
+  item_id: string;
+  item_name: string;
+  quantity: number;
+  unit: string | null;
+  source: QuickOrderSource;
+  confidence: number;
+  original_text: string;
+};
+
+export type SafetyWarningType =
+  | 'above_soft_max'
+  | 'above_hard_max'
+  | 'unusual_unit'
+  | 'voice_number_risk'
+  | 'low_confidence_match'
+  | 'manager_approval_required';
+
+export type SafetyWarning = {
+  type: SafetyWarningType;
+  message: string;
+  item_id?: string | null;
+  item_name?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  severity: 'info' | 'warning' | 'blocked';
+};
+
+export type BlockedOperation = {
+  type: 'cart_add' | 'cart_update' | 'stock_update' | 'recommendation';
+  item_id?: string | null;
+  item_name?: string | null;
+  attempted_quantity?: number | null;
+  unit?: string | null;
+  reason: SafetyWarningType | 'catalog_missing' | 'invalid_request';
+  message: string;
+};
+
+export type Recommendation = {
+  item_id: string;
+  item_name: string;
+  suggested_quantity: number;
+  unit: string | null;
+  confidence: number;
+  reason: string;
+  inputs: {
+    current_stock?: number | null;
+    expected_usage?: number | null;
+    safety_stock?: number | null;
+    previous_average?: number | null;
+    day_of_week_pattern?: number | null;
+    next_delivery_date?: string | null;
+  };
+  safety_status: 'normal' | 'confirm' | 'manager_approval' | 'blocked';
+};
+
 export type ParseFlag = {
   type:
     | 'llm_timeout'
@@ -254,7 +357,10 @@ export type PendingQuickOrderClarification = {
     | 'choose_existing_line'
     | 'clear_order'
     | 'remove_ambiguous'
-    | 'item_not_found';
+    | 'item_not_found'
+    | 'quantity_safety'
+    | 'manager_approval_required'
+    | 'low_confidence_match';
   item_id: string | null;
   item_name: string;
   existing_item_key?: string;
@@ -262,6 +368,19 @@ export type PendingQuickOrderClarification = {
   incoming_item?: ParsedItem;
   message: string;
   actions: PendingQuickOrderAction[];
+};
+
+export type QuickOrderTimings = {
+  total_ms: number;
+  auth_ms?: number;
+  context_load_ms?: number;
+  deterministic_parse_ms?: number;
+  catalog_match_ms?: number;
+  safety_validation_ms?: number;
+  llm_fallback_ms?: number;
+  recommendation_engine_ms?: number;
+  db_write_ms?: number;
+  response_build_ms?: number;
 };
 
 export type ParserMetrics = {
@@ -374,4 +493,40 @@ export type ParseResponse = {
   metrics?: ParserMetrics;
   diagnostics?: ParseDiagnostics;
   operations?: QuickOrderOperation[];
+};
+
+export type RecentMessage = QuickOrderMessage;
+
+export type VoiceMetadata = {
+  transcript_confidence?: number;
+  raw_transcript?: string;
+  language?: string;
+};
+
+export type ProcessQuickOrderMessageRequest = {
+  source: QuickOrderSource;
+  message: string;
+  session_id: string | null;
+  location_id: string;
+  user_id: string;
+  existing_items: ParsedItem[];
+  recent_messages?: RecentMessage[];
+  voice_metadata?: VoiceMetadata;
+};
+
+export type ProcessQuickOrderResponse = Omit<ParseResponse, 'status'> & {
+  status: ProcessQuickOrderStatus;
+  legacy_status: ParseStatus;
+  display_message: string;
+  speech_message: string;
+  parsed_items: ParsedItem[];
+  cart_operations: QuickOrderOperation[];
+  stock_updates: StockOperation[];
+  recommendations: Recommendation[];
+  clarifications: PendingQuickOrderClarification[];
+  safety_warnings: SafetyWarning[];
+  blocked_operations: BlockedOperation[];
+  model_used: QuickOrderModelUsed;
+  confidence: number;
+  timings: QuickOrderTimings;
 };

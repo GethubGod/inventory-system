@@ -3,7 +3,9 @@ import { resolveParsedItemConflicts } from '../../supabase/functions/parse-order
 import { parseDeterministicOrder } from '../../supabase/functions/parse-order/deterministic-parser.ts';
 import { detectQuickOrderIntent } from '../../supabase/functions/parse-order/intent-detector.ts';
 import { parseJsonPayload } from '../../supabase/functions/parse-order/llm-fallback.ts';
+import { routeQuickOrderModel } from '../../supabase/functions/parse-order/model-router.ts';
 import { parseQuickOrder, reconcileParsedSources } from '../../supabase/functions/parse-order/orchestrator.ts';
+import { processQuickOrderMessage } from '../../supabase/functions/parse-order/process-message.ts';
 import type { CatalogItem, ParsedItem, ParserCorrection } from '../../supabase/functions/parse-order/types.ts';
 import { validateParsedLine } from '../../supabase/functions/parse-order/validator.ts';
 import {
@@ -2660,5 +2662,158 @@ describe('Quick Order end-to-end acceptance cases', () => {
       issue: undefined,
       needs_clarification: false,
     });
+  });
+});
+
+describe('shared processQuickOrderMessage brain', () => {
+  const brainCatalog: CatalogItem[] = [
+    { id: 'salmon-id', name: 'Salmon', aliases: ['sake'], default_unit: 'cs', base_unit: 'lb', pack_unit: 'cs', allowed_units: ['lb', 'cs'] },
+    { id: 'masago-id', name: 'Masago', aliases: [], default_unit: 'cs', base_unit: 'pack', pack_unit: 'cs', allowed_units: ['pack', 'cs'] },
+    { id: 'tuna-id', name: 'Tuna', aliases: ['maguro'], default_unit: 'lb', base_unit: 'lb', pack_unit: null, allowed_units: ['lb'] },
+  ];
+
+  async function processBrain(message: string, overrides: Partial<Parameters<typeof processQuickOrderMessage>[0]> = {}) {
+    return processQuickOrderMessage({
+      catalog: brainCatalog,
+      globalCatalog: brainCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+      limits: [],
+      allowedUnitRules: [],
+      recentOrders: [],
+      modelConfig: {
+        defaultModel: 'gemini-2.5-flash',
+        fallbackModel: 'gemini-2.5-flash',
+        advancedModel: 'gemini-3.1-pro',
+        liveModel: 'gemini-live',
+        advancedEnabled: true,
+      },
+      ...overrides,
+      request: {
+        source: overrides.request?.source ?? 'typed',
+        message: overrides.request?.message ?? message,
+        session_id: overrides.request?.session_id ?? 'session-id',
+        location_id: overrides.request?.location_id ?? 'location-id',
+        user_id: overrides.request?.user_id ?? 'user-id',
+        existing_items: overrides.request?.existing_items ?? [],
+        recent_messages: overrides.request?.recent_messages,
+        voice_metadata: overrides.request?.voice_metadata,
+      },
+    });
+  }
+
+  test('typed and voice transcripts share the same parser and cart output', async () => {
+    const typed = await processBrain('salmon 2cs');
+    const voice = await processBrain('salmon 2cs', {
+      request: {
+        source: 'voice',
+        message: 'salmon 2cs',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+        voice_metadata: { raw_transcript: 'salmon 2cs', transcript_confidence: 0.9 },
+      },
+    });
+
+    expect(typed.parsed_items).toMatchObject([{ item_id: 'salmon-id', quantity: 2, unit: 'cs' }]);
+    expect(voice.parsed_items).toMatchObject([{ item_id: 'salmon-id', quantity: 2, unit: 'cs' }]);
+    expect(typed.parsed_items).toEqual(voice.parsed_items);
+    expect(typed.model_used).toBe('none');
+    expect(voice.model_used).toBe('none');
+  });
+
+  test('hard max blocks unsafe quantities before cart merge', async () => {
+    const result = await processBrain('salmon 17 cases', {
+      limits: [{
+        item_id: 'salmon-id',
+        location_id: 'location-id',
+        hard_max_quantity: 6,
+      }],
+    });
+    expect(result.status).toBe('blocked');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.blocked_operations[0]).toMatchObject({
+      item_id: 'salmon-id',
+      reason: 'above_hard_max',
+    });
+  });
+
+  test('soft max and voice p95 require confirmation instead of silently adding', async () => {
+    const typed = await processBrain('salmon 5 cases', {
+      limits: [{
+        item_id: 'salmon-id',
+        location_id: 'location-id',
+        soft_max_quantity: 4,
+        hard_max_quantity: 10,
+      }],
+    });
+    expect(typed.status).toBe('needs_clarification');
+    expect(typed.parsed_items).toHaveLength(0);
+    expect(typed.safety_warnings[0].type).toBe('above_soft_max');
+
+    const voice = await processBrain('salmon 5 cases', {
+      request: {
+        source: 'voice',
+        message: 'salmon 5 cases',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      limits: [{
+        item_id: 'salmon-id',
+        location_id: 'location-id',
+        historical_p95_quantity: 4,
+        hard_max_quantity: 10,
+      }],
+    });
+    expect(voice.safety_warnings[0].type).toBe('voice_number_risk');
+    expect(voice.pending_clarifications?.[0].type).toBe('quantity_safety');
+  });
+
+  test('stock count messages produce stock updates and no order cart items', async () => {
+    const result = await processBrain('counted sushi bar, salmon one case, tuna five pounds, no masago');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates.map((update) => [update.item_id, update.quantity, update.unit])).toEqual([
+      ['salmon-id', 1, 'cs'],
+      ['tuna-id', 5, 'lb'],
+      ['masago-id', 0, 'cs'],
+    ]);
+  });
+
+  test('mixed stock and recommendation uses deterministic history-based recommendation', async () => {
+    const result = await processBrain('we have one case salmon left, what should we order?', {
+      recentOrders: [{
+        created_at: new Date().toISOString(),
+        items: [{ item_id: 'salmon-id', item_name: 'Salmon', quantity: 3, unit: 'cs' }],
+      }],
+      limits: [{
+        item_id: 'salmon-id',
+        location_id: 'location-id',
+        typical_min_quantity: 1,
+        hard_max_quantity: 6,
+      }],
+    });
+    expect(result.stock_updates).toHaveLength(1);
+    expect(result.recommendations[0]).toMatchObject({
+      item_id: 'salmon-id',
+      suggested_quantity: 3,
+      unit: 'cs',
+    });
+  });
+
+  test('model router reserves advanced model for complex planning only', () => {
+    const config = {
+      defaultModel: 'gemini-2.5-flash',
+      fallbackModel: 'gemini-2.5-flash',
+      advancedModel: 'gemini-3.1-pro',
+      liveModel: 'gemini-live',
+      advancedEnabled: true,
+    };
+    expect(routeQuickOrderModel({ message: 'salmon 2cs', source: 'typed', config }).mode).toBe('deterministic');
+    expect(routeQuickOrderModel({ message: 'build tomorrow order based on current stock', source: 'typed', config }).mode).toBe('advanced');
   });
 });

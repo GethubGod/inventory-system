@@ -26,6 +26,16 @@ const WORD_QUANTITIES: Record<string, number> = {
   eight: 8,
   nine: 9,
   ten: 10,
+  eleven: 11,
+  twelve: 12,
+  thirteen: 13,
+  fourteen: 14,
+  fifteen: 15,
+  sixteen: 16,
+  seventeen: 17,
+  eighteen: 18,
+  nineteen: 19,
+  twenty: 20,
   dozen: 12,
   'a': 1,
 };
@@ -61,6 +71,13 @@ function wordQtyUnitOfItemRegex(): RegExp {
   );
 }
 
+function wordQtyUnitItemNoOfRegex(): RegExp {
+  return new RegExp(
+    `^\\s*(${WORD_QTY_PATTERN})\\s+(${escapedUnitPattern()})\\s+(.+)$`,
+    'i',
+  );
+}
+
 function qtyUnitItemNoOfRegex(): RegExp {
   return new RegExp(
     `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern()})\\s+(.+)$`,
@@ -71,6 +88,13 @@ function qtyUnitItemNoOfRegex(): RegExp {
 function itemQtyUnitRegex(): RegExp {
   return new RegExp(
     `^(.+?)\\s+(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern()})\\s*$`,
+    'i',
+  );
+}
+
+function itemWordQtyUnitRegex(): RegExp {
+  return new RegExp(
+    `^(.+?)\\s+(${WORD_QTY_PATTERN})\\s+(${escapedUnitPattern()})\\s*$`,
     'i',
   );
 }
@@ -240,6 +264,20 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
     }
   }
 
+  if (quantity == null) {
+    const wordQtyUnitItem = compactRaw.match(wordQtyUnitItemNoOfRegex());
+    if (wordQtyUnitItem) {
+      const wordQty = WORD_QUANTITIES[wordQtyUnitItem[1].toLowerCase()];
+      if (wordQty != null) {
+        quantity = wordQty;
+        unitRaw = wordQtyUnitItem[2];
+        unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
+        itemText = wordQtyUnitItem[3];
+        confidence = 0.88;
+      }
+    }
+  }
+
   // ---------------------------------------------------------------
   // Pattern 3: "item qty unit" — "salmon 2cs", "ground garlic 1 pack"
   // ---------------------------------------------------------------
@@ -251,6 +289,20 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
       unitRaw = itemQtyUnit[4];
       unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
       confidence = 0.92;
+    }
+  }
+
+  if (quantity == null) {
+    const itemWordQtyUnit = compactRaw.match(itemWordQtyUnitRegex());
+    if (itemWordQtyUnit) {
+      const wordQty = WORD_QUANTITIES[itemWordQtyUnit[2].toLowerCase()];
+      if (wordQty != null) {
+        itemText = itemWordQtyUnit[1];
+        quantity = wordQty;
+        unitRaw = itemWordQtyUnit[3];
+        unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
+        confidence = 0.88;
+      }
     }
   }
 

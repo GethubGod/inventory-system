@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerSelectionHaptic } from '@/lib/haptics';
-import { colors, glassHairlineWidth, grayScale } from '@/theme/design';
 
 type QuantityStepperProps = {
   value: number;
@@ -17,17 +16,27 @@ type QuantityStepperProps = {
 
 const QUICK_INCREMENTS = [1, 5, 10] as const;
 
-/** Formats a stepper value, trimming a trailing ".0" / float noise. */
+// Hardcoded so the contrast can never collapse against the cream sheet bg
+// (the design-system grayScale[100] is too close to background for the chips
+// to read as filled pills).
+const PILL_BG = '#F2F0EE';
+const PILL_BG_PRESSED = '#E8E5E2';
+const PRIMARY = '#E8503A';
+const PRIMARY_TINT = '#FBE5E1';
+const TEXT_PRIMARY = '#1C1C1E';
+const TEXT_SECONDARY = '#8E8E93';
+const TEXT_MUTED = '#AEAEB2';
+
 function formatStepperValue(value: number): string {
   if (!Number.isFinite(value)) return '0';
   return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
 }
 
 /**
- * The large quantity picker used inside {@link QuickOrderQuantitySheet}: a big
- * centered number with the unit beneath it, round −/+ buttons on either side, a
- * row of +1/+5/+10 shortcuts, and a "Type" toggle that swaps the number for a
- * numeric text field for exact entry.
+ * Apple-style quantity picker that matches the mockup: rounded white card with
+ * a big bold number flanked by circular −/+ buttons (gray / pink), and a row
+ * of pill chips for +1/+5/+10 + a "Type" toggle that swaps the number for a
+ * numeric input.
  */
 export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled = false }: QuantityStepperProps) {
   const ds = useScaledStyles();
@@ -63,23 +72,27 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
   }, [min, onChange, text]);
 
   const canDecrement = !disabled && value > min;
+  const roundSize = ds.spacing(64);
 
   return (
     <View
       style={[
         styles.card,
-        { borderRadius: ds.radius(24), padding: ds.spacing(18), gap: ds.spacing(16) },
+        {
+          borderRadius: ds.radius(24),
+          paddingVertical: ds.spacing(22),
+          paddingHorizontal: ds.spacing(22),
+        },
       ]}
     >
-      <View style={styles.valueRow}>
-        <StepperRoundButton
+      <View style={[styles.valueRow, { marginBottom: ds.spacing(18) }]}>
+        <RoundButton
           icon="remove"
           accessibilityLabel="Decrease quantity"
           disabled={!canDecrement}
           onPress={() => bump(-1)}
-          size={ds.spacing(56)}
-          radius={ds.radius(28)}
-          iconSize={ds.icon(24)}
+          size={roundSize}
+          iconSize={ds.icon(28)}
         />
 
         <View style={styles.valueColumn}>
@@ -93,57 +106,44 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
               keyboardType="decimal-pad"
               returnKeyType="done"
               placeholder="0"
-              placeholderTextColor={colors.textMuted}
-              style={[styles.valueInput, { fontSize: ds.fontSize(40), minWidth: ds.spacing(80) }]}
+              placeholderTextColor={TEXT_MUTED}
+              style={[styles.valueInput, { fontSize: ds.fontSize(56), minWidth: ds.spacing(80) }]}
             />
           ) : (
-            <Text style={[styles.valueText, { fontSize: ds.fontSize(40) }]} numberOfLines={1}>
+            <Text style={[styles.valueText, { fontSize: ds.fontSize(56) }]} numberOfLines={1}>
               {formatStepperValue(value)}
             </Text>
           )}
-          <Text style={[styles.unitText, { fontSize: ds.fontSize(14) }]} numberOfLines={1}>
+          <Text style={[styles.unitText, { fontSize: ds.fontSize(15), marginTop: ds.spacing(2) }]} numberOfLines={1}>
             {unitLabel || ' '}
           </Text>
         </View>
 
-        <StepperRoundButton
+        <RoundButton
           icon="add"
           accessibilityLabel="Increase quantity"
           disabled={disabled}
           onPress={() => bump(1)}
-          size={ds.spacing(56)}
-          radius={ds.radius(28)}
-          iconSize={ds.icon(24)}
+          size={roundSize}
+          iconSize={ds.icon(28)}
           accent
         />
       </View>
 
-      <View style={[styles.chipRow, { gap: ds.spacing(8) }]}>
+      <View style={[styles.chipRow, { gap: ds.spacing(10) }]}>
         {QUICK_INCREMENTS.map((amount) => (
-          <Pressable
+          <PillChip
             key={amount}
-            accessibilityRole="button"
-            accessibilityLabel={`Add ${amount}`}
+            label={`+${amount}`}
             disabled={disabled}
             onPress={() => bump(amount)}
-            style={({ pressed }) => [
-              styles.chip,
-              {
-                borderRadius: ds.radius(999),
-                paddingHorizontal: ds.spacing(18),
-                paddingVertical: ds.spacing(10),
-                opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
-              },
-            ]}
-          >
-            <Text style={[styles.chipText, { fontSize: ds.fontSize(14) }]}>{`+${amount}`}</Text>
-          </Pressable>
+            ds={ds}
+          />
         ))}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityState={{ selected: typing }}
-          accessibilityLabel="Type an exact quantity"
+        <PillChip
+          label="Type"
           disabled={disabled}
+          selected={typing}
           onPress={() => {
             void triggerSelectionHaptic();
             setTyping((current) => {
@@ -154,44 +154,72 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
               return true;
             });
           }}
-          style={({ pressed }) => [
-            styles.chip,
-            {
-              borderRadius: ds.radius(999),
-              paddingHorizontal: ds.spacing(18),
-              paddingVertical: ds.spacing(10),
-              backgroundColor: typing ? colors.primaryLight : grayScale[200],
-              borderColor: typing ? colors.primary : grayScale[300],
-              opacity: disabled ? 0.5 : pressed ? 0.7 : 1,
-            },
-          ]}
-        >
-          <Text
-            style={[
-              styles.chipText,
-              { fontSize: ds.fontSize(14), color: typing ? colors.primary : colors.textPrimary },
-            ]}
-          >
-            Type
-          </Text>
-        </Pressable>
+          ds={ds}
+        />
       </View>
     </View>
   );
 }
 
-type StepperRoundButtonProps = {
+type PillChipProps = {
+  label: string;
+  disabled: boolean;
+  onPress: () => void;
+  selected?: boolean;
+  ds: ReturnType<typeof useScaledStyles>;
+};
+
+function PillChip({ label, disabled, onPress, selected = false, ds }: PillChipProps) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled, selected }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flex: 1,
+        minWidth: 0,
+        borderRadius: 999,
+        paddingVertical: ds.spacing(12),
+        paddingHorizontal: ds.spacing(10),
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: selected
+          ? PRIMARY_TINT
+          : pressed
+            ? PILL_BG_PRESSED
+            : PILL_BG,
+        opacity: disabled ? 0.5 : 1,
+      })}
+    >
+      <Text
+        style={{
+          fontSize: ds.fontSize(15),
+          fontWeight: '700',
+          color: selected ? PRIMARY : TEXT_PRIMARY,
+          letterSpacing: 0,
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+type RoundButtonProps = {
   icon: keyof typeof Ionicons.glyphMap;
   accessibilityLabel: string;
   disabled: boolean;
   onPress: () => void;
   size: number;
-  radius: number;
   iconSize: number;
   accent?: boolean;
 };
 
-function StepperRoundButton({ icon, accessibilityLabel, disabled, onPress, size, radius, iconSize, accent = false }: StepperRoundButtonProps) {
+function RoundButton({ icon, accessibilityLabel, disabled, onPress, size, iconSize, accent = false }: RoundButtonProps) {
+  const bg = accent ? PRIMARY_TINT : PILL_BG;
+  const iconColor = accent ? PRIMARY : TEXT_PRIMARY;
   return (
     <Pressable
       accessibilityRole="button"
@@ -199,29 +227,30 @@ function StepperRoundButton({ icon, accessibilityLabel, disabled, onPress, size,
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
-      hitSlop={6}
-      style={({ pressed }) => [
-        styles.roundButton,
-        {
-          width: size,
-          height: size,
-          borderRadius: radius,
-          backgroundColor: accent ? colors.primaryLight : grayScale[100],
-          borderColor: accent ? colors.primaryLight : grayScale[200],
-          opacity: disabled ? 0.4 : pressed ? 0.7 : 1,
-        },
-      ]}
+      hitSlop={8}
+      style={({ pressed }) => ({
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: pressed ? (accent ? '#F5D0C8' : PILL_BG_PRESSED) : bg,
+        alignItems: 'center',
+        justifyContent: 'center',
+        opacity: disabled ? 0.35 : 1,
+      })}
     >
-      <Ionicons name={icon} size={iconSize} color={colors.primary} />
+      <Ionicons name={icon} size={iconSize} color={iconColor} />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.white,
-    borderWidth: glassHairlineWidth,
-    borderColor: grayScale[200],
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
   valueRow: {
     flexDirection: 'row',
@@ -231,43 +260,27 @@ const styles = StyleSheet.create({
   valueColumn: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   valueText: {
-    color: colors.textPrimary,
+    color: TEXT_PRIMARY,
     fontWeight: '800',
-    letterSpacing: 0,
+    letterSpacing: -1.5,
   },
   valueInput: {
-    color: colors.textPrimary,
+    color: TEXT_PRIMARY,
     fontWeight: '800',
-    letterSpacing: 0,
+    letterSpacing: -1.5,
     textAlign: 'center',
     padding: 0,
   },
   unitText: {
-    marginTop: 2,
-    color: colors.textSecondary,
-    fontWeight: '700',
+    color: TEXT_SECONDARY,
+    fontWeight: '500',
     letterSpacing: 0,
   },
   chipRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    flexWrap: 'wrap',
-  },
-  chip: {
-    backgroundColor: grayScale[100],
-    borderWidth: glassHairlineWidth,
-    borderColor: grayScale[200],
-  },
-  chipText: {
-    color: colors.textPrimary,
-    fontWeight: '800',
-    letterSpacing: 0,
-  },
-  roundButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: glassHairlineWidth,
+    justifyContent: 'space-between',
   },
 });

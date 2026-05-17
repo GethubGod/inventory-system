@@ -66,12 +66,12 @@ import {
   type QuickOrderQuantityResult,
   type QuickOrderQuantitySheetItem,
 } from "./QuickOrderQuantitySheet";
-import { QuickOrderComposerBar } from "./QuickOrderComposerBar";
 import {
   advanceQuantityFlow,
   getQuantityFixQueue,
   type QuantityFlowState,
 } from "./quickOrderQuantityFlow";
+import { QuickOrderComposerBar } from "./QuickOrderComposerBar";
 import {
   fetchPreviousQuantitySuggestions,
   type PreviousQuantitySuggestion,
@@ -83,6 +83,7 @@ import {
 } from "./quickOrderErrors";
 import {
   buildSendSnapDelays,
+  calculateQuickOrderBottomScrollOffset,
   calculateQuickOrderBottomPadding,
   shouldAutoStickToBottom,
 } from "./quickOrderChatLayout";
@@ -90,6 +91,11 @@ import {
   buildQuickOrderAssistantMessage,
   hasQuickOrderStateChange,
   normalizeQuickOrderParseResponse,
+  type QuickOrderBlockedOperation,
+  type QuickOrderMessageSource,
+  type QuickOrderRecommendation,
+  type QuickOrderSafetyWarning,
+  type QuickOrderStockUpdate,
 } from "./quickOrderResponse";
 import {
   countUnresolvedItems,
@@ -108,6 +114,22 @@ import {
   type ParsedQuickOrderItem,
   type QuickOrderInventoryItem,
 } from "./quickOrderItems";
+
+type SpeechRecognitionModule = {
+  addListener: (eventName: string, listener: (event: any) => void) => { remove: () => void };
+  requestPermissionsAsync: () => Promise<{ granted?: boolean }>;
+  start: (options: Record<string, unknown>) => void;
+  stop: () => void;
+  abort: () => void;
+};
+
+let ExpoSpeechRecognitionModule: SpeechRecognitionModule | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  ExpoSpeechRecognitionModule = require("expo-speech-recognition").ExpoSpeechRecognitionModule;
+} catch {
+  ExpoSpeechRecognitionModule = null;
+}
 
 type QuickOrderFlag = {
   type: string;
@@ -142,10 +164,16 @@ type QuickOrderMessage = {
   role: "user" | "assistant" | "error";
   text: string;
   createdAt: string;
+  source?: QuickOrderMessageSource;
+  transcriptPreview?: string;
   parsedItems?: ParsedQuickOrderItem[];
   pendingClarifications?: PendingQuickOrderClarification[];
   flags?: QuickOrderFlag[];
   suggestions?: QuickOrderSuggestion[];
+  stockUpdates?: QuickOrderStockUpdate[];
+  recommendations?: QuickOrderRecommendation[];
+  safetyWarnings?: QuickOrderSafetyWarning[];
+  blockedOperations?: QuickOrderBlockedOperation[];
   errorCode?: string;
 };
 
@@ -158,9 +186,6 @@ type EditingState = {
   isSaving: boolean;
 };
 
-/** Drives the missing-quantity correction sheet (single item or progress flow). */
-type QuantityFlowSheetState = QuantityFlowState & { isSaving: boolean };
-
 type PersistedQuickOrderMessage = {
   role?: string;
   text?: string;
@@ -171,6 +196,11 @@ type PersistedQuickOrderMessage = {
   pending_clarifications?: PendingQuickOrderClarification[];
   flags?: QuickOrderFlag[];
   suggestions?: QuickOrderSuggestion[];
+  source?: QuickOrderMessageSource;
+  stock_updates?: QuickOrderStockUpdate[];
+  recommendations?: QuickOrderRecommendation[];
+  safety_warnings?: QuickOrderSafetyWarning[];
+  blocked_operations?: QuickOrderBlockedOperation[];
 };
 
 type QuickOrderSessionRow = {
@@ -324,12 +354,25 @@ function mapPersistedMessages(
         role,
         text,
         createdAt: message.created_at ?? new Date().toISOString(),
+        source: message.source === "voice" ? "voice" : "typed",
         parsedItems: normalizeParsedItems(message.parsed_items),
         pendingClarifications: normalizeClarifications(
           message.pending_clarifications,
         ),
         flags: Array.isArray(message.flags) ? message.flags : [],
         suggestions: normalizeSuggestions(message.suggestions),
+        stockUpdates: Array.isArray(message.stock_updates)
+          ? message.stock_updates
+          : [],
+        recommendations: Array.isArray(message.recommendations)
+          ? message.recommendations
+          : [],
+        safetyWarnings: Array.isArray(message.safety_warnings)
+          ? message.safety_warnings
+          : [],
+        blockedOperations: Array.isArray(message.blocked_operations)
+          ? message.blocked_operations
+          : [],
       };
     })
     .filter((message): message is QuickOrderMessage => Boolean(message));
@@ -374,6 +417,11 @@ function buildPersistedMessage(
       pending_clarifications: message.pendingClarifications ?? [],
       flags: message.flags ?? [],
       suggestions: message.suggestions ?? [],
+      source: message.source,
+      stock_updates: message.stockUpdates ?? [],
+      recommendations: message.recommendations ?? [],
+      safety_warnings: message.safetyWarnings ?? [],
+      blocked_operations: message.blockedOperations ?? [],
       created_at: message.createdAt,
     };
   }
@@ -382,6 +430,7 @@ function buildPersistedMessage(
     role: message.role,
     raw_text: message.text,
     text: message.text,
+    source: message.source,
     created_at: message.createdAt,
   };
 }
@@ -727,6 +776,176 @@ const SuggestionCard = React.memo(function SuggestionCard({
   );
 });
 
+const SafetyWarningCard = React.memo(function SafetyWarningCard({
+  warning,
+  onLayout,
+}: {
+  warning: QuickOrderSafetyWarning;
+  onLayout?: (event: LayoutChangeEvent) => void;
+}) {
+  const ds = useScaledStyles();
+  const blocked = warning.severity === "blocked";
+  return (
+    <View
+      onLayout={onLayout}
+      style={[
+        styles.noticeCard,
+        blocked ? styles.blockedCard : styles.warningCard,
+        {
+          borderRadius: ds.radius(16),
+          padding: ds.spacing(12),
+          marginTop: ds.spacing(10),
+        },
+      ]}
+    >
+      <Ionicons
+        name={blocked ? "ban-outline" : "warning-outline"}
+        size={ds.icon(18)}
+        color={blocked ? colors.statusRed : colors.statusAmber}
+      />
+      <Text style={[styles.noticeText, { fontSize: ds.fontSize(14) }]}>
+        {warning.message}
+      </Text>
+    </View>
+  );
+});
+
+const BlockedOperationCard = React.memo(function BlockedOperationCard({
+  operation,
+  onLayout,
+}: {
+  operation: QuickOrderBlockedOperation;
+  onLayout?: (event: LayoutChangeEvent) => void;
+}) {
+  const ds = useScaledStyles();
+  return (
+    <View
+      onLayout={onLayout}
+      style={[
+        styles.noticeCard,
+        styles.blockedCard,
+        {
+          borderRadius: ds.radius(16),
+          padding: ds.spacing(12),
+          marginTop: ds.spacing(10),
+        },
+      ]}
+    >
+      <Ionicons name="ban-outline" size={ds.icon(18)} color={colors.statusRed} />
+      <Text style={[styles.noticeText, { fontSize: ds.fontSize(14) }]}>
+        {operation.message}
+      </Text>
+    </View>
+  );
+});
+
+const StockUpdateCard = React.memo(function StockUpdateCard({
+  updates,
+  onLayout,
+}: {
+  updates: QuickOrderStockUpdate[];
+  onLayout?: (event: LayoutChangeEvent) => void;
+}) {
+  const ds = useScaledStyles();
+  if (updates.length === 0) return null;
+  const text = updates
+    .slice(0, 4)
+    .map((update) => `${update.item_name} ${update.quantity}${update.unit ? ` ${update.unit}` : ""}`)
+    .join(" · ");
+  return (
+    <View
+      onLayout={onLayout}
+      style={[
+        styles.noticeCard,
+        styles.stockCard,
+        {
+          borderRadius: ds.radius(16),
+          padding: ds.spacing(12),
+          marginTop: ds.spacing(10),
+        },
+      ]}
+    >
+      <Ionicons name="clipboard-outline" size={ds.icon(18)} color={colors.primary} />
+      <Text style={[styles.noticeText, { fontSize: ds.fontSize(14) }]}>
+        {text}
+        {updates.length > 4 ? ` · +${updates.length - 4} more` : ""}
+      </Text>
+    </View>
+  );
+});
+
+const RecommendationCard = React.memo(function RecommendationCard({
+  recommendations,
+  onAdd,
+  onLayout,
+}: {
+  recommendations: QuickOrderRecommendation[];
+  onAdd: (recommendations: QuickOrderRecommendation[]) => void | Promise<void>;
+  onLayout?: (event: LayoutChangeEvent) => void;
+}) {
+  const ds = useScaledStyles();
+  const [isAdded, setIsAdded] = useState(false);
+
+  const handleAdd = useCallback(() => {
+    if (isAdded) return;
+    void triggerSelectionHaptic();
+    setIsAdded(true);
+    void onAdd(recommendations);
+  }, [isAdded, onAdd, recommendations]);
+
+  if (recommendations.length === 0) return null;
+
+  return (
+    <View
+      onLayout={onLayout}
+      style={[
+        styles.recommendationCard,
+        isAdded && styles.suggestionCardAdded,
+        {
+          borderRadius: ds.radius(16),
+          padding: ds.spacing(12),
+          marginTop: ds.spacing(10),
+        },
+      ]}
+    >
+      <View style={styles.suggestionHeader}>
+        <Ionicons name="sparkles-outline" size={ds.icon(18)} color={colors.primary} />
+        <View style={styles.suggestionTextCluster}>
+          <Text style={[styles.suggestionTitle, { fontSize: ds.fontSize(15) }]}>
+            Suggested order
+          </Text>
+          <Text style={[styles.suggestionMessage, { fontSize: ds.fontSize(13) }]}>
+            {recommendations
+              .slice(0, 4)
+              .map((item) => `${item.item_name} ${item.suggested_quantity}${item.unit ? ` ${item.unit}` : ""}`)
+              .join(" · ")}
+          </Text>
+        </View>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Add suggested order"
+        accessibilityState={{ selected: isAdded }}
+        onPress={handleAdd}
+        style={({ pressed }) => [
+          styles.suggestionButton,
+          {
+            borderRadius: ds.radius(12),
+            paddingHorizontal: ds.spacing(12),
+            paddingVertical: ds.spacing(8),
+            marginTop: ds.spacing(10),
+            opacity: pressed ? 0.72 : 1,
+          },
+        ]}
+      >
+        <Text style={[styles.suggestionButtonText, { fontSize: ds.fontSize(13) }]}>
+          {isAdded ? "Added" : "Add suggestions"}
+        </Text>
+      </Pressable>
+    </View>
+  );
+});
+
 export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const ds = useScaledStyles();
   const insets = useSafeAreaInsets();
@@ -736,11 +955,12 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const setAuthLocation = useAuthStore((state) => state.setLocation);
   const { location } = useResolvedActiveLocation();
   const tabBarHeight = 60 + getTabBarBottomInset(insets.bottom);
-  const composerBottomOffset = tabBarHeight + ds.spacing(14);
 
   const addToCart = useOrderStore((state) => state.addToCart);
 
   const [composerHeight, setComposerHeight] = useState(0);
+  const [composerBottomOffset, setComposerBottomOffset] =
+    useState(tabBarHeight);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<QuickOrderMessage[]>([]);
   const [parsedItems, setParsedItems] = useState<ParsedQuickOrderItem[]>([]);
@@ -751,14 +971,20 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     QuickOrderInventoryItem[]
   >([]);
   const [editingState, setEditingState] = useState<EditingState | null>(null);
-  const [quantityFlowState, setQuantityFlowState] =
-    useState<QuantityFlowSheetState | null>(null);
+  const [quantityFlow, setQuantityFlow] = useState<QuantityFlowState | null>(
+    null,
+  );
+  const [isQuantitySaving, setIsQuantitySaving] = useState(false);
   const [quantitySuggestions, setQuantitySuggestions] = useState<
     Map<string, PreviousQuantitySuggestion>
   >(() => new Map());
   const [isLoadingSession, setIsLoadingSession] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
+  const [isVoiceListening, setIsVoiceListening] = useState(false);
+  const [liveVoiceTranscript, setLiveVoiceTranscript] = useState("");
+  const [finalVoiceTranscript, setFinalVoiceTranscript] = useState<string | null>(null);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [nudgeSent, setNudgeSent] = useState(false);
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
   const [floatingCardHeight, setFloatingCardHeight] = useState(() =>
@@ -769,6 +995,9 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const chatScrollFrameRef = useRef<number | null>(null);
   const chatScrollTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const chatInteractionHandlesRef = useRef<{ cancel?: () => void }[]>([]);
+  const chatUserScrollEndTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isUserScrollingChatRef = useRef(false);
   const chatScrollMetricsRef = useRef<ChatScrollMetrics>({
     contentHeight: 0,
     visibleHeight: 0,
@@ -779,6 +1008,9 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   const userId = user?.id ?? null;
   const locationId = location?.id ?? null;
+  const voiceEnabled =
+    process.env.EXPO_PUBLIC_ENABLE_QUICK_ORDER_VOICE === "true" &&
+    ExpoSpeechRecognitionModule != null;
 
   const updateChatStickiness = useCallback((active = false) => {
     const next = shouldAutoStickToBottom({
@@ -792,7 +1024,17 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   const scrollChatToEnd = useCallback((animated = true) => {
     try {
-      chatListRef.current?.scrollToEnd({ animated });
+      const targetOffset = calculateQuickOrderBottomScrollOffset(
+        chatScrollMetricsRef.current,
+      );
+      chatScrollMetricsRef.current = {
+        ...chatScrollMetricsRef.current,
+        offsetY: targetOffset,
+      };
+      chatListRef.current?.scrollToOffset({
+        offset: targetOffset,
+        animated,
+      });
     } catch {
       // The list can be momentarily empty / unmounted during keyboard or
       // layout transitions — a failed scroll there is harmless.
@@ -807,7 +1049,11 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       options: ChatSnapOptions = {},
     ) => {
       const active = options.active ?? false;
-      if (!updateChatStickiness(active)) return;
+      if (active) {
+        isChatNearBottomRef.current = true;
+      } else if (!isChatNearBottomRef.current) {
+        return;
+      }
 
       lastChatSnapReasonRef.current = reason;
 
@@ -853,7 +1099,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           chatScrollTimersRef.current.push(timer);
         });
     },
-    [scrollChatToEnd, updateChatStickiness],
+    [scrollChatToEnd],
   );
 
   const handleChatScroll = useCallback(
@@ -865,17 +1111,21 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         visibleHeight: layoutMeasurement.height,
         offsetY: contentOffset.y,
       };
-      updateChatStickiness(false);
+      if (isUserScrollingChatRef.current) {
+        updateChatStickiness(false);
+      }
     },
     [updateChatStickiness],
   );
 
   const handleChatContentSizeChange = useCallback(
     (_: number, height: number) => {
+      const wasSticking = isChatNearBottomRef.current;
       chatScrollMetricsRef.current = {
         ...chatScrollMetricsRef.current,
         contentHeight: height,
       };
+      if (!wasSticking) return;
       scheduleChatScrollToEnd("content-size", true, [0, 80], {
         afterInteractions: true,
       });
@@ -885,10 +1135,12 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   const handleChatLayout = useCallback(
     (event: LayoutChangeEvent) => {
+      const wasSticking = isChatNearBottomRef.current;
       chatScrollMetricsRef.current = {
         ...chatScrollMetricsRef.current,
         visibleHeight: event.nativeEvent.layout.height,
       };
+      if (!wasSticking) return;
       scheduleChatScrollToEnd("chat-layout", false, [0, 80], {
         afterInteractions: true,
       });
@@ -976,6 +1228,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     return () => cancelAnimationFrame(handle);
   }, [
     isSending,
+    composerBottomOffset,
     composerHeight,
     messages.length,
     parsedItems,
@@ -992,6 +1245,9 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       chatScrollTimersRef.current = [];
       chatInteractionHandlesRef.current.forEach((handle) => handle.cancel?.());
       chatInteractionHandlesRef.current = [];
+      if (chatUserScrollEndTimerRef.current) {
+        clearTimeout(chatUserScrollEndTimerRef.current);
+      }
       if (nudgeTimerRef.current) {
         clearTimeout(nudgeTimerRef.current);
       }
@@ -999,41 +1255,56 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     [],
   );
 
+  useEffect(() => {
+    if (!voiceEnabled || !ExpoSpeechRecognitionModule) return;
+
+    const subscriptions = [
+      ExpoSpeechRecognitionModule.addListener("start", () => {
+        setIsVoiceListening(true);
+        setVoiceError(null);
+      }),
+      ExpoSpeechRecognitionModule.addListener("end", () => {
+        setIsVoiceListening(false);
+      }),
+      ExpoSpeechRecognitionModule.addListener("result", (event: any) => {
+        const transcript = event?.results?.[0]?.transcript ?? "";
+        if (event?.isFinal) {
+          setFinalVoiceTranscript(transcript);
+          setLiveVoiceTranscript("");
+        } else {
+          setLiveVoiceTranscript(transcript);
+        }
+      }),
+      ExpoSpeechRecognitionModule.addListener("error", () => {
+        setIsVoiceListening(false);
+        setVoiceError("I had trouble hearing that. Try again.");
+      }),
+    ];
+
+    return () => {
+      subscriptions.forEach((subscription) => subscription.remove());
+      try {
+        ExpoSpeechRecognitionModule?.abort();
+      } catch {
+        // The native module can already be stopped during unmount.
+      }
+    };
+  }, [voiceEnabled]);
+
   const issueCount = useMemo(
     () => countUnresolvedItems(parsedItems) + pendingClarifications.length,
     [parsedItems, pendingClarifications.length],
   );
 
-  // Resolve the quantity-sheet queue (item + its inventory row + its prior-order
-  // suggestion) from the keys captured when the flow opened. Already-resolved
-  // entries become `null` so the surviving indices keep matching the counter.
-  const quantitySheetQueue = useMemo<
-    (QuickOrderQuantitySheetItem | null)[]
-  >(() => {
-    if (!quantityFlowState) return [];
-    return quantityFlowState.queue.map((key) => {
-      const item = parsedItems.find((entry) => getParsedItemKey(entry) === key);
-      if (!item) return null;
-      const inventoryItem = item.item_id
-        ? (inventoryItems.find((row) => row.id === item.item_id) ?? null)
-        : null;
-      const suggestion = item.item_id
-        ? (quantitySuggestions.get(item.item_id) ?? null)
-        : null;
-      return { item, inventoryItem, suggestion };
-    });
-  }, [inventoryItems, parsedItems, quantityFlowState, quantitySuggestions]);
-
   const chatContentStyle = useMemo(
     () => ({
       paddingBottom: calculateQuickOrderBottomPadding({
-        bottomOffset: composerBottomOffset,
-        safeAreaBottom: insets.bottom,
-        breathingRoom: ds.spacing(28),
+        composerBottomOffset,
         composerHeight,
+        gap: ds.spacing(14),
       }),
     }),
-    [composerBottomOffset, ds, insets.bottom, composerHeight],
+    [composerBottomOffset, ds, composerHeight],
   );
 
   // The chat FlatList reserves a top spacer equal to the floating card's measured
@@ -1116,6 +1387,58 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     setLocationDropdownOpen(false);
   }, []);
 
+  const clearChatUserScrollEndTimer = useCallback(() => {
+    if (!chatUserScrollEndTimerRef.current) return;
+    clearTimeout(chatUserScrollEndTimerRef.current);
+    chatUserScrollEndTimerRef.current = null;
+  }, []);
+
+  const updateChatMetricsFromEvent = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } =
+        event.nativeEvent;
+      chatScrollMetricsRef.current = {
+        contentHeight: contentSize.height,
+        visibleHeight: layoutMeasurement.height,
+        offsetY: contentOffset.y,
+      };
+      return updateChatStickiness(false);
+    },
+    [updateChatStickiness],
+  );
+
+  const handleChatScrollBeginDrag = useCallback(() => {
+    handleCloseLocationDropdown();
+    clearChatUserScrollEndTimer();
+    isUserScrollingChatRef.current = true;
+  }, [clearChatUserScrollEndTimer, handleCloseLocationDropdown]);
+
+  const handleChatMomentumScrollBegin = useCallback(() => {
+    clearChatUserScrollEndTimer();
+    isUserScrollingChatRef.current = true;
+  }, [clearChatUserScrollEndTimer]);
+
+  const handleChatScrollEndDrag = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      updateChatMetricsFromEvent(event);
+      clearChatUserScrollEndTimer();
+      chatUserScrollEndTimerRef.current = setTimeout(() => {
+        isUserScrollingChatRef.current = false;
+        chatUserScrollEndTimerRef.current = null;
+      }, 160);
+    },
+    [clearChatUserScrollEndTimer, updateChatMetricsFromEvent],
+  );
+
+  const handleChatMomentumScrollEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      updateChatMetricsFromEvent(event);
+      clearChatUserScrollEndTimer();
+      isUserScrollingChatRef.current = false;
+    },
+    [clearChatUserScrollEndTimer, updateChatMetricsFromEvent],
+  );
+
   const handleSelectLocation = useCallback(
     (next: Location) => {
       if (next.id === location?.id) return;
@@ -1133,8 +1456,12 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     setParsedItems([]);
     setPendingClarifications([]);
     setEditingState(null);
-    setQuantityFlowState(null);
+    setQuantityFlow(null);
     setQuantitySuggestions(new Map());
+    setLiveVoiceTranscript("");
+    setFinalVoiceTranscript(null);
+    setVoiceError(null);
+    setIsVoiceListening(false);
     setNudgeSent(false);
 
     if (sessionId) {
@@ -1363,118 +1690,119 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     [locationId, userId],
   );
 
-  /** Opens the quantity sheet for a queue of parsed-item keys (single or progress flow). */
-  const openQuantityFlow = useCallback(
-    (queue: string[], items: ParsedQuickOrderItem[]) => {
-      if (queue.length === 0) return;
-      setQuantityFlowState({ queue, index: 0, isSaving: false });
-      scheduleChatScrollToEnd("quantity-sheet-open", true, [0, 120, 260], {
-        active: true,
-        afterInteractions: true,
-      });
+  /**
+   * Row "fix" action for an item missing its quantity. Opens the focused
+   * quantity sheet at the tapped item; when several rows need a quantity the
+   * sheet becomes a multi-step "Item N of M" walk-through.
+   */
+  const handleResolveQuantity = useCallback(
+    (item: ParsedQuickOrderItem) => {
+      const queue = getQuantityFixQueue(parsedItems);
+      const tappedKey = getParsedItemKey(item);
+      if (queue.length === 0) {
+        setEditingState({
+          original: item,
+          key: tappedKey,
+          isSaving: false,
+        });
+        loadInventoryItems().catch((error) => {
+          console.warn("[QuickOrder] Failed to load editor inventory:", error);
+        });
+        return;
+      }
+      const index = Math.max(0, queue.indexOf(tappedKey));
+      setQuantityFlow({ queue, index });
       loadInventoryItems().catch((error) => {
         console.warn("[QuickOrder] Failed to load editor inventory:", error);
       });
-      loadQuantitySuggestions(
-        items
-          .filter((entry) => queue.includes(getParsedItemKey(entry)))
-          .map((entry) => entry.item_id),
-      );
     },
-    [loadInventoryItems, loadQuantitySuggestions, scheduleChatScrollToEnd],
+    [loadInventoryItems, parsedItems],
   );
 
-  const handleResolveQuantity = useCallback(
-    (item: ParsedQuickOrderItem) => {
-      openQuantityFlow([getParsedItemKey(item)], [item]);
-    },
-    [openQuantityFlow],
-  );
-
-  const handleCloseQuantitySheet = useCallback(() => {
-    setQuantityFlowState((current) => (current?.isSaving ? current : null));
-    scheduleChatScrollToEnd(
-      "quantity-sheet-close",
-      true,
-      [0, 80, 300, 440],
-      {
-        active: true,
-        afterInteractions: true,
-      },
+  const quantityQueueItems = useMemo<
+    (QuickOrderQuantitySheetItem | null)[]
+  >(() => {
+    if (!quantityFlow) return [];
+    const inventoryById = new Map(
+      inventoryItems.map((row) => [row.id, row] as const),
     );
-  }, [scheduleChatScrollToEnd]);
+    return quantityFlow.queue.map((key) => {
+      const item = parsedItems.find((p) => getParsedItemKey(p) === key);
+      if (!item) return null;
+      const inventoryItem = item.item_id
+        ? inventoryById.get(item.item_id) ?? null
+        : null;
+      const suggestion = item.item_id
+        ? quantitySuggestions.get(item.item_id) ?? null
+        : null;
+      return { item, inventoryItem, suggestion };
+    });
+  }, [quantityFlow, parsedItems, inventoryItems, quantitySuggestions]);
 
-  const handleApplyQuantity = useCallback(
-    (result: QuickOrderQuantityResult) => {
-      const flow = quantityFlowState;
+  const handleQuantityApply = useCallback(
+    async (result: QuickOrderQuantityResult) => {
+      const flow = quantityFlow;
       if (!flow) return;
       const key = flow.queue[flow.index];
-      if (!key) {
-        setQuantityFlowState(null);
-        return;
-      }
-
-      const original = parsedItems.find(
-        (entry) => getParsedItemKey(entry) === key,
-      );
-      const trimmedUnit = result.unit.trim();
-      const patch: Partial<ParsedQuickOrderItem> = {
-        quantity: result.quantity,
-        unit: trimmedUnit || original?.unit || null,
-        // `updateParsedItem` clears `needs_clarification` / `unresolved` (and the
-        // stale issue/action fields) once the item has an id, a positive
-        // quantity and a unit.
-      };
-
-      const nextParsedItems = updateParsedItem(parsedItems, key, patch);
-      const nextMessages = patchMessageItems(messages, key, patch);
-      setParsedItems(nextParsedItems);
-      setMessages(nextMessages);
-      scheduleChatScrollToEnd("quantity-applied", true, buildSendSnapDelays(), {
-        active: true,
-        afterInteractions: true,
-      });
-
-      const advance = advanceQuantityFlow(flow);
-      setQuantityFlowState(
-        advance ? { ...flow, index: advance.index, isSaving: false } : null,
-      );
-      void (advance ? triggerSelectionHaptic() : triggerConfirmationHaptic());
-
-      if (sessionId) {
-        persistSession(sessionId, nextMessages, nextParsedItems).catch(
-          (error) => {
+      if (!key) return;
+      setIsQuantitySaving(true);
+      try {
+        const trimmedUnit = result.unit.trim();
+        const patch: Partial<ParsedQuickOrderItem> = {
+          quantity: result.quantity,
+          unit: trimmedUnit || null,
+        };
+        const nextParsed = updateParsedItem(parsedItems, key, patch);
+        const nextMessages = patchMessageItems(messages, key, patch);
+        setParsedItems(nextParsed);
+        setMessages(nextMessages);
+        const next = advanceQuantityFlow(flow);
+        setQuantityFlow(next ? { ...flow, index: next.index } : null);
+        scheduleChatScrollToEnd(
+          "quantity-applied",
+          true,
+          buildSendSnapDelays(),
+          {
+            active: true,
+            afterInteractions: true,
+          },
+        );
+        if (sessionId) {
+          try {
+            await persistSession(sessionId, nextMessages, nextParsed);
+          } catch (error) {
             console.warn(
               "[QuickOrder] Failed to persist quantity edit:",
               error,
             );
-          },
-        );
+          }
+        }
+      } finally {
+        setIsQuantitySaving(false);
       }
     },
     [
       messages,
       parsedItems,
       persistSession,
-      quantityFlowState,
+      quantityFlow,
       scheduleChatScrollToEnd,
       sessionId,
     ],
   );
 
-  const handleSkipQuantity = useCallback(() => {
-    setQuantityFlowState((current) => {
+  const handleQuantitySkip = useCallback(() => {
+    setQuantityFlow((current) => {
       if (!current) return null;
-      const advance = advanceQuantityFlow(current);
-      return advance
-        ? { ...current, index: advance.index, isSaving: false }
-        : null;
+      const next = advanceQuantityFlow(current);
+      return next ? { ...current, index: next.index } : null;
     });
-    scheduleChatScrollToEnd("quantity-skipped", true, [0, 120, 260], {
-      active: true,
-      afterInteractions: true,
-    });
-  }, [scheduleChatScrollToEnd]);
+  }, []);
+
+  const handleQuantityClose = useCallback(() => {
+    if (isQuantitySaving) return;
+    setQuantityFlow(null);
+  }, [isQuantitySaving]);
 
   const appendErrorMessage = useCallback(
     async (
@@ -1521,7 +1849,15 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   );
 
   const handleSubmitMore = useCallback(
-    async (rawText: string) => {
+    async (
+      rawText: string,
+      source: QuickOrderMessageSource = "typed",
+      voiceMetadata?: {
+        raw_transcript?: string;
+        transcript_confidence?: number;
+        language?: string;
+      },
+    ) => {
       const trimmed = rawText.trim();
       if (!trimmed || isSending) {
         return;
@@ -1560,6 +1896,8 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         id: createMessageId(),
         role: "user",
         text: rawText,
+        source,
+        transcriptPreview: source === "voice" ? rawText : undefined,
         createdAt: new Date().toISOString(),
       };
       const optimisticMessages = [...messages, userMessage];
@@ -1582,7 +1920,8 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
         if (__DEV__) {
           console.log("[QuickOrder] Sending parse-order request", {
-            raw_text: rawText,
+            message: rawText,
+            source,
             location_id: locationId,
             session_id: activeSessionId,
             user_id: userId,
@@ -1591,10 +1930,23 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
         const { data, error } = await supabase.functions.invoke("parse-order", {
           body: {
+            source,
+            message: rawText,
             raw_text: rawText,
             location_id: locationId,
             session_id: activeSessionId,
             user_id: userId,
+            existing_items: parsedItems,
+            recent_messages: messages.slice(-12).map(buildPersistedMessage),
+            voice_metadata:
+              source === "voice"
+                ? {
+                    raw_transcript: voiceMetadata?.raw_transcript ?? rawText,
+                    transcript_confidence:
+                      voiceMetadata?.transcript_confidence,
+                    language: voiceMetadata?.language ?? "en-US",
+                  }
+                : undefined,
           },
         });
 
@@ -1657,6 +2009,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
             parsedItems_length: response.parsedItems.length,
             pendingActions_length: response.pendingActions.length,
             flags_length: response.flags.length,
+            stockUpdates_length: response.stockUpdates.length,
+            recommendations_length: response.recommendations.length,
+            safetyWarnings_length: response.safetyWarnings.length,
+            blockedOperations_length: response.blockedOperations.length,
             assistantMessage: response.assistantMessage.slice(0, 80),
             rawError: response.rawError,
             errorCode: response.errorCode,
@@ -1723,6 +2079,13 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           pendingCount: responseClarifications.length,
           operationResult,
         });
+        const finalAssistantText =
+          response.stockUpdates.length > 0 ||
+          response.recommendations.length > 0 ||
+          response.safetyWarnings.length > 0 ||
+          response.blockedOperations.length > 0
+            ? response.displayMessage
+            : assistantText;
 
         if (__DEV__) {
           console.log("[QuickOrder] Merge result", {
@@ -1735,7 +2098,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
             merge_rejected_reasons: mergeResult.rejectedReasons,
             nextParsedItems_count: nextParsedItems.length,
             pendingClarifications_count: responseClarifications.length,
-            assistantText: assistantText.slice(0, 80),
+            assistantText: finalAssistantText.slice(0, 80),
           });
         }
 
@@ -1770,12 +2133,17 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         const assistantMessage: QuickOrderMessage = {
           id: createMessageId(),
           role: "assistant",
-          text: assistantText,
+          text: finalAssistantText,
+          source,
           createdAt: new Date().toISOString(),
           parsedItems: responseItems,
           pendingClarifications: responseClarifications,
           flags: response.flags,
           suggestions: responseSuggestions,
+          stockUpdates: response.stockUpdates,
+          recommendations: response.recommendations,
+          safetyWarnings: response.safetyWarnings,
+          blockedOperations: response.blockedOperations,
         };
         const nextMessages = [...optimisticMessages, assistantMessage];
 
@@ -1792,21 +2160,11 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           },
         );
 
-        // If the parser matched items but is only missing quantities, jump
-        // straight into the quantity sheet (single item) / progress flow
-        // (several). Other issue kinds (no_match / ambiguous / invalid_unit /
-        // duplicate) are left for the row actions and never auto-open this sheet.
-        const quantityFixQueue = getQuantityFixQueue(nextParsedItems);
-        if (quantityFixQueue.length > 0) {
-          openQuantityFlow(quantityFixQueue, nextParsedItems);
-        }
-
         if (__DEV__) {
           console.log("[QuickOrder] State updated", {
             parsedItems_count: nextParsedItems.length,
             pendingClarifications_count: nextPendingClarifications.length,
             messages_count: nextMessages.length,
-            quantityFixQueue: quantityFixQueue.length,
           });
         }
 
@@ -1880,7 +2238,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       locationId,
       messages,
       nudgeSent,
-      openQuantityFlow,
       parsedItems,
       pendingClarifications,
       persistSession,
@@ -1895,6 +2252,51 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     if (!lastText || isSending) return;
     void handleSubmitMore(lastText);
   }, [handleSubmitMore, isSending]);
+
+  useEffect(() => {
+    const transcript = finalVoiceTranscript?.trim();
+    if (!transcript) return;
+    setFinalVoiceTranscript(null);
+    void handleSubmitMore(transcript, "voice", {
+      raw_transcript: transcript,
+      transcript_confidence: 0.8,
+      language: "en-US",
+    });
+  }, [finalVoiceTranscript, handleSubmitMore]);
+
+  const handleStartVoice = useCallback(async () => {
+    if (!voiceEnabled || !ExpoSpeechRecognitionModule || isSending) return;
+    try {
+      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!result.granted) {
+        setVoiceError("Microphone and speech recognition access are needed.");
+        return;
+      }
+      setVoiceError(null);
+      setLiveVoiceTranscript("");
+      setFinalVoiceTranscript(null);
+      void triggerSelectionHaptic();
+      ExpoSpeechRecognitionModule.start({
+        lang: "en-US",
+        interimResults: true,
+        continuous: false,
+        addsPunctuation: true,
+      });
+    } catch (error) {
+      console.warn("[QuickOrder] Failed to start voice input:", error);
+      setVoiceError("Voice input is unavailable right now.");
+    }
+  }, [isSending, voiceEnabled]);
+
+  const handleStopVoice = useCallback(() => {
+    if (!ExpoSpeechRecognitionModule) return;
+    try {
+      ExpoSpeechRecognitionModule.stop();
+    } catch {
+      // Voice may already be stopped.
+    }
+    setIsVoiceListening(false);
+  }, []);
 
   const handleClarificationAction = useCallback(
     async (
@@ -2045,6 +2447,66 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     [messages, parsedItems, persistSession, scheduleChatScrollToEnd, sessionId],
   );
 
+  const handleAddRecommendations = useCallback(
+    async (recommendations: QuickOrderRecommendation[]) => {
+      const incoming: ParsedQuickOrderItem[] = recommendations.map(
+        (item, index) => ({
+          client_key: `recommendation_${Date.now().toString(36)}_${index}`,
+          item_id: item.item_id,
+          item_name: item.item_name,
+          display_name: item.item_name,
+          raw_token: item.item_name,
+          raw_text: item.item_name,
+          quantity: item.suggested_quantity,
+          unit: item.unit,
+          status: "valid",
+          needs_clarification: false,
+          unresolved: false,
+          parse_source: "manual",
+        }),
+      );
+      if (incoming.length === 0) return;
+
+      const mergeResult = mergeQuickOrderParsedItemsDetailed(
+        parsedItems,
+        incoming,
+      );
+      const nextParsedItems = mergeResult.items;
+      const assistantMessage: QuickOrderMessage = {
+        id: createMessageId(),
+        role: "assistant",
+        text: `Added ${incoming.length} suggested item${incoming.length === 1 ? "" : "s"}.`,
+        createdAt: new Date().toISOString(),
+        parsedItems: incoming,
+      };
+      const nextMessages = [...messages, assistantMessage];
+
+      setParsedItems(nextParsedItems);
+      setMessages(nextMessages);
+      scheduleChatScrollToEnd(
+        "recommendation-added",
+        true,
+        buildSendSnapDelays(),
+        {
+          active: true,
+          afterInteractions: true,
+        },
+      );
+
+      if (sessionId) {
+        try {
+          await persistSession(sessionId, nextMessages, nextParsedItems);
+        } catch (error) {
+          console.warn(
+            "[QuickOrder] Failed to persist recommendation add:",
+            error,
+          );
+        }
+      }
+    },
+    [messages, parsedItems, persistSession, scheduleChatScrollToEnd, sessionId],
+  );
+
   /**
    * Moves the resolved Quick Order items into the normal app cart and routes to
    * the Cart tab. Quick Order never submits an order itself — the cart is the
@@ -2117,8 +2579,12 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       setParsedItems([]);
       setPendingClarifications([]);
       setEditingState(null);
-      setQuantityFlowState(null);
+      setQuantityFlow(null);
       setQuantitySuggestions(new Map());
+      setLiveVoiceTranscript("");
+      setFinalVoiceTranscript(null);
+      setVoiceError(null);
+      setIsVoiceListening(false);
       setSessionId(null);
       setNudgeSent(false);
 
@@ -2156,6 +2622,26 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         return (
           <View>
             <AIResponsePill message={message} onLayout={layoutHandler} />
+            {message.blockedOperations?.map((operation, index) => (
+              <BlockedOperationCard
+                key={`${message.id}:blocked:${index}`}
+                operation={operation}
+                onLayout={layoutHandler}
+              />
+            ))}
+            {message.safetyWarnings?.map((warning, index) => (
+              <SafetyWarningCard
+                key={`${message.id}:warning:${index}`}
+                warning={warning}
+                onLayout={layoutHandler}
+              />
+            ))}
+            {message.stockUpdates?.length ? (
+              <StockUpdateCard
+                updates={message.stockUpdates}
+                onLayout={layoutHandler}
+              />
+            ) : null}
             {(message.pendingClarifications ?? []).map((clarification) => (
               <ClarificationCard
                 key={clarification.id}
@@ -2172,6 +2658,13 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
                 onLayout={layoutHandler}
               />
             ))}
+            {message.recommendations?.length ? (
+              <RecommendationCard
+                recommendations={message.recommendations}
+                onAdd={handleAddRecommendations}
+                onLayout={layoutHandler}
+              />
+            ) : null}
           </View>
         );
       }
@@ -2226,12 +2719,17 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       }
 
       return (
-        <QuickOrderUserMessage text={message.text} onLayout={layoutHandler} />
+        <QuickOrderUserMessage
+          text={message.text}
+          source={message.source}
+          onLayout={layoutHandler}
+        />
       );
     },
     [
       ds,
       handleAddSuggestion,
+      handleAddRecommendations,
       handleClarificationAction,
       handleMessageLayout,
       handleRetry,
@@ -2243,6 +2741,13 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   const handleComposerHeightChange = useCallback((next: number) => {
     setComposerHeight((prev) => (Math.abs(prev - next) < 1 ? prev : next));
+  }, []);
+
+  const handleComposerBottomOffsetChange = useCallback((next: number) => {
+    const safeNext = Number.isFinite(next) ? Math.max(0, next) : 0;
+    setComposerBottomOffset((prev) =>
+      Math.abs(prev - safeNext) < 1 ? prev : safeNext,
+    );
   }, []);
 
   const handleComposerSubmit = useCallback(
@@ -2304,7 +2809,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "none"}
             showsVerticalScrollIndicator={false}
-            onScrollBeginDrag={handleCloseLocationDropdown}
+            onScrollBeginDrag={handleChatScrollBeginDrag}
+            onScrollEndDrag={handleChatScrollEndDrag}
+            onMomentumScrollBegin={handleChatMomentumScrollBegin}
+            onMomentumScrollEnd={handleChatMomentumScrollEnd}
             onScroll={handleChatScroll}
             scrollEventThrottle={16}
             onLayout={handleChatLayout}
@@ -2369,6 +2877,13 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           bottomInset={insets.bottom}
           tabBarHeight={tabBarHeight}
           onHeightChange={handleComposerHeightChange}
+          onBottomOffsetChange={handleComposerBottomOffsetChange}
+          voiceEnabled={voiceEnabled}
+          isVoiceListening={isVoiceListening}
+          voiceTranscript={liveVoiceTranscript}
+          voiceError={voiceError}
+          onStartVoice={handleStartVoice}
+          onStopVoice={handleStopVoice}
         />
 
         <QuickOrderItemEditModal
@@ -2381,14 +2896,15 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           onSave={(result) => void handleSaveEditedItem(result)}
           onRemove={handleRemoveEditedItem}
         />
+
         <QuickOrderQuantitySheet
-          visible={Boolean(quantityFlowState)}
-          queue={quantitySheetQueue}
-          index={quantityFlowState?.index ?? 0}
-          isSaving={Boolean(quantityFlowState?.isSaving)}
-          onClose={handleCloseQuantitySheet}
-          onApply={handleApplyQuantity}
-          onSkip={handleSkipQuantity}
+          visible={Boolean(quantityFlow)}
+          queue={quantityQueueItems}
+          index={quantityFlow?.index ?? 0}
+          isSaving={isQuantitySaving}
+          onClose={handleQuantityClose}
+          onApply={(result) => void handleQuantityApply(result)}
+          onSkip={handleQuantitySkip}
         />
       </View>
     </SafeAreaView>
@@ -2512,6 +3028,39 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: "800",
     letterSpacing: 0,
+  },
+  noticeCard: {
+    alignSelf: "flex-start",
+    maxWidth: "94%",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderWidth: glassHairlineWidth,
+  },
+  noticeText: {
+    flex: 1,
+    marginLeft: 8,
+    color: colors.textPrimary,
+    fontWeight: "700",
+    letterSpacing: 0,
+  },
+  warningCard: {
+    backgroundColor: colors.statusAmberBg,
+    borderColor: colors.statusAmber,
+  },
+  blockedCard: {
+    backgroundColor: colors.statusRedBg,
+    borderColor: colors.statusRed,
+  },
+  stockCard: {
+    backgroundColor: colors.white,
+    borderColor: glassColors.cardBorder,
+  },
+  recommendationCard: {
+    alignSelf: "flex-start",
+    width: "94%",
+    backgroundColor: colors.white,
+    borderWidth: glassHairlineWidth,
+    borderColor: glassColors.cardBorder,
   },
   suggestionCard: {
     alignSelf: "flex-start",

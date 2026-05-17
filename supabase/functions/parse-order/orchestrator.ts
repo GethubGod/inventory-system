@@ -446,6 +446,13 @@ function buildPreParseResponse(
   catalogDebug: ReturnType<typeof buildCatalogDebug>,
 ): ParseResponse | null {
   switch (classification.classification) {
+    case 'current_stock_update':
+      return buildNonOrderResponse(input, classification, 'Stock count noted.');
+    case 'recommend_order_request':
+      return buildNonOrderResponse(input, classification, 'I don’t have enough current stock context to recommend an order yet.');
+    case 'mixed_stock_and_order_request':
+    case 'mixed_stock_and_recommendation_request':
+      return null;
     case 'suggestion_request':
       return buildNonOrderResponse(input, classification, 'I don’t have enough order history to suggest a usual order yet.');
     case 'history_request':

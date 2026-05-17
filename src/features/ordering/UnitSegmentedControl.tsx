@@ -2,7 +2,6 @@ import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerSelectionHaptic } from '@/lib/haptics';
-import { colors, glassHairlineWidth, grayScale } from '@/theme/design';
 import type { QuantityUnitOption } from './quickOrderQuantityFlow';
 
 type UnitSegmentedControlProps = {
@@ -14,11 +13,11 @@ type UnitSegmentedControlProps = {
 };
 
 /**
- * Segmented control for the units valid for an item (1–4 segments). Wraps to a
- * second line rather than overflowing on the narrowest phones. The shared
- * {@link import('@/components/ui').UnitTypeSegmentedControl} is hard-wired to
- * exactly two pack/base segments, so the Quick Order quantity sheet uses this
- * feature-local N-segment variant instead.
+ * The four unit pills under the stepper. Each option renders as a SEPARATE
+ * rounded pill so the layout matches the mockup: white-filled pills with a
+ * subtle border for unselected/available units, a red filled pill with white
+ * text for the selected unit, and a dimmed transparent pill for unavailable
+ * units (kept in place so the row never reflows).
  */
 export function UnitSegmentedControl({ options, value, onChange, disabled = false }: UnitSegmentedControlProps) {
   const ds = useScaledStyles();
@@ -30,20 +29,20 @@ export function UnitSegmentedControl({ options, value, onChange, disabled = fals
         const unavailable = option.available === false;
         const segmentDisabled = disabled || unavailable;
         const background = selected
-          ? colors.primary
+          ? '#E8503A'
           : unavailable
-            ? grayScale[100]
-            : grayScale[100];
+            ? 'transparent'
+            : '#FFFFFF';
         const borderColor = selected
-          ? colors.primary
+          ? '#E8503A'
           : unavailable
-            ? grayScale[200]
-            : grayScale[200];
+            ? '#E5E5EA'
+            : '#E5E5EA';
         const textColor = selected
-          ? colors.textOnPrimary
+          ? '#FFFFFF'
           : unavailable
-            ? colors.textMuted
-            : colors.textPrimary;
+            ? '#C7C7CC'
+            : '#1C1C1E';
         return (
           <Pressable
             key={option.value}
@@ -57,19 +56,26 @@ export function UnitSegmentedControl({ options, value, onChange, disabled = fals
               onChange(option.value);
             }}
             style={({ pressed }) => [
-              styles.segment,
+              styles.pill,
               {
-                borderRadius: ds.radius(999),
-                paddingHorizontal: ds.spacing(14),
-                paddingVertical: ds.spacing(12),
+                borderRadius: 999,
+                paddingVertical: ds.spacing(13),
+                paddingHorizontal: ds.spacing(8),
                 backgroundColor: background,
                 borderColor,
-                opacity: disabled ? 0.5 : unavailable ? 1 : pressed ? 0.7 : 1,
+                opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
               },
             ]}
           >
             <Text
-              style={[styles.segmentText, { fontSize: ds.fontSize(14), color: textColor }]}
+              style={[
+                styles.pillText,
+                {
+                  fontSize: ds.fontSize(15),
+                  color: textColor,
+                  fontWeight: selected ? '800' : '600',
+                },
+              ]}
               numberOfLines={1}
             >
               {option.label}
@@ -84,15 +90,17 @@ export function UnitSegmentedControl({ options, value, onChange, disabled = fals
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
+    alignItems: 'stretch',
   },
-  segment: {
+  pill: {
     flex: 1,
     minWidth: 0,
-    borderWidth: glassHairlineWidth,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
   },
-  segmentText: {
-    fontWeight: '800',
+  pillText: {
     letterSpacing: 0,
+    textAlign: 'center',
   },
 });

@@ -39,17 +39,25 @@ describe('getQuantityFixQueue', () => {
   const invalidUnit = item({ item_id: 'e', item_name: 'Eel', quantity: 1, unit: 'lb', status: 'invalid_unit' });
   const noMatch = item({ item_id: null, raw_token: 'wasbi', quantity: null, unit: null, status: 'no_match' });
 
-  it('queues only rows whose sole problem is a missing quantity', () => {
+  it('queues rows whose outstanding problem is a missing quantity or missing unit', () => {
     const queue = getQuantityFixQueue([missingQty, missingQtyAndUnit, valid, missingUnitOnly, invalidUnit, noMatch]);
-    expect(queue).toEqual([getParsedItemKey(missingQty), getParsedItemKey(missingQtyAndUnit)]);
+    expect(queue).toEqual([
+      getParsedItemKey(missingQty),
+      getParsedItemKey(missingQtyAndUnit),
+      getParsedItemKey(missingUnitOnly),
+    ]);
   });
 
   it('preserves the order of the source list', () => {
-    const queue = getQuantityFixQueue([missingQtyAndUnit, valid, missingQty]);
-    expect(queue).toEqual([getParsedItemKey(missingQtyAndUnit), getParsedItemKey(missingQty)]);
+    const queue = getQuantityFixQueue([missingQtyAndUnit, valid, missingQty, missingUnitOnly]);
+    expect(queue).toEqual([
+      getParsedItemKey(missingQtyAndUnit),
+      getParsedItemKey(missingQty),
+      getParsedItemKey(missingUnitOnly),
+    ]);
   });
 
-  it('returns an empty queue when nothing needs a quantity', () => {
+  it('returns an empty queue when nothing needs a quantity or unit', () => {
     expect(getQuantityFixQueue([valid, invalidUnit, noMatch])).toEqual([]);
   });
 });
