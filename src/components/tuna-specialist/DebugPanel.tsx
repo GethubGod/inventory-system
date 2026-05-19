@@ -22,7 +22,7 @@ interface DebugPanelProps {
 }
 
 export function DebugPanel({ locationShortCode }: DebugPanelProps) {
-  const sendTextToGemini = useTunaSpecialistStore((s) => s.sendTextToGemini);
+  const sendTextToIntelligence = useTunaSpecialistStore((s) => s.sendTextToIntelligence);
   const lastRawResponse = useTunaSpecialistStore((s) => s.lastRawResponse);
   const isProcessing = useTunaSpecialistStore((s) => s.isProcessing);
   const isListening = useTunaSpecialistStore((s) => s.isListening);
@@ -38,7 +38,7 @@ export function DebugPanel({ locationShortCode }: DebugPanelProps) {
 
   const handleSendTest = (text: string) => {
     if (isProcessing || !text.trim()) return;
-    sendTextToGemini(text.trim(), locationShortCode);
+    sendTextToIntelligence(text.trim(), locationShortCode);
   };
 
   return (

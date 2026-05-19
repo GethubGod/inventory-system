@@ -48,6 +48,7 @@ export type ParsedQuickOrderItem = {
   match_type?: string;
   pending_conflict_id?: string;
   merge_behavior?: 'add_to_existing' | 'replace_existing' | 'keep_separate';
+  merge_delta_quantity?: number | null;
   existing_item_key?: string;
 };
 
@@ -72,10 +73,20 @@ export type RepeatedOrderListResult = {
 };
 
 export type QuickOrderClarificationAction = {
-  id: 'add' | 'replace' | 'keep_separate' | 'cancel' | 'choose_existing' | 'clear_order';
+  id:
+    | 'add'
+    | 'replace'
+    | 'keep_separate'
+    | 'cancel'
+    | 'choose_existing'
+    | 'clear_order'
+    | 'use_item'
+    | 'use_unit'
+    | 'request_approval';
   label: string;
   preview?: string;
   existing_item_key?: string;
+  unit?: string;
 };
 
 export type PendingQuickOrderClarification = {
@@ -87,7 +98,13 @@ export type PendingQuickOrderClarification = {
     | 'missing_unit'
     | 'ambiguous_item'
     | 'choose_existing_line'
-    | 'clear_order';
+    | 'clear_order'
+    | 'item_not_found'
+    | 'invalid_unit'
+    | 'quantity_safety'
+    | 'manager_approval_required'
+    | 'low_confidence_match'
+    | 'remove_ambiguous';
   item_id: string | null;
   item_name: string;
   existing_item_key?: string;
@@ -282,15 +299,37 @@ export function countUnresolvedItems(items: ParsedQuickOrderItem[]): number {
   return items.reduce((total, item) => (getParsedItemIssue(item) ? total + 1 : total), 0);
 }
 
-/** "4 lb" / "2 · unit needed" / "Quantity needed" — never empty. */
+/** "4 pounds" / "2 · unit needed" / "Quantity needed" — never empty. */
 export function formatParsedItemQuantity(item: ParsedQuickOrderItem): string {
   const unit = item.unit?.trim();
   const hasQty = item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0;
 
   if (!hasQty) {
-    return unit ? `— ${unit}` : 'Quantity needed';
+    return unit ? `— ${formatQuickOrderUnitName(unit, 1)}` : 'Quantity needed';
   }
-  return unit ? `${item.quantity} ${unit}` : `${item.quantity} · unit needed`;
+  return unit ? formatQuickOrderQuantity(item.quantity, unit) : `${item.quantity} · unit needed`;
+}
+
+export function formatQuickOrderQuantity(
+  quantity: number | null | undefined,
+  unit: string | null | undefined,
+): string {
+  if (quantity == null || !Number.isFinite(quantity)) {
+    return unit ? formatQuickOrderUnitName(unit, 1) : 'that quantity';
+  }
+  return `${quantity}${unit ? ` ${formatQuickOrderUnitName(unit, quantity)}` : ''}`;
+}
+
+export function formatQuickOrderUnitName(
+  unit: string | null | undefined,
+  quantity = 2,
+): string {
+  const raw = unit?.trim();
+  if (!raw) return '';
+  const normalized = normalizeQuickOrderUnit(raw) ?? raw.toLowerCase();
+  const singular = FRIENDLY_UNIT_LABELS[normalized] ?? raw.toLowerCase();
+  if (quantity === 1) return singular;
+  return FRIENDLY_UNIT_PLURALS[singular] ?? `${singular}s`;
 }
 
 /**
@@ -368,6 +407,14 @@ export function mergeQuickOrderParsedItemsDetailed(
       rejectedReasons.push('empty_item');
       continue;
     }
+    if (!item.item_id && (item.status === 'no_match' || item.status === 'ambiguous' || item.unresolved)) {
+      rejectedReasons.push('non_cart_item_issue');
+      continue;
+    }
+    if (item.item_id && item.status === 'invalid_unit') {
+      rejectedReasons.push('invalid_unit_not_added');
+      continue;
+    }
 
     const existingKey = item.existing_item_key;
     if (item.merge_behavior === 'add_to_existing' && existingKey) {
@@ -434,12 +481,6 @@ export function mergeQuickOrderParsedItemsDetailed(
         continue;
       }
 
-      if (isParsedItemReady(existing) && isParsedItemReady(item)) {
-        unchangedCount += 1;
-        rejectedReasons.push('duplicate_changed_without_action');
-        continue;
-      }
-
       next = next.map((entry, index) => {
         if (index !== existingIndex) return entry;
         const updated = normalizeQuickOrderItemForDisplay({ ...entry, ...item, client_key: entry.client_key });
@@ -448,6 +489,23 @@ export function mergeQuickOrderParsedItemsDetailed(
         return updated;
       });
     } else {
+      const existingResolvedIndex = findExistingResolvedItemIndex(next, item);
+      if (existingResolvedIndex >= 0 && !item.client_key && item.merge_behavior !== 'keep_separate') {
+        next = next.map((entry, index) => {
+          if (index !== existingResolvedIndex) return entry;
+          const updated = normalizeQuickOrderItemForDisplay({
+            ...entry,
+            ...item,
+            client_key: entry.client_key,
+            needs_clarification: false,
+            unresolved: false,
+          });
+          updatedItems.push(updated);
+          return updated;
+        });
+        continue;
+      }
+
       const added = item.client_key || item.merge_behavior === 'keep_separate'
         ? item
         : normalizeQuickOrderItemForDisplay({ ...item });
@@ -468,6 +526,17 @@ export function mergeQuickOrderParsedItemsDetailed(
     unchangedCount,
     rejectedReasons,
   };
+}
+
+function findExistingResolvedItemIndex(
+  items: ParsedQuickOrderItem[],
+  incoming: ParsedQuickOrderItem,
+): number {
+  if (!incoming.item_id || !isParsedItemReady(incoming)) return -1;
+  return items.findIndex((entry) =>
+    entry.item_id === incoming.item_id &&
+    isParsedItemReady(entry)
+  );
 }
 
 function dedupeParsedItemsByLineId(items: ParsedQuickOrderItem[]): ParsedQuickOrderItem[] {
@@ -646,6 +715,35 @@ export function applyQuickOrderClarificationAction(
 
   const existingKey = action.existing_item_key ?? clarification.existing_item_key;
 
+  if (action.id === 'use_item' || action.id === 'use_unit') {
+    const correctedIncoming = normalizeQuickOrderItemForDisplay({
+      ...incoming,
+      unit: action.id === 'use_unit' ? action.unit ?? incoming.unit : incoming.unit,
+      status: action.id === 'use_unit' ? 'valid' : incoming.status,
+      action: action.id === 'use_unit' ? null : incoming.action,
+      needs_clarification: action.id === 'use_unit'
+        ? false
+        : incoming.quantity == null || !incoming.unit,
+      unresolved: false,
+    });
+
+    if (existingKey) {
+      return items.map((item) =>
+        getParsedItemKey(item) === existingKey
+          ? normalizeQuickOrderItemForDisplay({
+            ...item,
+            ...correctedIncoming,
+            client_key: item.client_key,
+            needs_clarification: getParsedItemIssue(correctedIncoming) != null,
+            unresolved: false,
+          })
+          : item,
+      );
+    }
+
+    return mergeQuickOrderParsedItemsDetailed(items, [correctedIncoming]).items;
+  }
+
   if (action.id === 'add' && existingKey) {
     return items.map((item) => {
       if (getParsedItemKey(item) !== existingKey) return item;
@@ -721,10 +819,41 @@ export function normalizeQuickOrderUnit(value: string | null | undefined): strin
     case 'ounce':
     case 'ounces':
       return 'oz';
+    case 'bottle':
+    case 'bottles':
+      return 'bottle';
     default:
       return key;
   }
 }
+
+const FRIENDLY_UNIT_LABELS: Record<string, string> = {
+  cs: 'case',
+  case: 'case',
+  pc: 'piece',
+  piece: 'piece',
+  pack: 'pack',
+  pk: 'pack',
+  lb: 'pound',
+  lbs: 'pound',
+  oz: 'ounce',
+  box: 'box',
+  bottle: 'bottle',
+  bag: 'bag',
+  tray: 'tray',
+};
+
+const FRIENDLY_UNIT_PLURALS: Record<string, string> = {
+  case: 'cases',
+  piece: 'pieces',
+  pack: 'packs',
+  pound: 'pounds',
+  ounce: 'ounces',
+  box: 'boxes',
+  bottle: 'bottles',
+  bag: 'bags',
+  tray: 'trays',
+};
 
 export function areQuickOrderUnitsEquivalent(
   left: string | null | undefined,

@@ -3,8 +3,9 @@ import { routeQuickOrderModel, type QuickOrderModelConfig } from './model-router
 import { parseQuickOrder, PARSER_VERSION } from './orchestrator.ts';
 import { buildQuickOrderRecommendations, type RecommendationHistoryOrder } from './recommendation-engine.ts';
 import { buildProcessMessages } from './response-formatter.ts';
+import { routeQuickOrderSegments } from './segment-router.ts';
 import { validateQuickOrderSafety } from './safety-engine.ts';
-import { extractStockUpdates } from './stock-updates.ts';
+import { extractStockUpdates, type StockUpdateExtraction } from './stock-updates.ts';
 import { QuickOrderTimer } from './timing.ts';
 import type {
   CatalogItem,
@@ -44,41 +45,57 @@ export async function processQuickOrderMessage(
 ): Promise<ProcessQuickOrderResponse> {
   const timer = new QuickOrderTimer();
   const request = normalizeRequest(input.request);
+  const orderCatalog = applyAllowedUnitRulesToCatalog(input.catalog, input.allowedUnitRules);
+  const globalOrderCatalog = input.globalCatalog
+    ? applyAllowedUnitRulesToCatalog(input.globalCatalog, input.allowedUnitRules)
+    : undefined;
   const classification = classifyQuickOrderInput(request.message, {
     hasPendingDuplicateAction: input.previousMessages.some((message) =>
       (message.pending_clarifications ?? []).some((entry) => entry.type === 'quantity_conflict' || entry.type === 'unit_conflict')
     ),
   });
-  const modelRoute = routeQuickOrderModel({
-    message: request.message,
-    source: request.source,
-    config: input.modelConfig,
-  });
+  const segmentRoute = routeQuickOrderSegments(request.message);
 
-  const stockExtraction = timer.measure('deterministic_parse', () => extractStockUpdates({
-    message: request.message,
-    source: request.source,
-    catalog: input.catalog,
-    corrections: input.corrections,
-  }));
+  const stockExtraction = timer.measure('deterministic_parse', (): StockUpdateExtraction =>
+    segmentRoute.stockSegments.length > 0
+      ? extractStockUpdates({
+          message: segmentRoute.stockSegments.join('\n'),
+          source: request.source,
+          catalog: input.catalog,
+          corrections: input.corrections,
+        })
+      : emptyStockExtraction(request.message)
+  );
 
   const shouldRecommend =
     classification.classification === 'recommend_order_request' ||
-    classification.classification === 'mixed_stock_and_recommendation_request';
+    classification.classification === 'mixed_stock_and_recommendation_request' ||
+    segmentRoute.recommendationSegments.length > 0;
   const shouldSkipOrderParse =
-    classification.classification === 'current_stock_update' ||
-    classification.classification === 'recommend_order_request' ||
-    classification.classification === 'mixed_stock_and_recommendation_request';
-  const parserText = shouldSkipOrderParse
-    ? ''
-    : stockExtraction.remainingText || request.message;
+    segmentRoute.orderSegments.length === 0 &&
+    (
+      classification.classification === 'current_stock_update' ||
+      classification.classification === 'recommend_order_request' ||
+      classification.classification === 'mixed_stock_and_recommendation_request'
+    );
+  const parserText = segmentRoute.orderSegments.length > 0
+    ? segmentRoute.orderSegments.join('\n')
+    : shouldSkipOrderParse
+      ? ''
+      : stockExtraction.remainingText || request.message;
+
+  const modelRoute = routeQuickOrderModel({
+    message: parserText || request.message,
+    source: request.source,
+    config: input.modelConfig,
+  });
 
   const parseResponse = parserText
     ? await timer.measureAsync('llm_fallback', () => parseQuickOrder({
         rawText: parserText,
         locationId: request.location_id,
-        catalog: input.catalog,
-        globalCatalog: input.globalCatalog,
+        catalog: orderCatalog,
+        globalCatalog: globalOrderCatalog,
         examples: input.examples,
         corrections: input.corrections,
         previousMessages: request.recent_messages ?? input.previousMessages,
@@ -96,7 +113,7 @@ export async function processQuickOrderMessage(
 
   const safety = timer.measure('safety_validation', () => validateQuickOrderSafety({
     parseResponse,
-    catalog: input.catalog,
+    catalog: orderCatalog,
     locationId: request.location_id,
     source: request.source,
     limits: input.limits,
@@ -110,7 +127,7 @@ export async function processQuickOrderMessage(
 
   const recommendationResult = shouldRecommend
     ? timer.measure('recommendation_engine', () => buildQuickOrderRecommendations({
-        catalog: input.catalog,
+        catalog: orderCatalog,
         stockUpdates: stockExtraction.stockUpdates,
         recentOrders: input.recentOrders,
         limits: input.limits,
@@ -171,12 +188,43 @@ export async function processQuickOrderMessage(
       ...(safety.response.diagnostics ?? {}),
       input_classification: classification.classification,
       input_classification_reason: classification.reason,
+      segment_count: segmentRoute.segments.length,
+      order_segment_count: segmentRoute.orderSegments.length,
+      stock_segment_count: segmentRoute.stockSegments.length,
+      recommendation_segment_count: segmentRoute.recommendationSegments.length,
+      unknown_segment_count: segmentRoute.unknownSegments.length,
+      segment_intents: segmentRoute.segments.map((segment) => ({
+        text: segment.text,
+        intent: segment.intent,
+        reason: segment.reason,
+      })),
       model_route: modelRoute.reason,
       model_used: actualModelUsed,
       stock_update_count: stockExtraction.stockUpdates.length,
       recommendation_count: recommendationResult.recommendations.length,
     } as ProcessQuickOrderResponse['diagnostics'],
   };
+}
+
+function applyAllowedUnitRulesToCatalog(
+  catalog: CatalogItem[],
+  rules: ItemAllowedUnitRule[],
+): CatalogItem[] {
+  if (!Array.isArray(rules) || rules.length === 0) return catalog;
+  const unitsByItem = new Map<string, string[]>();
+  for (const rule of rules) {
+    if (!rule.item_id || typeof rule.unit !== 'string' || !rule.unit.trim()) continue;
+    const current = unitsByItem.get(rule.item_id) ?? [];
+    current.push(rule.unit.trim());
+    unitsByItem.set(rule.item_id, current);
+  }
+  if (unitsByItem.size === 0) return catalog;
+  return catalog.map((item) => {
+    const allowedUnits = unitsByItem.get(item.id);
+    return allowedUnits && allowedUnits.length > 0
+      ? { ...item, allowed_units: [...new Set(allowedUnits)] }
+      : item;
+  });
 }
 
 function normalizeRequest(request: ProcessQuickOrderMessageRequest): ProcessQuickOrderMessageRequest {
@@ -186,6 +234,15 @@ function normalizeRequest(request: ProcessQuickOrderMessageRequest): ProcessQuic
     message: request.message.trim(),
     existing_items: Array.isArray(request.existing_items) ? request.existing_items : [],
     recent_messages: Array.isArray(request.recent_messages) ? request.recent_messages : undefined,
+  };
+}
+
+function emptyStockExtraction(message: string): StockUpdateExtraction {
+  return {
+    stockUpdates: [],
+    stockSegments: [],
+    remainingText: message,
+    hasStockSignal: false,
   };
 }
 
@@ -253,6 +310,12 @@ function deriveProcessStatus(input: {
     input.recommendationsCount > 0;
   if (input.blockedCount > 0 && !hasSuccess) return 'blocked';
   if (input.blockedCount > 0 && hasSuccess) return 'partial_success';
+  if (hasSuccess && (input.parseResponse.status === 'needs_review' || input.parseResponse.status === 'needs_clarification')) {
+    return 'partial_success';
+  }
+  if (hasSuccess && ((input.parseResponse.pending_clarifications?.length ?? 0) > 0 || input.warningsCount > 0)) {
+    return 'partial_success';
+  }
   if ((input.parseResponse.pending_clarifications?.length ?? 0) > 0 || input.warningsCount > 0) return 'needs_clarification';
   return 'success';
 }

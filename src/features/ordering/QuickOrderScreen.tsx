@@ -101,7 +101,6 @@ import {
   countUnresolvedItems,
   applyQuickOrderClarificationAction,
   applyQuickOrderOperations,
-  formatParsedItemQuantity,
   getParsedItemDisplayName,
   getParsedItemIssue,
   getParsedItemKey,
@@ -223,6 +222,7 @@ const CARD_TIMING = {
   easing: Easing.bezier(0.22, 1, 0.36, 1),
 } as const;
 const CHAT_NEAR_BOTTOM_THRESHOLD = 160;
+const QUICK_ORDER_READY_NUDGE_DELAY_MS = 120_000;
 
 type ChatSnapOptions = {
   active?: boolean;
@@ -296,6 +296,19 @@ function normalizeClarifications(
     );
 }
 
+function isCartBlockingClarification(
+  clarification: PendingQuickOrderClarification,
+): boolean {
+  return ![
+    "item_not_found",
+    "ambiguous_item",
+    "invalid_unit",
+    "quantity_safety",
+    "manager_approval_required",
+    "low_confidence_match",
+  ].includes(clarification.type);
+}
+
 function mergePendingClarificationsAfterParse(
   existing: PendingQuickOrderClarification[],
   resolvedItems: ParsedQuickOrderItem[],
@@ -323,7 +336,9 @@ function mergePendingClarificationsAfterParse(
     return true;
   });
   const byId = new Map<string, PendingQuickOrderClarification>();
-  for (const clarification of [...retained, ...incoming]) {
+  for (const clarification of [...retained, ...incoming].filter(
+    isCartBlockingClarification,
+  )) {
     byId.set(clarification.id, clarification);
   }
   return [...byId.values()];
@@ -414,7 +429,9 @@ function buildPersistedMessage(
       reply_text: message.text,
       text: message.text,
       parsed_items: message.parsedItems ?? [],
-      pending_clarifications: message.pendingClarifications ?? [],
+      pending_clarifications: (message.pendingClarifications ?? []).filter(
+        (clarification) => clarification.actions.length > 0,
+      ),
       flags: message.flags ?? [],
       suggestions: message.suggestions ?? [],
       source: message.source,
@@ -440,18 +457,22 @@ type AIResponsePillProps = {
   onLayout?: (event: LayoutChangeEvent) => void;
 };
 
+type AssistantPillTone = "success" | "caution" | "neutral";
+
 function getAssistantPill(message: QuickOrderMessage) {
   const flags = message.flags ?? [];
   const items = message.parsedItems ?? [];
   const pendingCount = message.pendingClarifications?.length ?? 0;
   const flaggedItem = items.find((item) => getParsedItemIssue(item));
   const addedItem = items.find((item) => !getParsedItemIssue(item));
-
-  if (
+  const hasUserFix =
     pendingCount > 0 ||
-    flaggedItem ||
-    (flags.length > 0 && items.length === 0)
-  ) {
+    Boolean(flaggedItem) ||
+    Boolean(message.safetyWarnings?.length) ||
+    Boolean(message.blockedOperations?.length) ||
+    (flags.length > 0 && items.length === 0);
+
+  if (hasUserFix) {
     const issue = flaggedItem ? getParsedItemIssue(flaggedItem) : null;
     const flaggedItemName = flaggedItem
       ? getParsedItemDisplayName(flaggedItem)
@@ -473,8 +494,9 @@ function getAssistantPill(message: QuickOrderMessage) {
       }
     }
     return {
-      icon: "alert-circle-outline" as const,
+      icon: "alert-circle" as const,
       color: colors.statusAmber,
+      tone: "caution" as AssistantPillTone,
       text: text ?? message.text,
     };
   }
@@ -483,9 +505,8 @@ function getAssistantPill(message: QuickOrderMessage) {
     return {
       icon: "checkmark" as const,
       color: colors.statusGreen,
-      text:
-        message.text ||
-        `Added ${getParsedItemDisplayName(addedItem)} · ${formatParsedItemQuantity(addedItem)}`,
+      tone: "success" as AssistantPillTone,
+      text: "Done",
     };
   }
 
@@ -494,8 +515,9 @@ function getAssistantPill(message: QuickOrderMessage) {
   return {
     icon: looksLikeNoChange
       ? ("checkmark" as const)
-      : ("alert-circle-outline" as const),
-    color: looksLikeNoChange ? colors.statusGreen : colors.statusAmber,
+      : ("sparkles-outline" as const),
+    color: looksLikeNoChange ? colors.statusGreen : colors.primary,
+    tone: looksLikeNoChange ? ("success" as AssistantPillTone) : ("neutral" as AssistantPillTone),
     text: message.text,
   };
 }
@@ -518,6 +540,8 @@ const AIResponsePill = React.memo(function AIResponsePill({
       entering={ZoomIn.duration(180).easing(Easing.out(Easing.cubic))}
       style={[
         styles.aiPill,
+        pill.tone === "caution" && styles.aiPillCaution,
+        pill.tone === "success" && styles.aiPillSuccess,
         {
           borderRadius: ds.radius(20),
           paddingHorizontal: ds.spacing(14),
@@ -526,8 +550,12 @@ const AIResponsePill = React.memo(function AIResponsePill({
         },
       ]}
     >
-      <Ionicons name={pill.icon} size={16} color={pill.color} />
-      <Text style={[styles.aiPillText, { fontSize: ds.fontSize(16) }]}>
+      <Ionicons name={pill.icon} size={pill.tone === "caution" ? 20 : 16} color={pill.color} />
+      <Text style={[
+        styles.aiPillText,
+        pill.tone === "caution" && styles.aiPillTextCaution,
+        { fontSize: ds.fontSize(16) },
+      ]}>
         {text}
       </Text>
     </Animated.View>
@@ -536,6 +564,8 @@ const AIResponsePill = React.memo(function AIResponsePill({
 
 type ClarificationCardProps = {
   clarification: PendingQuickOrderClarification;
+  confirmed?: boolean;
+  confirmedLabel?: string;
   onAction: (
     clarification: PendingQuickOrderClarification,
     action: PendingQuickOrderClarification["actions"][number],
@@ -545,6 +575,8 @@ type ClarificationCardProps = {
 
 const ClarificationCard = React.memo(function ClarificationCard({
   clarification,
+  confirmed = false,
+  confirmedLabel,
   onAction,
   onLayout,
 }: ClarificationCardProps) {
@@ -555,6 +587,7 @@ const ClarificationCard = React.memo(function ClarificationCard({
       onLayout={onLayout}
       style={[
         styles.clarificationCard,
+        confirmed && styles.clarificationCardConfirmed,
         {
           borderRadius: ds.radius(16),
           padding: ds.spacing(12),
@@ -564,55 +597,58 @@ const ClarificationCard = React.memo(function ClarificationCard({
     >
       <View style={styles.clarificationHeader}>
         <Ionicons
-          name="help-circle-outline"
+          name={confirmed ? "checkmark-circle" : "alert-circle"}
           size={ds.icon(18)}
-          color={colors.statusAmber}
+          color={confirmed ? colors.statusGreen : colors.statusAmber}
         />
         <Text
           style={[
             styles.clarificationText,
+            confirmed && styles.clarificationTextConfirmed,
             { fontSize: ds.fontSize(15), marginLeft: ds.spacing(8) },
           ]}
         >
-          {clarification.message}
+          {confirmed ? confirmedLabel ?? "Confirmed" : clarification.message}
         </Text>
       </View>
-      <View
-        style={[
-          styles.clarificationActions,
-          { gap: ds.spacing(8), marginTop: ds.spacing(10) },
-        ]}
-      >
-        {clarification.actions.map((action) => (
-          <Pressable
-            key={`${clarification.id}:${action.id}:${action.existing_item_key ?? ""}`}
-            accessibilityRole="button"
-            accessibilityLabel={action.label}
-            onPress={() => onAction(clarification, action)}
-            style={({ pressed }) => [
-              styles.clarificationButton,
-              {
-                borderRadius: ds.radius(12),
-                paddingHorizontal: ds.spacing(10),
-                paddingVertical: ds.spacing(8),
-                opacity: pressed ? 0.72 : 1,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.clarificationButtonText,
-                { fontSize: ds.fontSize(13) },
+      {!confirmed && clarification.actions.length > 0 ? (
+        <View
+          style={[
+            styles.clarificationActions,
+            { gap: ds.spacing(8), marginTop: ds.spacing(10) },
+          ]}
+        >
+          {clarification.actions.map((action) => (
+            <Pressable
+              key={`${clarification.id}:${action.id}:${action.existing_item_key ?? ""}`}
+              accessibilityRole="button"
+              accessibilityLabel={action.label}
+              onPress={() => onAction(clarification, action)}
+              style={({ pressed }) => [
+                styles.clarificationButton,
+                {
+                  borderRadius: ds.radius(12),
+                  paddingHorizontal: ds.spacing(10),
+                  paddingVertical: ds.spacing(8),
+                  opacity: pressed ? 0.72 : 1,
+                },
               ]}
-              numberOfLines={1}
             >
-              {action.preview
-                ? `${action.label} — ${action.preview}`
-                : action.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+              <Text
+                style={[
+                  styles.clarificationButtonText,
+                  { fontSize: ds.fontSize(13) },
+                ]}
+                numberOfLines={1}
+              >
+                {action.preview
+                  ? `${action.label} — ${action.preview}`
+                  : action.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 });
@@ -848,10 +884,7 @@ const StockUpdateCard = React.memo(function StockUpdateCard({
 }) {
   const ds = useScaledStyles();
   if (updates.length === 0) return null;
-  const text = updates
-    .slice(0, 4)
-    .map((update) => `${update.item_name} ${update.quantity}${update.unit ? ` ${update.unit}` : ""}`)
-    .join(" · ");
+  const visibleUpdates = updates.slice(0, 4);
   return (
     <View
       onLayout={onLayout}
@@ -866,10 +899,25 @@ const StockUpdateCard = React.memo(function StockUpdateCard({
       ]}
     >
       <Ionicons name="clipboard-outline" size={ds.icon(18)} color={colors.primary} />
-      <Text style={[styles.noticeText, { fontSize: ds.fontSize(14) }]}>
-        {text}
-        {updates.length > 4 ? ` · +${updates.length - 4} more` : ""}
-      </Text>
+      <View style={[styles.stockTextCluster, { marginLeft: ds.spacing(8), gap: ds.spacing(4) }]}>
+        <Text style={[styles.stockTitle, { fontSize: ds.fontSize(13) }]}>
+          Current stock
+        </Text>
+        {visibleUpdates.map((update, index) => (
+          <Text
+            key={`${update.item_id}:${update.original_text}:${index}`}
+            style={[styles.stockRowText, { fontSize: ds.fontSize(14) }]}
+          >
+            {update.item_name} {update.quantity}
+            {update.unit ? ` ${update.unit}` : ""}
+          </Text>
+        ))}
+        {updates.length > 4 ? (
+          <Text style={[styles.stockMoreText, { fontSize: ds.fontSize(12) }]}>
+            +{updates.length - 4} more
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 });
@@ -967,6 +1015,9 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const [pendingClarifications, setPendingClarifications] = useState<
     PendingQuickOrderClarification[]
   >([]);
+  const [confirmedClarifications, setConfirmedClarifications] = useState<
+    Record<string, string>
+  >({});
   const [inventoryItems, setInventoryItems] = useState<
     QuickOrderInventoryItem[]
   >([]);
@@ -1158,6 +1209,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     if (!userId || !locationId) {
       setSessionId(null);
       setMessages([]);
+      setConfirmedClarifications({});
       setParsedItems([]);
       setPendingClarifications([]);
       return;
@@ -1191,13 +1243,14 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         setPendingClarifications(
           nextMessages.flatMap(
             (message) => message.pendingClarifications ?? [],
-          ),
+          ).filter(isCartBlockingClarification),
         );
       } catch (error) {
         console.warn("[QuickOrder] Failed to load active session:", error);
         if (!cancelled) {
           setSessionId(null);
           setMessages([]);
+          setConfirmedClarifications({});
           setParsedItems([]);
           setPendingClarifications([]);
         }
@@ -1453,6 +1506,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       nudgeTimerRef.current = null;
     }
     setMessages([]);
+    setConfirmedClarifications({});
     setParsedItems([]);
     setPendingClarifications([]);
     setEditingState(null);
@@ -2207,7 +2261,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
                 },
               );
             }
-          }, 30_000);
+          }, QUICK_ORDER_READY_NUDGE_DELAY_MS);
         }
       } catch (error) {
         console.warn("[QuickOrder] parse-order failed:", error);
@@ -2311,15 +2365,25 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       const nextPendingClarifications = pendingClarifications.filter(
         (entry) => entry.id !== clarification.id,
       );
+      const confirmedLabel =
+        action.id === "cancel"
+          ? "Canceled"
+          : `${action.label.replace(/^Use\s+/i, "")} confirmed`;
       const nextMessages = messages.map((message) => ({
         ...message,
-        pendingClarifications: message.pendingClarifications?.filter(
-          (entry) => entry.id !== clarification.id,
+        pendingClarifications: message.pendingClarifications?.map((entry) =>
+          entry.id === clarification.id
+            ? { ...entry, message: confirmedLabel, actions: [] }
+            : entry,
         ),
       }));
 
       setParsedItems(nextParsedItems);
       setPendingClarifications(nextPendingClarifications);
+      setConfirmedClarifications((current) => ({
+        ...current,
+        [clarification.id]: confirmedLabel,
+      }));
       setMessages(nextMessages);
       scheduleChatScrollToEnd(
         "clarification-action",
@@ -2576,6 +2640,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       }
 
       setMessages([]);
+      setConfirmedClarifications({});
       setParsedItems([]);
       setPendingClarifications([]);
       setEditingState(null);
@@ -2642,14 +2707,22 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
                 onLayout={layoutHandler}
               />
             ) : null}
-            {(message.pendingClarifications ?? []).map((clarification) => (
-              <ClarificationCard
-                key={clarification.id}
-                clarification={clarification}
-                onAction={handleClarificationAction}
-                onLayout={layoutHandler}
-              />
-            ))}
+            {(message.pendingClarifications ?? [])
+              .filter(
+                (clarification) =>
+                  clarification.actions.length > 0 ||
+                  Boolean(confirmedClarifications[clarification.id]),
+              )
+              .map((clarification) => (
+                <ClarificationCard
+                  key={clarification.id}
+                  clarification={clarification}
+                  confirmed={Boolean(confirmedClarifications[clarification.id])}
+                  confirmedLabel={confirmedClarifications[clarification.id]}
+                  onAction={handleClarificationAction}
+                  onLayout={layoutHandler}
+                />
+              ))}
             {(message.suggestions ?? []).map((suggestion, index) => (
               <SuggestionCard
                 key={`${message.id}:suggestion:${index}`}
@@ -2991,6 +3064,15 @@ const styles = StyleSheet.create({
     borderWidth: glassHairlineWidth,
     borderColor: glassColors.cardBorder,
   },
+  aiPillCaution: {
+    backgroundColor: colors.statusAmberBg,
+    borderColor: colors.statusAmber,
+    borderWidth: 1,
+  },
+  aiPillSuccess: {
+    backgroundColor: colors.statusGreenBg,
+    borderColor: colors.statusGreen,
+  },
   aiPillText: {
     flex: 1,
     marginLeft: 10,
@@ -2998,12 +3080,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     letterSpacing: 0,
   },
+  aiPillTextCaution: {
+    color: colors.textPrimary,
+    fontWeight: "800",
+  },
   clarificationCard: {
     alignSelf: "flex-start",
     maxWidth: "94%",
     backgroundColor: colors.statusAmberBg,
     borderWidth: glassHairlineWidth,
     borderColor: colors.statusAmber,
+  },
+  clarificationCardConfirmed: {
+    backgroundColor: colors.statusGreenBg,
+    borderColor: colors.statusGreen,
   },
   clarificationHeader: {
     flexDirection: "row",
@@ -3014,6 +3104,10 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontWeight: "700",
     letterSpacing: 0,
+  },
+  clarificationTextConfirmed: {
+    color: colors.textPrimary,
+    fontWeight: "800",
   },
   clarificationActions: {
     flexDirection: "row",
@@ -3054,6 +3148,24 @@ const styles = StyleSheet.create({
   stockCard: {
     backgroundColor: colors.white,
     borderColor: glassColors.cardBorder,
+  },
+  stockTextCluster: {
+    flex: 1,
+  },
+  stockTitle: {
+    color: colors.textSecondary,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  stockRowText: {
+    color: colors.textPrimary,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  stockMoreText: {
+    color: colors.textMuted,
+    fontWeight: "700",
+    letterSpacing: 0,
   },
   recommendationCard: {
     alignSelf: "flex-start",

@@ -199,7 +199,7 @@ Deno.serve(async (req) => {
       ? 'Babytuna Sushi'
       : 'Babytuna Poki & Pho';
 
-    const systemPrompt = `You are Tuna Specialist, the AI ordering assistant for Babytuna restaurant. You help employees place inventory orders by voice.
+    const systemPrompt = `You are Tuna Intelligence, the AI ordering assistant for Babytuna restaurant. You help employees place inventory orders by voice.
 
 PERSONALITY:
 - Friendly, efficient, casual. Like a helpful coworker.

@@ -61,10 +61,12 @@
     "@babel/core": "^7.24.0",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.1.10",
+    "@types/react-test-renderer": "^19.1.0",
     "babel-preset-expo": "^54.0.10",
     "eslint": "^9.39.2",
     "eslint-config-expo": "^10.0.0",
     "react-refresh": "^0.14.2",
+    "react-test-renderer": "^19.1.0",
     "ts-jest": "^29.4.6",
     "typescript": "~5.9.2"
   },

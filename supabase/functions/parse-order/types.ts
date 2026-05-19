@@ -62,7 +62,10 @@ export type ConflictActionId =
   | 'keep_separate'
   | 'cancel'
   | 'choose_existing'
-  | 'clear_order';
+  | 'clear_order'
+  | 'use_item'
+  | 'use_unit'
+  | 'request_approval';
 
 export type CatalogItem = {
   id: string;
@@ -182,6 +185,8 @@ export type CatalogMatchResult = {
   missing_specific_tokens?: string[];
   semantic_validation_passed?: boolean;
   alternatives?: CatalogAlternative[];
+  confidence_tier?: 'high' | 'medium' | 'low';
+  decision_reason?: string;
 };
 
 export type ParsedItem = {
@@ -217,6 +222,7 @@ export type ParsedItem = {
   diagnostics?: Record<string, unknown>;
   pending_conflict_id?: string;
   merge_behavior?: 'add_to_existing' | 'replace_existing' | 'keep_separate';
+  merge_delta_quantity?: number | null;
   existing_item_key?: string;
 };
 
@@ -344,6 +350,7 @@ export type PendingQuickOrderAction = {
   label: string;
   preview?: string;
   existing_item_key?: string;
+  unit?: string;
 };
 
 export type PendingQuickOrderClarification = {
@@ -360,7 +367,8 @@ export type PendingQuickOrderClarification = {
     | 'item_not_found'
     | 'quantity_safety'
     | 'manager_approval_required'
-    | 'low_confidence_match';
+    | 'low_confidence_match'
+    | 'invalid_unit';
   item_id: string | null;
   item_name: string;
   existing_item_key?: string;
@@ -473,6 +481,16 @@ export type ParseDiagnostics = {
   error_code?: string;
   input_classification?: string;
   input_classification_reason?: string;
+  segment_count?: number;
+  order_segment_count?: number;
+  stock_segment_count?: number;
+  recommendation_segment_count?: number;
+  unknown_segment_count?: number;
+  segment_intents?: {
+    text: string;
+    intent: string;
+    reason: string;
+  }[];
   suggestion_count?: number;
   history_lookup_result?: string;
 };

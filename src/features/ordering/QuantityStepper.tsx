@@ -19,10 +19,14 @@ const QUICK_INCREMENTS = [1, 5, 10] as const;
 // Hardcoded so the contrast can never collapse against the cream sheet bg
 // (the design-system grayScale[100] is too close to background for the chips
 // to read as filled pills).
-const PILL_BG = '#F2F0EE';
-const PILL_BG_PRESSED = '#E8E5E2';
+const PILL_BG = '#F0ECE3';
+const PILL_BG_PRESSED = '#E2DDD2';
+const PILL_BORDER = '#E2DDD2';
 const PRIMARY = '#E8503A';
 const PRIMARY_TINT = '#FBE5E1';
+const PRIMARY_TINT_PRESSED = '#F5D0C8';
+const ROUND_BG = '#F0ECE3';
+const ROUND_BG_PRESSED = '#E2DDD2';
 const TEXT_PRIMARY = '#1C1C1E';
 const TEXT_SECONDARY = '#8E8E93';
 const TEXT_MUTED = '#AEAEB2';
@@ -72,7 +76,7 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
   }, [min, onChange, text]);
 
   const canDecrement = !disabled && value > min;
-  const roundSize = ds.spacing(64);
+  const roundSize = ds.spacing(76);
 
   return (
     <View
@@ -181,22 +185,26 @@ function PillChip({ label, disabled, onPress, selected = false, ds }: PillChipPr
         flex: 1,
         minWidth: 0,
         borderRadius: 999,
-        paddingVertical: ds.spacing(12),
+        paddingVertical: ds.spacing(14),
         paddingHorizontal: ds.spacing(10),
         alignItems: 'center',
         justifyContent: 'center',
         backgroundColor: selected
-          ? PRIMARY_TINT
+          ? pressed
+            ? PRIMARY_TINT_PRESSED
+            : PRIMARY_TINT
           : pressed
             ? PILL_BG_PRESSED
             : PILL_BG,
+        borderWidth: 1,
+        borderColor: selected ? PRIMARY_TINT : PILL_BORDER,
         opacity: disabled ? 0.5 : 1,
       })}
     >
       <Text
         style={{
-          fontSize: ds.fontSize(15),
-          fontWeight: '700',
+          fontSize: ds.fontSize(16),
+          fontWeight: '800',
           color: selected ? PRIMARY : TEXT_PRIMARY,
           letterSpacing: 0,
         }}

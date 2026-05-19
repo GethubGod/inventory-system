@@ -82,6 +82,19 @@ describe('deterministic quick order parser', () => {
     });
   });
 
+  test.each([
+    ['pack', '', null, 'pack'],
+    ['case', '', null, 'cs'],
+    ['4', '', 4, null],
+    ['four', '', 4, null],
+  ])('parses context follow-up %s', (input, itemText, quantity, unit) => {
+    expect(parseDeterministicOrder(input)[0]).toMatchObject({
+      item_text: itemText,
+      quantity,
+      unit,
+    });
+  });
+
   test('parses mixed multiline and comma-separated orders', () => {
     const result = parseDeterministicOrder('Tuna loin 1cs\n1pc salmon, Unii 1 oz; Beef brisket 4lb\n1 lb escolar');
     expect(result.map((line) => [line.item_text, line.quantity, line.unit])).toEqual([
@@ -95,8 +108,26 @@ describe('deterministic quick order parser', () => {
 });
 
 describe('catalog matcher', () => {
+  test('exact one-word item name beats longer contained item names', () => {
+    const roeCatalog: CatalogItem[] = [
+      { id: 'salmon-id', name: 'Salmon', aliases: [], default_unit: 'cs', base_unit: 'lb', pack_unit: 'cs', allowed_units: ['cs'] },
+      { id: 'ikura-id', name: 'Ikura (Salmon Roe)', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
+    ];
+
+    expect(matchCatalogItem('salmon', roeCatalog)).toMatchObject({
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+      needs_clarification: false,
+    });
+    expect(matchCatalogItem('salmon roe', roeCatalog)).toMatchObject({
+      item_id: 'ikura-id',
+      item_name: 'Ikura (Salmon Roe)',
+      needs_clarification: false,
+    });
+  });
+
   test('prioritizes exact item names and aliases over fuzzy matches', () => {
-    expect(matchCatalogItem('salmon', catalog).match_type).toBe('normalized_exact');
+    expect(matchCatalogItem('salmon', catalog).match_type).toBe('exact_name');
     expect(matchCatalogItem('hamachi', catalog)).toMatchObject({
       item_id: 'yellowtail-id',
       match_type: 'exact_alias',
@@ -177,13 +208,13 @@ describe('LLM JSON parsing fallback', () => {
 });
 
 describe('repeated item conflicts', () => {
-  test('same item same unit neutral text asks add vs replace', () => {
+  test('same item same unit neutral text replaces by default', () => {
     const result = resolveParsedItemConflicts(
       [parsed({ quantity: 4, unit: 'cs' })],
       [parsed({ quantity: 2, unit: 'cs', raw_token: 'salmon 2cs' })],
       'salmon 2cs',
     );
-    expect(result.pendingClarifications[0]).toMatchObject({ type: 'quantity_conflict' });
+    expect(result.updatedItems[0]).toMatchObject({ quantity: 2, merge_behavior: 'replace_existing' });
     expect(result.acceptedItems).toHaveLength(0);
   });
 
@@ -201,12 +232,12 @@ describe('repeated item conflicts', () => {
     ).updatedItems[0].quantity).toBe(2);
   });
 
-  test('same item different unit asks or separates/replaces based on intent', () => {
+  test('same item different unit replaces by default or separates/replaces based on intent', () => {
     expect(resolveParsedItemConflicts(
       [parsed({ quantity: 4, unit: 'cs' })],
       [parsed({ quantity: 4, unit: 'pc' })],
       'salmon 4pc',
-    ).pendingClarifications[0].type).toBe('unit_conflict');
+    ).updatedItems[0]).toMatchObject({ unit: 'pc', merge_behavior: 'replace_existing' });
 
     expect(resolveParsedItemConflicts(
       [parsed({ quantity: 4, unit: 'cs' })],
@@ -232,7 +263,7 @@ describe('repeated item conflicts', () => {
 });
 
 describe('quick order orchestration', () => {
-  test('mixed multiline order preserves successes and returns low-confidence tai as no_match review', async () => {
+  test('mixed multiline order preserves successes and keeps low-confidence tai out of the cart', async () => {
     const result = await parseQuickOrder({
       rawText: 'Tuna loin 1cs\n1pc salmon\n1cs tai\nUnii 1 oz\nBeef brisket 4lb\n1 lb escolar',
       catalog,
@@ -250,11 +281,8 @@ describe('quick order orchestration', () => {
       'brisket-id',
       'escolar-id',
     ]);
-    expect(result.parsed_items.find((item) => item.raw_token === '1cs tai')).toMatchObject({
-      item_id: null,
-      status: 'no_match',
-      action: 'Choose item',
-    });
+    expect(result.parsed_items.find((item) => item.raw_token === '1cs tai')).toBeUndefined();
+    expect(result.pending_clarifications?.[0]?.message).toContain('tai');
   });
 
   test('screenshot order parses to non-empty parsed_items', async () => {
@@ -315,8 +343,8 @@ describe('quick order orchestration', () => {
     expect(result.parsed_items.some((item) => item.item_id === 'salmon-id')).toBe(true);
     expect(result.flags.some((flag) => flag.type === 'invalid_json')).toBe(false);
     expect(result.diagnostics?.item_diagnostics?.find((item) => item.raw_text === 'mystery thing 2lb')).toMatchObject({
-      status: 'no_match',
-      was_added_to_order_list: true,
+      status: 'no_op',
+      was_added_to_order_list: false,
     });
   });
 
@@ -366,13 +394,15 @@ describe('frontend quick order merge and clarification helpers', () => {
     unit: 'cs',
   };
 
-  test('keys include unit so different units do not overwrite each other', () => {
+  test('keys include unit but a re-entered resolved item replaces by default', () => {
     const pc: ParsedQuickOrderItem = { ...existing, raw_token: 'salmon 4pc', quantity: 4, unit: 'pc' };
     expect(getParsedItemKey(existing)).not.toBe(getParsedItemKey(pc));
-    expect(mergeQuickOrderParsedItems([existing], [pc])).toHaveLength(2);
+    const result = mergeQuickOrderParsedItems([existing], [pc]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ item_id: 'salmon-id', unit: 'pc' });
   });
 
-  test('detailed merge keeps null-item-id review rows instead of dropping them', () => {
+  test('detailed merge rejects null-item-id review rows instead of adding cart junk', () => {
     const review: ParsedQuickOrderItem = {
       item_id: null,
       item_name: 'tai',
@@ -386,8 +416,9 @@ describe('frontend quick order merge and clarification helpers', () => {
       status: 'ambiguous',
     };
     const result = mergeQuickOrderParsedItemsDetailed([], [review]);
-    expect(result.items[0]).toMatchObject(review);
-    expect(result.reviewCount).toBe(1);
+    expect(result.items).toHaveLength(0);
+    expect(result.reviewCount).toBe(0);
+    expect(result.rejectedReasons).toContain('non_cart_item_issue');
   });
 
   test('repeated full list with one new item detects unchanged and adds only new item', () => {
@@ -442,7 +473,38 @@ describe('frontend quick order merge and clarification helpers', () => {
       normalized,
       mergeResult,
       pendingCount: 0,
-    })).toBe('Added 1 item.');
+    })).toBe('Done');
+  });
+
+  test('assistant message keeps changed totals and summarizes other additions', () => {
+    const normalized = normalizeQuickOrderParseResponse({
+      assistant_message: 'Added 1 case to Tuna Loin. New total: 4 cases. Added Ground Garlic 1 pack.',
+      parsed_items: [],
+    });
+    const mergeResult: import('../features/ordering/quickOrderItems').QuickOrderMergeResult = {
+      items: [],
+      addedCount: 1,
+      updatedCount: 1,
+      unchangedCount: 0,
+      reviewCount: 0,
+      rejectedReasons: [],
+      addedItems: [{ item_id: 'ground-garlic-id', item_name: 'Ground Garlic', quantity: 1, unit: 'pack' }],
+      updatedItems: [{
+        item_id: 'tuna-loin-id',
+        item_name: 'Tuna Loin',
+        quantity: 4,
+        unit: 'cs',
+        merge_behavior: 'add_to_existing',
+        merge_delta_quantity: 1,
+      }],
+      reviewItems: [],
+    };
+
+    expect(buildQuickOrderAssistantMessage({
+      normalized,
+      mergeResult,
+      pendingCount: 0,
+    })).toBe('Added 1 case to Tuna Loin. New total: 4 cases. Added 1 other item.');
   });
 
   test('clarification add, replace, keep separate, and cancel work', () => {
@@ -662,7 +724,7 @@ describe('baseline Salmon 2cs through full pipeline', () => {
     expect(result.diagnostics?.items_accepted).toBe(1);
   });
 
-  test('unknown item with valid quantity/unit returns a no_match review row', async () => {
+  test('unknown item with valid quantity/unit stays out of cart', async () => {
     const result = await parseQuickOrder({
       rawText: 'Harare 1pc',
       catalog,
@@ -672,12 +734,8 @@ describe('baseline Salmon 2cs through full pipeline', () => {
       existingParsedItems: [],
     });
 
-    expect(result.parsed_items).toHaveLength(1);
-    expect(result.parsed_items[0]).toMatchObject({
-      item_id: null,
-      status: 'no_match',
-      action: 'Choose item',
-    });
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.pending_clarifications?.[0]?.message).toContain('Harare');
   });
 
   test('one invalid line does not fail valid lines', async () => {
@@ -694,10 +752,10 @@ describe('baseline Salmon 2cs through full pipeline', () => {
     expect(validItems.length).toBeGreaterThanOrEqual(2);
     expect(validItems.map((item) => item.item_id)).toContain('salmon-id');
     expect(validItems.map((item) => item.item_id)).toContain('tuna-id');
-    expect(result.parsed_items.length).toBe(3);
+    expect(result.parsed_items.length).toBe(2);
     expect(result.diagnostics?.item_diagnostics?.find((item) => item.raw_text === 'Harare 1pc')).toMatchObject({
-      status: 'no_match',
-      was_added_to_order_list: true,
+      status: 'no_op',
+      was_added_to_order_list: false,
     });
   });
 });
@@ -754,7 +812,7 @@ describe('frontend response normalization', () => {
     });
     expect(message).not.toContain('trouble');
     expect(message).not.toContain('try again');
-    expect(message).toBe('Added 1 item.');
+    expect(message).toBe('Done');
   });
 
   test('response with rawError but items still returns items count > 0', () => {
@@ -767,6 +825,36 @@ describe('frontend response normalization', () => {
     expect(normalized.parsedItems).toHaveLength(1);
     expect(normalized.rawError).toBe('some transient warning');
     // Caller should check parsedItems.length > 0 before discarding
+  });
+
+  test('process-message partial_success normalizes and still merges parsed items', () => {
+    const normalized = normalizeQuickOrderParseResponse({
+      status: 'partial_success',
+      legacy_status: 'needs_review',
+      display_message: 'Added Salmon 2 cs. Tuna cannot be ordered as cs. Use lb.',
+      parsed_items: [
+        { item_id: 'salmon-id', item_name: 'Salmon', quantity: 2, unit: 'cs', status: 'valid' },
+        { item_id: 'masago-id', item_name: 'Masago', quantity: 1, unit: 'cs', status: 'valid' },
+        {
+          item_id: 'tuna-id',
+          item_name: 'Tuna',
+          quantity: 5,
+          unit: 'cs',
+          status: 'invalid_unit',
+          needs_clarification: true,
+        },
+      ],
+      safety_warnings: [{ type: 'above_hard_max', message: 'Blocked unsafe quantity.', severity: 'blocked' }],
+      blocked_operations: [{ type: 'cart_add', item_id: 'salmon-id', reason: 'above_hard_max', message: 'Blocked unsafe quantity.' }],
+    });
+
+    const mergeResult = mergeQuickOrderParsedItemsDetailed([], normalized.parsedItems);
+    expect(normalized.status).toBe('needs_clarification');
+    expect(mergeResult.items).toHaveLength(2);
+    expect(mergeResult.addedItems.filter((item) => getParsedItemIssue(item) == null)).toHaveLength(2);
+    expect(mergeResult.rejectedReasons).toContain('invalid_unit_not_added');
+    expect(normalized.safetyWarnings).toHaveLength(1);
+    expect(normalized.blockedOperations).toHaveLength(1);
   });
 
   test('empty response shows proper error message', () => {
@@ -993,6 +1081,60 @@ describe('parenthetical catalog matching', () => {
     expect(result.needs_clarification).toBe(false);
   });
 
+  test('outside-parentheses exact term beats generated collisions', () => {
+    const shrimpCatalog: CatalogItem[] = [
+      { id: 'shrimp-frozen-id', name: 'Shrimp (Frozen)', aliases: [], default_unit: 'case', base_unit: 'lb', pack_unit: 'pack', allowed_units: ['case', 'pack', 'lb'] },
+      { id: 'shrimp-ebi-id', name: 'Shrimp Ebi', aliases: [], default_unit: 'lb', base_unit: 'lb', pack_unit: 'pack', allowed_units: ['lb', 'pack'] },
+    ];
+
+    const result = matchCatalogItem('shrimp', shrimpCatalog);
+    expect(result).toMatchObject({
+      item_id: 'shrimp-frozen-id',
+      item_name: 'Shrimp (Frozen)',
+      needs_clarification: false,
+    });
+  });
+
+  test('bracketed exact term beats generated collisions', () => {
+    const bracketCatalog: CatalogItem[] = [
+      { id: 'special-premium-id', name: 'Special Item [Premium]', aliases: [], default_unit: 'cs', base_unit: 'cs', allowed_units: ['cs'] },
+      { id: 'premium-sauce-id', name: 'Premium Sauce', aliases: [], default_unit: 'cs', base_unit: 'cs', allowed_units: ['cs'] },
+    ];
+
+    const result = matchCatalogItem('premium', bracketCatalog);
+    expect(result).toMatchObject({
+      item_id: 'special-premium-id',
+      item_name: 'Special Item [Premium]',
+      needs_clarification: false,
+    });
+  });
+
+  test('Shrimp item-only through orchestration becomes a missing-quantity row, not a Use suggestion', async () => {
+    const shrimpCatalog: CatalogItem[] = [
+      { id: 'shrimp-frozen-id', name: 'Shrimp (Frozen)', aliases: [], default_unit: 'case', base_unit: 'lb', pack_unit: 'pack', allowed_units: ['case', 'pack', 'lb'] },
+      { id: 'shrimp-ebi-id', name: 'Shrimp Ebi', aliases: [], default_unit: 'lb', base_unit: 'lb', pack_unit: 'pack', allowed_units: ['lb', 'pack'] },
+    ];
+
+    const result = await parseQuickOrder({
+      rawText: 'Shrimp',
+      catalog: shrimpCatalog,
+      globalCatalog: shrimpCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: 'shrimp-frozen-id',
+      item_name: 'Shrimp (Frozen)',
+      status: 'missing_quantity',
+      unresolved: false,
+    });
+    expect(result.pending_clarifications ?? []).toHaveLength(0);
+  });
+
   test('Izumidai 2pk through full orchestration matches White Fish (Izumidai)', async () => {
     const result = await parseQuickOrder({
       rawText: 'Izumidai 2pk',
@@ -1164,7 +1306,7 @@ describe('command operations through orchestration', () => {
     expect(updatedItem!.quantity).toBe(4);
   });
 
-  test('"salmon 2pc" with existing Salmon 2pc asks add vs replace', async () => {
+  test('"salmon 2pc" with existing Salmon 2pc replaces by default', async () => {
     const result = await parseQuickOrder({
       rawText: 'salmon 2pc',
       catalog: catalogWithParens,
@@ -1173,10 +1315,13 @@ describe('command operations through orchestration', () => {
       previousMessages: [],
       existingParsedItems: [existingSalmon],
     });
-    // Unknown intent — should produce a pending clarification.
-    expect(result.pending_clarifications?.length).toBeGreaterThan(0);
-    const clarification = result.pending_clarifications![0];
-    expect(clarification.type).toBe('quantity_conflict');
+    expect(result.pending_clarifications ?? []).toHaveLength(0);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: 'salmon-id',
+      quantity: 2,
+      unit: 'pc',
+      merge_behavior: 'replace_existing',
+    });
   });
 });
 
@@ -1596,7 +1741,7 @@ Tuna loin 1 cs`;
     expect(izumidai!.unit).toBe('pack');
   });
 
-  test('full orchestration returns 16 items, status ok', async () => {
+  test('full orchestration keeps invalid-unit lines out of the cart', async () => {
     const result = await parseQuickOrder({
       rawText: example3,
       catalog: extendedCatalog,
@@ -1605,11 +1750,12 @@ Tuna loin 1 cs`;
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(result.parsed_items.length).toBe(16);
+    expect(result.parsed_items.length).toBe(14);
+    expect(result.pending_clarifications?.length).toBeGreaterThanOrEqual(2);
     // Some items may have fuzzy matches in the test catalog (e.g. soy paper vs soy sauce),
     // so status can be 'ok' or 'needs_review'. The critical requirement is: NEVER 'error'.
     expect(result.status).not.toBe('error');
-    expect(['ok', 'needs_review']).toContain(result.status);
+    expect(['ok', 'needs_review', 'needs_clarification']).toContain(result.status);
   });
 
   test('Izumidai matches White Fish (Izumidai) in orchestration', async () => {
@@ -1678,7 +1824,7 @@ Tuna loin 1 cs`;
     expect(parseDeterministicOrder(input)[0].item_text).toBe(expectedItemText);
   });
 
-  test('full order returns 17 line-stable parsed items with no over-count diagnostic', async () => {
+  test('full order returns only cart-safe parsed items with no over-count diagnostic', async () => {
     const result = await parseQuickOrder({
       rawText: fullOrder,
       catalog: extendedCatalog,
@@ -1689,10 +1835,11 @@ Tuna loin 1 cs`;
     });
     const lineIds = result.parsed_items.map((item) => item.line_id);
     expect(result.diagnostics?.candidate_count).toBe(17);
-    expect(result.parsed_items).toHaveLength(17);
-    expect(new Set(lineIds).size).toBe(17);
+    expect(result.parsed_items).toHaveLength(15);
+    expect(new Set(lineIds).size).toBe(15);
     expect(result.diagnostics?.error_code).not.toBe('parsed_items_exceed_candidates');
-    expect(result.diagnostics?.items_after_validation).toBe(17);
+    expect(result.diagnostics?.items_after_validation).toBe(15);
+    expect(result.pending_clarifications?.length).toBeGreaterThanOrEqual(2);
   });
 
   test('known catalog items exact-match and do not show generic item choice review', async () => {
@@ -1753,22 +1900,22 @@ describe('robust selected-location catalog matching', () => {
   test.each([
     ['Crawfish 2 packs', 'crawfish-id', 'Crawfish (Crayfish)', 2, 'pack', 'parenthetical_or_generated_exact'],
     ['Crayfish 2 packs', 'crawfish-id', 'Crawfish (Crayfish)', 2, 'pack', 'parenthetical_or_generated_exact'],
-    ['Soft shell crab 1 pack', 'soft-shell-crab-id', 'Soft Shell Crab', 1, 'pack', 'normalized_exact'],
+    ['Soft shell crab 1 pack', 'soft-shell-crab-id', 'Soft Shell Crab', 1, 'pack', 'exact_name'],
     ['softshell crab 1 pk', 'soft-shell-crab-id', 'Soft Shell Crab', 1, 'pack', 'compact_exact'],
     ['soft shell crb 1 pack', 'soft-shell-crab-id', 'Soft Shell Crab', 1, 'pack', 'fuzzy'],
     ['Izumidai 8 packs', 'whitefish-id', 'White Fish (Izumidai)', 8, 'pack', 'parenthetical_or_generated_exact'],
     ['White fish 8 packs', 'whitefish-id', 'White Fish (Izumidai)', 8, 'pack', 'parenthetical_or_generated_exact'],
     ['izumi dai 8 packs', 'whitefish-id', 'White Fish (Izumidai)', 8, 'pack', 'compact_exact'],
     ['izumdi 8 packs', 'whitefish-id', 'White Fish (Izumidai)', 8, 'pack', 'fuzzy'],
-    ['Canadian clam 1 pack', 'canadian-clam-id', 'Canadian Clam', 1, 'pack', 'normalized_exact'],
+    ['Canadian clam 1 pack', 'canadian-clam-id', 'Canadian Clam', 1, 'pack', 'exact_name'],
     ['Canadian Clam 1 case', 'canadian-clam-id', 'Canadian Clam', 1, 'cs', 'exact_name'],
     ['canadien clam 1 pack', 'canadian-clam-id', 'Canadian Clam', 1, 'pack', 'fuzzy'],
     ['canadian clm 1 pack', 'canadian-clam-id', 'Canadian Clam', 1, 'pack', 'fuzzy'],
-    ['Soy paper 1 cs', 'soy-paper-id', 'Soy Paper', 1, 'cs', 'normalized_exact'],
-    ['soypaper 1 cs', 'soy-paper-id', 'Soy Paper', 1, 'cs', 'parenthetical_or_generated_exact'],
-    ['Crab stick 1 pack', 'crab-stick-id', 'Crab Stick', 1, 'pack', 'exact_alias'],
-    ['crabstick 1 pack', 'crab-stick-id', 'Crab Stick', 1, 'pack', 'exact_alias'],
-    ['Tuna loin 1 cs', 'tuna-loin-id', 'Tuna Loin', 1, 'cs', 'exact_alias'],
+    ['Soy paper 1 cs', 'soy-paper-id', 'Soy Paper', 1, 'cs', 'exact_name'],
+    ['soypaper 1 cs', 'soy-paper-id', 'Soy Paper', 1, 'cs', 'compact_exact'],
+    ['Crab stick 1 pack', 'crab-stick-id', 'Crab Stick', 1, 'pack', 'exact_name'],
+    ['crabstick 1 pack', 'crab-stick-id', 'Crab Stick', 1, 'pack', 'compact_exact'],
+    ['Tuna loin 1 cs', 'tuna-loin-id', 'Tuna Loin', 1, 'cs', 'exact_name'],
     ['Albacore 1 cs', 'albacore-id', 'Albacore', 1, 'cs', 'exact_name'],
     ['Octopus 3 packs', 'octopus-id', 'Tako (Octopus)', 3, 'pack', 'parenthetical_or_generated_exact'],
     ['Escolar 3 packs', 'escolar-id', 'Escolar (White Tuna)', 3, 'pack', 'parenthetical_or_generated_exact'],
@@ -1824,7 +1971,7 @@ describe('robust selected-location catalog matching', () => {
     expect(result.diagnostics?.llm_lines_sent).toBe(0);
   });
 
-  test('matched item with unsupported unit is invalid_unit rather than Choose item', async () => {
+  test('matched item with unsupported unit returns an invalid-unit clarification instead of a cart row', async () => {
     const result = await parseQuickOrder({
       rawText: 'Izumidai 8 cs',
       catalog: robustCatalog,
@@ -1833,13 +1980,11 @@ describe('robust selected-location catalog matching', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(result.parsed_items[0]).toMatchObject({
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.pending_clarifications?.[0]).toMatchObject({
+      type: 'invalid_unit',
       item_id: 'whitefish-id',
-      item_name: 'White Fish (Izumidai)',
-      status: 'invalid_unit',
-      unresolved: false,
     });
-    expect(getParsedItemIssue(result.parsed_items[0] as ParsedQuickOrderItem)?.label).toBe('Fix unit');
   });
 
   test('Sapporo small matches the exact multiword variant while Sapporo alone is ambiguous', async () => {
@@ -1867,12 +2012,8 @@ describe('robust selected-location catalog matching', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(ambiguous.parsed_items).toHaveLength(1);
-    expect(ambiguous.parsed_items[0]).toMatchObject({
-      item_id: null,
-      status: 'ambiguous',
-    });
-    expect(ambiguous.parsed_items[0].alternatives?.map((item) => item.item_id)).toEqual(
+    expect(ambiguous.parsed_items).toHaveLength(0);
+    expect(ambiguous.pending_clarifications?.[0]?.incoming_item?.alternatives?.map((item) => item.item_id)).toEqual(
       expect.arrayContaining(['sapporo-small-id', 'sapporo-large-id']),
     );
   });
@@ -1903,15 +2044,10 @@ describe('robust selected-location catalog matching', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(mango.parsed_items).toHaveLength(1);
-    expect(mango.parsed_items[0]).toMatchObject({
-      item_id: null,
-      status: 'no_match',
-      action: 'Choose item',
-    });
+    expect(mango.parsed_items).toHaveLength(0);
     expect(mango.reply_text).toContain('mango powder');
     expect(mango.diagnostics?.item_diagnostics?.[0]).toMatchObject({
-      status: 'no_match',
+      status: 'no_op',
       missing_specific_tokens: ['mango'],
       semantic_validation_passed: false,
     });
@@ -1944,9 +2080,9 @@ describe('robust selected-location catalog matching', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(noMatch.parsed_items).toHaveLength(1);
+    expect(noMatch.parsed_items).toHaveLength(0);
     expect(noMatch.diagnostics?.item_diagnostics?.[0]).toMatchObject({
-      status: 'no_match',
+      status: 'no_op',
       semantic_validation_passed: false,
     });
 
@@ -2050,8 +2186,8 @@ Tuna loin 1 cs`;
   });
 
   test.each([
-    ['Bacon', 'I couldn’t find Bacon in this location’s inventory.'],
-    ['asdfasdf', 'I couldn’t recognize that as an inventory item.'],
+    ['Bacon', 'I couldn\'t recognize "Bacon". Try the item name again.'],
+    ['asdfasdf', 'I couldn\'t recognize "asdfasdf". Try the item name again.'],
     ['Combine', 'There is nothing to combine right now.'],
   ])('%s does not create a persistent junk row', async (rawText, message) => {
     const result = await parseQuickOrder({
@@ -2083,19 +2219,12 @@ Tuna loin 1 cs`;
     });
 
     expect(result.diagnostics?.llm_lines_sent).toBe(0);
-    expect(result.parsed_items).toHaveLength(1);
-    expect(result.parsed_items[0]).toMatchObject({
-      item_id: null,
-      quantity: null,
-      unit: null,
-      status: 'ambiguous',
-      action: 'Choose item',
-    });
-    expect(result.parsed_items[0].candidate_matches?.[0]).toMatchObject({
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.pending_clarifications?.[0]?.incoming_item?.candidate_matches?.[0]).toMatchObject({
       item_id: 'salmon-id',
       item_name: 'Salmon',
     });
-    expect(result.reply_text).toBe('Did you mean Salmon?');
+    expect(result.reply_text).toBe('I couldn\'t recognize "salmo". Did you mean Salmon?');
   });
 
   test('fuzzy explicit quantity and unit can resolve to a valid catalog row', async () => {
@@ -2118,7 +2247,7 @@ Tuna loin 1 cs`;
     });
   });
 
-  test('duplicate valid same-unit item asks add versus replace', async () => {
+  test('duplicate valid same-unit item replaces by default', async () => {
     const result = await parseQuickOrder({
       rawText: 'Salmon 2lb',
       catalog: strictSalmonCatalog,
@@ -2137,12 +2266,17 @@ Tuna loin 1 cs`;
       })],
     });
 
-    expect(result.parsed_items).toHaveLength(0);
-    expect(result.pending_clarifications?.[0]).toMatchObject({ type: 'quantity_conflict' });
-    expect(result.assistant_message).toContain('already in the order');
+    expect(result.pending_clarifications ?? []).toHaveLength(0);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: 'salmon-id',
+      quantity: 2,
+      unit: 'lb',
+      merge_behavior: 'replace_existing',
+    });
+    expect(result.assistant_message).toBe('Updated Salmon to 2 pounds.');
   });
 
-  test('unsupported duplicate unit returns a specific invalid-unit review instead of a generic parser error', async () => {
+  test('unsupported duplicate unit returns a specific invalid-unit clarification instead of a cart row', async () => {
     const result = await parseQuickOrder({
       rawText: 'Salmon 2cs',
       catalog: strictSalmonCatalog,
@@ -2161,16 +2295,12 @@ Tuna loin 1 cs`;
       })],
     });
 
-    expect(result.pending_clarifications ?? []).toHaveLength(0);
-    expect(result.parsed_items).toHaveLength(1);
-    expect(result.parsed_items[0]).toMatchObject({
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.pending_clarifications?.[0]).toMatchObject({
+      type: 'invalid_unit',
       item_id: 'salmon-id',
-      item_name: 'Salmon',
-      quantity: 2,
-      unit: 'cs',
-      status: 'invalid_unit',
     });
-    expect(result.assistant_message).toContain('Salmon cannot be ordered in cs');
+    expect(result.assistant_message).toContain('Salmon cannot be ordered as case');
     expect(result.assistant_message).not.toContain('trouble');
   });
 
@@ -2185,7 +2315,7 @@ Tuna loin 1 cs`;
     });
 
     expect(result.parsed_items).toHaveLength(0);
-    expect(result.reply_text).toBe('I couldn’t find Unicorn in this location’s inventory.');
+    expect(result.reply_text).toBe('I couldn\'t recognize "Unicorn". Try the item name again.');
   });
 
   test.each([
@@ -2338,7 +2468,7 @@ describe('edge case parsing', () => {
     expect(result.status).not.toBe('error');
   });
 
-  test('unknown item with quantity is returned as no_match review row', async () => {
+  test('unknown item with quantity is returned as chat clarification only', async () => {
     const result = await parseQuickOrder({
       rawText: 'asdfasdf 2cs',
       catalog: extendedCatalog,
@@ -2347,15 +2477,12 @@ describe('edge case parsing', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(result.parsed_items.length).toBe(1);
+    expect(result.parsed_items.length).toBe(0);
     expect(result.status).not.toBe('error');
-    expect(result.parsed_items[0]).toMatchObject({
-      item_id: null,
-      status: 'no_match',
-    });
+    expect(result.pending_clarifications?.[0]?.message).toContain('asdfasdf');
   });
 
-  test('mixed valid and unknown items: valid items are not lost and unknown asks review', async () => {
+  test('mixed valid and unknown items: valid items are not lost and unknown stays out of cart', async () => {
     const result = await parseQuickOrder({
       rawText: 'Salmon 2cs\nasdfasdf 1pk\nEdamame 1cs',
       catalog: extendedCatalog,
@@ -2364,7 +2491,7 @@ describe('edge case parsing', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(result.parsed_items.length).toBe(3);
+    expect(result.parsed_items.length).toBe(2);
     expect(result.status).not.toBe('error');
     const salmon = result.parsed_items.find((item) => item.item_id === 'salmon-id');
     expect(salmon).toBeDefined();
@@ -2539,19 +2666,15 @@ describe('Quick Order end-to-end acceptance cases', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(invalidUnit.parsed_items[0]).toMatchObject({
+    expect(invalidUnit.parsed_items).toHaveLength(0);
+    expect(invalidUnit.pending_clarifications?.[0]).toMatchObject({
+      type: 'invalid_unit',
       item_id: 'salmon-id',
-      quantity: 5,
-      unit: 'bottle',
-      status: 'invalid_unit',
-      action: 'Fix unit',
-      unresolved: false,
     });
-    expect(invalidUnit.assistant_message).toContain('Salmon cannot be ordered in bottle');
-    expect(invalidUnit.parsed_items[0].issue).toContain('Choose:');
+    expect(invalidUnit.assistant_message).toContain('Salmon cannot be ordered as bottle');
   });
 
-  test('bare tuna is ambiguous when multiple tuna catalog items exist', async () => {
+  test('bare tuna prefers the exact one-word item when multiple tuna catalog items exist', async () => {
     const result = await parseQuickOrder({
       rawText: 'tuna',
       catalog: extendedCatalog,
@@ -2562,16 +2685,13 @@ describe('Quick Order end-to-end acceptance cases', () => {
     });
     expect(result.parsed_items).toHaveLength(1);
     expect(result.parsed_items[0]).toMatchObject({
-      item_id: null,
-      status: 'ambiguous',
-      action: 'Choose item',
+      item_id: 'tuna-id',
+      item_name: 'Tuna',
+      status: 'missing_quantity',
     });
-    expect(result.parsed_items[0].alternatives?.map((item) => item.item_id)).toEqual(
-      expect.arrayContaining(['tuna-id', 'tuna-loin-id']),
-    );
   });
 
-  test('absent crab mix and ground tuna return no_match rows when absent from catalog', async () => {
+  test('absent crab mix and ground tuna return no cart rows when absent from catalog', async () => {
     const catalogWithoutItems = extendedCatalog.filter((item) => item.id !== 'crab-mix-id' && item.id !== 'ground-tuna-id');
     const result = await parseQuickOrder({
       rawText: '1 box of crab mix, half box of ground tuna',
@@ -2581,9 +2701,8 @@ describe('Quick Order end-to-end acceptance cases', () => {
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(result.parsed_items).toHaveLength(2);
-    expect(result.parsed_items.map((item) => item.status)).toEqual(['no_match', 'no_match']);
-    expect(result.parsed_items.every((item) => item.item_id === null && item.action === 'Choose item')).toBe(true);
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.pending_clarifications).toHaveLength(2);
   });
 
   test.each([
@@ -2670,6 +2789,8 @@ describe('shared processQuickOrderMessage brain', () => {
     { id: 'salmon-id', name: 'Salmon', aliases: ['sake'], default_unit: 'cs', base_unit: 'lb', pack_unit: 'cs', allowed_units: ['lb', 'cs'] },
     { id: 'masago-id', name: 'Masago', aliases: [], default_unit: 'cs', base_unit: 'pack', pack_unit: 'cs', allowed_units: ['pack', 'cs'] },
     { id: 'tuna-id', name: 'Tuna', aliases: ['maguro'], default_unit: 'lb', base_unit: 'lb', pack_unit: null, allowed_units: ['lb'] },
+    { id: 'tuna-loin-id', name: 'Tuna Loin', aliases: ['tuna loin'], default_unit: 'lb', base_unit: 'lb', pack_unit: 'cs', allowed_units: ['lb', 'cs'] },
+    { id: 'shrimp-id', name: 'Shrimp (Frozen)', aliases: ['shrimp'], default_unit: 'case', base_unit: 'lb', pack_unit: 'pack', allowed_units: ['case', 'pack', 'lb'] },
   ];
 
   async function processBrain(message: string, overrides: Partial<Parameters<typeof processQuickOrderMessage>[0]> = {}) {
@@ -2803,6 +2924,644 @@ describe('shared processQuickOrderMessage brain', () => {
       suggested_quantity: 3,
       unit: 'cs',
     });
+  });
+
+  test('typed MVP simple order adds to cart-ready parsed items', async () => {
+    const result = await processBrain('salmon 2cs');
+    expect(result.status).toBe('success');
+    expect(result.parsed_items).toMatchObject([
+      { item_id: 'salmon-id', quantity: 2, unit: 'cs', status: 'valid' },
+    ]);
+  });
+
+  test('explicit add with item name adds to an existing same-unit item', async () => {
+    const existingSalmon = parsed({
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+      display_name: 'Salmon',
+      quantity: 2,
+      unit: 'cs',
+      status: 'valid',
+      needs_clarification: false,
+      unresolved: false,
+    });
+    const result = await processBrain('add 2 cs salmon', {
+      request: {
+        source: 'typed',
+        message: 'add 2 cs salmon',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [existingSalmon],
+      },
+    });
+
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: 'salmon-id',
+      quantity: 4,
+      unit: 'cs',
+      merge_behavior: 'add_to_existing',
+    });
+    expect(result.assistant_message).toBe('Added 2 cases to Salmon. New total: 4 cases.');
+  });
+
+  test('remove with omitted item uses the only current cart item as context', async () => {
+    const existingSalmon = parsed({
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+      display_name: 'Salmon',
+      quantity: 6,
+      unit: 'cs',
+      status: 'valid',
+      needs_clarification: false,
+      unresolved: false,
+    });
+    const result = await processBrain('remove 4 cases', {
+      request: {
+        source: 'typed',
+        message: 'remove 4 cases',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [existingSalmon],
+      },
+    });
+
+    expect(result.operations?.[0]).toMatchObject({
+      type: 'update_quantity',
+      target_item_id: 'salmon-id',
+      quantity: 2,
+      unit: 'cs',
+      status: 'applied',
+    });
+    expect(result.assistant_message).toBe('Removed 4 cases from Salmon. New total: 2 cases.');
+  });
+
+  test('remove with omitted item asks when the current cart target is ambiguous', async () => {
+    const result = await processBrain('remove 1 case', {
+      request: {
+        source: 'typed',
+        message: 'remove 1 case',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [
+          parsed({ item_id: 'salmon-id', item_name: 'Salmon', display_name: 'Salmon', quantity: 6, unit: 'cs', status: 'valid' }),
+          parsed({ item_id: 'masago-id', item_name: 'Masago', display_name: 'Masago', quantity: 2, unit: 'cs', status: 'valid' }),
+        ],
+      },
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.pending_clarifications?.[0]).toMatchObject({
+      type: 'remove_ambiguous',
+      message: 'Which item should I remove 1 case from?',
+    });
+  });
+
+  test('quantity-only follow-up applies to the item awaiting quantity', async () => {
+    const first = await processBrain('Shrimp');
+    expect(first.parsed_items[0]).toMatchObject({
+      item_id: 'shrimp-id',
+      status: 'missing_quantity',
+    });
+
+    const second = await processBrain('4cs', {
+      request: {
+        source: 'typed',
+        message: '4cs',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: first.parsed_items,
+        recent_messages: [{
+          role: 'assistant',
+          text: first.assistant_message,
+          parsed_items: first.parsed_items,
+          pending_clarifications: first.pending_clarifications,
+        }],
+      },
+    });
+
+    expect(second.parsed_items[0]).toMatchObject({
+      item_id: 'shrimp-id',
+      quantity: 4,
+      unit: 'cs',
+      status: 'valid',
+      merge_behavior: 'replace_existing',
+    });
+  });
+
+  test('process message auto-accepts bare Shrimp suggestion as missing quantity', async () => {
+    const result = await processBrain('salmon 2cs\nShrimp');
+    expect(result.parsed_items.find((item) => item.item_id === 'shrimp-id')).toMatchObject({
+      item_name: 'Shrimp (Frozen)',
+      status: 'missing_quantity',
+      unresolved: false,
+    });
+    expect(result.pending_clarifications?.some((entry) => entry.type === 'ambiguous_item')).toBe(false);
+  });
+
+  test('identity question says Tuna Intelligence helps create orders', async () => {
+    const result = await processBrain('who are you?');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.assistant_message).toBe('I’m Tuna Intelligence. I help create Quick Order drafts from typed orders.');
+  });
+
+  test('unit-only follow-up applies to the item awaiting unit', async () => {
+    const first = await processBrain('Shrimp 4');
+    expect(first.parsed_items[0]).toMatchObject({
+      item_id: 'shrimp-id',
+      quantity: 4,
+      status: 'missing_unit',
+    });
+
+    const second = await processBrain('pack', {
+      request: {
+        source: 'typed',
+        message: 'pack',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: first.parsed_items,
+        recent_messages: [{
+          role: 'assistant',
+          text: first.assistant_message,
+          parsed_items: first.parsed_items,
+          pending_clarifications: first.pending_clarifications,
+        }],
+      },
+    });
+
+    expect(second.parsed_items[0]).toMatchObject({
+      item_id: 'shrimp-id',
+      quantity: 4,
+      unit: 'pack',
+      status: 'valid',
+      merge_behavior: 'replace_existing',
+    });
+  });
+
+  test('quantity-and-unit follow-up applies to the item awaiting quantity and unit', async () => {
+    const first = await processBrain('Tuna Loin');
+    expect(first.parsed_items[0]).toMatchObject({
+      item_id: 'tuna-loin-id',
+      status: 'missing_quantity',
+    });
+
+    const second = await processBrain('four cases', {
+      request: {
+        source: 'typed',
+        message: 'four cases',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: first.parsed_items,
+        recent_messages: [{
+          role: 'assistant',
+          text: first.assistant_message,
+          parsed_items: first.parsed_items,
+          pending_clarifications: first.pending_clarifications,
+        }],
+      },
+    });
+
+    expect(second.parsed_items[0]).toMatchObject({
+      item_id: 'tuna-loin-id',
+      quantity: 4,
+      unit: 'cs',
+      status: 'valid',
+      merge_behavior: 'replace_existing',
+    });
+  });
+
+  test('quantity-only follow-up without context asks for the item name', async () => {
+    const result = await processBrain('4cs');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.assistant_message).toBe('I need the item name for 4 cases.');
+    expect(result.pending_clarifications?.[0]).toMatchObject({ type: 'item_not_found' });
+    expect(result.pending_clarifications?.[0]?.actions).toEqual([]);
+  });
+
+  test('quantity-only follow-up expires after an unrelated user message', async () => {
+    const pendingShrimp = parsed({
+      item_id: 'shrimp-id',
+      item_name: 'Shrimp (Frozen)',
+      display_name: 'Shrimp (Frozen)',
+      raw_token: 'Shrimp',
+      quantity: null,
+      unit: null,
+      status: 'missing_quantity',
+      needs_clarification: true,
+      unresolved: false,
+    });
+    const result = await processBrain('4cs', {
+      request: {
+        source: 'typed',
+        message: '4cs',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [pendingShrimp],
+        recent_messages: [
+          { role: 'assistant', text: 'How much Shrimp (Frozen)?', parsed_items: [pendingShrimp] },
+          { role: 'user', text: 'thanks' },
+        ],
+      },
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.assistant_message).toBe('I need the item name for 4 cases.');
+  });
+
+  test('same item same unit combines, while different units stay as separate valid lines for grouping', async () => {
+    const takoCatalog: CatalogItem[] = [{
+      id: 'tako-id',
+      name: 'Tako (Octopus)',
+      aliases: ['tako', 'octopus'],
+      default_unit: 'pc',
+      base_unit: 'pc',
+      pack_unit: 'pack',
+      allowed_units: ['pc', 'pack'],
+    }];
+    const existingTako = parsed({
+      item_id: 'tako-id',
+      item_name: 'Tako (Octopus)',
+      display_name: 'Tako (Octopus)',
+      quantity: 2,
+      unit: 'pc',
+      status: 'valid',
+      needs_clarification: false,
+      unresolved: false,
+    });
+
+    const sameUnit = await processBrain('add 1 pc octopus', {
+      catalog: takoCatalog,
+      globalCatalog: takoCatalog,
+      request: {
+        source: 'typed',
+        message: 'add 1 pc octopus',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [existingTako],
+      },
+    });
+    expect(sameUnit.parsed_items[0]).toMatchObject({
+      item_id: 'tako-id',
+      quantity: 3,
+      unit: 'pc',
+      merge_behavior: 'add_to_existing',
+    });
+
+    const differentUnit = await processBrain('add 1 pack octopus', {
+      catalog: takoCatalog,
+      globalCatalog: takoCatalog,
+      request: {
+        source: 'typed',
+        message: 'add 1 pack octopus',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [existingTako],
+      },
+    });
+    expect(differentUnit.parsed_items[0]).toMatchObject({
+      item_id: 'tako-id',
+      quantity: 1,
+      unit: 'pack',
+      merge_behavior: 'keep_separate',
+    });
+  });
+
+  test('invalid unit clarification does not add a cart row before the user chooses a valid unit', async () => {
+    const takoCatalog: CatalogItem[] = [{
+      id: 'tako-id',
+      name: 'Tako (Octopus)',
+      aliases: ['tako', 'octopus'],
+      default_unit: 'pc',
+      base_unit: 'pc',
+      pack_unit: 'pack',
+      allowed_units: ['pc', 'pack'],
+    }];
+    const result = await processBrain('Tako 1 cs', {
+      catalog: takoCatalog,
+      globalCatalog: takoCatalog,
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.pending_clarifications?.[0]).toMatchObject({
+      type: 'invalid_unit',
+      item_id: 'tako-id',
+      message: 'Tako (Octopus) cannot be ordered as case. Use piece or pack.',
+    });
+    expect(result.pending_clarifications?.[0].actions.map((action) => action.label)).toEqual([
+      'Use piece',
+      'Use pack',
+      'Cancel',
+    ]);
+  });
+
+  describe('typed MVP fuzzy, replacement, unit, and safety acceptance', () => {
+    const existingSalmon = parsed({
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+      display_name: 'Salmon',
+      quantity: 4,
+      unit: 'cs',
+      status: 'valid',
+      needs_clarification: false,
+      unresolved: false,
+    });
+
+    test('A. typo auto-match adds the official item', async () => {
+      const result = await processBrain('Salmo 5 cs');
+      expect(result.parsed_items).toHaveLength(1);
+      expect(result.parsed_items[0]).toMatchObject({
+        item_id: 'salmon-id',
+        item_name: 'Salmon',
+        quantity: 5,
+        unit: 'cs',
+        status: 'valid',
+      });
+      expect(result.parsed_items[0].action).not.toBe('Choose item');
+    });
+
+    test('B/F. re-entering existing item with typo or exact name replaces by default', async () => {
+      const typo = await processBrain('Salmo 5 cs', {
+        request: {
+          source: 'typed',
+          message: 'Salmo 5 cs',
+          session_id: 'session-id',
+          location_id: 'location-id',
+          user_id: 'user-id',
+          existing_items: [existingSalmon],
+        },
+      });
+      expect(typo.parsed_items).toHaveLength(1);
+      expect(typo.parsed_items[0]).toMatchObject({
+        item_id: 'salmon-id',
+        quantity: 5,
+        unit: 'cs',
+        merge_behavior: 'replace_existing',
+      });
+      expect(typo.assistant_message).toBe('Updated Salmon to 5 cases.');
+
+      const exact = await processBrain('Salmon 5 cs', {
+        request: {
+          source: 'typed',
+          message: 'Salmon 5 cs',
+          session_id: 'session-id',
+          location_id: 'location-id',
+          user_id: 'user-id',
+          existing_items: [existingSalmon],
+        },
+      });
+      expect(exact.parsed_items[0]).toMatchObject({
+        item_id: 'salmon-id',
+        quantity: 5,
+        merge_behavior: 'replace_existing',
+      });
+    });
+
+    test('C. low-confidence typo stays out of the cart', async () => {
+      const result = await processBrain('Salmxyz 5 cs');
+      expect(result.parsed_items).toHaveLength(0);
+      expect(result.assistant_message).toContain('Salmxyz');
+      expect(result.pending_clarifications?.[0]?.type).toBe('item_not_found');
+    });
+
+    test('D. invalid Salmon unit stays out of the cart and lists allowed units', async () => {
+      const salmonPieceCatalog: CatalogItem[] = [{
+        id: 'salmon-id',
+        name: 'Salmon',
+        aliases: ['sake'],
+        default_unit: 'cs',
+        base_unit: null,
+        pack_unit: null,
+        allowed_units: ['cs', 'piece'],
+      }];
+      const result = await processBrain('Salmon 2 pack', {
+        catalog: salmonPieceCatalog,
+        globalCatalog: salmonPieceCatalog,
+      });
+      expect(result.parsed_items).toHaveLength(0);
+      expect(result.pending_clarifications?.[0]).toMatchObject({
+        type: 'invalid_unit',
+        item_id: 'salmon-id',
+      });
+      expect(result.assistant_message).toBe('Salmon cannot be ordered as pack. Use case or piece.');
+    });
+
+    test('E. invalid unit for recognized Shrimp stays out of the cart', async () => {
+      const result = await processBrain('Shrimp 3 oz');
+      expect(result.parsed_items).toHaveLength(0);
+      expect(result.pending_clarifications?.[0]).toMatchObject({
+        type: 'invalid_unit',
+        item_id: 'shrimp-id',
+      });
+      expect(result.assistant_message).toBe('Shrimp (Frozen) cannot be ordered as ounce. Use case, pack, or pound.');
+    });
+
+    test('G/H. explicit additive language adds to existing quantity', async () => {
+      const more = await processBrain('add 5 more cs salmon', {
+        request: {
+          source: 'typed',
+          message: 'add 5 more cs salmon',
+          session_id: 'session-id',
+          location_id: 'location-id',
+          user_id: 'user-id',
+          existing_items: [existingSalmon],
+        },
+      });
+      expect(more.parsed_items[0]).toMatchObject({
+        item_id: 'salmon-id',
+        quantity: 9,
+        unit: 'cs',
+        merge_behavior: 'add_to_existing',
+      });
+      expect(more.assistant_message).toBe('Added 5 cases to Salmon. New total: 9 cases.');
+
+      const explicitAdd = await processBrain('add salmon 5 cs', {
+        request: {
+          source: 'typed',
+          message: 'add salmon 5 cs',
+          session_id: 'session-id',
+          location_id: 'location-id',
+          user_id: 'user-id',
+          existing_items: [existingSalmon],
+        },
+      });
+      expect(explicitAdd.parsed_items[0]).toMatchObject({
+        item_id: 'salmon-id',
+        quantity: 9,
+        merge_behavior: 'add_to_existing',
+      });
+    });
+
+    test('I. unsafe quantity is blocked and not returned as a cart item', async () => {
+      const result = await processBrain('Salmon 17 cs', {
+        limits: [{ item_id: 'salmon-id', location_id: 'location-id', hard_max_quantity: 5 }],
+      });
+      expect(result.parsed_items).toHaveLength(0);
+      expect(result.blocked_operations[0]).toMatchObject({
+        item_id: 'salmon-id',
+        attempted_quantity: 17,
+        reason: 'above_hard_max',
+      });
+    });
+
+    test('J/K. missing optional unit rules and limits fall back without crashing', async () => {
+      const fallbackCatalog: CatalogItem[] = [{
+        id: 'salmon-id',
+        name: 'Salmon',
+        aliases: ['sake'],
+        default_unit: null,
+        base_unit: 'lb',
+        pack_unit: 'cs',
+        allowed_units: null,
+      }];
+      const result = await processBrain('Salmon 2 cs', {
+        catalog: fallbackCatalog,
+        globalCatalog: fallbackCatalog,
+        allowedUnitRules: [],
+        limits: [],
+      });
+      expect(result.status).toBe('success');
+      expect(result.parsed_items).toMatchObject([{ item_id: 'salmon-id', quantity: 2, unit: 'cs' }]);
+      expect(result.safety_warnings).toHaveLength(0);
+    });
+  });
+
+  test('typed MVP multi-line order adds all valid items', async () => {
+    const result = await processBrain('salmon 2cs\nmasago 1cs');
+    expect(result.parsed_items.map((item) => [item.item_id, item.quantity, item.unit])).toEqual([
+      ['salmon-id', 2, 'cs'],
+      ['masago-id', 1, 'cs'],
+    ]);
+    expect(result.stock_updates).toHaveLength(0);
+  });
+
+  test('typed MVP mixed message returns partial success without losing valid order lines', async () => {
+    const result = await processBrain(
+      [
+        'salmon 2cs',
+        'masago 1cs',
+        'we have one case salmon left',
+        'out of masago',
+        'what should we order?',
+        'salmon 17 cases',
+        'tuna 5 cases',
+      ].join('\n'),
+      {
+        limits: [{
+          item_id: 'salmon-id',
+          location_id: 'location-id',
+          hard_max_quantity: 6,
+        }],
+        recentOrders: [{
+          created_at: new Date().toISOString(),
+          items: [
+            { item_id: 'salmon-id', item_name: 'Salmon', quantity: 3, unit: 'cs' },
+            { item_id: 'masago-id', item_name: 'Masago', quantity: 1, unit: 'cs' },
+          ],
+        }],
+      },
+    );
+
+    expect(result.status).toBe('partial_success');
+    expect(result.parsed_items.map((item) => [item.item_id, item.quantity, item.unit, item.status])).toEqual([
+      ['salmon-id', 2, 'cs', 'valid'],
+      ['masago-id', 1, 'cs', 'valid'],
+    ]);
+    expect(result.pending_clarifications?.some((entry) => entry.type === 'invalid_unit' && entry.item_id === 'tuna-id')).toBe(true);
+    expect(result.stock_updates.map((update) => [update.item_id, update.quantity, update.unit])).toEqual([
+      ['salmon-id', 1, 'cs'],
+      ['masago-id', 0, 'cs'],
+    ]);
+    expect(result.blocked_operations).toMatchObject([
+      { item_id: 'salmon-id', attempted_quantity: 17, reason: 'above_hard_max' },
+    ]);
+    expect(result.recommendations.map((recommendation) => recommendation.unit)).toEqual(
+      expect.arrayContaining(['cs']),
+    );
+    expect(result.diagnostics?.order_segment_count).toBe(4);
+    expect(result.diagnostics?.stock_segment_count).toBe(2);
+    expect(result.diagnostics?.recommendation_segment_count).toBe(1);
+  });
+
+  test('unsafe quantity blocks but does not block safe items', async () => {
+    const result = await processBrain('salmon 2cs\nsalmon 17 cases\nmasago 1cs', {
+      limits: [{
+        item_id: 'salmon-id',
+        location_id: 'location-id',
+        hard_max_quantity: 6,
+      }],
+    });
+
+    expect(result.status).toBe('partial_success');
+    expect(result.parsed_items.map((item) => [item.item_id, item.quantity])).toEqual([
+      ['salmon-id', 2],
+      ['masago-id', 1],
+    ]);
+    expect(result.blocked_operations).toHaveLength(1);
+  });
+
+  test('unusual unit asks clarification without blocking safe items', async () => {
+    const result = await processBrain('salmon 2cs\ntuna 5 cases');
+    expect(result.status).toBe('partial_success');
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items.find((item) => item.item_id === 'salmon-id')).toMatchObject({
+      quantity: 2,
+      unit: 'cs',
+      status: 'valid',
+    });
+    expect(result.pending_clarifications?.[0]).toMatchObject({ type: 'invalid_unit', item_id: 'tuna-id' });
+  });
+
+  test('recommendation uses configured order units instead of stock usage units', async () => {
+    const result = await processBrain('we have 2 oz masago left, what should we order?', {
+      catalog: [{
+        id: 'masago-id',
+        name: 'Masago',
+        aliases: ['masago'],
+        default_unit: 'oz',
+        base_unit: 'oz',
+        pack_unit: 'cs',
+        allowed_units: ['oz', 'cs'],
+      }],
+      globalCatalog: [{
+        id: 'masago-id',
+        name: 'Masago',
+        aliases: ['masago'],
+        default_unit: 'oz',
+        base_unit: 'oz',
+        pack_unit: 'cs',
+        allowed_units: ['oz', 'cs'],
+      }],
+      allowedUnitRules: [{ item_id: 'masago-id', unit: 'cs', is_default: true }],
+      recentOrders: [{
+        created_at: new Date().toISOString(),
+        items: [{ item_id: 'masago-id', item_name: 'Masago', quantity: 2, unit: 'cs' }],
+      }],
+    });
+
+    expect(result.stock_updates).toMatchObject([{ item_id: 'masago-id', quantity: 2, unit: 'oz' }]);
+    expect(result.recommendations[0]).toMatchObject({
+      item_id: 'masago-id',
+      unit: 'cs',
+    });
+  });
+
+  test('parser works when optional limits and allowed-unit rules are missing', async () => {
+    const result = await processBrain('salmon 2cs', {
+      limits: [],
+      allowedUnitRules: [],
+    });
+
+    expect(result.status).toBe('success');
+    expect(result.parsed_items).toMatchObject([{ item_id: 'salmon-id', quantity: 2, unit: 'cs' }]);
+    expect(result.safety_warnings).toHaveLength(0);
   });
 
   test('model router reserves advanced model for complex planning only', () => {

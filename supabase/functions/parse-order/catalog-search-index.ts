@@ -170,6 +170,30 @@ export function getCatalogSearchTerms(itemName: string, aliases: string[] = []):
   return terms;
 }
 
+export function catalogNameStructuralSegmentMatches(itemName: string, inputText: string): boolean {
+  const normalizedInput = normalizeCatalogText(inputText);
+  if (!normalizedInput) return false;
+  return getCatalogNameStructuralSegments(itemName).some((segment) => segment === normalizedInput);
+}
+
+function getCatalogNameStructuralSegments(itemName: string): string[] {
+  const segments = new Set<string>();
+  const bracketed = itemName.match(/\(([^)]*)\)|\[([^\]]*)\]|\{([^}]*)\}/g) ?? [];
+
+  for (const segment of bracketed) {
+    addStructuralSegment(segment.replace(/^[([{]\s*|\s*[\])}]$/g, ''), segments);
+  }
+
+  addStructuralSegment(itemName.replace(/\([^)]*\)|\[[^\]]*\]|\{[^}]*\}/g, ' '), segments);
+  return [...segments];
+}
+
+function addStructuralSegment(raw: string, segments: Set<string>): void {
+  const normalized = normalizeCatalogText(raw);
+  if (!normalized) return;
+  segments.add(normalized);
+}
+
 export function buildCatalogSearchIndex(
   catalog: CatalogItem[],
   corrections: ParserCorrection[] = [],
@@ -210,8 +234,9 @@ export function buildCatalogSearchIndex(
   for (const entry of draft) {
     if (entry.normalized.split(' ').length === 1 && entry.type !== 'name' && entry.type !== 'alias' && entry.type !== 'correction') {
       const itemIds = byNormalized.get(entry.normalized);
-      if (itemIds && itemIds.size > 1) continue;
-      entry.type = 'short';
+      const isStructuralSegment = catalogNameStructuralSegmentMatches(entry.item.name, entry.normalized);
+      if (itemIds && itemIds.size > 1 && !isStructuralSegment) continue;
+      if (!isStructuralSegment) entry.type = 'short';
     }
     const key = `${entry.item.id}:${entry.type}:${entry.normalized}`;
     if (!deduped.has(key)) deduped.set(key, entry);
@@ -251,7 +276,7 @@ export function matchCatalogIndex(
   index: CatalogSearchIndex,
 ): CatalogMatchResult {
   const normalized = normalizeCatalogText(itemText);
-  if (!normalized) return noMatch(itemText, 'Missing item name.');
+  if (!normalized) return withMatchDebug(itemText, noMatch(itemText, 'Missing item name.', [], 'low', 'empty_item_text'), []);
 
   const compact = normalized.replace(/\s+/g, '');
   const pluralNormalized = pluralNormalizedText(normalized);
@@ -259,11 +284,12 @@ export function matchCatalogIndex(
   const tokenKey = tokenSortKey(normalized);
 
   const stages: { type: MatchType; confidence: number; entries: CatalogSearchEntry[] }[] = [
-    { type: 'exact_name', confidence: 1, entries: index.entries.filter((entry) => entry.type === 'name' && entry.rawTerm.trim() === itemText.trim()) },
-    { type: 'exact_alias', confidence: 0.98, entries: index.entries.filter((entry) => entry.type === 'alias' && entry.normalized === normalized) },
-    { type: 'correction', confidence: 0.97, entries: index.entries.filter((entry) => entry.type === 'correction' && entry.normalized === normalized) },
-    { type: 'parenthetical_or_generated_exact', confidence: 0.97, entries: index.entries.filter((entry) => (entry.type === 'parenthetical' || entry.type === 'generated' || entry.type === 'short') && entry.normalized === normalized && isAllowedGeneratedExact(normalized, entry)) },
-    { type: 'normalized_exact', confidence: 0.95, entries: index.entries.filter((entry) => entry.type === 'name' && entry.normalized === normalized) },
+    { type: 'exact_name', confidence: 1, entries: index.entries.filter((entry) => entry.type === 'name' && entry.normalized === normalized) },
+    { type: 'compact_exact', confidence: 0.99, entries: index.entries.filter((entry) => entry.type === 'name' && entry.compact === compact) },
+    { type: 'exact_alias', confidence: 0.96, entries: index.entries.filter((entry) => entry.type === 'alias' && entry.normalized === normalized) },
+    { type: 'correction', confidence: 0.95, entries: index.entries.filter((entry) => entry.type === 'correction' && entry.normalized === normalized) },
+    { type: 'parenthetical_or_generated_exact', confidence: 0.94, entries: index.entries.filter((entry) => (entry.type === 'parenthetical' || entry.type === 'generated' || entry.type === 'short') && entry.normalized === normalized && isAllowedGeneratedExact(normalized, entry)) },
+    { type: 'normalized_exact', confidence: 0.93, entries: index.entries.filter((entry) => entry.type === 'name' && entry.normalized === normalized) },
     { type: 'compact_exact', confidence: 0.93, entries: index.entries.filter((entry) => entry.compact === compact) },
     { type: 'token_set', confidence: 0.9, entries: index.entries.filter((entry) => entry.tokenKey === tokenKey && tokenKey.includes(' ') && analyzeSemanticTokens(normalized, entry.normalized).passed) },
     { type: 'prefix', confidence: 0.88, entries: index.entries.filter((entry) => isPrefixOrSuffixMatch(normalized, entry.normalized) && analyzeSemanticTokens(normalized, entry.normalized).passed) },
@@ -272,9 +298,37 @@ export function matchCatalogIndex(
 
   for (const stage of stages) {
     const unique = uniqueEntriesByItem(stage.entries);
-    if (unique.length === 1) return matched(unique[0], stage.type, stage.confidence);
+    if (unique.length === 1) {
+      return withMatchDebug(
+        itemText,
+        matched(unique[0], stage.type, stage.confidence, 'high', `unique_${stage.type}`),
+        unique.map((entry) => ({
+          entry,
+          confidence: stage.confidence,
+          match_type: stage.type,
+          semantic: analyzeSemanticTokens(normalized, entry.normalized),
+        })),
+      );
+    }
     if (unique.length > 1) {
-      return ambiguous(
+      if (stage.type === 'parenthetical_or_generated_exact') {
+        const structuralMatches = unique.filter((entry) =>
+          catalogNameStructuralSegmentMatches(entry.item.name, normalized)
+        );
+        if (structuralMatches.length === 1) {
+          return withMatchDebug(
+            itemText,
+            matched(structuralMatches[0], stage.type, stage.confidence, 'high', `structural_segment_${stage.type}`),
+            unique.map((entry) => ({
+              entry,
+              confidence: stage.confidence,
+              match_type: stage.type,
+              semantic: analyzeSemanticTokens(normalized, entry.normalized),
+            })),
+          );
+        }
+      }
+      return withMatchDebug(itemText, ambiguous(
         unique.map((entry) => ({
           entry,
           confidence: stage.confidence,
@@ -282,7 +336,14 @@ export function matchCatalogIndex(
           semantic: analyzeSemanticTokens(normalized, entry.normalized),
         })),
         'Item text matches multiple catalog items.',
-      );
+        'medium',
+        `multiple_${stage.type}`,
+      ), unique.map((entry) => ({
+        entry,
+        confidence: stage.confidence,
+        match_type: stage.type,
+        semantic: analyzeSemanticTokens(normalized, entry.normalized),
+      })));
     }
   }
 
@@ -316,7 +377,11 @@ function isAllowedGeneratedExact(normalized: string, entry: CatalogSearchEntry):
 
 function fuzzyMatch(originalText: string, needle: string, entries: CatalogSearchEntry[]): CatalogMatchResult {
   if (needle.replace(/\s+/g, '').length <= 3) {
-    return noMatch(originalText, 'Item match is too short for fuzzy matching.');
+    return withMatchDebug(
+      originalText,
+      noMatch(originalText, 'Item match is too short for fuzzy matching.', [], 'low', 'too_short_for_fuzzy'),
+      [],
+    );
   }
 
   const scored = entries
@@ -333,22 +398,53 @@ function fuzzyMatch(originalText: string, needle: string, entries: CatalogSearch
     .sort((a, b) => b.confidence - a.confidence || a.entry.term.localeCompare(b.entry.term));
 
   const unique = uniqueScoredByItem(scored).slice(0, 3);
-  if (unique.length === 0) return noMatch(originalText, 'Item could not be matched to the catalog.');
+  if (unique.length === 0) {
+    return withMatchDebug(
+      originalText,
+      noMatch(originalText, 'Item could not be matched to the catalog.', [], 'low', 'no_candidate_above_floor'),
+      [],
+    );
+  }
 
   const [best, second] = unique;
   const isSingleWord = semanticTokens(needle).length === 1;
   const autoThreshold = isSingleWord ? 0.9 : 0.88;
+  const margin = second ? best.confidence - second.confidence : 1;
+  const tinyTypo = isVerySmallTypo(needle, best.entry.normalized);
   if (
     best.semantic.passed &&
-    best.confidence >= autoThreshold &&
-    (!second || best.confidence - second.confidence >= 0.1)
+    (best.confidence >= autoThreshold || (tinyTypo && best.confidence >= 0.86)) &&
+    margin >= 0.08
   ) {
-    return matched(best.entry, 'fuzzy', clampConfidence(best.confidence));
+    return withMatchDebug(
+      originalText,
+      matched(
+        best.entry,
+        'fuzzy',
+        clampConfidence(best.confidence),
+        'high',
+        tinyTypo ? 'unique_tiny_typo' : 'unique_strong_fuzzy',
+      ),
+      unique,
+    );
   }
-  if (best.confidence >= 0.75) {
-    return ambiguous(unique, 'Item match is ambiguous.');
+  if (best.semantic.passed && best.confidence >= 0.75) {
+    return withMatchDebug(
+      originalText,
+      ambiguous(
+        unique,
+        second && margin < 0.08 ? 'Item match has competing candidates.' : 'Item match needs confirmation.',
+        'medium',
+        second && margin < 0.08 ? 'competing_candidate_close' : 'likely_candidate_below_auto_threshold',
+      ),
+      unique,
+    );
   }
-  return noMatch(originalText, 'Item match is too uncertain.', alternativesFromScored(unique));
+  return withMatchDebug(
+    originalText,
+    noMatch(originalText, 'Item match is too uncertain.', alternativesFromScored(unique), 'low', 'below_medium_threshold'),
+    unique,
+  );
 }
 
 export function findCatalogAlternatives(
@@ -368,7 +464,13 @@ export function findCatalogAlternatives(
   );
 }
 
-function matched(entry: CatalogSearchEntry, matchType: MatchType, confidence: number): CatalogMatchResult {
+function matched(
+  entry: CatalogSearchEntry,
+  matchType: MatchType,
+  confidence: number,
+  tier: CatalogMatchResult['confidence_tier'] = 'high',
+  reason: string = matchType,
+): CatalogMatchResult {
   const semantic = analyzeSemanticTokens(entry.term, entry.normalized);
   return {
     item_id: entry.item.id,
@@ -384,6 +486,8 @@ function matched(entry: CatalogSearchEntry, matchType: MatchType, confidence: nu
     specific_token_overlap: semantic.specificTokenOverlap,
     missing_specific_tokens: semantic.missingSpecificTokens,
     semantic_validation_passed: true,
+    confidence_tier: tier,
+    decision_reason: reason,
   };
 }
 
@@ -391,6 +495,8 @@ function noMatch(
   itemText: string,
   issue: string,
   alternatives: CatalogAlternative[] = [],
+  tier: CatalogMatchResult['confidence_tier'] = 'low',
+  reason = issue,
 ): CatalogMatchResult {
   return {
     item_id: null,
@@ -402,10 +508,17 @@ function noMatch(
     issue,
     reason: issue,
     alternatives: alternatives.length > 0 ? alternatives : undefined,
+    confidence_tier: tier,
+    decision_reason: reason,
   };
 }
 
-function ambiguous(scored: ScoredEntry[], issue: string): CatalogMatchResult {
+function ambiguous(
+  scored: ScoredEntry[],
+  issue: string,
+  tier: CatalogMatchResult['confidence_tier'] = 'medium',
+  reason = issue,
+): CatalogMatchResult {
   const alternatives = alternativesFromScored(scored);
   return {
     item_id: null,
@@ -417,6 +530,8 @@ function ambiguous(scored: ScoredEntry[], issue: string): CatalogMatchResult {
     issue,
     reason: issue,
     alternatives,
+    confidence_tier: tier,
+    decision_reason: reason,
   };
 }
 
@@ -462,15 +577,16 @@ function alternativesFromScored(scored: ScoredEntry[]): CatalogAlternative[] {
 
 function alternativeConfidence(normalized: string, entry: CatalogSearchEntry): number {
   if (entry.normalized === normalized) {
-    if (entry.type === 'name') return 0.95;
-    if (entry.type === 'alias') return 0.98;
-    if (entry.type === 'correction') return 0.97;
-    if (entry.type === 'parenthetical' || entry.type === 'generated' || entry.type === 'short') return 0.97;
-    return 0.95;
+    if (entry.type === 'name') return 1;
+    if (entry.type === 'alias') return 0.96;
+    if (entry.type === 'correction') return 0.95;
+    if (entry.type === 'parenthetical' || entry.type === 'generated' || entry.type === 'short') return 0.94;
+    return 0.93;
   }
 
   const compact = normalized.replace(/\s+/g, '');
-  if (entry.compact === compact) return 0.93;
+  if (entry.type === 'name' && entry.compact === compact) return 0.99;
+  if (entry.compact === compact) return 0.92;
 
   const tokenKey = tokenSortKey(normalized);
   const semantic = analyzeSemanticTokens(normalized, entry.normalized);
@@ -487,6 +603,7 @@ function alternativeConfidence(normalized: string, entry: CatalogSearchEntry): n
 
 function alternativeMatchType(normalized: string, entry: CatalogSearchEntry): MatchType {
   if (entry.normalized === normalized) {
+    if (entry.type === 'name') return 'exact_name';
     if (entry.type === 'alias') return 'exact_alias';
     if (entry.type === 'correction') return 'correction';
     if (entry.type === 'parenthetical' || entry.type === 'generated' || entry.type === 'short') return 'parenthetical_or_generated_exact';
@@ -520,7 +637,8 @@ export function similarity(a: string, b: string): number {
   const editScore = editSimilarity(compactA, compactB);
   const tokenScore = tokenDice(normalizedA, normalizedB);
   const jaroScore = jaroWinkler(compactA, compactB);
-  const prefixBoost = compactB.startsWith(compactA) || compactA.startsWith(compactB) ? 0.05 : 0;
+  const lengthRatio = Math.min(compactA.length, compactB.length) / Math.max(compactA.length, compactB.length);
+  const prefixBoost = lengthRatio >= 0.65 && (compactB.startsWith(compactA) || compactA.startsWith(compactB)) ? 0.05 : 0;
   return clampConfidence(Math.max(editScore, tokenScore, jaroScore) + prefixBoost);
 }
 
@@ -582,7 +700,10 @@ function semanticTokens(value: string): string[] {
 function tokenCoveredByCandidate(token: string, candidateTokens: string[], candidateTokenSet: Set<string>): boolean {
   if (candidateTokenSet.has(token)) return true;
   if (GENERIC_TOKENS.has(token)) return false;
-  return candidateTokens.some((candidateToken) => similarity(token, candidateToken) >= 0.88);
+  return candidateTokens.some((candidateToken) => {
+    const lengthRatio = Math.min(token.length, candidateToken.length) / Math.max(token.length, candidateToken.length);
+    return lengthRatio >= 0.65 && similarity(token, candidateToken) >= 0.88;
+  });
 }
 
 function editSimilarity(a: string, b: string): number {
@@ -619,6 +740,59 @@ function levenshtein(a: string, b: string): number {
     for (let j = 0; j <= b.length; j += 1) previous[j] = current[j];
   }
   return previous[b.length];
+}
+
+function isVerySmallTypo(input: string, candidate: string): boolean {
+  const inputCompact = compactCatalogText(input);
+  const candidateCompact = compactCatalogText(candidate);
+  if (!inputCompact || !candidateCompact) return false;
+  const lengthGap = Math.abs(inputCompact.length - candidateCompact.length);
+  if (lengthGap > 2) return false;
+  const longerLength = Math.max(inputCompact.length, candidateCompact.length);
+  if (longerLength < 4) return false;
+  const distance = levenshtein(inputCompact, candidateCompact);
+  return distance <= (longerLength <= 6 ? 1 : 2);
+}
+
+function withMatchDebug(
+  rawItemText: string,
+  result: CatalogMatchResult,
+  candidates: ScoredEntry[],
+): CatalogMatchResult {
+  if (!isCatalogMatchDebugEnabled()) return result;
+  const topCandidates = candidates.slice(0, 3).map((candidate) => ({
+    item_id: candidate.entry.item.id,
+    item_name: candidate.entry.item.name,
+    term: candidate.entry.term,
+    score: Number(clampConfidence(candidate.confidence).toFixed(3)),
+    match_type: candidate.match_type,
+    semantic_passed: candidate.semantic.passed,
+    reason: candidate.semantic.reason,
+  }));
+  console.log('[parse-order] catalog_match_debug', JSON.stringify({
+    raw_item_text: rawItemText,
+    normalized_item_text: normalizeCatalogText(rawItemText),
+    top_candidates: topCandidates,
+    selected_item_id: result.item_id,
+    selected_item_name: result.item_name,
+    confidence_score: Number((result.confidence ?? 0).toFixed(3)),
+    match_tier: result.confidence_tier ?? (result.item_id ? 'high' : 'low'),
+    decision_reason: result.decision_reason ?? result.reason ?? result.issue,
+    match_type: result.match_type,
+  }));
+  return result;
+}
+
+function isCatalogMatchDebugEnabled(): boolean {
+  const runtime = globalThis as {
+    process?: { env?: Record<string, string | undefined> };
+    Deno?: { env?: { get?: (key: string) => string | undefined } };
+  };
+  const nodeEnv = runtime.process?.env;
+  if (nodeEnv?.NODE_ENV === 'test' || nodeEnv?.JEST_WORKER_ID) return false;
+  if (nodeEnv?.QUICK_ORDER_DEBUG_MATCHING === 'true' || nodeEnv?.NODE_ENV === 'development') return true;
+  const denoGet = runtime.Deno?.env?.get;
+  return denoGet?.('QUICK_ORDER_DEBUG_MATCHING') === 'true' || denoGet?.('ENVIRONMENT') === 'development';
 }
 
 function jaroWinkler(a: string, b: string): number {

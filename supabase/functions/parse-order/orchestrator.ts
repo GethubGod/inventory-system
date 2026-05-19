@@ -1,18 +1,25 @@
 import {
   buildCatalogSearchIndex,
   analyzeSemanticTokens,
+  catalogNameStructuralSegmentMatches,
   findCatalogAlternatives,
   isStrongDeterministicMatch,
   matchCatalogIndex,
   normalizeSearchText,
 } from './catalog-matcher.ts';
 import { parseDeterministicOrder } from './deterministic-parser.ts';
-import { detectRepeatedOrderList, getParserItemKey, resolveParsedItemConflicts } from './conflicts.ts';
+import { createClientKey, detectRepeatedOrderList, getParserItemKey, resolveParsedItemConflicts } from './conflicts.ts';
 import { classifyQuickOrderInput } from './input-classifier.ts';
 import type { QuickOrderInputClassificationResult } from './input-classifier.ts';
 import { buildCommandOperations } from './operations.ts';
 import { parseWithLlmFallback } from './llm-fallback.ts';
-import { deriveAllowedUnits } from './units.ts';
+import {
+  deriveAllowedUnitLabels,
+  displayUnitLabel,
+  formatAllowedUnitList,
+  formatQuantityWithUnit,
+  normalizeUnitForComparison,
+} from './units.ts';
 import type {
   CatalogAlternative,
   CatalogItem,
@@ -84,14 +91,25 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   // 3. Parse the (stripped) text into candidate items.
   // ----------------------------------------------------------------
   const candidates = parseDeterministicOrder(textToParse);
+  const omittedTargetResolution = resolveOmittedTargetCandidates({
+    input,
+    candidates,
+    intent: intentResult.intent,
+  });
+  if (omittedTargetResolution.response) return omittedTargetResolution.response;
+  const candidatesToMatch = omittedTargetResolution.candidates;
   const parsedItems: ParsedItem[] = [];
   const flags: ParseFlag[] = [];
   const catalogIndex = buildCatalogSearchIndex(input.catalog, input.corrections);
   const catalogDebug = buildCatalogDebug(input, catalogIndex);
 
-  for (const candidate of candidates) {
+  for (const candidate of candidatesToMatch) {
     const baseMatch = matchCatalogIndex(candidate.item_text, catalogIndex);
-    const match = maybeAmbiguousBareCatalogToken(candidate, baseMatch, catalogIndex);
+    const match = maybePromoteBareCatalogToken(
+      candidate,
+      maybeAmbiguousBareCatalogToken(candidate, baseMatch, catalogIndex),
+      catalogIndex,
+    );
     const validated = validateParsedLine({ candidate, match, catalog: input.catalog });
     parsedItems.push(validated.item);
     flags.push(...validated.flags);
@@ -140,7 +158,7 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
         parser_version: PARSER_VERSION,
         parse_mode: 'deterministic_only',
         catalog_count: input.catalog.length,
-        candidate_count: candidates.length,
+        candidate_count: candidatesToMatch.length,
         items_received: parsedItems.length,
         items_accepted: 0,
         items_rejected: 0,
@@ -157,15 +175,17 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   //    For 'add' intent with explicit keyword, we also treat as additive.
   // ----------------------------------------------------------------
 
-  const orderGate = gateParsedItemsForOrder(parsedItems, catalogIndex);
+  const orderGate = gateParsedItemsForOrder(parsedItems, catalogIndex, input.catalog);
   parsedItems.length = 0;
   parsedItems.push(...orderGate.items);
-  if (candidates.length > 0 && parsedItems.length === 0 && orderGate.noOpDiagnostics.length > 0) {
+  if (candidatesToMatch.length > 0 && parsedItems.length === 0 && orderGate.noOpDiagnostics.length > 0) {
     return buildNoOpResponse({
       input,
-      candidatesCount: candidates.length,
+      candidatesCount: candidatesToMatch.length,
       catalogDebug,
       noOpDiagnostics: orderGate.noOpDiagnostics,
+      pendingClarifications: orderGate.pendingClarifications,
+      flags,
     });
   }
 
@@ -244,10 +264,10 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   flags.push(...conflictResult.flags);
 
   let invariantErrorCode: string | undefined;
-  if (finalItems.length > candidates.length) {
+  if (finalItems.length > candidatesToMatch.length) {
     invariantErrorCode = 'parsed_items_exceed_candidates';
     console.error('[parse-order] INVARIANT VIOLATION: parsed_items exceeds candidates', {
-      candidate_count: candidates.length,
+      candidate_count: candidatesToMatch.length,
       parsed_items_count: finalItems.length,
       error_code: invariantErrorCode,
       line_ids: finalItems.map((item) => item.line_id ?? null),
@@ -260,9 +280,13 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   );
   if (!invariantErrorCode && rejectedHighConfidence) invariantErrorCode = 'high_confidence_candidate_rejected';
 
-  const pendingClarifications = conflictResult.pendingClarifications;
+  const pendingClarifications = [
+    ...orderGate.pendingClarifications,
+    ...conflictResult.pendingClarifications,
+  ];
   const unresolvedCount = finalItems.filter((item) => item.needs_clarification || item.unresolved).length;
   const readyToSubmit = finalItems.length > 0 && unresolvedCount === 0 && pendingClarifications.length === 0;
+  const unchangedCountForReply = conflictResult.updatedItems.length > 0 ? 0 : repeatedList.unchangedCount;
   const status = readyToSubmit
     ? 'ok'
     : pendingClarifications.length > 0
@@ -275,8 +299,8 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
 
   const llmUsed = Boolean(input.callLlm && needsLlm);
   const metrics: ParserMetrics = {
-    parse_mode_used: llmUsed ? 'deterministic_plus_llm' : candidates.length === 0 ? 'llm_only_fallback' : 'deterministic_only',
-    lines_parsed: candidates.length,
+    parse_mode_used: llmUsed ? 'deterministic_plus_llm' : candidatesToMatch.length === 0 ? 'llm_only_fallback' : 'deterministic_only',
+    lines_parsed: candidatesToMatch.length,
     high_confidence_matches: finalItems.filter((item) => (item.confidence ?? 0) >= 0.9).length,
     fuzzy_matches: finalItems.filter((item) => item.match_type === 'fuzzy').length,
     unresolved_items: unresolvedCount,
@@ -288,15 +312,15 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   const assistantMessage = buildReplyText(
     finalItems,
     pendingClarifications.map((clarification) => clarification.message),
-    repeatedList.unchangedCount,
+    unchangedCountForReply,
     input.catalog,
   );
   const diagnostics: ParseDiagnostics = {
     parser_version: PARSER_VERSION,
     parse_mode: metrics.parse_mode_used,
     catalog_count: input.catalog.length,
-    candidate_count: candidates.length,
-    items_before_validation: candidates.length,
+    candidate_count: candidatesToMatch.length,
+    items_before_validation: candidatesToMatch.length,
     items_after_validation: finalItems.length,
     valid_count: finalItems.filter((item) => !item.needs_clarification && !item.unresolved).length,
     review_count: unresolvedCount,
@@ -305,9 +329,9 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
     replaced_review_count: reconciliationDiagnostics.replaced_review_count,
     duplicate_line_count: reconciliationDiagnostics.duplicate_line_count,
     ignored_llm_extra_count: reconciliationDiagnostics.ignored_llm_extra_count,
-    items_received: candidates.length,
+    items_received: candidatesToMatch.length,
     items_accepted: finalItems.length,
-    items_rejected: Math.max(0, candidates.length - finalItems.length - repeatedList.unchangedCount),
+    items_rejected: Math.max(0, candidatesToMatch.length - finalItems.length - repeatedList.unchangedCount),
     rejected_reasons: flags.map((flag) => flag.reason ?? flag.type),
     pending_action_count: pendingClarifications.length,
     unchanged_count: repeatedList.unchangedCount,
@@ -315,7 +339,7 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
     item_diagnostics: buildItemDiagnostics(finalItems, catalogIndex, input.globalCatalog ? buildCatalogSearchIndex(input.globalCatalog, input.corrections) : undefined),
     catalog_debug: catalogDebug,
     raw_input_length: input.rawText.length,
-    candidate_lines: candidates.length,
+    candidate_lines: candidatesToMatch.length,
     error_code: invariantErrorCode,
     input_classification: classification.classification,
     input_classification_reason: classification.reason,
@@ -387,6 +411,339 @@ function resolveExistingReviewRows(
   return { resolvedItems, remainingItems };
 }
 
+type DeterministicCandidate = ReturnType<typeof parseDeterministicOrder>[number];
+
+type OmittedTargetResolution = {
+  candidates: DeterministicCandidate[];
+  response: ParseResponse | null;
+};
+
+type ContextPatchKind = 'quantity_unit' | 'unit_only' | 'quantity_only';
+
+type RecentTargetItem = {
+  item_id: string;
+  item_name: string;
+  display_name?: string;
+  unit?: string | null;
+  quantity?: number | null;
+  existing_item_key?: string;
+};
+
+function resolveOmittedTargetCandidates(input: {
+  input: OrchestratorInput;
+  candidates: DeterministicCandidate[];
+  intent: string;
+}): OmittedTargetResolution {
+  const resolvedCandidates: DeterministicCandidate[] = [];
+
+  for (const candidate of input.candidates) {
+    const patchKind = getContextPatchKind(candidate);
+    if (!patchKind) {
+      resolvedCandidates.push(candidate);
+      continue;
+    }
+
+    const target = inferRecentTargetItem(input.input, candidate, patchKind, input.intent);
+    if (target.status === 'resolved') {
+      resolvedCandidates.push(buildContextPatchedCandidate(candidate, target.item, patchKind));
+      continue;
+    }
+
+    return {
+      candidates: resolvedCandidates,
+      response: buildOmittedTargetResponse({
+        orchestratorInput: input.input,
+        candidate,
+        intent: input.intent,
+        patchKind,
+        targets: target.status === 'ambiguous' ? target.items : [],
+      }),
+    };
+  }
+
+  return { candidates: resolvedCandidates, response: null };
+}
+
+function getContextPatchKind(candidate: DeterministicCandidate): ContextPatchKind | null {
+  const itemText = normalizeSearchText(candidate.item_text ?? '');
+  if (!itemText) {
+    if (candidate.quantity != null && candidate.unit) return 'quantity_unit';
+    if (candidate.unit) return 'unit_only';
+    if (candidate.quantity != null) return 'quantity_only';
+    return null;
+  }
+  const unit = normalizeUnitForComparison(candidate.unit);
+  const rawUnit = normalizeUnitForComparison(candidate.unit_raw);
+  if (unit && (normalizeUnitForComparison(itemText) === unit || normalizeUnitForComparison(itemText) === rawUnit)) {
+    if (candidate.quantity != null) return 'quantity_unit';
+    return 'unit_only';
+  }
+  return null;
+}
+
+function isOmittedItemCandidate(candidate: DeterministicCandidate): boolean {
+  return getContextPatchKind(candidate) != null;
+}
+
+function buildContextPatchedCandidate(
+  candidate: DeterministicCandidate,
+  target: RecentTargetItem,
+  patchKind: ContextPatchKind,
+): DeterministicCandidate {
+  const quantity = patchKind === 'unit_only'
+    ? target.quantity ?? candidate.quantity
+    : candidate.quantity;
+  const unit = patchKind === 'quantity_only'
+    ? target.unit ?? candidate.unit
+    : candidate.unit;
+  return {
+    ...candidate,
+    item_text: target.item_name,
+    quantity: quantity ?? null,
+    unit: unit ?? null,
+    issue: quantity == null
+      ? 'missing_quantity'
+      : unit == null
+        ? 'missing_unit'
+        : undefined,
+  };
+}
+
+function inferRecentTargetItem(
+  input: OrchestratorInput,
+  candidate: DeterministicCandidate,
+  patchKind: ContextPatchKind,
+  intent: string,
+): { status: 'resolved'; item: RecentTargetItem } | { status: 'ambiguous'; items: RecentTargetItem[] } | { status: 'none' } {
+  const contextInterrupted = isRecentContextInterrupted(input.previousMessages, input.catalog);
+
+  if (!contextInterrupted) {
+    const pendingTargets = uniqueRecentTargets(
+      input.existingParsedItems
+        .filter((item) => item.item_id && !item.unresolved && isAwaitingQuantityOrUnit(item))
+        .map(targetFromParsedItem),
+    ).filter((item) => canApplyContextPatch(item, patchKind, intent));
+    const pendingByUnit = filterTargetsByUnit(pendingTargets, candidate.unit);
+    if (pendingByUnit.length === 1) return { status: 'resolved', item: pendingByUnit[0] };
+    if (pendingTargets.length === 1) return { status: 'resolved', item: pendingTargets[0] };
+    if (pendingTargets.length > 1) return { status: 'ambiguous', items: pendingTargets };
+
+    const recentTargets = latestTargetsFromMessages(input.previousMessages, input.catalog)
+      .filter((item) => canApplyContextPatch(item, patchKind, intent));
+    const recentByUnit = filterTargetsByUnit(recentTargets, candidate.unit);
+    if (recentByUnit.length === 1) return { status: 'resolved', item: recentByUnit[0] };
+    if (recentTargets.length === 1) return { status: 'resolved', item: recentTargets[0] };
+    if (recentTargets.length > 1) return { status: 'ambiguous', items: recentTargets };
+  }
+
+  const existingTargets = uniqueRecentTargets(
+    input.existingParsedItems
+      .filter((item) => item.item_id && !item.unresolved && (!contextInterrupted || !isAwaitingQuantityOrUnit(item)))
+      .map(targetFromParsedItem),
+  ).filter((item) => canApplyContextPatch(item, patchKind, intent));
+  const existingByUnit = filterTargetsByUnit(existingTargets, candidate.unit);
+  if (existingByUnit.length === 1) return { status: 'resolved', item: existingByUnit[0] };
+  if (existingTargets.length === 1) return { status: 'resolved', item: existingTargets[0] };
+  if (existingTargets.length > 1) return { status: 'ambiguous', items: existingTargets };
+
+  return { status: 'none' };
+}
+
+function canApplyContextPatch(item: RecentTargetItem, patchKind: ContextPatchKind, intent: string): boolean {
+  switch (patchKind) {
+    case 'unit_only':
+      return item.quantity != null && !item.unit;
+    case 'quantity_only':
+      return item.quantity == null;
+    case 'quantity_unit':
+      return isCommandContextPatch(intent) || item.quantity == null || !item.unit;
+    default:
+      return false;
+  }
+}
+
+function isCommandContextPatch(intent: string): boolean {
+  return COMMAND_INTENTS.has(intent);
+}
+
+function isRecentContextInterrupted(messages: QuickOrderMessage[], catalog: CatalogItem[]): boolean {
+  const start = Math.max(0, messages.length - 6);
+  for (let index = messages.length - 1; index >= start; index -= 1) {
+    const message = messages[index];
+    const structuredTargetCount =
+      (message.pending_clarifications ?? []).filter((clarification) => clarification.incoming_item?.item_id).length +
+      (message.parsed_items ?? []).filter((item) => item.item_id && !item.unresolved).length;
+    if (structuredTargetCount > 0) return false;
+
+    const role = message.role ?? '';
+    const text = message.content ?? message.text ?? message.raw_text ?? '';
+    if (role === 'user' && text.trim()) {
+      return targetsFromUserText(text, catalog).length === 0;
+    }
+  }
+  return false;
+}
+
+function isAwaitingQuantityOrUnit(item: ParsedItem): boolean {
+  return item.status === 'missing_quantity' ||
+    item.status === 'missing_quantity_and_unit' ||
+    item.status === 'missing_unit' ||
+    Boolean(item.needs_clarification && item.item_id && (item.quantity == null || !item.unit));
+}
+
+function latestTargetsFromMessages(
+  messages: QuickOrderMessage[],
+  catalog: CatalogItem[],
+): RecentTargetItem[] {
+  const start = Math.max(0, messages.length - 6);
+  for (let index = messages.length - 1; index >= start; index -= 1) {
+    const message = messages[index];
+    const structuredTargets = uniqueRecentTargets([
+      ...((message.pending_clarifications ?? [])
+        .map((clarification) => clarification.incoming_item)
+        .filter((item): item is ParsedItem => Boolean(item?.item_id))
+        .map(targetFromParsedItem)),
+      ...((message.parsed_items ?? [])
+        .filter((item) => item.item_id && !item.unresolved)
+        .map(targetFromParsedItem)),
+    ]);
+    if (structuredTargets.length > 0) return structuredTargets;
+
+    const role = message.role ?? '';
+    const text = message.content ?? message.text ?? message.raw_text ?? '';
+    if (role === 'user' && text.trim()) {
+      const textTargets = targetsFromUserText(text, catalog);
+      if (textTargets.length > 0) return textTargets;
+      return [];
+    }
+  }
+  return [];
+}
+
+function targetsFromUserText(text: string, catalog: CatalogItem[]): RecentTargetItem[] {
+  const candidates = parseDeterministicOrder(text).filter((candidate) => !isOmittedItemCandidate(candidate));
+  if (candidates.length === 0) return [];
+  const index = buildCatalogSearchIndex(catalog, []);
+  const targets = candidates
+    .map((candidate) => matchCatalogIndex(candidate.item_text, index))
+    .filter((match) => match.item_id && !match.needs_clarification)
+    .map((match) => ({
+      item_id: match.item_id as string,
+      item_name: match.item_name ?? match.display_name ?? 'Item',
+      display_name: match.display_name ?? match.item_name ?? 'Item',
+    }));
+  return uniqueRecentTargets(targets);
+}
+
+function targetFromParsedItem(item: ParsedItem): RecentTargetItem {
+  return {
+    item_id: item.item_id as string,
+    item_name: item.item_name ?? item.display_name ?? item.raw_token ?? 'Item',
+    display_name: item.display_name ?? item.item_name ?? item.raw_token ?? 'Item',
+    quantity: item.quantity,
+    unit: item.unit,
+    existing_item_key: getParserItemKey(item),
+  };
+}
+
+function uniqueRecentTargets(items: RecentTargetItem[]): RecentTargetItem[] {
+  const byId = new Map<string, RecentTargetItem>();
+  for (const item of items) {
+    if (!item.item_id) continue;
+    if (!byId.has(item.item_id)) byId.set(item.item_id, item);
+  }
+  return [...byId.values()];
+}
+
+function filterTargetsByUnit(items: RecentTargetItem[], unit: string | null | undefined): RecentTargetItem[] {
+  const normalized = normalizeUnitForComparison(unit);
+  if (!normalized) return [];
+  return items.filter((item) => normalizeUnitForComparison(item.unit) === normalized);
+}
+
+function buildOmittedTargetResponse(input: {
+  orchestratorInput: OrchestratorInput;
+  candidate: DeterministicCandidate;
+  intent: string;
+  patchKind: ContextPatchKind;
+  targets: RecentTargetItem[];
+}): ParseResponse {
+  const patchLabel = formatContextPatchLabel(input.candidate, input.patchKind);
+  const isRemoval = input.intent === 'remove' || input.intent === 'decrease';
+  const message = input.targets.length > 0
+    ? isRemoval
+      ? `Which item should I remove ${patchLabel} from?`
+      : `Which item should I apply ${patchLabel} to?`
+    : `I need the item name for ${patchLabel}.`;
+  const pending = input.targets.length > 0
+    ? [{
+        id: createClientKey(isRemoval ? 'remove_target' : 'target'),
+        type: isRemoval ? 'remove_ambiguous' as const : 'choose_existing_line' as const,
+        item_id: null,
+        item_name: patchLabel,
+        message,
+        actions: [
+          ...input.targets.slice(0, 4).map((target) => ({
+            id: 'choose_existing' as const,
+            label: target.display_name ?? target.item_name,
+            existing_item_key: target.existing_item_key,
+          })),
+          { id: 'cancel' as const, label: 'Cancel' },
+        ],
+      }]
+    : [{
+        id: createClientKey('missing_item'),
+        type: 'item_not_found' as const,
+        item_id: null,
+        item_name: patchLabel,
+        message,
+        actions: [],
+      }];
+
+  return {
+    status: 'needs_clarification',
+    assistant_message: message,
+    reply_text: message,
+    parsed_items: [],
+    flags: [{
+      type: input.targets.length > 0 ? 'ambiguous_item' : 'unresolved_item',
+      message,
+      raw_token: input.candidate.raw_text,
+      reason: input.targets.length > 0 ? 'omitted_item_ambiguous' : 'omitted_item_no_context',
+    }],
+    suggestions: [],
+    pending_actions: pending,
+    pending_clarifications: pending,
+    session_state: {
+      total_items: input.orchestratorInput.existingParsedItems.length,
+      ready_to_submit: false,
+    },
+    diagnostics: {
+      parser_version: PARSER_VERSION,
+      parse_mode: 'deterministic_only',
+      catalog_count: input.orchestratorInput.catalog.length,
+      candidate_count: 1,
+      items_before_validation: 1,
+      items_after_validation: 0,
+      valid_count: 0,
+      review_count: 0,
+      items_received: 1,
+      items_accepted: 0,
+      items_rejected: 1,
+      rejected_reasons: [input.targets.length > 0 ? 'omitted_item_ambiguous' : 'omitted_item_no_context'],
+      pending_action_count: pending.length,
+      raw_input_length: input.orchestratorInput.rawText.length,
+      candidate_lines: 1,
+    },
+  };
+}
+
+function formatContextPatchLabel(candidate: DeterministicCandidate, patchKind: ContextPatchKind): string {
+  if (patchKind === 'unit_only') return displayUnitLabel(candidate.unit) || 'that unit';
+  if (patchKind === 'quantity_only') return formatQuantityWithUnit(candidate.quantity, null);
+  return formatQuantityWithUnit(candidate.quantity, candidate.unit);
+}
+
 function maybeAmbiguousBareCatalogToken(
   candidate: ReturnType<typeof parseDeterministicOrder>[number],
   match: ReturnType<typeof matchCatalogIndex>,
@@ -395,6 +752,8 @@ function maybeAmbiguousBareCatalogToken(
   if (!match.item_id || candidate.quantity != null || candidate.unit) return match;
   const normalized = normalizeSearchText(candidate.item_text);
   if (!normalized || normalized.includes(' ')) return match;
+  if (hasExactSameLengthCatalogNameMatch(normalized, match, catalogIndex)) return match;
+  if (hasExactCatalogNameStructuralSegmentMatch(normalized, match, catalogIndex)) return match;
 
   if (match.match_type === 'fuzzy') {
     const matchedTerm = normalizeSearchText(match.matched_term ?? match.item_name ?? '');
@@ -438,6 +797,77 @@ function maybeAmbiguousBareCatalogToken(
   };
 }
 
+function maybePromoteBareCatalogToken(
+  candidate: ReturnType<typeof parseDeterministicOrder>[number],
+  match: ReturnType<typeof matchCatalogIndex>,
+  catalogIndex: CatalogSearchIndex,
+): ReturnType<typeof matchCatalogIndex> {
+  if (match.item_id || candidate.quantity != null || candidate.unit) return match;
+  const normalized = normalizeSearchText(candidate.item_text);
+  if (!normalized || normalized.includes(' ')) return match;
+
+  const alternatives = findCatalogAlternatives(candidate.item_text, catalogIndex, 5);
+  const top = alternatives[0];
+  if (!top || !isPromotableBareAlternative(top)) return match;
+
+  const topConfidence = top.confidence ?? top.score ?? 0;
+  const tied = alternatives.filter((alternative) => {
+    const confidence = alternative.confidence ?? alternative.score ?? 0;
+    return Math.abs(confidence - topConfidence) < 0.001;
+  });
+  const structuralTies = tied.filter((alternative) =>
+    alternative.item_name && catalogNameStructuralSegmentMatches(alternative.item_name, normalized)
+  );
+  if (tied.length > 1 && structuralTies.length !== 1) return match;
+  const selected = structuralTies[0] ?? top;
+  if (!selected.item_id || !selected.item_name) return match;
+
+  return {
+    item_id: selected.item_id,
+    item_name: selected.item_name,
+    display_name: selected.item_name,
+    matched_alias: selected.matched_term ?? selected.term,
+    matched_term: selected.matched_term ?? selected.term,
+    match_type: selected.match_type ?? 'parenthetical_or_generated_exact',
+    confidence: selected.confidence ?? selected.score ?? 0.94,
+    needs_clarification: false,
+    alternatives,
+    confidence_tier: 'high',
+    decision_reason: 'promoted_bare_exact_alternative',
+  };
+}
+
+function isPromotableBareAlternative(alternative: CatalogAlternative): boolean {
+  const confidence = alternative.confidence ?? alternative.score ?? 0;
+  return confidence >= 0.9 && isStrongCandidateMatchType(alternative.match_type);
+}
+
+function hasExactSameLengthCatalogNameMatch(
+  normalized: string,
+  match: ReturnType<typeof matchCatalogIndex>,
+  catalogIndex: CatalogSearchIndex,
+): boolean {
+  const inputTokenCount = normalized.split(' ').filter(Boolean).length;
+  return catalogIndex.entries.some((entry) =>
+    entry.item.id === match.item_id &&
+    entry.type === 'name' &&
+    entry.normalized === normalized &&
+    entry.normalized.split(' ').filter(Boolean).length === inputTokenCount
+  );
+}
+
+function hasExactCatalogNameStructuralSegmentMatch(
+  normalized: string,
+  match: ReturnType<typeof matchCatalogIndex>,
+  catalogIndex: CatalogSearchIndex,
+): boolean {
+  return catalogIndex.entries.some((entry) =>
+    entry.item.id === match.item_id &&
+    entry.type === 'name' &&
+    catalogNameStructuralSegmentMatches(entry.item.name, normalized)
+  );
+}
+
 type ItemDiagnostic = NonNullable<NonNullable<ParseResponse['diagnostics']>['item_diagnostics']>[number];
 
 function buildPreParseResponse(
@@ -457,6 +887,8 @@ function buildPreParseResponse(
       return buildNonOrderResponse(input, classification, 'I don’t have enough order history to suggest a usual order yet.');
     case 'history_request':
       return buildNonOrderResponse(input, classification, getHistoryPlaceholderMessage(classification.normalizedText));
+    case 'identity_question':
+      return buildNonOrderResponse(input, classification, 'I’m Tuna Intelligence. I help create Quick Order drafts from typed orders.');
     case 'duplicate_resolution_action':
       if (classification.reason === 'no_pending_duplicate_action') {
         return buildNonOrderResponse(input, classification, 'There is nothing to combine right now.');
@@ -593,9 +1025,15 @@ function normalizeParsedItemsForResponse(items: ParsedItem[], catalog: CatalogIt
 function gateParsedItemsForOrder(
   items: ParsedItem[],
   catalogIndex: CatalogSearchIndex,
-): { items: ParsedItem[]; noOpDiagnostics: ItemDiagnostic[] } {
+  catalog: CatalogItem[],
+): {
+  items: ParsedItem[];
+  noOpDiagnostics: ItemDiagnostic[];
+  pendingClarifications: NonNullable<ParseResponse['pending_clarifications']>;
+} {
   const keptItems: ParsedItem[] = [];
   const noOpDiagnostics: ItemDiagnostic[] = [];
+  const pendingClarifications: NonNullable<ParseResponse['pending_clarifications']> = [];
 
   for (const item of items) {
     const decision = shouldKeepParsedItem(item, catalogIndex);
@@ -605,9 +1043,11 @@ function gateParsedItemsForOrder(
     }
 
     noOpDiagnostics.push(buildNoOpItemDiagnostic(item, catalogIndex, decision.reason));
+    const clarification = buildRejectedItemClarification(item, catalogIndex, catalog);
+    if (clarification) pendingClarifications.push(clarification);
   }
 
-  return { items: keptItems, noOpDiagnostics };
+  return { items: keptItems, noOpDiagnostics, pendingClarifications };
 }
 
 function shouldKeepParsedItem(
@@ -623,6 +1063,9 @@ function shouldKeepParsedItem(
   const hasQuantityOrUnit = item.quantity != null || Boolean(item.unit?.trim());
   const isSingleBareWord = isSingleWord(itemText) && !hasQuantityOrUnit;
   if (item.item_id) {
+    if (item.status === 'invalid_unit') {
+      return { keep: false, reason: 'invalid_unit' };
+    }
     if (item.match_type === 'fuzzy' && !isAcceptableResolvedFuzzyItem(item, itemText, isSingleBareWord)) {
       return { keep: false, reason: 'weak_fuzzy_match' };
     }
@@ -633,21 +1076,14 @@ function shouldKeepParsedItem(
   const topConfidence = topCandidate?.confidence ?? topCandidate?.score ?? 0;
 
   if (item.status === 'ambiguous') {
-    if (!isSingleBareWord || hasQuantityOrUnit) {
-      return { keep: true, reason: 'plausible_ambiguous_match' };
-    }
-    if (topConfidence >= 0.85) return { keep: true, reason: 'strong_single_word_match' };
+    if (topConfidence >= 0.75) return { keep: false, reason: 'medium_confidence_match_needs_confirmation' };
     return { keep: false, reason: 'ambiguous_candidate_below_threshold' };
   }
 
   if (item.status === 'no_match' || item.unresolved || item.needs_clarification) {
-    if (!item.item_id && (hasQuantityOrUnit || !isSingleBareWord)) {
-      return { keep: true, reason: 'item_like_no_match' };
+    if (topConfidence >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE) {
+      return { keep: false, reason: 'medium_confidence_match_needs_confirmation' };
     }
-    if (topConfidence >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE && !isSingleBareWord) {
-      return { keep: true, reason: 'plausible_catalog_candidate' };
-    }
-    if (topConfidence >= 0.85) return { keep: true, reason: 'strong_catalog_candidate' };
     if (isSingleBareWord) return { keep: false, reason: 'single_word_unknown_without_strong_match' };
     return { keep: false, reason: 'no_catalog_match_above_threshold' };
   }
@@ -718,21 +1154,23 @@ function buildNoOpResponse(input: {
   candidatesCount: number;
   catalogDebug: ReturnType<typeof buildCatalogDebug>;
   noOpDiagnostics: ItemDiagnostic[];
+  pendingClarifications: NonNullable<ParseResponse['pending_clarifications']>;
+  flags: ParseFlag[];
 }): ParseResponse {
-  const assistantMessage = buildNoOpMessage(input.noOpDiagnostics);
+  const assistantMessage = input.pendingClarifications[0]?.message ?? buildNoOpMessage(input.noOpDiagnostics);
   const rejectedReasons = input.noOpDiagnostics
     .map((diagnostic) => diagnostic.no_op_reason)
     .filter((reason): reason is string => Boolean(reason));
 
   return {
-    status: 'ok',
+    status: input.pendingClarifications.length > 0 ? 'needs_clarification' : 'ok',
     assistant_message: assistantMessage,
     reply_text: assistantMessage,
     parsed_items: [],
-    flags: [],
+    flags: input.flags,
     suggestions: [],
-    pending_actions: [],
-    pending_clarifications: [],
+    pending_actions: input.pendingClarifications,
+    pending_clarifications: input.pendingClarifications,
     session_state: {
       total_items: input.input.existingParsedItems.length,
       ready_to_submit: false,
@@ -766,7 +1204,7 @@ function buildNoOpResponse(input: {
       items_accepted: 0,
       items_rejected: input.noOpDiagnostics.length,
       rejected_reasons: rejectedReasons,
-      pending_action_count: 0,
+      pending_action_count: input.pendingClarifications.length,
       item_diagnostics: input.noOpDiagnostics,
       catalog_debug: input.catalogDebug,
       raw_input_length: input.input.rawText.length,
@@ -834,25 +1272,123 @@ function buildNoOpItemDiagnostic(
   };
 }
 
+function buildRejectedItemClarification(
+  item: ParsedItem,
+  catalogIndex: CatalogSearchIndex,
+  catalog: CatalogItem[],
+): NonNullable<ParseResponse['pending_clarifications']>[number] | null {
+  const rawText = item.raw_text ?? item.raw_token ?? '';
+  const itemText = item.item_text ?? item.item_name ?? item.raw_token ?? rawText;
+  const displayName = item.item_name ?? item.display_name ?? itemText;
+
+  if (item.item_id && item.status === 'invalid_unit') {
+    const catalogItem = catalog.find((entry) => entry.id === item.item_id) ?? null;
+    const allowedUnits = deriveAllowedUnitsForActions(catalogItem, item);
+    const providedUnit = displayUnitLabel(item.unit);
+    return {
+      id: createRejectedClarificationId(item, 'invalid_unit'),
+      type: 'invalid_unit',
+      item_id: item.item_id,
+      item_name: displayName,
+      incoming_item: item,
+      message: item.issue ?? `${displayName} cannot be ordered as ${providedUnit || 'that unit'}. Use ${formatAllowedUnitList(allowedUnits)}.`,
+      actions: [
+        ...allowedUnits.slice(0, 4).map((unit) => ({
+          id: 'use_unit' as const,
+          label: `Use ${displayUnitLabel(unit)}`,
+          unit,
+          preview: item.quantity != null ? `${item.quantity} ${displayUnitLabel(unit)}` : displayUnitLabel(unit),
+        })),
+        { id: 'cancel' as const, label: 'Cancel' },
+      ],
+    };
+  }
+
+  const alternatives = topCandidatesForItem(item, catalogIndex);
+  const top = alternatives[0];
+  const rawLabel = itemText || rawText || 'that item';
+  const topConfidence = top?.confidence ?? top?.score ?? 0;
+  if (top && topConfidence >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE) {
+    const suggestedItem: ParsedItem = {
+      ...item,
+      item_id: top.item_id,
+      item_name: top.item_name,
+      display_name: top.item_name,
+      name: top.item_name,
+      confidence: topConfidence,
+      unresolved: false,
+      needs_clarification: item.quantity == null || !item.unit,
+      status: item.quantity == null
+        ? 'missing_quantity'
+        : !item.unit
+          ? 'missing_unit'
+          : 'valid',
+      action: item.quantity == null
+        ? 'Add quantity'
+        : !item.unit
+          ? 'Choose unit'
+          : null,
+      alternatives,
+      candidate_matches: alternatives,
+    };
+    return {
+      id: createRejectedClarificationId(item, 'item_suggestion'),
+      type: 'ambiguous_item',
+      item_id: null,
+      item_name: rawLabel,
+      incoming_item: suggestedItem,
+      message: `I couldn't recognize "${rawLabel}". Did you mean ${top.item_name}?`,
+      actions: [
+        { id: 'use_item' as const, label: `Use ${top.item_name}` },
+      ],
+    };
+  }
+
+  return {
+    id: createRejectedClarificationId(item, 'item_not_found'),
+    type: 'item_not_found',
+    item_id: null,
+    item_name: rawLabel,
+    message: `I couldn't recognize "${rawLabel}". Try the item name again.`,
+    actions: [],
+  };
+}
+
+function deriveAllowedUnitsForActions(catalogItem: CatalogItem | null, item: ParsedItem): string[] {
+  const labels = deriveAllowedUnitLabels(catalogItem);
+  if (labels.length > 0) return labels;
+  return item.valid_units?.length ? item.valid_units : [];
+}
+
+function createRejectedClarificationId(item: ParsedItem, prefix: string): string {
+  const basis = `${item.line_id ?? ''}:${item.raw_token ?? item.raw_text ?? item.item_text ?? ''}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48);
+  return `${prefix}_${basis || 'item'}`;
+}
+
 function buildNoOpMessage(diagnostics: ItemDiagnostic[]): string {
   const first = diagnostics[0];
   const rawText = first?.raw_text?.trim() ?? '';
   const itemText = first?.item_text?.trim() ?? rawText;
   const reason = first?.no_op_reason;
+  const topCandidate = first?.top_candidates?.[0];
 
   if (reason === 'command_without_pending_action' && normalizeCommandText(rawText || itemText) === 'combine') {
     return 'There is nothing to combine right now.';
   }
   if (looksLikeKeyboardNoise(itemText)) {
-    return 'I couldn’t recognize that as an inventory item.';
+    return 'I couldn\'t recognize that as an inventory item.';
   }
-  if (isSingleWord(itemText) && itemText) {
-    return `I couldn’t find ${itemText} in this location’s inventory.`;
+  if (topCandidate && (topCandidate.confidence ?? topCandidate.score ?? 0) >= MIN_PLAUSIBLE_REVIEW_CONFIDENCE) {
+    return `I couldn't recognize "${itemText}". Did you mean ${topCandidate.item_name}?`;
   }
-  if ((reason === 'no_catalog_match_above_threshold' || reason === 'missing_specific_token') && itemText) {
-    return `I couldn’t find "${itemText}" in this location’s inventory.`;
+  if (itemText) {
+    return `I couldn't recognize "${itemText}". Try the item name again.`;
   }
-  return 'I couldn’t recognize that as an inventory item.';
+  return 'I couldn\'t recognize that as an inventory item.';
 }
 
 function isCommandOnlyText(value: string): boolean {
@@ -1275,7 +1811,10 @@ function buildReplyText(
   const goodCount = items.filter((item) => !item.needs_clarification && !item.unresolved).length;
   const conflictCount = pendingMessages.length;
   const reviewCount = items.length - goodCount + conflictCount;
-  if (pendingMessages.length > 0) return pendingMessages[0];
+  const outcomeSummaries = buildOutcomeSummaries(items);
+  if (pendingMessages.length > 0) {
+    return [...outcomeSummaries, ...pendingMessages].slice(0, 2).join(' ');
+  }
   if (items.length === 1 && reviewCount === 1) {
     return buildSingleReviewReplyText(items[0], catalog);
   }
@@ -1293,26 +1832,31 @@ function buildReplyText(
     return `Added ${addedLabel}. The other ${unchangedCount} item${unchangedCount === 1 ? ' was' : 's were'} already in your order.`;
   }
   if (items.length === 0 && conflictCount === 0) return 'I had trouble reading that. Please try again or add the item manually.';
-  if (reviewCount === 0) return goodCount === 1 ? 'Got this item.' : `Got ${goodCount} items.`;
+  if (reviewCount === 0 && outcomeSummaries.length > 0) return outcomeSummaries.join(' ');
+  if (reviewCount === 0) return goodCount === 1 ? 'Added this item.' : `Added ${goodCount} items.`;
   return `Got ${goodCount} item${goodCount === 1 ? '' : 's'}, but ${reviewCount} need${reviewCount === 1 ? 's' : ''} review.`;
 }
 
 function buildSingleReviewReplyText(item: ParsedItem, catalog: CatalogItem[]): string {
   const displayName = item.display_name ?? item.item_name ?? item.item_text ?? item.raw_token;
   if (item.status === 'missing_quantity') {
-    return `How much ${displayName} would you like?`;
+    return `Add a quantity for ${displayName}.`;
   }
   if (item.status === 'missing_quantity_and_unit') {
-    return `I found ${displayName}, but I need the quantity and unit.`;
+    return `Add a quantity and unit for ${displayName}.`;
   }
   if (item.status === 'missing_unit') {
-    return `What unit would you like for ${displayName}?`;
+    const catalogItem = item.item_id ? catalog.find((candidate) => candidate.id === item.item_id) : null;
+    const allowedUnits = deriveAllowedUnitLabels(catalogItem);
+    return allowedUnits.length
+      ? `Add a unit for ${displayName}. Available units: ${formatAllowedUnitList(allowedUnits)}.`
+      : `Add a unit for ${displayName}.`;
   }
   if (item.status === 'invalid_unit') {
     const catalogItem = item.item_id ? catalog.find((candidate) => candidate.id === item.item_id) : null;
-    const allowedUnits = deriveAllowedUnits(catalogItem);
-    const allowedLabel = allowedUnits.length ? ` Choose a valid unit: ${allowedUnits.join(', ')}.` : ' Choose a valid unit.';
-    return `${displayName} cannot be ordered in ${item.unit ?? 'that unit'}.${allowedLabel}`;
+    const allowedUnits = deriveAllowedUnitLabels(catalogItem);
+    const allowedLabel = allowedUnits.length ? ` Use ${formatAllowedUnitList(allowedUnits)}.` : ' Use a valid unit.';
+    return `${displayName} cannot be ordered as ${displayUnitLabel(item.unit) || 'that unit'}.${allowedLabel}`;
   }
   if (item.status === 'ambiguous') {
     if (item.issue === 'Item spelling needs confirmation.' && item.alternatives?.[0]?.item_name) {
@@ -1326,10 +1870,32 @@ function buildSingleReviewReplyText(item: ParsedItem, catalog: CatalogItem[]): s
   if (item.status === 'no_match' || item.unresolved) {
     const name = item.item_text ?? item.raw_token;
     return item.alternatives?.length
-      ? `I couldn’t find "${name}" in this location’s inventory. Did you mean one of these?`
-      : `I couldn’t find "${name}" in this location’s inventory. Please choose an item or ask a manager to add it.`;
+      ? `I couldn't recognize "${name}". Did you mean ${item.alternatives[0]?.item_name ?? 'one of these'}?`
+      : `I couldn't recognize "${name}". Try the item name again.`;
   }
   return `Got this item, but it needs review.`;
+}
+
+function buildOutcomeSummaries(items: ParsedItem[]): string[] {
+  return items
+    .filter((item) => !item.needs_clarification && !item.unresolved)
+    .slice(0, 2)
+    .map((item) => {
+      const displayName = item.display_name ?? item.item_name ?? item.raw_token ?? 'Item';
+      const quantity = formatParsedQuantity(item.quantity, item.unit);
+      if (item.merge_behavior === 'replace_existing') {
+        return `Updated ${displayName} to ${quantity}.`;
+      }
+      if (item.merge_behavior === 'add_to_existing') {
+        const delta = formatParsedQuantity(item.merge_delta_quantity ?? null, item.unit);
+        return `Added ${delta} to ${displayName}. New total: ${quantity}.`;
+      }
+      return `Added ${displayName} ${quantity}.`;
+    });
+}
+
+function formatParsedQuantity(quantity: number | null | undefined, unit: string | null | undefined): string {
+  return formatQuantityWithUnit(quantity, unit);
 }
 
 /**

@@ -142,7 +142,7 @@ export function buildSettingsGroups({
               makeItem('orderingInventory', {
                 key: 'quick-order-ai',
                 icon: 'sparkles-outline',
-                title: 'Quick Order AI',
+                title: 'Quick Order',
                 subtitle: 'Manage aliases and parser examples',
                 onPress: () =>
                   onNavigate(

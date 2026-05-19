@@ -957,7 +957,7 @@ export function QuickOrderReviewQueueScreen() {
                   No pending reviews
                 </Text>
                 <Text style={[styles.emptyText, { fontSize: ds.fontSize(13), marginTop: ds.spacing(6) }]}>
-                  Quick Orders that need manager approval will appear here.
+                  Quick Order drafts that need manager approval will appear here.
                 </Text>
               </View>
             )}

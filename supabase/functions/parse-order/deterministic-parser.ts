@@ -57,6 +57,18 @@ function qtyUnitRegex(): RegExp {
   return new RegExp(`(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern()})\\b`, 'i');
 }
 
+function qtyUnitOnlyRegex(): RegExp {
+  return new RegExp(`^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern()})\\s*$`, 'i');
+}
+
+function unitOnlyRegex(): RegExp {
+  return new RegExp(`^\\s*(${escapedUnitPattern()})\\s*$`, 'i');
+}
+
+function wordQtyUnitOnlyRegex(): RegExp {
+  return new RegExp(`^\\s*(${WORD_QTY_PATTERN})\\s+(${escapedUnitPattern()})\\s*$`, 'i');
+}
+
 function qtyUnitOfItemRegex(): RegExp {
   return new RegExp(
     `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern()})\\s+(?:of\\s+)(.+)$`,
@@ -216,7 +228,7 @@ export function parseDeterministicOrder(rawText: string): CandidateParsedLine[] 
 }
 
 function parseLine(rawLine: string, index: number): CandidateParsedLine {
-  const compactRaw = rawLine.trim().replace(/[ \t]+/g, ' ');
+  const compactRaw = normalizeAdditiveQuantityText(rawLine.trim().replace(/[ \t]+/g, ' '));
   const normalized = compactRaw.toLowerCase();
   let itemText = compactRaw;
   let quantity: number | null = null;
@@ -225,9 +237,64 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
   let confidence = 0.55;
 
   // ---------------------------------------------------------------
+  // Pattern 0: follow-up quantity/unit only — "4cs", "4 cases".
+  // The orchestrator can attach a recent target item if context is clear.
+  // ---------------------------------------------------------------
+  const numQtyUnitOnly = compactRaw.match(qtyUnitOnlyRegex());
+  if (numQtyUnitOnly) {
+    quantity = toQuantity(numQtyUnitOnly[1] ?? numQtyUnitOnly[2]);
+    unitRaw = numQtyUnitOnly[3];
+    unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
+    itemText = '';
+    confidence = 0.92;
+  }
+
+  if (quantity == null) {
+    const wordQtyUnitOnly = compactRaw.match(wordQtyUnitOnlyRegex());
+    if (wordQtyUnitOnly) {
+      const wordQty = WORD_QUANTITIES[wordQtyUnitOnly[1].toLowerCase()];
+      if (wordQty != null) {
+        quantity = wordQty;
+        unitRaw = wordQtyUnitOnly[2];
+        unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
+        itemText = '';
+        confidence = 0.86;
+      }
+    }
+  }
+
+  if (quantity == null) {
+    const unitOnly = compactRaw.match(unitOnlyRegex());
+    if (unitOnly) {
+      unitRaw = unitOnly[1];
+      unit = normalizeUnit(unitRaw) ?? unitRaw.toLowerCase();
+      itemText = '';
+      confidence = 0.86;
+    }
+  }
+
+  if (quantity == null && unit == null) {
+    const quantityOnly = compactRaw.match(new RegExp(`^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*$`, 'i'));
+    if (quantityOnly) {
+      quantity = toQuantity(quantityOnly[1] ?? quantityOnly[2]);
+      itemText = '';
+      confidence = 0.82;
+    }
+  }
+
+  if (quantity == null && unit == null) {
+    const wordQtyOnly = extractWordQuantity(compactRaw);
+    if (wordQtyOnly && !wordQtyOnly[1]) {
+      quantity = wordQtyOnly[0];
+      itemText = '';
+      confidence = 0.78;
+    }
+  }
+
+  // ---------------------------------------------------------------
   // Pattern 1: "qty unit of item" — "1 box of crab mix", "half box of ground tuna"
   // ---------------------------------------------------------------
-  const wordQtyUnitOf = compactRaw.match(wordQtyUnitOfItemRegex());
+  const wordQtyUnitOf = quantity == null ? compactRaw.match(wordQtyUnitOfItemRegex()) : null;
   if (wordQtyUnitOf) {
     const wordQty = WORD_QUANTITIES[wordQtyUnitOf[1].toLowerCase()];
     if (wordQty != null) {
@@ -381,7 +448,7 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
     line_id: `line_${index}`,
     raw_text: rawLine,
     normalized_text: normalized,
-    item_text: itemText || normalized,
+    item_text: itemText,
     quantity,
     unit,
     unit_raw: unitRaw,
@@ -391,4 +458,17 @@ function parseLine(rawLine: string, index: number): CandidateParsedLine {
     line_index: index,
     issue,
   };
+}
+
+function normalizeAdditiveQuantityText(value: string): string {
+  return value
+    .replace(
+      /^(\d+(?:\.\d+)?|\.\d+|\d+\s*\/\s*\d+)\s+more\s+/i,
+      '$1 ',
+    )
+    .replace(
+      new RegExp(`^(${WORD_QTY_PATTERN})\\s+more\\s+`, 'i'),
+      '$1 ',
+    )
+    .trim();
 }

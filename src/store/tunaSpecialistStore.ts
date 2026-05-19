@@ -42,7 +42,7 @@ export interface ConversationMessage {
   parsedItems?: TunaCartItem[];
 }
 
-interface GeminiMessage {
+interface IntelligenceModelMessage {
   role: 'user' | 'model';
   parts: [{ text: string }];
 }
@@ -66,7 +66,7 @@ interface TunaSpecialistState {
 
   // Conversation
   conversation: ConversationMessage[];
-  geminiHistory: GeminiMessage[];
+  modelHistory: IntelligenceModelMessage[];
 
   // Cart
   cartItems: TunaCartItem[];
@@ -89,8 +89,8 @@ interface TunaSpecialistState {
   destroyVoice: () => void;
   startListening: () => Promise<void>;
   stopListening: () => Promise<void>;
-  sendToGemini: (locationShortCode: string) => Promise<void>;
-  sendTextToGemini: (text: string, locationShortCode: string) => Promise<void>;
+  sendToIntelligence: (locationShortCode: string) => Promise<void>;
+  sendTextToIntelligence: (text: string, locationShortCode: string) => Promise<void>;
   processOfflineQueue: (locationShortCode: string) => Promise<void>;
   removeCartItem: (index: number) => void;
   updateCartItemQuantity: (index: number, quantity: number) => void;
@@ -145,7 +145,7 @@ const initialState = {
   isProcessing: false,
   currentSpeaker: null as 'human' | 'ai' | null,
   conversation: [] as ConversationMessage[],
-  geminiHistory: [] as GeminiMessage[],
+  modelHistory: [] as IntelligenceModelMessage[],
   cartItems: [] as TunaCartItem[],
   isOnline: true,
   offlineQueue: [] as OfflineQueueItem[],
@@ -156,13 +156,13 @@ const initialState = {
 
 // --- Shared send logic ---
 
-async function performSendToGemini(
+async function performSendToIntelligence(
   transcript: string,
   locationShortCode: string,
   set: Function,
   get: () => TunaSpecialistState,
 ) {
-  const { isOnline, geminiHistory, offlineQueue } = get();
+  const { isOnline, modelHistory, offlineQueue } = get();
 
   // Offline: queue it
   if (!isOnline) {
@@ -211,14 +211,14 @@ async function performSendToGemini(
     timestamp: Date.now(),
   };
 
-  const updatedHistory: GeminiMessage[] = [
-    ...geminiHistory,
+  const updatedHistory: IntelligenceModelMessage[] = [
+    ...modelHistory,
     { role: 'user', parts: [{ text: transcript }] },
   ];
 
   set((state: TunaSpecialistState) => ({
     conversation: [...state.conversation, humanMsg],
-    geminiHistory: updatedHistory,
+    modelHistory: updatedHistory,
   }));
 
   try {
@@ -234,10 +234,10 @@ async function performSendToGemini(
 
     if (error) throw error;
 
-    const { aiMessage, parsedItems = [], geminiTurn } = data as {
+    const { aiMessage, parsedItems = [], geminiTurn: modelTurn } = data as {
       aiMessage: string;
       parsedItems: TunaCartItem[];
-      geminiTurn: GeminiMessage;
+      geminiTurn: IntelligenceModelMessage;
     };
 
     // Store raw response for debug
@@ -259,7 +259,7 @@ async function performSendToGemini(
 
     set((state: TunaSpecialistState) => ({
       conversation: [...state.conversation, aiMsg],
-      geminiHistory: [...state.geminiHistory, geminiTurn],
+      modelHistory: [...state.modelHistory, modelTurn],
       cartItems: [...state.cartItems, ...parsedItems],
       isProcessing: false,
       currentSpeaker: null,
@@ -376,7 +376,7 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
 
           const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
           if (!result.granted) {
-            set({ error: 'Microphone and speech recognition access needed for Tuna Specialist.' });
+            set({ error: 'Microphone and speech recognition access needed for Tuna Intelligence.' });
             return;
           }
 
@@ -406,16 +406,16 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
         set({ isListening: false });
       },
 
-      sendToGemini: async (locationShortCode: string) => {
+      sendToIntelligence: async (locationShortCode: string) => {
         const { finalTranscript } = get();
         if (!finalTranscript) return;
-        await performSendToGemini(finalTranscript, locationShortCode, set, get);
+        await performSendToIntelligence(finalTranscript, locationShortCode, set, get);
       },
 
-      sendTextToGemini: async (text: string, locationShortCode: string) => {
+      sendTextToIntelligence: async (text: string, locationShortCode: string) => {
         // For debug panel: bypass STT, send text directly
         set({ finalTranscript: text });
-        await performSendToGemini(text, locationShortCode, set, get);
+        await performSendToIntelligence(text, locationShortCode, set, get);
       },
 
       processOfflineQueue: async (locationShortCode: string) => {
@@ -491,7 +491,7 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
 
       clearCart: () => {
         triggerNotificationHaptic(NotificationFeedbackType.Warning);
-        set({ cartItems: [], conversation: [], geminiHistory: [], offlineQueue: [] });
+        set({ cartItems: [], conversation: [], modelHistory: [], offlineQueue: [] });
       },
 
       getCartForOrder: () => {
@@ -527,5 +527,4 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
     },
   ),
 );
-
 

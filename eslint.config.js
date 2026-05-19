@@ -3,7 +3,7 @@ const { defineConfig } = require('eslint/config');
 
 module.exports = defineConfig([
   {
-    ignores: ['.expo/**'],
+    ignores: ['.expo/**', '.claude/**', 'scripts/google-sheets-sync.js'],
   },
   expoConfig,
   {

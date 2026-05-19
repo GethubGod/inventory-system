@@ -18,6 +18,71 @@ const SYNC_CONFIG = [
   { sheet: 'locations',       table: 'locations',       conflictColumn: 'id' },
   { sheet: 'suppliers',       table: 'suppliers',       conflictColumn: 'id' },
   { sheet: 'inventory_items', table: 'inventory_items', conflictColumn: 'id' },
+  {
+    sheet: 'item_order_limits',
+    table: 'item_order_limits',
+    conflictColumn: 'id',
+    optional: true,
+    expectedHeaders: [
+      'id', 'item_id', 'location_id', 'supplier_id', 'default_order_unit',
+      'typical_min_quantity', 'typical_max_quantity', 'soft_max_quantity',
+      'hard_max_quantity', 'manager_approval_quantity',
+      'allow_employee_override', 'allow_manager_override',
+      'max_single_order_quantity', 'max_daily_quantity', 'max_weekly_quantity',
+      'historical_median_quantity', 'historical_p95_quantity',
+      'historical_max_quantity', 'created_at', 'updated_at',
+    ],
+    requiredActiveFields: ['item_id'],
+    meaningfulFields: [
+      'default_order_unit', 'typical_min_quantity', 'typical_max_quantity',
+      'soft_max_quantity', 'hard_max_quantity', 'manager_approval_quantity',
+      'allow_employee_override', 'allow_manager_override',
+      'max_single_order_quantity', 'max_daily_quantity', 'max_weekly_quantity',
+      'historical_median_quantity', 'historical_p95_quantity',
+      'historical_max_quantity',
+    ],
+    numericFields: [
+      'typical_min_quantity', 'typical_max_quantity', 'soft_max_quantity',
+      'hard_max_quantity', 'manager_approval_quantity',
+      'max_single_order_quantity', 'max_daily_quantity', 'max_weekly_quantity',
+      'historical_median_quantity', 'historical_p95_quantity',
+      'historical_max_quantity',
+    ],
+    booleanFields: ['allow_employee_override', 'allow_manager_override'],
+  },
+  {
+    sheet: 'item_allowed_units',
+    table: 'item_allowed_units',
+    conflictColumn: 'id',
+    optional: true,
+    expectedHeaders: [
+      'id', 'item_id', 'unit', 'is_default', 'conversion_to_base_unit',
+      'min_quantity', 'soft_max_quantity', 'hard_max_quantity',
+      'created_at', 'updated_at',
+    ],
+    requiredActiveFields: ['item_id', 'unit'],
+    meaningfulFields: ['unit', 'is_default', 'conversion_to_base_unit', 'min_quantity', 'soft_max_quantity', 'hard_max_quantity'],
+    numericFields: ['conversion_to_base_unit', 'min_quantity', 'soft_max_quantity', 'hard_max_quantity'],
+    booleanFields: ['is_default'],
+  },
+  {
+    sheet: 'item_aliases',
+    table: 'item_aliases',
+    conflictColumn: 'id',
+    optional: true,
+    optionalTable: true,
+    requiredActiveFields: ['item_id', 'alias'],
+    meaningfulFields: ['item_id', 'alias'],
+  },
+  {
+    sheet: 'quick_order_aliases',
+    table: 'quick_order_aliases',
+    conflictColumn: 'id',
+    optional: true,
+    optionalTable: true,
+    requiredActiveFields: ['item_id', 'alias'],
+    meaningfulFields: ['item_id', 'alias'],
+  },
 ];
 
 // Known category values — used for warnings only, NOT hard blocks.
@@ -73,6 +138,126 @@ function groupRowsByKeySignature(rows) {
   return result;
 }
 
+function validateOptionalHeaders(headers, config) {
+  if (!config.optional || !config.expectedHeaders) return null;
+  var normalized = headers.filter(function(header) { return header; });
+  var expected = config.expectedHeaders;
+  if (normalized.length !== expected.length) {
+    return 'Optional sheet header mismatch, skipped';
+  }
+  for (var i = 0; i < expected.length; i++) {
+    if (normalized[i] !== expected[i]) {
+      return 'Optional sheet header mismatch, skipped';
+    }
+  }
+  return null;
+}
+
+function normalizeOptionalSyncRow(row, config, rowNumber, warnings) {
+  if (!rowHasMeaningfulOptionalData(row, config)) return null;
+
+  var normalized = {};
+  for (var key in row) {
+    if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+    normalized[key] = row[key];
+  }
+
+  var numericFields = config.numericFields || [];
+  for (var n = 0; n < numericFields.length; n++) {
+    var numericField = numericFields[n];
+    if (!Object.prototype.hasOwnProperty.call(normalized, numericField)) continue;
+    var parsedNumber = normalizeOptionalNumber(normalized[numericField]);
+    if (parsedNumber.invalid) {
+      warnings.push('Row ' + rowNumber + ': invalid optional numeric value for "' + numericField + '" skipped');
+      delete normalized[numericField];
+    } else {
+      normalized[numericField] = parsedNumber.value;
+    }
+  }
+
+  var booleanFields = config.booleanFields || [];
+  for (var b = 0; b < booleanFields.length; b++) {
+    var booleanField = booleanFields[b];
+    if (!Object.prototype.hasOwnProperty.call(normalized, booleanField)) continue;
+    var parsedBoolean = normalizeOptionalBoolean(normalized[booleanField]);
+    if (parsedBoolean.invalid) {
+      warnings.push('Row ' + rowNumber + ': invalid optional boolean value for "' + booleanField + '" skipped');
+      delete normalized[booleanField];
+    } else if (parsedBoolean.value === null) {
+      delete normalized[booleanField];
+    } else {
+      normalized[booleanField] = parsedBoolean.value;
+    }
+  }
+
+  if (config.table === 'item_allowed_units' && normalizeTextCell(normalized.unit) === '') {
+    warnings.push('Row ' + rowNumber + ': blank unit skipped');
+    return null;
+  }
+
+  if ((config.table === 'item_aliases' || config.table === 'quick_order_aliases') &&
+      normalizeTextCell(normalized.alias) === '') {
+    warnings.push('Row ' + rowNumber + ': blank alias skipped');
+    return null;
+  }
+
+  var required = config.requiredActiveFields || [];
+  for (var r = 0; r < required.length; r++) {
+    var field = required[r];
+    if (normalizeTextCell(normalized[field]) === '') {
+      warnings.push('Row ' + rowNumber + ': missing required optional field "' + field + '" skipped');
+      return null;
+    }
+  }
+
+  return normalized;
+}
+
+function rowHasMeaningfulOptionalData(row, config) {
+  var fields = config.meaningfulFields || [];
+  for (var i = 0; i < fields.length; i++) {
+    var value = row[fields[i]];
+    if (value !== null && value !== undefined && String(value).trim() !== '') return true;
+  }
+  return false;
+}
+
+function normalizeOptionalNumber(value) {
+  if (value === null || value === undefined || value === '') return { value: null, invalid: false };
+  if (typeof value === 'number') return isFinite(value) ? { value: value, invalid: false } : { value: null, invalid: true };
+  var text = String(value).trim();
+  if (!text) return { value: null, invalid: false };
+  var parsed = Number(text);
+  return isFinite(parsed) ? { value: parsed, invalid: false } : { value: null, invalid: true };
+}
+
+function normalizeOptionalBoolean(value) {
+  if (value === null || value === undefined || value === '') return { value: null, invalid: false };
+  if (value === true || value === false) return { value: value, invalid: false };
+  var text = String(value).trim().toLowerCase();
+  if (!text) return { value: null, invalid: false };
+  if (text === 'true' || text === 'yes' || text === '1') return { value: true, invalid: false };
+  if (text === 'false' || text === 'no' || text === '0') return { value: false, invalid: false };
+  return { value: null, invalid: true };
+}
+
+function isOptionalTableUnavailable(response) {
+  var status = response.getResponseCode();
+  if (status === 404) return true;
+  var body = response.getContentText ? response.getContentText() : '';
+  return /Could not find the table|schema cache|42P01|PGRST205/i.test(body);
+}
+
+function isOptionalQuickOrderOrphanDeleteEnabled() {
+  try {
+    if (typeof PropertiesService === 'undefined') return false;
+    var value = PropertiesService.getScriptProperties().getProperty('ENABLE_OPTIONAL_QUICK_ORDER_ORPHAN_DELETE');
+    return String(value).toLowerCase() === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
 // ============================================================
 // MENU
 // ============================================================
@@ -106,6 +291,10 @@ function syncAllToSupabase() {
   // Delete orphans in REVERSE order (children first)
   for (var i = SYNC_CONFIG.length - 1; i >= 0; i--) {
     var config = SYNC_CONFIG[i];
+    if (config.optional && !isOptionalQuickOrderOrphanDeleteEnabled()) {
+      log.push('ℹ️ ' + config.sheet + ': optional orphan deletion disabled');
+      continue;
+    }
     try {
       var deleted = deleteRemovedRows(ss, config);
       if (deleted > 0) log.push('🗑️ ' + config.sheet + ': ' + deleted + ' removed from DB');
@@ -151,11 +340,15 @@ function syncCurrentSheet() {
     log.push('❌ ' + currentName + ': ' + e.message);
   }
 
-  try {
-    var deleted = deleteRemovedRows(ss, config);
-    if (deleted > 0) log.push('🗑️ ' + currentName + ': ' + deleted + ' removed from DB');
-  } catch (e) {
-    log.push('⚠️ ' + currentName + ' cleanup: ' + e.message);
+  if (config.optional && !isOptionalQuickOrderOrphanDeleteEnabled()) {
+    log.push('ℹ️ ' + currentName + ': optional orphan deletion disabled');
+  } else {
+    try {
+      var deleted = deleteRemovedRows(ss, config);
+      if (deleted > 0) log.push('🗑️ ' + currentName + ': ' + deleted + ' removed from DB');
+    } catch (e) {
+      log.push('⚠️ ' + currentName + ' cleanup: ' + e.message);
+    }
   }
 
   SpreadsheetApp.getUi().alert('Sync Complete', log.join('\n'), SpreadsheetApp.getUi().ButtonSet.OK);
@@ -167,12 +360,22 @@ function syncCurrentSheet() {
 // ============================================================
 function syncSheetUpsertOnly(ss, config) {
   var sheet = ss.getSheetByName(config.sheet);
-  if (!sheet) return 'Sheet not found — skipped';
+  if (!sheet) {
+    return config.optional
+      ? 'Optional sheet missing, skipped'
+      : 'Sheet not found — skipped';
+  }
 
   var data = sheet.getDataRange().getValues();
-  if (data.length < 2) return 'Empty — skipped';
+  if (data.length < 2) {
+    return config.optional
+      ? 'No optional data found — app will use defaults'
+      : 'Empty — skipped';
+  }
 
   var headers = data[0].map(function(h) { return String(h).trim(); });
+  var optionalHeaderWarning = validateOptionalHeaders(headers, config);
+  if (optionalHeaderWarning) return optionalHeaderWarning;
   var idColIdx = headers.indexOf('id');
   var rows = [];
   var newRowIndices = []; // track which spreadsheet rows got auto-generated IDs
@@ -198,6 +401,15 @@ function syncSheetUpsertOnly(ss, config) {
     }
 
     if (!hasData) continue;
+
+    if (config.optional) {
+      var normalizedOptional = normalizeOptionalSyncRow(row, config, i + 1, validationWarnings);
+      if (!normalizedOptional) {
+        validationWarnings.push('Row ' + (i + 1) + ': blank optional row skipped');
+        continue;
+      }
+      row = normalizedOptional;
+    }
 
     // Auto-generate UUID for new rows with blank id
     if (idColIdx !== -1 && (row['id'] === null || row['id'] === undefined || String(row['id']).trim() === '')) {
@@ -260,7 +472,11 @@ function syncSheetUpsertOnly(ss, config) {
     Logger.log('New category values detected:\n' + validationWarnings.join('\n'));
   }
 
-  if (rows.length === 0) return 'No valid rows — skipped';
+  if (rows.length === 0) {
+    return config.optional
+      ? 'No optional data found — app will use defaults'
+      : 'No valid rows — skipped';
+  }
 
   var batchSize = 50;
   var upserted = 0;
@@ -275,6 +491,10 @@ function syncSheetUpsertOnly(ss, config) {
       var response = supabaseUpsert(config.table, batch, config.conflictColumn);
 
       if (response.getResponseCode() >= 400) {
+        if (config.optional && isOptionalTableUnavailable(response)) {
+          Logger.log('Optional table unavailable for ' + config.table + ', skipped: ' + response.getContentText());
+          return 'Optional table unavailable, skipped';
+        }
         throw new Error('HTTP ' + response.getResponseCode() + ': ' + response.getContentText());
       }
 
@@ -389,6 +609,7 @@ function pullFromSupabase() {
   var pullTables = [
     { table: 'orders',      sheet: '_orders (read-only)' },
     { table: 'order_items', sheet: '_order_items (read-only)' },
+    { table: 'current_stock_snapshots', sheet: '_current_stock_snapshots', optional: true },
   ];
 
   var log = [];
@@ -419,7 +640,7 @@ function pullFromSupabase() {
 
       log.push('✅ ' + config.table + ': ' + rows.length + ' rows pulled');
     } catch (e) {
-      log.push('❌ ' + config.table + ': ' + e.message);
+      log.push((config.optional ? '⚠️ ' : '❌ ') + config.table + ': ' + e.message);
     }
   }
 
@@ -446,4 +667,18 @@ function supabaseSelect(table) {
   }
 
   return JSON.parse(response.getContentText());
+}
+
+if (typeof module !== 'undefined') {
+  module.exports = {
+    SYNC_CONFIG: SYNC_CONFIG,
+    validateOptionalHeaders: validateOptionalHeaders,
+    normalizeOptionalSyncRow: normalizeOptionalSyncRow,
+    normalizeOptionalNumber: normalizeOptionalNumber,
+    normalizeOptionalBoolean: normalizeOptionalBoolean,
+    rowHasMeaningfulOptionalData: rowHasMeaningfulOptionalData,
+    isOptionalTableUnavailable: isOptionalTableUnavailable,
+    isOptionalQuickOrderOrphanDeleteEnabled: isOptionalQuickOrderOrphanDeleteEnabled,
+    syncSheetUpsertOnly: syncSheetUpsertOnly,
+  };
 }

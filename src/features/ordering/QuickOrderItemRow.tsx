@@ -17,6 +17,7 @@ export const QUICK_ORDER_ROW_MIN_HEIGHT = 44;
 
 type QuickOrderItemRowProps = {
   item: ParsedQuickOrderItem;
+  quantityLines?: string[];
   /** Renders a hairline divider above the row (used for every row except the first). */
   showDivider: boolean;
   /** Opens the full edit popup (item picker + quantity + unit) for this item. */
@@ -37,6 +38,7 @@ type QuickOrderItemRowProps = {
  */
 export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
   item,
+  quantityLines,
   showDivider,
   onEdit,
   onResolveQuantity,
@@ -46,7 +48,8 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
   const name = getParsedItemDisplayName(item);
   const nameIsPlaceholder = !hasParsedItemName(item) && !item.raw_token?.trim();
   const accent = issue ? colors.statusAmber : colors.statusGreen;
-  const trailingLabel = issue ? issue.label : formatParsedItemQuantity(item);
+  const quantityLabels = quantityLines?.length ? quantityLines : [formatParsedItemQuantity(item)];
+  const trailingLabel = issue ? issue.label : quantityLabels[0];
   const reviewQuantityLabel = issue ? formatParsedItemQuantity(item) : null;
 
   const handleEditPress = useCallback(() => {
@@ -139,13 +142,28 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
           />
         </Pressable>
       ) : (
-        <Text
-          numberOfLines={1}
-          ellipsizeMode="tail"
-          style={[styles.trailingText, { fontSize: ds.fontSize(14), color: colors.textSecondary, marginLeft: ds.spacing(10) }]}
-        >
-          {trailingLabel}
-        </Text>
+        <View style={[styles.trailingStack, { marginLeft: ds.spacing(10) }]}>
+          {quantityLabels.map((label, index) => (
+            <Text
+              key={`${label}:${index}`}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={[
+                styles.trailingText,
+                {
+                  fontSize: ds.fontSize(14),
+                  color: colors.textSecondary,
+                  borderTopWidth: index > 0 ? glassHairlineWidth : 0,
+                  borderTopColor: colors.divider,
+                  paddingTop: index > 0 ? ds.spacing(3) : 0,
+                  marginTop: index > 0 ? ds.spacing(3) : 0,
+                },
+              ]}
+            >
+              {label}
+            </Text>
+          ))}
+        </View>
       )}
     </View>
   );
@@ -185,7 +203,12 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     fontWeight: '800',
     letterSpacing: 0,
+  },
+  trailingStack: {
+    minWidth: 86,
+    maxWidth: 128,
     flexShrink: 1,
+    alignItems: 'stretch',
   },
   trailingAction: {
     flexDirection: 'row',

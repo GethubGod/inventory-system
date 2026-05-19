@@ -1030,12 +1030,6 @@ Deno.serve(async (req) => {
       items_unresolved: result.parsed_items.filter((item) => item.unresolved).length,
     });
 
-    const baseSuggestions = await fetchDowSuggestions({
-      locationId,
-      userId: authenticatedUserId,
-      parsedItems: [...sessionContext.parsedItems, ...result.parsed_items],
-      previousMessages: sessionContext.messages,
-    });
     const intentSuggestionResult = await buildIntentSuggestions({
       classification: result.diagnostics?.input_classification,
       rawText,
@@ -1046,9 +1040,7 @@ Deno.serve(async (req) => {
     const shouldUseIntentSuggestionMessage = result.recommendations.length === 0 && result.stock_updates.length === 0;
     const suggestions = result.recommendations.length > 0 || result.stock_updates.length > 0
       ? []
-      : intentSuggestionResult.suggestions.length > 0 || (shouldUseIntentSuggestionMessage && intentSuggestionResult.message)
-        ? intentSuggestionResult.suggestions
-        : baseSuggestions;
+      : intentSuggestionResult.suggestions;
 
     const durationMs = Date.now() - callStartTime;
     const promptTokens = result.metrics?.llm_used ? Math.ceil(rawText.length / 4) : 0;

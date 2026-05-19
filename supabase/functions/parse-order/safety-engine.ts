@@ -1,5 +1,12 @@
 import { createClientKey } from './conflicts.ts';
-import { normalizeUnitForComparison } from './units.ts';
+import {
+  deriveAllowedUnitLabels,
+  deriveAllowedUnits,
+  displayUnitLabel,
+  formatAllowedUnitList,
+  formatQuantityWithUnit,
+  normalizeUnitForComparison,
+} from './units.ts';
 import type {
   BlockedOperation,
   CatalogItem,
@@ -38,6 +45,8 @@ type SafetyDecision =
       warningType: SafetyWarningType;
       message: string;
       severity: SafetyWarning['severity'];
+      allowedUnits?: string[];
+      providedUnit?: string | null;
     };
 
 const LOW_CONFIDENCE_READY_THRESHOLD = 0.8;
@@ -51,6 +60,23 @@ export function validateQuickOrderSafety(input: SafetyValidationInput): SafetyVa
   const acceptedItems: ParsedItem[] = [];
 
   for (const item of input.parseResponse.parsed_items) {
+    const parserClarification = buildParserClarification(item, input);
+    if (parserClarification) {
+      pendingClarifications.push(parserClarification);
+      if (item.status === 'invalid_unit') {
+        warnings.push({
+          type: 'unusual_unit',
+          message: parserClarification.message,
+          item_id: item.item_id,
+          item_name: item.item_name ?? item.display_name ?? item.raw_token,
+          quantity: item.quantity,
+          unit: item.unit,
+          severity: 'warning',
+        });
+      }
+      continue;
+    }
+
     const decision = evaluateParsedItem(item, input);
     if (decision.action === 'allow') {
       acceptedItems.push(item);
@@ -140,7 +166,8 @@ function evaluateParsedItem(item: ParsedItem, input: SafetyValidationInput): Saf
     };
   }
 
-  const unitDecision = evaluateAllowedUnit(item.item_id, item.unit, input.allowedUnitRules);
+  const catalogItem = input.catalog.find((entry) => entry.id === item.item_id) ?? null;
+  const unitDecision = evaluateAllowedUnit(item.item_id, item.unit, input.allowedUnitRules, catalogItem);
   if (unitDecision) return unitDecision;
 
   return evaluateQuantity({
@@ -155,9 +182,88 @@ function evaluateParsedItem(item: ParsedItem, input: SafetyValidationInput): Saf
   });
 }
 
+function buildParserClarification(
+  item: ParsedItem,
+  input: SafetyValidationInput,
+): PendingQuickOrderClarification | null {
+  if (item.item_id && item.status === 'invalid_unit') {
+    const catalogItem = input.catalog.find((entry) => entry.id === item.item_id) ?? null;
+    const allowedUnits = allowedUnitsForSafety(item.item_id, input.allowedUnitRules, catalogItem);
+    const itemName = item.item_name ?? item.display_name ?? catalogItem?.name ?? item.raw_token;
+    return {
+      id: createClientKey('invalid_unit'),
+      type: 'invalid_unit',
+      item_id: item.item_id,
+      item_name: itemName,
+      incoming_item: item,
+      message: item.issue ?? `${itemName} cannot be ordered as ${displayUnitLabel(item.unit) || 'that unit'}. Use ${formatAllowedUnitList(allowedUnits)}.`,
+      actions: [
+        ...allowedUnits.slice(0, 4).map((unit) => ({
+          id: 'use_unit' as const,
+          label: `Use ${displayUnitLabel(unit)}`,
+          unit,
+          preview: item.quantity != null ? `${item.quantity} ${displayUnitLabel(unit)}` : displayUnitLabel(unit),
+        })),
+        { id: 'cancel' as const, label: 'Cancel' },
+      ],
+    };
+  }
+
+  if (!item.item_id || item.unresolved || item.status === 'no_match' || item.status === 'ambiguous') {
+    const rawLabel = item.item_text ?? item.raw_token ?? item.raw_text ?? 'that item';
+    const top = item.alternatives?.[0] ?? item.candidate_matches?.[0];
+    const confidence = top?.confidence ?? top?.score ?? 0;
+    if (top && confidence >= 0.75) {
+      return {
+        id: createClientKey('item_suggestion'),
+        type: 'ambiguous_item',
+        item_id: null,
+        item_name: rawLabel,
+        incoming_item: {
+          ...item,
+          item_id: top.item_id,
+          item_name: top.item_name,
+          display_name: top.item_name,
+          name: top.item_name,
+          unresolved: false,
+          needs_clarification: item.quantity == null || !item.unit,
+          status: item.quantity == null ? 'missing_quantity' : !item.unit ? 'missing_unit' : 'valid',
+          action: item.quantity == null ? 'Add quantity' : !item.unit ? 'Choose unit' : null,
+        },
+        message: `I couldn't recognize "${rawLabel}". Did you mean ${top.item_name}?`,
+        actions: [
+          { id: 'use_item' as const, label: `Use ${top.item_name}` },
+        ],
+      };
+    }
+    return {
+      id: createClientKey('item_not_found'),
+      type: 'item_not_found',
+      item_id: null,
+      item_name: rawLabel,
+      message: `I couldn't recognize "${rawLabel}". Try the item name again.`,
+      actions: [],
+    };
+  }
+
+  return null;
+}
+
+function allowedUnitsForSafety(
+  itemId: string,
+  rules: ItemAllowedUnitRule[],
+  catalogItem: CatalogItem | null,
+): string[] {
+  const ruleUnits = rules
+    .filter((rule) => rule.item_id === itemId && typeof rule.unit === 'string' && rule.unit.trim().length > 0)
+    .map((rule) => rule.unit.trim());
+  return ruleUnits.length > 0 ? [...new Set(ruleUnits)] : deriveAllowedUnitLabels(catalogItem);
+}
+
 function evaluateOperation(operation: QuickOrderOperation, input: SafetyValidationInput): SafetyDecision {
   if (operation.status !== 'applied' || !operation.target_item_id || operation.quantity == null) return { action: 'allow' };
-  const unitDecision = evaluateAllowedUnit(operation.target_item_id, operation.unit ?? null, input.allowedUnitRules);
+  const catalogItem = input.catalog.find((entry) => entry.id === operation.target_item_id) ?? null;
+  const unitDecision = evaluateAllowedUnit(operation.target_item_id, operation.unit ?? null, input.allowedUnitRules, catalogItem);
   if (unitDecision) return unitDecision;
   return evaluateQuantity({
     itemId: operation.target_item_id,
@@ -175,16 +281,35 @@ function evaluateAllowedUnit(
   itemId: string,
   unit: string | null | undefined,
   rules: ItemAllowedUnitRule[],
+  catalogItem: CatalogItem | null,
 ): SafetyDecision | null {
   const itemRules = rules.filter((rule) => rule.item_id === itemId);
-  if (itemRules.length === 0) return null;
   const normalizedUnit = normalizeUnitForComparison(unit);
+  const itemName = catalogItem?.name ?? 'This item';
+  if (itemRules.length === 0) {
+    const catalogUnits = deriveAllowedUnits(catalogItem);
+    if (catalogUnits.length === 0 || !normalizedUnit || catalogUnits.includes(normalizedUnit)) return null;
+    const labels = deriveAllowedUnitLabels(catalogItem);
+    return {
+      action: 'confirm',
+      warningType: 'unusual_unit',
+      severity: 'warning',
+      providedUnit: unit ?? null,
+      allowedUnits: labels,
+      message: `${itemName} cannot be ordered as ${displayUnitLabel(unit) || 'that unit'}. Use ${formatAllowedUnitList(labels)}.`,
+    };
+  }
   if (normalizedUnit && itemRules.some((rule) => normalizeUnitForComparison(rule.unit) === normalizedUnit)) return null;
+  const labels = itemRules
+    .map((rule) => rule.unit)
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
   return {
     action: 'confirm',
     warningType: 'unusual_unit',
     severity: 'warning',
-    message: `That unit is unusual for this item. Please choose an allowed unit.`,
+    providedUnit: unit ?? null,
+    allowedUnits: labels,
+    message: `${itemName} cannot be ordered as ${displayUnitLabel(unit) || 'that unit'}. Use ${formatAllowedUnitList(labels)}.`,
   };
 }
 
@@ -232,6 +357,18 @@ function evaluateQuantity(input: {
     };
   }
 
+  if (input.source === 'voice' && p95 == null && input.limit == null) {
+    const genericVoiceThreshold = genericVoiceQuantityThreshold(input.unit);
+    if (genericVoiceThreshold != null && quantity > genericVoiceThreshold) {
+      return {
+        action: 'confirm',
+        warningType: 'voice_number_risk',
+        severity: 'warning',
+        message: `I heard ${formatQuantity(quantity, input.unit)} for ${input.itemName}, which is higher than expected for voice entry. Please confirm it.`,
+      };
+    }
+  }
+
   if (softMax != null && quantity > softMax) {
     return {
       action: 'confirm',
@@ -245,6 +382,27 @@ function evaluateQuantity(input: {
 }
 
 function buildSafetyClarification(item: ParsedItem, decision: Exclude<SafetyDecision, { action: 'allow' }>): PendingQuickOrderClarification {
+  if (decision.warningType === 'unusual_unit') {
+    const allowedUnits = decision.allowedUnits ?? [];
+    return {
+      id: createClientKey('unit'),
+      type: 'invalid_unit',
+      item_id: item.item_id,
+      item_name: item.item_name ?? item.display_name ?? item.raw_token,
+      incoming_item: item,
+      message: decision.message,
+      actions: [
+        ...allowedUnits.slice(0, 4).map((unit) => ({
+          id: 'use_unit' as const,
+          label: `Use ${displayUnitLabel(unit)}`,
+          unit,
+          preview: item.quantity != null ? `${item.quantity} ${displayUnitLabel(unit)}` : displayUnitLabel(unit),
+        })),
+        { id: 'cancel', label: 'Cancel' },
+      ],
+    };
+  }
+
   return {
     id: createClientKey('safety'),
     type: decision.warningType === 'low_confidence_match' ? 'low_confidence_match' : 'quantity_safety',
@@ -308,9 +466,18 @@ function positiveNumber(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
 }
 
+function genericVoiceQuantityThreshold(unit: string | null | undefined): number | null {
+  const normalized = normalizeUnitForComparison(unit);
+  if (!normalized) return 24;
+  if (normalized === 'lb' || normalized === 'oz' || normalized === 'pc') return 50;
+  if (normalized === 'cs' || normalized === 'case' || normalized === 'pack' || normalized === 'box' || normalized === 'bag' || normalized === 'tray') {
+    return 12;
+  }
+  return 24;
+}
+
 function formatQuantity(quantity: number | null | undefined, unit: string | null | undefined): string {
-  if (quantity == null) return unit?.trim() || 'that quantity';
-  return `${quantity}${unit ? ` ${unit}` : ''}`;
+  return formatQuantityWithUnit(quantity, unit);
 }
 
 function formatLimit(limit: number, unit: string | null | undefined): string {

@@ -23,21 +23,23 @@ export function UnitSegmentedControl({ options, value, onChange, disabled = fals
   const ds = useScaledStyles();
 
   return (
-    <View style={[styles.row, { gap: ds.spacing(8) }]}>
+    <View
+      style={[
+        styles.card,
+        {
+          borderRadius: ds.radius(20),
+          padding: ds.spacing(6),
+          gap: ds.spacing(6),
+        },
+      ]}
+    >
       {options.map((option) => {
         const selected = option.value === value;
         const unavailable = option.available === false;
         const segmentDisabled = disabled || unavailable;
         const background = selected
           ? '#E8503A'
-          : unavailable
-            ? 'transparent'
-            : '#FFFFFF';
-        const borderColor = selected
-          ? '#E8503A'
-          : unavailable
-            ? '#E5E5EA'
-            : '#E5E5EA';
+          : 'transparent';
         const textColor = selected
           ? '#FFFFFF'
           : unavailable
@@ -62,7 +64,6 @@ export function UnitSegmentedControl({ options, value, onChange, disabled = fals
                 paddingVertical: ds.spacing(13),
                 paddingHorizontal: ds.spacing(8),
                 backgroundColor: background,
-                borderColor,
                 opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
               },
             ]}
@@ -71,9 +72,9 @@ export function UnitSegmentedControl({ options, value, onChange, disabled = fals
               style={[
                 styles.pillText,
                 {
-                  fontSize: ds.fontSize(15),
+                  fontSize: ds.fontSize(16),
                   color: textColor,
-                  fontWeight: selected ? '800' : '600',
+                  fontWeight: selected ? '800' : '700',
                 },
               ]}
               numberOfLines={1}
@@ -88,16 +89,21 @@ export function UnitSegmentedControl({ options, value, onChange, disabled = fals
 }
 
 const styles = StyleSheet.create({
-  row: {
+  card: {
     flexDirection: 'row',
     alignItems: 'stretch',
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 3,
   },
   pill: {
     flex: 1,
     minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
   },
   pillText: {
     letterSpacing: 0,

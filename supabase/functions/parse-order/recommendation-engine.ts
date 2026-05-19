@@ -42,12 +42,15 @@ export function buildQuickOrderRecommendations(input: {
     const catalogItem = input.catalog.find((item) => item.id === itemId);
     if (!catalogItem) continue;
     const stock = latestStockForItem(input.stockUpdates, itemId);
-    const unit = stock?.unit ?? defaultUnitForItem(catalogItem, input.allowedUnitRules);
-    const expectedUsage = averageRecentQuantity(input.recentOrders, itemId, unit);
     const limit = findLimit(input.limits, itemId);
+    const unit = defaultUnitForItem(catalogItem, input.allowedUnitRules, limit);
+    const currentStockInOrderUnit = stock
+      ? convertStockQuantityToUnit(stock, unit, input.allowedUnitRules)
+      : null;
+    const expectedUsage = averageRecentQuantity(input.recentOrders, itemId, unit);
     const previousAverage = expectedUsage ?? positiveNumber(limit?.historical_median_quantity) ?? positiveNumber(limit?.typical_min_quantity) ?? 1;
     const safetyStock = positiveNumber(limit?.typical_min_quantity) ?? Math.max(0, Math.ceil(previousAverage * 0.25));
-    const currentStock = stock?.quantity ?? null;
+    const currentStock = currentStockInOrderUnit;
     const rawSuggested = Math.max(0, previousAverage + safetyStock - (currentStock ?? 0));
     const rounded = roundRecommendation(rawSuggested, unit);
     if (rounded <= 0) continue;
@@ -137,9 +140,47 @@ function averageRecentQuantity(
   return quantities.reduce((sum, qty) => sum + qty, 0) / quantities.length;
 }
 
-function defaultUnitForItem(item: CatalogItem, rules: ItemAllowedUnitRule[]): string | null {
+function defaultUnitForItem(
+  item: CatalogItem,
+  rules: ItemAllowedUnitRule[],
+  limit: ItemOrderLimit | null,
+): string | null {
   const defaultRule = rules.find((rule) => rule.item_id === item.id && rule.is_default);
-  return defaultRule?.unit ?? item.default_unit ?? item.order_unit ?? item.base_unit ?? item.pack_unit ?? null;
+  if (defaultRule?.unit) return defaultRule.unit;
+  if (limit?.default_order_unit) return limit.default_order_unit;
+  if (item.order_unit) return item.order_unit;
+  if (item.default_unit && !isTinyUsageUnit(item.default_unit)) return item.default_unit;
+  if (item.pack_unit) return item.pack_unit;
+  return item.default_unit ?? item.base_unit ?? null;
+}
+
+function convertStockQuantityToUnit(
+  stock: StockOperation,
+  targetUnit: string | null,
+  rules: ItemAllowedUnitRule[],
+): number | null {
+  const stockUnit = normalizeUnitForComparison(stock.unit);
+  const normalizedTarget = normalizeUnitForComparison(targetUnit);
+  if (!stockUnit || !normalizedTarget) return null;
+  if (stockUnit === normalizedTarget) return stock.quantity;
+
+  const stockRule = rules.find((rule) =>
+    rule.item_id === stock.item_id &&
+    normalizeUnitForComparison(rule.unit) === stockUnit
+  );
+  const targetRule = rules.find((rule) =>
+    rule.item_id === stock.item_id &&
+    normalizeUnitForComparison(rule.unit) === normalizedTarget
+  );
+  const stockConversion = positiveNumber(stockRule?.conversion_to_base_unit);
+  const targetConversion = positiveNumber(targetRule?.conversion_to_base_unit);
+  if (stockConversion == null || targetConversion == null) return null;
+  return (stock.quantity * stockConversion) / targetConversion;
+}
+
+function isTinyUsageUnit(unit: string): boolean {
+  const normalized = normalizeUnitForComparison(unit);
+  return normalized === 'oz' || normalized === 'pc' || normalized === 'piece';
 }
 
 function findLimit(limits: ItemOrderLimit[], itemId: string): ItemOrderLimit | null {

@@ -1,8 +1,8 @@
 import type { ParsedItem, PendingQuickOrderClarification, ParseFlag } from './types.ts';
-import { normalizeUnitForComparison } from './units.ts';
+import { formatQuantityWithUnit, normalizeUnitForComparison } from './units.ts';
 
-const ADDITIVE = /\b(add|add another|also|more|plus|another|need more)\b/i;
-const REPLACEMENT = /\b(change|change to|make it|make that|replace|instead|actually|update|set)\b/i;
+const ADDITIVE = /\b(add|add another|also|more|plus|another|extra|increase|need more)\b/i;
+const REPLACEMENT = /\b(change|change to|make it|make that|replace|instead|actually|update|set|to|should be)\b/i;
 
 export type ConflictResult = {
   acceptedItems: ParsedItem[];
@@ -76,9 +76,10 @@ export function resolveParsedItemConflicts(
           needs_clarification: false,
           unresolved: false,
           merge_behavior: 'add_to_existing',
+          merge_delta_quantity: incoming.quantity,
           existing_item_key: getParserItemKey(sameUnitMatch),
         });
-      } else if (replacement) {
+      } else if (replacement || hasCompleteQuantityAndUnit(incoming)) {
         updatedItems.push({
           ...sameUnitMatch,
           quantity: incoming.quantity,
@@ -105,7 +106,7 @@ export function resolveParsedItemConflicts(
     }
 
     const firstMatch = matches[0];
-    if (replacement) {
+    if (replacement || (!additive && hasCompleteQuantityAndUnit(incoming))) {
       updatedItems.push({
         ...firstMatch,
         quantity: incoming.quantity,
@@ -185,11 +186,15 @@ function sameQuantity(a: ParsedItem, b: ParsedItem): boolean {
   return a.quantity != null && b.quantity != null && Math.abs(a.quantity - b.quantity) < 0.000001;
 }
 
+function hasCompleteQuantityAndUnit(item: ParsedItem): boolean {
+  return item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0 && Boolean(item.unit?.trim());
+}
+
 function quantityConflictClarification(existing: ParsedItem, incoming: ParsedItem): PendingQuickOrderClarification {
   const id = createClientKey('conflict');
   const existingQty = formatQty(existing);
   const incomingQty = formatQty(incoming);
-  const total = `${(existing.quantity ?? 0) + (incoming.quantity ?? 0)} ${incoming.unit ?? ''}`.trim();
+  const total = formatQuantityWithUnit((existing.quantity ?? 0) + (incoming.quantity ?? 0), incoming.unit);
   return {
     id,
     type: 'quantity_conflict',
@@ -273,5 +278,5 @@ function chooseExistingClarification(existingItems: ParsedItem[], incoming: Pars
 
 function formatQty(item: ParsedItem): string {
   const qty = item.quantity ?? '?';
-  return `${qty} ${item.unit ?? ''}`.trim();
+  return item.quantity == null ? `${qty} ${item.unit ?? ''}`.trim() : formatQuantityWithUnit(item.quantity, item.unit);
 }

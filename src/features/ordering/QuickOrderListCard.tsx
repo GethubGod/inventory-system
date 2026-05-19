@@ -20,8 +20,10 @@ import {
   QuickOrderItemRow,
 } from "./QuickOrderItemRow";
 import {
+  formatParsedItemQuantity,
   getParsedItemIssue,
   getParsedItemKey,
+  normalizeQuickOrderUnit,
   type ParsedQuickOrderItem,
 } from "./quickOrderItems";
 
@@ -42,6 +44,13 @@ type QuickOrderListCardProps = {
 };
 
 type ConfirmState = "empty" | "needs-fixing" | "ready" | "confirming";
+
+type OrderListGroup = {
+  key: string;
+  item: ParsedQuickOrderItem;
+  items: ParsedQuickOrderItem[];
+  quantityLines: string[];
+};
 
 /**
  * Order List card.
@@ -67,7 +76,8 @@ export function QuickOrderListCard({
   const ds = useScaledStyles();
   const scrollRef = useRef<ScrollView | null>(null);
 
-  const count = items.length;
+  const displayGroups = useMemo(() => groupOrderListItems(items), [items]);
+  const count = displayGroups.length;
   const isEmpty = count === 0;
 
   const confirmState: ConfirmState = isSubmitting
@@ -126,11 +136,11 @@ export function QuickOrderListCard({
   // Find the first item that needs attention so we can scroll it into view.
   const firstIssueIndex = useMemo(() => {
     if (issueCount === 0) return -1;
-    for (let i = 0; i < items.length; i += 1) {
-      if (getParsedItemIssue(items[i]) != null) return i;
+    for (let i = 0; i < displayGroups.length; i += 1) {
+      if (displayGroups[i].items.some((item) => getParsedItemIssue(item) != null)) return i;
     }
     return -1;
-  }, [items, issueCount]);
+  }, [displayGroups, issueCount]);
 
   // When the list grows, follow the newest row.
   const previousCount = useRef(count);
@@ -234,10 +244,11 @@ export function QuickOrderListCard({
               keyboardShouldPersistTaps="handled"
               bounces={false}
             >
-              {items.map((item, index) => (
+              {displayGroups.map((group, index) => (
                 <QuickOrderItemRow
-                  key={`${getParsedItemKey(item)}::${index}`}
-                  item={item}
+                  key={`${group.key}::${index}`}
+                  item={group.item}
+                  quantityLines={group.quantityLines}
                   showDivider={index > 0}
                   onEdit={onEditItem}
                   onResolveQuantity={onResolveQuantity}
@@ -312,6 +323,58 @@ export function QuickOrderListCard({
       </View>
     </View>
   );
+}
+
+function groupOrderListItems(items: ParsedQuickOrderItem[]): OrderListGroup[] {
+  const groups = new Map<string, ParsedQuickOrderItem[]>();
+  const order: string[] = [];
+
+  for (const item of items) {
+    const key = item.item_id ? `item:${item.item_id}` : getParsedItemKey(item);
+    if (!groups.has(key)) {
+      groups.set(key, []);
+      order.push(key);
+    }
+    groups.get(key)!.push(item);
+  }
+
+  return order.map((key) => {
+    const groupItems = groups.get(key) ?? [];
+    const item = groupItems.find((entry) => getParsedItemIssue(entry) != null) ?? groupItems[0];
+    return {
+      key,
+      item,
+      items: groupItems,
+      quantityLines: buildQuantityLines(groupItems),
+    };
+  });
+}
+
+function buildQuantityLines(items: ParsedQuickOrderItem[]): string[] {
+  const byUnit = new Map<string, ParsedQuickOrderItem>();
+  const lines: ParsedQuickOrderItem[] = [];
+
+  for (const item of items) {
+    const issue = getParsedItemIssue(item);
+    if (issue) {
+      lines.push(item);
+      continue;
+    }
+
+    const unitKey = normalizeQuickOrderUnit(item.unit) ?? item.unit ?? getParsedItemKey(item);
+    const existing = byUnit.get(unitKey);
+    if (!existing) {
+      byUnit.set(unitKey, { ...item });
+      lines.push(byUnit.get(unitKey)!);
+      continue;
+    }
+
+    if (item.quantity != null && existing.quantity != null) {
+      existing.quantity += item.quantity;
+    }
+  }
+
+  return lines.map((item) => formatParsedItemQuantity(item));
 }
 
 type ConfirmButtonProps = {

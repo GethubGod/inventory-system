@@ -17,7 +17,7 @@ import type {
   QuickOrderOperation,
 } from './types.ts';
 import type { QuickOrderIntent } from './intent-detector.ts';
-import { normalizeUnitForComparison } from './units.ts';
+import { formatQuantityWithUnit, normalizeUnitForComparison } from './units.ts';
 
 export type OperationBuilderInput = {
   intent: QuickOrderIntent;
@@ -72,17 +72,49 @@ function buildRemoveOperations(input: OperationBuilderInput): OperationBuilderRe
     if (matches.length === 1) {
       const target = matches[0];
       const displayName = target.display_name ?? target.item_name ?? target.raw_token ?? 'Item';
-      operations.push({
-        type: 'remove',
-        target_item_id: target.item_id,
-        target_display_name: displayName,
-        target_item_key: getParserItemKey(target),
-        quantity: target.quantity,
-        unit: target.unit,
-        status: 'applied',
-        message: `Removed ${displayName}.`,
-      });
-      removedNames.push(displayName);
+      const removeQty = parsed.quantity;
+      if (removeQty != null && removeQty > 0) {
+        const currentQty = target.quantity ?? 0;
+        const unit = parsed.unit ?? target.unit;
+        const newQty = currentQty - removeQty;
+        if (newQty > 0) {
+          operations.push({
+            type: 'update_quantity',
+            target_item_id: target.item_id,
+            target_display_name: displayName,
+            target_item_key: getParserItemKey(target),
+            quantity: newQty,
+            unit,
+            status: 'applied',
+            message: `Removed ${formatQuantity(removeQty, unit)} from ${displayName}. New total: ${formatQuantity(newQty, unit)}.`,
+          });
+          removedNames.push(displayName);
+        } else {
+          operations.push({
+            type: 'remove',
+            target_item_id: target.item_id,
+            target_display_name: displayName,
+            target_item_key: getParserItemKey(target),
+            quantity: target.quantity,
+            unit: target.unit,
+            status: 'applied',
+            message: `Removed ${displayName}.`,
+          });
+          removedNames.push(displayName);
+        }
+      } else {
+        operations.push({
+          type: 'remove',
+          target_item_id: target.item_id,
+          target_display_name: displayName,
+          target_item_key: getParserItemKey(target),
+          quantity: target.quantity,
+          unit: target.unit,
+          status: 'applied',
+          message: `Removed ${displayName}.`,
+        });
+        removedNames.push(displayName);
+      }
     } else if (matches.length > 1) {
       pendingClarifications.push({
         id: createClientKey('remove'),
@@ -123,7 +155,7 @@ function buildRemoveOperations(input: OperationBuilderInput): OperationBuilderRe
 
   const message = removedNames.length > 0
     ? removedNames.length === 1
-      ? `Removed ${removedNames[0]}.`
+      ? operations.find((op) => op.status === 'applied')?.message ?? `Removed ${removedNames[0]}.`
       : `Removed ${removedNames.length} items.`
     : operations.find((op) => op.status === 'failed')?.message
       ?? pendingClarifications[0]?.message
@@ -157,7 +189,7 @@ function buildReplaceOperations(input: OperationBuilderInput): OperationBuilderR
         quantity: newQty,
         unit: newUnit,
         status: 'applied',
-        message: `Updated ${displayName} to ${newQty} ${newUnit ?? ''}.`.trim(),
+        message: `Updated ${displayName} to ${formatQuantity(newQty, newUnit)}.`,
       });
       updatedNames.push(displayName);
     } else {
@@ -201,15 +233,16 @@ function buildIncreaseOperations(input: OperationBuilderInput): OperationBuilder
       const displayName = sameUnitMatch.display_name ?? sameUnitMatch.item_name ?? 'Item';
       const addQty = parsed.quantity ?? 0;
       const newQty = (sameUnitMatch.quantity ?? 0) + addQty;
+      const unit = parsed.unit ?? sameUnitMatch.unit;
       operations.push({
         type: 'update_quantity',
         target_item_id: sameUnitMatch.item_id,
         target_display_name: displayName,
         target_item_key: getParserItemKey(sameUnitMatch),
         quantity: newQty,
-        unit: parsed.unit ?? sameUnitMatch.unit,
+        unit,
         status: 'applied',
-        message: `Updated ${displayName} to ${newQty} ${parsed.unit ?? sameUnitMatch.unit ?? ''}.`.trim(),
+        message: `Added ${formatQuantity(addQty, unit)} to ${displayName}. New total: ${formatQuantity(newQty, unit)}.`,
       });
       updatedNames.push(displayName);
     } else {
@@ -221,7 +254,7 @@ function buildIncreaseOperations(input: OperationBuilderInput): OperationBuilder
         quantity: parsed.quantity,
         unit: parsed.unit,
         status: 'applied',
-        message: `Added ${parsed.display_name ?? parsed.item_name ?? parsed.raw_token ?? 'item'}.`,
+        message: `Added ${parsed.display_name ?? parsed.item_name ?? parsed.raw_token ?? 'item'} ${formatQuantity(parsed.quantity, parsed.unit)}.`,
       });
     }
   }
@@ -267,7 +300,7 @@ function buildDecreaseOperations(input: OperationBuilderInput): OperationBuilder
           quantity: newQty,
           unit: target.unit,
           status: 'applied',
-          message: `Reduced ${displayName} to ${newQty} ${target.unit ?? ''}.`.trim(),
+          message: `Removed ${formatQuantity(subtractQty, target.unit)} from ${displayName}. New total: ${formatQuantity(newQty, target.unit)}.`,
         });
       }
       updatedNames.push(displayName);
@@ -372,7 +405,11 @@ function findMatchingExistingItems(parsed: ParsedItem, existing: ParsedItem[]): 
 
 function formatQty(item: ParsedItem): string {
   const qty = item.quantity ?? '?';
-  return `${qty} ${item.unit ?? ''}`.trim();
+  return item.quantity == null ? `${qty} ${item.unit ?? ''}`.trim() : formatQuantityWithUnit(item.quantity, item.unit);
+}
+
+function formatQuantity(quantity: number | null | undefined, unit: string | null | undefined): string {
+  return formatQuantityWithUnit(quantity, unit);
 }
 
 function emptyResult(message: string): OperationBuilderResult {

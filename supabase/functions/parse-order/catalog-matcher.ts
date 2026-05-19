@@ -1,6 +1,7 @@
 import {
   buildCatalogSearchIndex,
   analyzeSemanticTokens,
+  catalogNameStructuralSegmentMatches,
   findCatalogAlternatives,
   getCatalogSearchTerms,
   isStrongDeterministicMatch,
@@ -18,6 +19,7 @@ import type {
 export {
   buildCatalogSearchIndex,
   analyzeSemanticTokens,
+  catalogNameStructuralSegmentMatches,
   findCatalogAlternatives,
   getCatalogSearchTerms,
   isStrongDeterministicMatch,

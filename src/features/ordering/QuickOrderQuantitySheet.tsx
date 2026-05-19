@@ -448,10 +448,15 @@ function SheetBody({
               isMulti ? styles.primaryButtonMulti : styles.primaryButtonSingle,
               {
                 borderRadius: 999,
-                minHeight: ds.spacing(58),
+                minHeight: ds.spacing(68),
                 paddingHorizontal: ds.spacing(24),
                 backgroundColor: PRIMARY,
-                opacity: !canSubmit ? 0.45 : pressed ? 0.86 : 1,
+                opacity: !canSubmit ? 0.85 : pressed ? 0.86 : 1,
+                shadowColor: "#000000",
+                shadowOffset: { width: 0, height: 6 },
+                shadowOpacity: 0.18,
+                shadowRadius: 14,
+                elevation: 6,
               },
             ]}
           >
@@ -462,7 +467,7 @@ function SheetBody({
                 <Text
                   style={[
                     styles.primaryText,
-                    { fontSize: ds.fontSize(17), color: TEXT_ON_PRIMARY },
+                    { fontSize: ds.fontSize(18), color: TEXT_ON_PRIMARY },
                   ]}
                   numberOfLines={1}
                 >
@@ -470,7 +475,7 @@ function SheetBody({
                 </Text>
                 <Ionicons
                   name="arrow-forward"
-                  size={ds.icon(18)}
+                  size={ds.icon(20)}
                   color={TEXT_ON_PRIMARY}
                   style={{ marginLeft: ds.spacing(8) }}
                 />

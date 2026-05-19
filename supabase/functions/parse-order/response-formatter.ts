@@ -5,6 +5,7 @@ import type {
   SafetyWarning,
   StockOperation,
 } from './types.ts';
+import { formatQuantityWithUnit } from './units.ts';
 
 export function buildProcessMessages(input: {
   parseResponse: ParseResponse;
@@ -15,6 +16,14 @@ export function buildProcessMessages(input: {
 }): { displayMessage: string; speechMessage: string } {
   const blocked = input.blockedOperations[0];
   if (blocked) {
+    const successSummary = formatParseSuccessSummary(input.parseResponse);
+    if (successSummary) {
+      const message = `${successSummary} ${blocked.message}`;
+      return {
+        displayMessage: message,
+        speechMessage: shorten(message),
+      };
+    }
     return {
       displayMessage: blocked.message,
       speechMessage: shorten(blocked.message),
@@ -23,6 +32,14 @@ export function buildProcessMessages(input: {
 
   const warning = input.safetyWarnings.find((entry) => entry.severity !== 'info');
   if (warning) {
+    const successSummary = formatParseSuccessSummary(input.parseResponse);
+    if (successSummary) {
+      const message = `${successSummary} ${warning.message}`;
+      return {
+        displayMessage: message,
+        speechMessage: shorten(message),
+      };
+    }
     return {
       displayMessage: warning.message,
       speechMessage: shorten(warning.message),
@@ -63,7 +80,28 @@ export function buildProcessMessages(input: {
 }
 
 function formatQuantity(quantity: number, unit: string | null): string {
-  return `${quantity}${unit ? ` ${unit}` : ''}`;
+  return formatQuantityWithUnit(quantity, unit);
+}
+
+function formatItemCount(count: number): string {
+  return `${count} item${count === 1 ? '' : 's'}`;
+}
+
+function formatParseSuccessSummary(response: ParseResponse): string | null {
+  const readyItems = response.parsed_items.filter((item) => !item.needs_clarification && !item.unresolved);
+  const readyCount = readyItems.length;
+  const reviewCount = response.parsed_items.length - readyCount;
+  if (readyCount <= 0 && reviewCount <= 0) return null;
+  const parts: string[] = [];
+  if (readyCount === 1) {
+    const item = readyItems[0];
+    const name = item.display_name ?? item.item_name ?? item.raw_token ?? 'Item';
+    parts.push(`Added ${name} ${formatQuantity(item.quantity ?? 0, item.unit)}.`);
+  } else if (readyCount > 0) {
+    parts.push(`Added ${formatItemCount(readyCount)}.`);
+  }
+  if (reviewCount > 0) parts.push(`Review ${formatItemCount(reviewCount)}.`);
+  return parts.join(' ');
 }
 
 function shorten(message: string): string {

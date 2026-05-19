@@ -13,6 +13,7 @@ export type QuickOrderInputClassification =
   | 'history_request'
   | 'confirm_request'
   | 'clear_request'
+  | 'identity_question'
   | 'unknown_non_order';
 
 export type QuickOrderInputClassifierContext = {
@@ -63,6 +64,13 @@ const HISTORY_PATTERNS = [
 ];
 
 const QUESTION_PATTERN = /^(?:what|when|where|why|how|can|could|should|do|did|is|are)\b/i;
+const IDENTITY_PATTERNS = [
+  /\bwho are you\b/i,
+  /\bwhat are you\b/i,
+  /\bwhat is this\b/i,
+  /\bwhat do you do\b/i,
+  /\bwho is this\b/i,
+];
 
 export function classifyQuickOrderInput(
   rawText: string,
@@ -127,6 +135,10 @@ export function classifyQuickOrderInput(
 
   if (intentResult.intent === 'confirm') {
     return { classification: 'confirm_request', intentResult, normalizedText, reason: 'confirm_command' };
+  }
+
+  if (IDENTITY_PATTERNS.some((pattern) => pattern.test(nfkcText))) {
+    return { classification: 'identity_question', intentResult, normalizedText, reason: 'identity_question' };
   }
 
   if (intentResult.intent !== 'unknown') {

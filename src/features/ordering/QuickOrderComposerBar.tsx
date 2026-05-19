@@ -39,12 +39,13 @@ type QuickOrderComposerBarProps = {
   onStopVoice?: () => void;
 };
 
-const SEND_BUTTON_SIZE = 36;
+const SEND_BUTTON_SIZE = 44;
 const LINE_HEIGHT = 22;
 // Vertical padding inside the input pill. Chosen so a single line (LINE_HEIGHT
-// = 22) + 2 * padding (7) equals SEND_BUTTON_SIZE (36), so the input pill is
-// visually the same height as the send button at rest.
-const INPUT_VERTICAL_PADDING = 7;
+// = 22) + 2 * padding (11) equals SEND_BUTTON_SIZE (44), so the input pill is
+// visually the same height as the send button at rest and matches the height
+// of a single-line user message bubble.
+const INPUT_VERTICAL_PADDING = 11;
 const MIN_TEXT_INPUT_HEIGHT = LINE_HEIGHT;
 const MIN_INPUT_HEIGHT = MIN_TEXT_INPUT_HEIGHT + INPUT_VERTICAL_PADDING * 2;
 const MAX_INPUT_LINES = 20;

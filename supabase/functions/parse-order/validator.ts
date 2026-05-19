@@ -8,7 +8,16 @@ import type {
   ParseSource,
 } from './types.ts';
 import { matchCatalogItem } from './catalog-matcher.ts';
-import { deriveAllowedUnits, isKnownUnit, isUnitAllowedForItem, normalizeUnit, UNIT_WORDS } from './units.ts';
+import {
+  deriveAllowedUnitLabels,
+  deriveAllowedUnits,
+  displayUnitLabel,
+  formatAllowedUnitList,
+  isKnownUnit,
+  isUnitAllowedForItem,
+  normalizeUnit,
+  UNIT_WORDS,
+} from './units.ts';
 
 export function validateParsedLine(input: {
   candidate: CandidateParsedLine;
@@ -65,14 +74,14 @@ export function validateParsedLine(input: {
   } else if (!isKnownUnit(unit)) {
     needsClarification = true;
     invalidUnit = true;
-    const validUnits = deriveAllowedUnits(catalogItem);
-    const unitList = validUnits.length > 0 ? ` Choose: ${validUnits.join(', ')}.` : ' Choose a valid unit.';
+    const validUnits = deriveAllowedUnitLabels(catalogItem);
+    const unitList = validUnits.length > 0 ? ` Use ${formatAllowedUnitList(validUnits)}.` : ' Use a valid unit.';
     issue = issue ?? (catalogItem
-      ? `${catalogItem.name} cannot be ordered in ${unit}.${unitList}`
-      : `"${unit}" is not a recognized order unit.`);
+      ? `${catalogItem.name} cannot be ordered as ${displayUnitLabel(unit)}.${unitList}`
+      : `"${displayUnitLabel(unit)}" is not a recognized order unit.`);
     flags.push({
       type: 'invalid_unit',
-      message: `"${unit}" is not a recognized order unit.`,
+      message: `"${displayUnitLabel(unit)}" is not a recognized order unit.`,
       raw_token: candidate.raw_text,
       item_id: catalogItem?.id,
       reason: 'invalid_unit',
@@ -80,12 +89,12 @@ export function validateParsedLine(input: {
   } else if (catalogItem && !isUnitAllowedForItem(catalogItem, unit)) {
     needsClarification = true;
     invalidUnit = true;
-    const validUnits = deriveAllowedUnits(catalogItem);
-    const unitList = validUnits.length > 0 ? ` Choose: ${validUnits.join(', ')}.` : ' Choose a valid unit.';
-    issue = issue ?? `${catalogItem.name} cannot be ordered in ${unit}.${unitList}`;
+    const validUnits = deriveAllowedUnitLabels(catalogItem);
+    const unitList = validUnits.length > 0 ? ` Use ${formatAllowedUnitList(validUnits)}.` : ' Use a valid unit.';
+    issue = issue ?? `${catalogItem.name} cannot be ordered as ${displayUnitLabel(unit)}.${unitList}`;
     flags.push({
       type: 'unsupported_unit',
-      message: `${catalogItem.name} cannot be ordered in ${unit}. Choose a valid unit.`,
+      message: `${catalogItem.name} cannot be ordered as ${displayUnitLabel(unit)}. Use ${formatAllowedUnitList(validUnits)}.`,
       raw_token: candidate.raw_text,
       item_id: catalogItem.id,
       reason: 'unsupported_unit',
@@ -187,9 +196,9 @@ export function normalizeParsedItemStatus(item: ParsedItem, catalogItem: Catalog
     status = 'invalid_unit';
     unresolved = false;
     issueCode = status;
-    const validUnits = deriveAllowedUnits(catalogItem);
-    const unitList = validUnits.length > 0 ? ` Choose: ${validUnits.join(', ')}.` : ' Choose a valid unit.';
-    issue = `${catalogItem?.name ?? item.item_name ?? 'This item'} cannot be ordered in ${unit}.${unitList}`;
+    const validUnits = deriveAllowedUnitLabels(catalogItem);
+    const unitList = validUnits.length > 0 ? ` Use ${formatAllowedUnitList(validUnits)}.` : ' Use a valid unit.';
+    issue = `${catalogItem?.name ?? item.item_name ?? 'This item'} cannot be ordered as ${displayUnitLabel(unit)}.${unitList}`;
   } else {
     status = 'valid';
     needsClarification = false;
