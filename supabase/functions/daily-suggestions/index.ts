@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
 import { corsHeaders } from '../_shared/cors.ts';
+import { userCanAccessLocation } from '../_shared/location-access.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -86,6 +87,18 @@ Deno.serve(async (req) => {
 
     if (!locationId) {
       return jsonResponse({ error: 'Missing required field: locationId' }, 400);
+    }
+
+    const locationAccess = await userCanAccessLocation(
+      supabaseAdmin,
+      authResult.user.id,
+      locationId,
+    );
+    if (!locationAccess.allowed) {
+      return jsonResponse(
+        { error: locationAccess.error || 'Forbidden' },
+        locationAccess.status,
+      );
     }
 
     const minFrequency =

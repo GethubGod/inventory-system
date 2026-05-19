@@ -21,7 +21,7 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import NetInfo from "@react-native-community/netinfo";
 import Animated, {
   Easing,
   LinearTransition,
@@ -37,16 +37,14 @@ import {
 import { getTabBarBottomInset } from "@/components/navigation";
 import { useResolvedActiveLocation } from "@/hooks/useResolvedActiveLocation";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
-import {
-  triggerConfirmationHaptic,
-  triggerSelectionHaptic,
-} from "@/lib/haptics";
+import { triggerSelectionHaptic } from "@/lib/haptics";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore, useOrderStore } from "@/store";
 import {
   areQuickOrderItemsCartReady,
   quickOrderItemsToCartAdds,
 } from "@/store/helpers";
+import { useRouter } from "expo-router";
 import {
   colors,
   glassColors,
@@ -77,6 +75,14 @@ import {
   type PreviousQuantitySuggestion,
 } from "./quickOrderHistorySuggestions";
 import { QuickOrderUserMessage } from "./QuickOrderUserMessage";
+import { QuickOrderWelcomeMessageCard } from "./QuickOrderWelcomeMessage";
+import { NeedsInputActionButtons } from "./NeedsInputActionButtons";
+import {
+  buildQuickOrderDisplayMessages,
+  createQuickOrderWelcomeMessage,
+  isQuickOrderWelcomeMessage,
+  shouldShowQuickOrderWelcomeMessage,
+} from "./quickOrderWelcome";
 import {
   sanitizeAssistantReply,
   toFriendlyQuickOrderError,
@@ -112,6 +118,8 @@ import {
   type PendingQuickOrderClarification,
   type ParsedQuickOrderItem,
   type QuickOrderInventoryItem,
+  type QuickOrderMergeResult,
+  type QuickOrderOperationResult,
 } from "./quickOrderItems";
 
 type SpeechRecognitionModule = {
@@ -186,6 +194,7 @@ type EditingState = {
 };
 
 type PersistedQuickOrderMessage = {
+  id?: string;
   role?: string;
   text?: string;
   raw_text?: string;
@@ -237,6 +246,19 @@ type ChatScrollMetrics = {
 
 function createMessageId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function devTextFingerprint(text: string): string {
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  }
+  return `${text.length}chars:${(hash >>> 0).toString(16).slice(0, 8)}`;
+}
+
+function devIdFingerprint(id: string | null | undefined): string | null {
+  if (!id) return null;
+  return devTextFingerprint(id);
 }
 
 function normalizeParsedItems(value: unknown): ParsedQuickOrderItem[] {
@@ -296,6 +318,144 @@ function normalizeClarifications(
     );
 }
 
+/**
+ * If a clarification is a low-confidence match with a single "use_item"
+ * action, accept it on the user's behalf: rewrite the matching parsed item
+ * to point at the suggested inventory id and drop the clarification. The
+ * downstream merge + assistant message then treats the item as the resolved
+ * one (e.g. "Shrimp (Frozen)") and the user only sees "How much …?" if a
+ * quantity is still needed.
+ */
+function autoResolveSingleAlternativeMatches(
+  items: ParsedQuickOrderItem[],
+  clarifications: PendingQuickOrderClarification[],
+): {
+  items: ParsedQuickOrderItem[];
+  clarifications: PendingQuickOrderClarification[];
+} {
+  if (clarifications.length === 0) {
+    return { items, clarifications };
+  }
+
+  const remaining: PendingQuickOrderClarification[] = [];
+  const autoAccepted: PendingQuickOrderClarification[] = [];
+  for (const clarification of clarifications) {
+    const useAction = clarification.actions.find(
+      (action) => action.id === "use_item",
+    );
+    const isAutoAcceptable =
+      (clarification.type === "low_confidence_match" ||
+        clarification.type === "item_not_found") &&
+      clarification.actions.length === 1 &&
+      useAction != null &&
+      clarification.incoming_item != null &&
+      Boolean(clarification.incoming_item.item_id);
+    if (isAutoAcceptable) {
+      autoAccepted.push(clarification);
+    } else {
+      remaining.push(clarification);
+    }
+  }
+
+  if (autoAccepted.length === 0) {
+    return { items, clarifications };
+  }
+
+  const incomingByToken = new Map<string, ParsedQuickOrderItem>();
+  for (const clarification of autoAccepted) {
+    const incoming = clarification.incoming_item;
+    if (!incoming) continue;
+    const key = clarificationMatchKey(incoming);
+    if (key) incomingByToken.set(key, incoming);
+  }
+
+  const resolved = items.map((item) => {
+    const key = clarificationMatchKey(item);
+    if (!key) return item;
+    const incoming = incomingByToken.get(key);
+    if (!incoming) return item;
+    return {
+      ...item,
+      item_id: incoming.item_id,
+      item_name: incoming.item_name ?? item.item_name,
+      display_name: incoming.item_name ?? item.display_name,
+      unresolved: false,
+      status: undefined,
+      needs_clarification: false,
+      issue: undefined,
+      issue_code: undefined,
+      alternatives: undefined,
+      action: null,
+      parse_source: "correction" as const,
+    };
+  });
+
+  return { items: resolved, clarifications: remaining };
+}
+
+/**
+ * Detect "bare quantity" messages like "1pk", "2 cases", "3 packs", "5". When
+ * the most recent parsed item is still waiting on a quantity, prepend the
+ * item's display name so the parser treats this as a quantity for that item.
+ * The visible user bubble shows the rewritten text — matches what the user
+ * meant.
+ */
+function rewriteBareQuantityWithContext(
+  rawText: string,
+  parsedItems: ParsedQuickOrderItem[],
+): string {
+  const trimmed = rawText.trim();
+  if (!trimmed) return rawText;
+  // "1pk", "2 cases", "3 packs", "5", "10 lb". Letters-only suffix is OK.
+  if (!/^\d+(?:\.\d+)?\s*[a-z]{0,8}\.?$/i.test(trimmed)) return rawText;
+
+  const target = [...parsedItems].reverse().find((item) => {
+    const issue = getParsedItemIssue(item);
+    return (
+      issue != null &&
+      (issue.kind === "pick-quantity" || issue.kind === "pick-unit")
+    );
+  });
+  if (!target) return rawText;
+  const name = getParsedItemDisplayName(target);
+  if (!name || name === "Unknown item") return rawText;
+  return `${name} ${trimmed}`;
+}
+
+function clarificationMatchKey(
+  item: ParsedQuickOrderItem,
+): string | null {
+  const raw = (item.raw_token ?? item.raw_text ?? item.item_text ?? "")
+    .trim()
+    .toLowerCase();
+  return raw ? raw : null;
+}
+
+function buildClarificationConfirmedLabel(
+  clarification: PendingQuickOrderClarification,
+  action: PendingQuickOrderClarification["actions"][number],
+): string {
+  if (action.id === "cancel") return "Canceled";
+  if (action.id === "clear_order") return "Cleared order";
+  const stripped = action.label
+    .replace(/^Use\s+/i, "")
+    .replace(/^Add\s+/i, "")
+    .replace(/^Replace with\s+/i, "")
+    .replace(/^Replace\s+/i, "")
+    .replace(/^Choose\s+/i, "")
+    .trim();
+  if (action.id === "use_unit") {
+    return `Set unit to ${stripped}`;
+  }
+  if (action.id === "request_approval") {
+    return `Requested approval for ${stripped || clarification.item_name}`;
+  }
+  if (action.id === "replace" || action.id === "choose_existing") {
+    return `Replaced with ${stripped || clarification.item_name}`;
+  }
+  return `Added ${stripped || clarification.item_name}`;
+}
+
 function isCartBlockingClarification(
   clarification: PendingQuickOrderClarification,
 ): boolean {
@@ -348,6 +508,7 @@ function mapPersistedMessages(
   messages: PersistedQuickOrderMessage[],
 ): QuickOrderMessage[] {
   return messages
+    .filter((message) => !isQuickOrderWelcomeMessage({ id: message.id, source: message.source }))
     .map((message): QuickOrderMessage | null => {
       const role =
         message.role === "assistant" || message.role === "error"
@@ -365,7 +526,10 @@ function mapPersistedMessages(
       if (!text) return null;
 
       return {
-        id: createMessageId(),
+        id:
+          typeof message.id === "string" && message.id.trim()
+            ? message.id
+            : createMessageId(),
         role,
         text,
         createdAt: message.created_at ?? new Date().toISOString(),
@@ -422,9 +586,14 @@ function removeMessageItems(
 
 function buildPersistedMessage(
   message: QuickOrderMessage,
-): PersistedQuickOrderMessage {
+): PersistedQuickOrderMessage | null {
+  if (isQuickOrderWelcomeMessage(message)) {
+    return null;
+  }
+
   if (message.role === "assistant") {
     return {
+      id: message.id,
       role: "assistant",
       reply_text: message.text,
       text: message.text,
@@ -444,6 +613,7 @@ function buildPersistedMessage(
   }
 
   return {
+    id: message.id,
     role: message.role,
     raw_text: message.text,
     text: message.text,
@@ -506,7 +676,7 @@ function getAssistantPill(message: QuickOrderMessage) {
       icon: "checkmark" as const,
       color: colors.statusGreen,
       tone: "success" as AssistantPillTone,
-      text: "Done",
+      text: message.text || "Done",
     };
   }
 
@@ -521,6 +691,158 @@ function getAssistantPill(message: QuickOrderMessage) {
     text: message.text,
   };
 }
+
+function renderInlineMarkdown(text: string): React.ReactNode {
+  if (!text.includes("**")) return text;
+  const segments = text.split(/(\*\*[^*]+\*\*)/g);
+  return segments.map((segment, index) => {
+    if (segment.startsWith("**") && segment.endsWith("**") && segment.length > 4) {
+      return (
+        <Text key={index} style={{ fontWeight: "800" }}>
+          {segment.slice(2, -2)}
+        </Text>
+      );
+    }
+    return segment;
+  });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Wraps every case-insensitive occurrence of `term` in the given `text` with
+ * markdown bold markers (`**...**`) so it can be rendered by
+ * {@link renderInlineMarkdown}. If the term is already bolded somewhere in the
+ * text we leave it alone.
+ */
+function boldifyTerm(text: string, term: string | null | undefined): string {
+  if (!text || !term) return text;
+  const trimmed = term.trim();
+  if (!trimmed) return text;
+  // Already bolded? leave as-is to avoid double-wrap
+  if (text.includes(`**${trimmed}**`)) return text;
+  const re = new RegExp(`(${escapeRegExp(trimmed)})`, "i");
+  if (!re.test(text)) return text;
+  return text.replace(re, "**$1**");
+}
+
+type CardBadgeTone = "needs-input" | "added" | "info" | "dismissed";
+
+type CardBadgeProps = {
+  tone: CardBadgeTone;
+};
+
+const CARD_BADGE_CONFIG: Record<
+  CardBadgeTone,
+  {
+    label: string;
+    icon: React.ComponentProps<typeof Ionicons>["name"];
+    background: string;
+    foreground: string;
+  }
+> = {
+  "needs-input": {
+    label: "NEEDS INPUT",
+    icon: "alert-circle",
+    background: "#FEF3C7",
+    foreground: "#92400E",
+  },
+  added: {
+    label: "ADDED",
+    icon: "checkmark-circle",
+    background: "#DCFCE7",
+    foreground: "#166534",
+  },
+  info: {
+    label: "INFO",
+    icon: "sparkles-outline",
+    background: "#EFF6FF",
+    foreground: "#1E40AF",
+  },
+  dismissed: {
+    label: "DISMISSED",
+    icon: "close-circle",
+    background: "#F3F4F6",
+    foreground: "#6B7280",
+  },
+};
+
+const CardBadge = React.memo(function CardBadge({ tone }: CardBadgeProps) {
+  const cfg = CARD_BADGE_CONFIG[tone];
+  return (
+    <View
+      style={[
+        styles.cardBadge,
+        { backgroundColor: cfg.background },
+      ]}
+    >
+      <Ionicons name={cfg.icon} size={12} color={cfg.foreground} />
+      <Text style={[styles.cardBadgeText, { color: cfg.foreground }]}>
+        {cfg.label}
+      </Text>
+    </View>
+  );
+});
+
+/**
+ * Detects "informational" Q&A assistant messages (e.g. a Gemini answer to a
+ * question like "how many packs in a case?") so they can be rendered with the
+ * INFO card variant instead of the regular assistant pill. A message qualifies
+ * when none of the list-shaped result fields carry content — i.e. the message
+ * is purely conversational.
+ */
+function isQaAnswerMessage(message: QuickOrderMessage): boolean {
+  if (message.role !== "assistant") return false;
+  if (!message.text || !message.text.trim()) return false;
+  if (message.parsedItems && message.parsedItems.length > 0) return false;
+  if (message.pendingClarifications && message.pendingClarifications.length > 0) return false;
+  if (message.suggestions && message.suggestions.length > 0) return false;
+  if (message.stockUpdates && message.stockUpdates.length > 0) return false;
+  if (message.recommendations && message.recommendations.length > 0) return false;
+  if (message.safetyWarnings && message.safetyWarnings.length > 0) return false;
+  if (message.blockedOperations && message.blockedOperations.length > 0) return false;
+  if (message.flags && message.flags.length > 0) return false;
+  return true;
+}
+
+type InfoCardProps = {
+  text: string;
+  onLayout?: (event: LayoutChangeEvent) => void;
+};
+
+const InfoCard = React.memo(function InfoCard({ text, onLayout }: InfoCardProps) {
+  const ds = useScaledStyles();
+  const safe = sanitizeAssistantReply(
+    text,
+    "I had trouble reading that order. Please try again or add the items manually.",
+  );
+  return (
+    <Animated.View
+      onLayout={onLayout}
+      entering={ZoomIn.duration(180).easing(Easing.out(Easing.cubic))}
+      style={[
+        styles.chatWhiteCard,
+        {
+          borderRadius: ds.radius(16),
+          padding: ds.spacing(14),
+          marginTop: ds.spacing(10),
+        },
+      ]}
+    >
+      <CardBadge tone="info" />
+      <Text
+        style={[
+          styles.chatWhiteCardText,
+          { fontSize: ds.fontSize(15), marginTop: ds.spacing(10) },
+        ]}
+      >
+        {renderInlineMarkdown(safe)}
+      </Text>
+    </Animated.View>
+  );
+});
 
 const AIResponsePill = React.memo(function AIResponsePill({
   message,
@@ -556,7 +878,7 @@ const AIResponsePill = React.memo(function AIResponsePill({
         pill.tone === "caution" && styles.aiPillTextCaution,
         { fontSize: ds.fontSize(16) },
       ]}>
-        {text}
+        {renderInlineMarkdown(text)}
       </Text>
     </Animated.View>
   );
@@ -565,89 +887,116 @@ const AIResponsePill = React.memo(function AIResponsePill({
 type ClarificationCardProps = {
   clarification: PendingQuickOrderClarification;
   confirmed?: boolean;
+  dismissed?: boolean;
   confirmedLabel?: string;
   onAction: (
     clarification: PendingQuickOrderClarification,
     action: PendingQuickOrderClarification["actions"][number],
   ) => void;
+  onReject: (clarification: PendingQuickOrderClarification) => void;
   onLayout?: (event: LayoutChangeEvent) => void;
 };
 
 const ClarificationCard = React.memo(function ClarificationCard({
   clarification,
   confirmed = false,
+  dismissed = false,
   confirmedLabel,
   onAction,
+  onReject,
   onLayout,
 }: ClarificationCardProps) {
   const ds = useScaledStyles();
+
+  if (confirmed) {
+    const rawLabel = confirmedLabel ?? `Added ${clarification.item_name ?? ""}`.trim();
+    const labelWithBold = boldifyTerm(rawLabel, clarification.item_name);
+    return (
+      <View
+        onLayout={onLayout}
+        style={[
+          styles.chatWhiteCard,
+          {
+            borderRadius: ds.radius(16),
+            padding: ds.spacing(14),
+            marginTop: ds.spacing(10),
+          },
+        ]}
+      >
+        <CardBadge tone="added" />
+        <Text
+          style={[
+            styles.chatWhiteCardText,
+            { fontSize: ds.fontSize(15), marginTop: ds.spacing(10) },
+          ]}
+          numberOfLines={2}
+        >
+          {renderInlineMarkdown(labelWithBold)}
+        </Text>
+      </View>
+    );
+  }
+
+  if (dismissed) {
+    return (
+      <View
+        onLayout={onLayout}
+        style={[
+          styles.chatDismissedPillCard,
+          {
+            borderRadius: ds.radius(16),
+            padding: ds.spacing(12),
+            marginTop: ds.spacing(10),
+          },
+        ]}
+      >
+        <CardBadge tone="dismissed" />
+      </View>
+    );
+  }
+
+  const hasActions = clarification.actions.length > 0;
+  const messageWithBold = boldifyTerm(
+    clarification.message,
+    clarification.item_name,
+  );
 
   return (
     <View
       onLayout={onLayout}
       style={[
-        styles.clarificationCard,
-        confirmed && styles.clarificationCardConfirmed,
+        styles.chatWhiteCard,
         {
           borderRadius: ds.radius(16),
-          padding: ds.spacing(12),
+          padding: ds.spacing(14),
           marginTop: ds.spacing(10),
         },
       ]}
     >
-      <View style={styles.clarificationHeader}>
-        <Ionicons
-          name={confirmed ? "checkmark-circle" : "alert-circle"}
-          size={ds.icon(18)}
-          color={confirmed ? colors.statusGreen : colors.statusAmber}
-        />
-        <Text
-          style={[
-            styles.clarificationText,
-            confirmed && styles.clarificationTextConfirmed,
-            { fontSize: ds.fontSize(15), marginLeft: ds.spacing(8) },
-          ]}
-        >
-          {confirmed ? confirmedLabel ?? "Confirmed" : clarification.message}
-        </Text>
-      </View>
-      {!confirmed && clarification.actions.length > 0 ? (
-        <View
-          style={[
-            styles.clarificationActions,
-            { gap: ds.spacing(8), marginTop: ds.spacing(10) },
-          ]}
-        >
-          {clarification.actions.map((action) => (
-            <Pressable
-              key={`${clarification.id}:${action.id}:${action.existing_item_key ?? ""}`}
-              accessibilityRole="button"
-              accessibilityLabel={action.label}
-              onPress={() => onAction(clarification, action)}
-              style={({ pressed }) => [
-                styles.clarificationButton,
-                {
-                  borderRadius: ds.radius(12),
-                  paddingHorizontal: ds.spacing(10),
-                  paddingVertical: ds.spacing(8),
-                  opacity: pressed ? 0.72 : 1,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.clarificationButtonText,
-                  { fontSize: ds.fontSize(13) },
-                ]}
-                numberOfLines={1}
-              >
-                {action.preview
+      <CardBadge tone="needs-input" />
+      <Text
+        style={[
+          styles.chatWhiteCardText,
+          { fontSize: ds.fontSize(15), marginTop: ds.spacing(10) },
+        ]}
+      >
+        {renderInlineMarkdown(messageWithBold)}
+      </Text>
+      {hasActions ? (
+        <NeedsInputActionButtons
+          primaryActions={clarification.actions.map((action, index) => ({
+            key: `${clarification.id}:${action.id}:${action.existing_item_key ?? ""}`,
+            label:
+              clarification.actions.length === 1 && index === 0
+                ? "Use this"
+                : action.preview
                   ? `${action.label} — ${action.preview}`
-                  : action.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+                  : action.label,
+            accessibilityLabel: action.label,
+            onPress: () => onAction(clarification, action),
+          }))}
+          onReject={() => onReject(clarification)}
+        />
       ) : null}
     </View>
   );
@@ -656,6 +1005,7 @@ const ClarificationCard = React.memo(function ClarificationCard({
 type SuggestionCardProps = {
   suggestion: QuickOrderSuggestion;
   onAdd: (suggestion: QuickOrderSuggestion) => void | Promise<void>;
+  onReject: (suggestion: QuickOrderSuggestion) => void | Promise<void>;
   onLayout?: (event: LayoutChangeEvent) => void;
 };
 
@@ -675,16 +1025,21 @@ function getSuggestionItems(
   ];
 }
 
+type SuggestionDecision = "pending" | "accepted" | "rejected";
+
 const SuggestionCard = React.memo(function SuggestionCard({
   suggestion,
   onAdd,
+  onReject,
   onLayout,
 }: SuggestionCardProps) {
   const ds = useScaledStyles();
-  const [isAdded, setIsAdded] = useState(false);
+  const [decision, setDecision] = useState<SuggestionDecision>("pending");
   const items = getSuggestionItems(suggestion);
   const title = suggestion.title ?? suggestion.item_name ?? "Suggestion";
   const addedTitle = items.length === 1 ? items[0].item_name : title;
+  const addedUnit = items.length === 1 ? items[0].unit ?? null : null;
+  const addedQty = items.length === 1 ? items[0].quantity ?? 1 : null;
   const message =
     suggestion.message ??
     suggestion.reason ??
@@ -694,120 +1049,107 @@ const SuggestionCard = React.memo(function SuggestionCard({
       .join(", ");
 
   const handleAdd = useCallback(() => {
-    if (isAdded) return;
+    if (decision !== "pending") return;
     void triggerSelectionHaptic();
-    setIsAdded(true);
+    setDecision("accepted");
     void onAdd(suggestion);
-  }, [isAdded, onAdd, suggestion]);
+  }, [decision, onAdd, suggestion]);
+
+  const handleReject = useCallback(() => {
+    if (decision !== "pending") return;
+    void triggerSelectionHaptic();
+    setDecision("rejected");
+    void onReject(suggestion);
+  }, [decision, onReject, suggestion]);
+
+  if (decision === "accepted") {
+    const addedLabel =
+      addedQty != null
+        ? `Added ${addedQty}${addedUnit ? ` ${addedUnit}` : ""} of ${addedTitle}`
+        : `Added ${addedTitle}`;
+    const labelWithBold = boldifyTerm(addedLabel, addedTitle);
+    return (
+      <Animated.View
+        layout={LinearTransition.duration(220).easing(Easing.out(Easing.cubic))}
+        onLayout={onLayout}
+        style={[
+          styles.chatWhiteCard,
+          {
+            borderRadius: ds.radius(16),
+            padding: ds.spacing(14),
+            marginTop: ds.spacing(10),
+          },
+        ]}
+      >
+        <CardBadge tone="added" />
+        <Text
+          style={[
+            styles.chatWhiteCardText,
+            { fontSize: ds.fontSize(15), marginTop: ds.spacing(10) },
+          ]}
+          numberOfLines={2}
+        >
+          {renderInlineMarkdown(labelWithBold)}
+        </Text>
+      </Animated.View>
+    );
+  }
+
+  if (decision === "rejected") {
+    return (
+      <Animated.View
+        layout={LinearTransition.duration(220).easing(Easing.out(Easing.cubic))}
+        onLayout={onLayout}
+        style={[
+          styles.chatDismissedPillCard,
+          {
+            borderRadius: ds.radius(16),
+            padding: ds.spacing(12),
+            marginTop: ds.spacing(10),
+          },
+        ]}
+      >
+        <CardBadge tone="dismissed" />
+      </Animated.View>
+    );
+  }
+
+  const messageWithBold = boldifyTerm(message, addedTitle);
 
   return (
     <Animated.View
       layout={LinearTransition.duration(220).easing(Easing.out(Easing.cubic))}
       onLayout={onLayout}
       style={[
-        styles.suggestionCard,
-        isAdded && styles.suggestionCardAdded,
+        styles.chatWhiteCard,
         {
           borderRadius: ds.radius(16),
-          paddingVertical: isAdded ? ds.spacing(9) : ds.spacing(12),
-          paddingHorizontal: ds.spacing(12),
+          padding: ds.spacing(14),
           marginTop: ds.spacing(10),
         },
       ]}
     >
-      {isAdded ? (
-        <View style={styles.suggestionAddedRow}>
-          <View
-            style={[
-              styles.suggestionAddedCheck,
-              {
-                width: ds.spacing(24),
-                height: ds.spacing(24),
-                borderRadius: ds.radius(12),
-              },
-            ]}
-          >
-            <Ionicons
-              name="checkbox"
-              size={ds.icon(22)}
-              color={colors.statusGreen}
-            />
-          </View>
-          <Text
-            style={[styles.suggestionAddedText, { fontSize: ds.fontSize(14) }]}
-            numberOfLines={1}
-          >
-            {addedTitle}
-          </Text>
-        </View>
-      ) : (
-        <>
-          <View style={styles.suggestionHeader}>
-            <Ionicons
-              name="sparkles-outline"
-              size={ds.icon(18)}
-              color={colors.primary}
-            />
-            <View style={styles.suggestionTextCluster}>
-              <Text
-                style={[styles.suggestionTitle, { fontSize: ds.fontSize(15) }]}
-              >
-                {title}
-              </Text>
-              <Text
-                style={[
-                  styles.suggestionMessage,
-                  { fontSize: ds.fontSize(13) },
-                ]}
-              >
-                {message}
-              </Text>
-            </View>
-          </View>
-          <View style={[styles.suggestionItems, { marginTop: ds.spacing(8) }]}>
-            <Text
-              style={[
-                styles.suggestionItemText,
-                { fontSize: ds.fontSize(12) },
-              ]}
-            >
-              {items
-                .slice(0, 4)
-                .map(
-                  (item) =>
-                    `${item.item_name} ${item.quantity}${item.unit ? ` ${item.unit}` : ""}`,
-                )
-                .join(" · ")}
-              {items.length > 4 ? ` · +${items.length - 4} more` : ""}
-            </Text>
-          </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Add ${title}`}
-            accessibilityState={{ selected: isAdded }}
-            onPress={handleAdd}
-            style={({ pressed }) => [
-              styles.suggestionButton,
-              {
-                borderRadius: ds.radius(12),
-                paddingHorizontal: ds.spacing(12),
-                paddingVertical: ds.spacing(8),
-                marginTop: ds.spacing(10),
-                opacity: pressed ? 0.72 : 1,
-              },
-            ]}
-          >
-            <Text
-              style={[
-                styles.suggestionButtonText,
-                { fontSize: ds.fontSize(13) },
-              ]}
-            >
-              Add to order
-            </Text>
-          </Pressable>
-        </>
-      )}
+      <CardBadge tone="needs-input" />
+      <Text
+        style={[
+          styles.chatWhiteCardText,
+          { fontSize: ds.fontSize(15), marginTop: ds.spacing(10) },
+        ]}
+      >
+        {renderInlineMarkdown(messageWithBold || title)}
+      </Text>
+      <NeedsInputActionButtons
+        primaryActions={[
+          {
+            key: `${suggestion.item_id ?? title}:use`,
+            label: "Use this",
+            accessibilityLabel: `Use ${title}`,
+            onPress: handleAdd,
+          },
+        ]}
+        onReject={handleReject}
+        rejectAccessibilityLabel={`Reject ${title}`}
+      />
     </Animated.View>
   );
 });
@@ -1001,10 +1343,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const user = useAuthStore((state) => state.user);
   const allLocations = useAuthStore((state) => state.locations);
   const setAuthLocation = useAuthStore((state) => state.setLocation);
+  const addToCart = useOrderStore((state) => state.addToCart);
+  const router = useRouter();
   const { location } = useResolvedActiveLocation();
   const tabBarHeight = 60 + getTabBarBottomInset(insets.bottom);
-
-  const addToCart = useOrderStore((state) => state.addToCart);
 
   const [composerHeight, setComposerHeight] = useState(0);
   const [composerBottomOffset, setComposerBottomOffset] =
@@ -1018,6 +1360,9 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const [confirmedClarifications, setConfirmedClarifications] = useState<
     Record<string, string>
   >({});
+  const [dismissedClarifications, setDismissedClarifications] = useState<
+    Record<string, true>
+  >({});
   const [inventoryItems, setInventoryItems] = useState<
     QuickOrderInventoryItem[]
   >([]);
@@ -1030,6 +1375,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     Map<string, PreviousQuantitySuggestion>
   >(() => new Map());
   const [isLoadingSession, setIsLoadingSession] = useState(false);
+  const [sessionLoadError, setSessionLoadError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isVoiceListening, setIsVoiceListening] = useState(false);
@@ -1042,6 +1388,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     ds.spacing(INITIAL_CARD_HEIGHT_ESTIMATE),
   );
   const lastUserTextRef = useRef("");
+  const requestGenerationRef = useRef(0);
+  const isSendingRef = useRef(false);
+  const isConfirmingRef = useRef(false);
+  const quickOrderPendingOrderIdRef = useRef<string | null>(null);
   const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chatScrollFrameRef = useRef<number | null>(null);
   const chatScrollTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -1059,6 +1409,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   const userId = user?.id ?? null;
   const locationId = location?.id ?? null;
+  const isOrderBusy = isSending || isConfirming;
   const voiceEnabled =
     process.env.EXPO_PUBLIC_ENABLE_QUICK_ORDER_VOICE === "true" &&
     ExpoSpeechRecognitionModule != null;
@@ -1207,19 +1558,26 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   useEffect(() => {
     if (!userId || !locationId) {
+      requestGenerationRef.current += 1;
+      isSendingRef.current = false;
+      setIsSending(false);
       setSessionId(null);
       setMessages([]);
       setConfirmedClarifications({});
+      setDismissedClarifications({});
       setParsedItems([]);
       setPendingClarifications([]);
+      setSessionLoadError(null);
       return;
     }
 
     let cancelled = false;
+    requestGenerationRef.current += 1;
 
     async function loadActiveSession() {
       try {
         setIsLoadingSession(true);
+        setSessionLoadError(null);
         const { data, error } = await supabase
           .from("quick_order_sessions")
           .select("id, messages, parsed_items")
@@ -1251,8 +1609,12 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           setSessionId(null);
           setMessages([]);
           setConfirmedClarifications({});
+      setDismissedClarifications({});
           setParsedItems([]);
           setPendingClarifications([]);
+          setSessionLoadError(
+            "Couldn't load your Quick Order session. Check your connection and try again.",
+          );
         }
       } finally {
         if (!cancelled) {
@@ -1268,26 +1630,48 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     };
   }, [locationId, userId]);
 
-  // Re-snap to the newest message whenever something that affects layout below
-  // it changes: a new message, the parsed-item list (which grows the floating
-  // card / top spacer), the composer growing for multiline text, the card
-  // height, or a send completing.
-  useEffect(() => {
-    const handle = requestAnimationFrame(() => {
-      scheduleChatScrollToEnd("layout-state-change", true, [0, 80], {
-        afterInteractions: true,
-      });
-    });
-    return () => cancelAnimationFrame(handle);
-  }, [
-    isSending,
-    composerBottomOffset,
-    composerHeight,
-    messages.length,
-    parsedItems,
-    floatingCardHeight,
-    scheduleChatScrollToEnd,
-  ]);
+  const retrySessionLoad = useCallback(() => {
+    if (!userId || !locationId || isLoadingSession) return;
+    requestGenerationRef.current += 1;
+
+    void (async () => {
+      try {
+        setIsLoadingSession(true);
+        setSessionLoadError(null);
+        const { data, error } = await supabase
+          .from("quick_order_sessions")
+          .select("id, messages, parsed_items")
+          .eq("user_id", userId)
+          .eq("location_id", locationId)
+          .eq("status", "active")
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        const row = data as QuickOrderSessionRow | null;
+        const nextMessages = Array.isArray(row?.messages)
+          ? mapPersistedMessages(row.messages)
+          : [];
+        setSessionId(row?.id ?? null);
+        setMessages(nextMessages);
+        setParsedItems(normalizeParsedItems(row?.parsed_items));
+        setPendingClarifications(
+          nextMessages.flatMap(
+            (message) => message.pendingClarifications ?? [],
+          ).filter(isCartBlockingClarification),
+        );
+      } catch (error) {
+        console.warn("[QuickOrder] Failed to reload active session:", error);
+        setSessionLoadError(
+          "Couldn't load your Quick Order session. Check your connection and try again.",
+        );
+      } finally {
+        setIsLoadingSession(false);
+      }
+    })();
+  }, [isLoadingSession, locationId, userId]);
 
   useEffect(
     () => () => {
@@ -1349,6 +1733,45 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     [parsedItems, pendingClarifications.length],
   );
 
+  const showWelcomeMessage = useMemo(
+    () =>
+      !isLoadingSession &&
+      !sessionLoadError &&
+      shouldShowQuickOrderWelcomeMessage(parsedItems.length, messages),
+    [isLoadingSession, messages, parsedItems.length, sessionLoadError],
+  );
+
+  const displayMessages = useMemo(
+    () =>
+      buildQuickOrderDisplayMessages(
+        messages,
+        showWelcomeMessage,
+        createQuickOrderWelcomeMessage,
+      ),
+    [messages, showWelcomeMessage],
+  );
+
+  // Re-snap to the newest message whenever something that affects layout below
+  // it changes: a new message, the parsed-item list (which grows the floating
+  // card / top spacer), the composer growing for multiline text, the card
+  // height, or a send completing.
+  useEffect(() => {
+    const handle = requestAnimationFrame(() => {
+      scheduleChatScrollToEnd("layout-state-change", true, [0, 80], {
+        afterInteractions: true,
+      });
+    });
+    return () => cancelAnimationFrame(handle);
+  }, [
+    isSending,
+    composerBottomOffset,
+    composerHeight,
+    displayMessages.length,
+    parsedItems,
+    floatingCardHeight,
+    scheduleChatScrollToEnd,
+  ]);
+
   const chatContentStyle = useMemo(
     () => ({
       paddingBottom: calculateQuickOrderBottomPadding({
@@ -1392,7 +1815,9 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       const { error } = await supabase
         .from("quick_order_sessions")
         .update({
-          messages: nextMessages.map(buildPersistedMessage),
+          messages: nextMessages
+            .map(buildPersistedMessage)
+            .filter((message): message is PersistedQuickOrderMessage => message != null),
           parsed_items: nextParsedItems,
           status: "active",
         })
@@ -1433,8 +1858,9 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   }, [locationId, sessionId, userId]);
 
   const handleToggleLocationDropdown = useCallback(() => {
+    if (isOrderBusy) return;
     setLocationDropdownOpen((current) => !current);
-  }, []);
+  }, [isOrderBusy]);
 
   const handleCloseLocationDropdown = useCallback(() => {
     setLocationDropdownOpen(false);
@@ -1494,19 +1920,22 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   const handleSelectLocation = useCallback(
     (next: Location) => {
+      if (isOrderBusy) return;
       if (next.id === location?.id) return;
       setAuthLocation(next);
     },
-    [location?.id, setAuthLocation],
+    [isOrderBusy, location?.id, setAuthLocation],
   );
 
   const handleClear = useCallback(async () => {
+    if (isOrderBusy) return;
     if (nudgeTimerRef.current) {
       clearTimeout(nudgeTimerRef.current);
       nudgeTimerRef.current = null;
     }
     setMessages([]);
     setConfirmedClarifications({});
+      setDismissedClarifications({});
     setParsedItems([]);
     setPendingClarifications([]);
     setEditingState(null);
@@ -1537,6 +1966,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   }, [sessionId]);
 
   const handleClearRequest = useCallback(() => {
+    if (isOrderBusy) return;
     Alert.alert("Clear current order?", undefined, [
       { text: "Cancel", style: "cancel" },
       {
@@ -1547,7 +1977,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         },
       },
     ]);
-  }, [handleClear]);
+  }, [handleClear, isOrderBusy]);
 
   const loadInventoryItems = useCallback(async () => {
     if (inventoryItems.length > 0) return inventoryItems;
@@ -1643,9 +2073,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       const nextParsedItems = updateParsedItem(parsedItems, editing.key, patch);
       const nextMessages = patchMessageItems(messages, editing.key, patch);
 
-      setParsedItems(nextParsedItems);
-      setMessages(nextMessages);
+      setParsedItems((current) => updateParsedItem(current, editing.key, patch));
+      setMessages((current) => patchMessageItems(current, editing.key, patch));
       setEditingState(null);
+      loadQuantitySuggestions([result.itemId]);
       scheduleChatScrollToEnd("item-edit-saved", true, buildSendSnapDelays(), {
         active: true,
         afterInteractions: true,
@@ -1759,6 +2190,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           key: tappedKey,
           isSaving: false,
         });
+        loadQuantitySuggestions([item.item_id]);
         loadInventoryItems().catch((error) => {
           console.warn("[QuickOrder] Failed to load editor inventory:", error);
         });
@@ -1766,11 +2198,16 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       }
       const index = Math.max(0, queue.indexOf(tappedKey));
       setQuantityFlow({ queue, index });
+      loadQuantitySuggestions(
+        queue.map(
+          (key) => parsedItems.find((p) => getParsedItemKey(p) === key)?.item_id,
+        ),
+      );
       loadInventoryItems().catch((error) => {
         console.warn("[QuickOrder] Failed to load editor inventory:", error);
       });
     },
-    [loadInventoryItems, parsedItems],
+    [loadInventoryItems, loadQuantitySuggestions, parsedItems],
   );
 
   const quantityQueueItems = useMemo<
@@ -1904,7 +2341,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   const handleSubmitMore = useCallback(
     async (
-      rawText: string,
+      rawTextInput: string,
       source: QuickOrderMessageSource = "typed",
       voiceMetadata?: {
         raw_transcript?: string;
@@ -1912,8 +2349,15 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         language?: string;
       },
     ) => {
+      // If the user typed a bare quantity ("1pk", "2 cases") and the most
+      // recent item in the order is still missing a quantity, prepend that
+      // item's name so the parser applies the quantity to the right line.
+      const rawText = rewriteBareQuantityWithContext(
+        rawTextInput,
+        parsedItems,
+      );
       const trimmed = rawText.trim();
-      if (!trimmed || isSending) {
+      if (!trimmed || isSendingRef.current || isSending) {
         return;
       }
 
@@ -1937,6 +2381,37 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         return;
       }
 
+      let netConnected = true;
+      try {
+        const netState = await NetInfo.fetch();
+        netConnected = netState.isConnected !== false;
+      } catch {
+        netConnected = true;
+      }
+
+      if (!netConnected) {
+        const offlineMessage: QuickOrderMessage = {
+          id: createMessageId(),
+          role: "error",
+          text: "You're offline. Reconnect and try again.",
+          createdAt: new Date().toISOString(),
+          errorCode: "network_error",
+        };
+        setMessages((current) => [...current, offlineMessage]);
+        scheduleChatScrollToEnd(
+          "offline-error",
+          true,
+          buildSendSnapDelays(),
+          {
+            active: true,
+            afterInteractions: true,
+          },
+        );
+        return;
+      }
+
+      const requestGeneration = ++requestGenerationRef.current;
+      isSendingRef.current = true;
       setIsSending(true);
       lastUserTextRef.current = rawText;
 
@@ -1974,11 +2449,11 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
         if (__DEV__) {
           console.log("[QuickOrder] Sending parse-order request", {
-            message: rawText,
+            message: devTextFingerprint(rawText),
             source,
-            location_id: locationId,
-            session_id: activeSessionId,
-            user_id: userId,
+            location_id: devIdFingerprint(locationId),
+            session_id: devIdFingerprint(activeSessionId),
+            user_id: devIdFingerprint(userId),
           });
         }
 
@@ -1991,7 +2466,12 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
             session_id: activeSessionId,
             user_id: userId,
             existing_items: parsedItems,
-            recent_messages: messages.slice(-12).map(buildPersistedMessage),
+            recent_messages: optimisticMessages
+              .slice(-12)
+              .map(buildPersistedMessage)
+              .filter(
+                (message): message is PersistedQuickOrderMessage => message != null,
+              ),
             voice_metadata:
               source === "voice"
                 ? {
@@ -2043,15 +2523,20 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           }
           console.warn(
             `[QuickOrder] parse-order invoke error: ${errorName}`,
-            error,
           );
           if (activeSessionId) {
-            await appendErrorMessage(
-              optimisticMessages,
-              activeSessionId,
-              errorCode,
-            );
+            if (requestGeneration === requestGenerationRef.current) {
+              await appendErrorMessage(
+                optimisticMessages,
+                activeSessionId,
+                errorCode,
+              );
+            }
           }
+          return;
+        }
+
+        if (requestGeneration !== requestGenerationRef.current) {
           return;
         }
 
@@ -2067,7 +2552,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
             recommendations_length: response.recommendations.length,
             safetyWarnings_length: response.safetyWarnings.length,
             blockedOperations_length: response.blockedOperations.length,
-            assistantMessage: response.assistantMessage.slice(0, 80),
+            assistantMessage: devTextFingerprint(response.assistantMessage),
             rawError: response.rawError,
             errorCode: response.errorCode,
             diagnostics: response.diagnostics,
@@ -2088,121 +2573,160 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           );
           const code = response.errorCode || "ai_unavailable";
           if (activeSessionId) {
-            await appendErrorMessage(optimisticMessages, activeSessionId, code);
+            if (requestGeneration === requestGenerationRef.current) {
+              await appendErrorMessage(optimisticMessages, activeSessionId, code);
+            }
           }
+          return;
+        }
+
+        if (requestGeneration !== requestGenerationRef.current) {
           return;
         }
 
         // Apply operations first (remove/replace/update/clear).
         const operations = response.operations;
-        let operationBase = parsedItems;
-        let operationResult = null;
-        if (operations.length > 0) {
-          operationResult = applyQuickOrderOperations(parsedItems, operations);
-          operationBase = operationResult.items;
+        const responseSuggestions = normalizeSuggestions(response.suggestions);
+        // Auto-accept high-confidence single-alternative matches (e.g. "shrimp"
+        // → "Shrimp (Frozen)") so the user doesn't have to confirm an obvious
+        // suggestion. The matched item lands in the cart immediately and the
+        // clarification card is dropped from the response.
+        const autoResolved = autoResolveSingleAlternativeMatches(
+          response.parsedItems,
+          response.pendingActions,
+        );
+        const responseItems = autoResolved.items;
+        const responseClarifications = autoResolved.clarifications;
+
+        type ParseApplySnapshot = {
+          nextParsedItems: ParsedQuickOrderItem[];
+          assistantMessage: QuickOrderMessage;
+          mergeResult: QuickOrderMergeResult;
+          operationResult: QuickOrderOperationResult | null;
+        };
+
+        let applySnapshot: ParseApplySnapshot | undefined;
+
+        setParsedItems((currentParsed) => {
+          if (requestGeneration !== requestGenerationRef.current) {
+            return currentParsed;
+          }
+
+          let operationResult: QuickOrderOperationResult | null = null;
+          let operationBase = currentParsed;
+          if (operations.length > 0) {
+            operationResult = applyQuickOrderOperations(currentParsed, operations);
+            operationBase = operationResult.items;
+            if (__DEV__) {
+              console.log("[QuickOrder] Operations applied", {
+                operations_count: operations.length,
+                applied: operationResult.appliedCount,
+                removed: operationResult.removedCount,
+                updated: operationResult.updatedCount,
+                skipped: operationResult.skippedCount,
+                items_after: operationBase.length,
+              });
+            }
+          }
+
+          const mergeResult = mergeQuickOrderParsedItemsDetailed(
+            operationBase,
+            responseItems,
+          );
+
           if (__DEV__) {
-            console.log("[QuickOrder] Operations applied", {
-              operations_count: operations.length,
-              applied: operationResult.appliedCount,
-              removed: operationResult.removedCount,
-              updated: operationResult.updatedCount,
-              skipped: operationResult.skippedCount,
-              skippedReasons: operationResult.skippedReasons,
-              items_after: operationBase.length,
+            console.log("[QuickOrder] Merge result", {
+              parsedItems_before: currentParsed.length,
+              responseItems_count: responseItems.length,
+              merge_added: mergeResult.addedCount,
+              merge_updated: mergeResult.updatedCount,
+              merge_review: mergeResult.reviewCount,
+              nextParsedItems_count: mergeResult.items.length,
+              pendingClarifications_count: responseClarifications.length,
             });
           }
-        }
 
-        // Then merge any new parsed items onto the post-operation state.
-        const responseItems = response.parsedItems;
-        const responseSuggestions = normalizeSuggestions(response.suggestions);
-        const responseClarifications = response.pendingActions;
-        const mergeResult = mergeQuickOrderParsedItemsDetailed(
-          operationBase,
-          responseItems,
-        );
-        const nextParsedItems = mergeResult.items;
-        const nextPendingClarifications = mergePendingClarificationsAfterParse(
-          pendingClarifications,
-          mergeResult.updatedItems,
-          responseClarifications,
-        );
-        const assistantText = buildQuickOrderAssistantMessage({
-          normalized: response,
-          mergeResult,
-          pendingCount: responseClarifications.length,
-          operationResult,
-        });
-        const finalAssistantText =
-          response.stockUpdates.length > 0 ||
-          response.recommendations.length > 0 ||
-          response.safetyWarnings.length > 0 ||
-          response.blockedOperations.length > 0
-            ? response.displayMessage
-            : assistantText;
-
-        if (__DEV__) {
-          console.log("[QuickOrder] Merge result", {
-            parsedItems_before: parsedItems.length,
-            responseItems_count: responseItems.length,
-            merge_added: mergeResult.addedCount,
-            merge_updated: mergeResult.updatedCount,
-            merge_review: mergeResult.reviewCount,
-            merge_unchanged: mergeResult.unchangedCount,
-            merge_rejected_reasons: mergeResult.rejectedReasons,
-            nextParsedItems_count: nextParsedItems.length,
-            pendingClarifications_count: responseClarifications.length,
-            assistantText: finalAssistantText.slice(0, 80),
-          });
-        }
-
-        if (
-          __DEV__ &&
-          response.status === "ok" &&
-          !hasQuickOrderStateChange(
-            mergeResult,
-            responseClarifications.length,
-            operationResult,
-          )
-        ) {
-          console.warn(
-            "[QuickOrder] Parser response produced no state change",
-            {
-              sessionId: activeSessionId,
-              locationId,
+          if (
+            __DEV__ &&
+            response.status === "ok" &&
+            !hasQuickOrderStateChange(
+              mergeResult,
+              responseClarifications.length,
+              operationResult,
+            )
+          ) {
+            console.warn("[QuickOrder] Parser response produced no state change", {
+              sessionId: devIdFingerprint(activeSessionId),
+              locationId: devIdFingerprint(locationId),
               received: response.diagnostics.items_received,
               accepted: response.diagnostics.items_accepted,
               rejected: response.diagnostics.items_rejected,
-              pending: response.diagnostics.pending_action_count,
-              mergeBefore: parsedItems.length,
-              mergeAfter: nextParsedItems.length,
-              rejectedReasons: [
-                ...response.diagnostics.rejected_reasons,
-                ...mergeResult.rejectedReasons,
-              ],
+            });
+          }
+
+          const assistantText = buildQuickOrderAssistantMessage({
+            normalized: response,
+            mergeResult,
+            pendingCount: responseClarifications.length,
+            operationResult,
+          });
+          const finalAssistantText =
+            response.isBlocked ||
+            response.isPartialSuccess ||
+            response.stockUpdates.length > 0 ||
+            response.recommendations.length > 0 ||
+            response.safetyWarnings.length > 0 ||
+            response.blockedOperations.length > 0
+              ? response.displayMessage
+              : assistantText;
+
+          applySnapshot = {
+            nextParsedItems: mergeResult.items,
+            assistantMessage: {
+              id: createMessageId(),
+              role: "assistant",
+              text: finalAssistantText,
+              source,
+              createdAt: new Date().toISOString(),
+              parsedItems: responseItems,
+              pendingClarifications: responseClarifications,
+              flags: response.flags,
+              suggestions: responseSuggestions,
+              stockUpdates: response.stockUpdates,
+              recommendations: response.recommendations,
+              safetyWarnings: response.safetyWarnings,
+              blockedOperations: response.blockedOperations,
             },
-          );
+            mergeResult,
+            operationResult,
+          };
+
+          return applySnapshot.nextParsedItems;
+        });
+
+        if (!applySnapshot || requestGeneration !== requestGenerationRef.current) {
+          return;
         }
 
-        const assistantMessage: QuickOrderMessage = {
-          id: createMessageId(),
-          role: "assistant",
-          text: finalAssistantText,
-          source,
-          createdAt: new Date().toISOString(),
-          parsedItems: responseItems,
-          pendingClarifications: responseClarifications,
-          flags: response.flags,
-          suggestions: responseSuggestions,
-          stockUpdates: response.stockUpdates,
-          recommendations: response.recommendations,
-          safetyWarnings: response.safetyWarnings,
-          blockedOperations: response.blockedOperations,
-        };
-        const nextMessages = [...optimisticMessages, assistantMessage];
+        const snapshot = applySnapshot;
+        const {
+          nextParsedItems,
+          assistantMessage,
+          mergeResult,
+        } = snapshot;
 
-        setParsedItems(nextParsedItems);
-        setPendingClarifications(nextPendingClarifications);
+        setPendingClarifications((currentPending) => {
+          if (requestGeneration !== requestGenerationRef.current) {
+            return currentPending;
+          }
+          return mergePendingClarificationsAfterParse(
+            currentPending,
+            mergeResult.updatedItems,
+            responseClarifications,
+          );
+        });
+
+        const nextMessages = [...optimisticMessages, assistantMessage];
         setMessages(nextMessages);
         scheduleChatScrollToEnd(
           "ai-response-appended",
@@ -2214,31 +2738,28 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           },
         );
 
+        loadQuantitySuggestions(nextParsedItems.map((item) => item.item_id));
+
         if (__DEV__) {
           console.log("[QuickOrder] State updated", {
             parsedItems_count: nextParsedItems.length,
-            pendingClarifications_count: nextPendingClarifications.length,
+            pendingClarifications_count: responseClarifications.length,
             messages_count: nextMessages.length,
           });
         }
 
         try {
           await persistSession(activeSessionId, nextMessages, nextParsedItems);
-          if (__DEV__) {
-            console.log("[QuickOrder] Session persisted successfully");
-          }
         } catch (persistError) {
-          // Session persistence failure should NOT clear local state
           console.warn("[QuickOrder] session_persist_failed:", persistError);
         }
 
-        // Start nudge timer after a successful parse with items
         if (nextParsedItems.length > 0 && !nudgeSent) {
           if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+          const nudgePendingCount = responseClarifications.length;
           nudgeTimerRef.current = setTimeout(() => {
             const unresolvedCount =
-              countUnresolvedItems(nextParsedItems) +
-              nextPendingClarifications.length;
+              countUnresolvedItems(nextParsedItems) + nudgePendingCount;
             if (
               nextParsedItems.length > 0 &&
               unresolvedCount === 0 &&
@@ -2275,14 +2796,19 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           });
         }
         if (activeSessionId) {
-          await appendErrorMessage(
-            optimisticMessages,
-            activeSessionId,
-            "ai_unavailable",
-          );
+          if (requestGeneration === requestGenerationRef.current) {
+            await appendErrorMessage(
+              optimisticMessages,
+              activeSessionId,
+              "ai_unavailable",
+            );
+          }
         }
       } finally {
-        setIsSending(false);
+        if (requestGeneration === requestGenerationRef.current) {
+          isSendingRef.current = false;
+          setIsSending(false);
+        }
       }
     },
     [
@@ -2365,10 +2891,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       const nextPendingClarifications = pendingClarifications.filter(
         (entry) => entry.id !== clarification.id,
       );
-      const confirmedLabel =
-        action.id === "cancel"
-          ? "Canceled"
-          : `${action.label.replace(/^Use\s+/i, "")} confirmed`;
+      const confirmedLabel = buildClarificationConfirmedLabel(
+        clarification,
+        action,
+      );
       const nextMessages = messages.map((message) => ({
         ...message,
         pendingClarifications: message.pendingClarifications?.map((entry) =>
@@ -2378,13 +2904,44 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         ),
       }));
 
+      const followUpMessages: QuickOrderMessage[] = [];
+      if (action.id !== "cancel" && clarification.item_id) {
+        const updatedItem = nextParsedItems.find(
+          (item) =>
+            item.item_id === clarification.item_id ||
+            (item.item_name && clarification.item_name &&
+              item.item_name.toLowerCase() === clarification.item_name.toLowerCase()),
+        );
+        if (updatedItem) {
+          const issue = getParsedItemIssue(updatedItem);
+          const name = getParsedItemDisplayName(updatedItem);
+          if (issue?.kind === "pick-quantity") {
+            followUpMessages.push({
+              id: createMessageId(),
+              role: "assistant",
+              text: `How many of ${name}?`,
+              createdAt: new Date().toISOString(),
+            });
+          } else if (issue?.kind === "pick-unit" || issue?.kind === "fix-unit") {
+            followUpMessages.push({
+              id: createMessageId(),
+              role: "assistant",
+              text: `What unit for ${name}?`,
+              createdAt: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      const finalMessages = [...nextMessages, ...followUpMessages];
+
       setParsedItems(nextParsedItems);
       setPendingClarifications(nextPendingClarifications);
       setConfirmedClarifications((current) => ({
         ...current,
         [clarification.id]: confirmedLabel,
       }));
-      setMessages(nextMessages);
+      setMessages(finalMessages);
       scheduleChatScrollToEnd(
         "clarification-action",
         true,
@@ -2437,7 +2994,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
       if (sessionId) {
         try {
-          await persistSession(sessionId, nextMessages, nextParsedItems);
+          await persistSession(sessionId, finalMessages, nextParsedItems);
         } catch (error) {
           console.warn(
             "[QuickOrder] Failed to persist clarification action:",
@@ -2484,14 +3041,51 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         incoming,
       );
       const nextParsedItems = mergeResult.items;
+      const assistantText =
+        suggestionItems.length === 1
+          ? (() => {
+              const item = suggestionItems[0];
+              const qty = item.quantity ?? 1;
+              const unit = item.unit ? ` ${item.unit}` : "";
+              return `Added ${qty}${unit} of ${item.item_name}.`;
+            })()
+          : `Added ${mergeResult.addedCount + mergeResult.updatedCount || suggestionItems.length} suggested items.`;
       const assistantMessage: QuickOrderMessage = {
         id: createMessageId(),
         role: "assistant",
-        text: `Added ${mergeResult.addedCount + mergeResult.updatedCount || suggestionItems.length} suggested item${suggestionItems.length === 1 ? "" : "s"}.`,
+        text: assistantText,
         createdAt: new Date().toISOString(),
         parsedItems: incoming,
       };
-      const nextMessages = [...messages, assistantMessage];
+
+      const followUpMessages: QuickOrderMessage[] = [];
+      for (const incomingItem of incoming) {
+        const updatedItem = nextParsedItems.find(
+          (item) =>
+            item.item_id === incomingItem.item_id ||
+            item.client_key === incomingItem.client_key,
+        );
+        if (!updatedItem) continue;
+        const issue = getParsedItemIssue(updatedItem);
+        const name = getParsedItemDisplayName(updatedItem);
+        if (issue?.kind === "pick-quantity") {
+          followUpMessages.push({
+            id: createMessageId(),
+            role: "assistant",
+            text: `How many of ${name}?`,
+            createdAt: new Date().toISOString(),
+          });
+        } else if (issue?.kind === "pick-unit" || issue?.kind === "fix-unit") {
+          followUpMessages.push({
+            id: createMessageId(),
+            role: "assistant",
+            text: `What unit for ${name}?`,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      const nextMessages = [...messages, assistantMessage, ...followUpMessages];
 
       setParsedItems(nextParsedItems);
       setMessages(nextMessages);
@@ -2509,6 +3103,84 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       }
     },
     [messages, parsedItems, persistSession, scheduleChatScrollToEnd, sessionId],
+  );
+
+  const handleRejectSuggestion = useCallback(
+    async (_suggestion: QuickOrderSuggestion) => {
+      const assistantMessage: QuickOrderMessage = {
+        id: createMessageId(),
+        role: "assistant",
+        text: "Got it — try saying it differently.",
+        createdAt: new Date().toISOString(),
+      };
+      const nextMessages = [...messages, assistantMessage];
+      setMessages(nextMessages);
+      scheduleChatScrollToEnd(
+        "suggestion-rejected",
+        true,
+        buildSendSnapDelays(),
+        { active: true, afterInteractions: true },
+      );
+
+      if (sessionId) {
+        try {
+          await persistSession(sessionId, nextMessages, parsedItems);
+        } catch (error) {
+          console.warn(
+            "[QuickOrder] Failed to persist suggestion reject:",
+            error,
+          );
+        }
+      }
+    },
+    [messages, parsedItems, persistSession, scheduleChatScrollToEnd, sessionId],
+  );
+
+  const handleRejectClarification = useCallback(
+    async (clarification: PendingQuickOrderClarification) => {
+      const nextPendingClarifications = pendingClarifications.filter(
+        (entry) => entry.id !== clarification.id,
+      );
+      const assistantMessage: QuickOrderMessage = {
+        id: createMessageId(),
+        role: "assistant",
+        text: "Got it — try saying it differently.",
+        createdAt: new Date().toISOString(),
+      };
+      const nextMessages = [...messages, assistantMessage];
+
+      setDismissedClarifications((current) => ({
+        ...current,
+        [clarification.id]: true,
+      }));
+      setPendingClarifications(nextPendingClarifications);
+      setMessages(nextMessages);
+      scheduleChatScrollToEnd(
+        "clarification-rejected",
+        true,
+        buildSendSnapDelays(),
+        { active: true, afterInteractions: true },
+      );
+
+      if (sessionId) {
+        try {
+          await persistSession(sessionId, nextMessages, parsedItems);
+        } catch (error) {
+          console.warn(
+            "[QuickOrder] Failed to persist clarification reject:",
+            error,
+          );
+        }
+      }
+    },
+    [
+      messages,
+      parsedItems,
+      pendingClarifications,
+      persistSession,
+      scheduleChatScrollToEnd,
+      sessionId,
+    ],
   );
 
   const handleAddRecommendations = useCallback(
@@ -2571,16 +3243,13 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     [messages, parsedItems, persistSession, scheduleChatScrollToEnd, sessionId],
   );
 
-  /**
-   * Moves the resolved Quick Order items into the normal app cart and routes to
-   * the Cart tab. Quick Order never submits an order itself — the cart is the
-   * single submission surface.
-   */
   const handleConfirmOrder = useCallback(async () => {
     if (
       parsedItems.length === 0 ||
       issueCount > 0 ||
+      isConfirmingRef.current ||
       isConfirming ||
+      isSending ||
       !areQuickOrderItemsCartReady(parsedItems)
     ) {
       return;
@@ -2595,9 +3264,11 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     }
 
     Keyboard.dismiss();
+    isConfirmingRef.current = true;
     setIsConfirming(true);
 
-    const closingSessionId = sessionId;
+    const sessionToClose = sessionId;
+
     try {
       const loadedInventory = await loadInventoryItems();
       const inventoryById = new Map<string, QuickOrderInventoryItem>(
@@ -2605,42 +3276,22 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       );
       const cartAdds = quickOrderItemsToCartAdds(parsedItems, inventoryById);
 
-      cartAdds.forEach((add) => {
+      for (const add of cartAdds) {
         addToCart(locationId, add.inventoryItemId, add.quantity, add.unitType, {
-          context: mode.scope,
           inputMode: "quantity",
           quantityRequested: add.quantity,
-          note: add.note,
+          note: add.note ?? undefined,
         });
-      });
-
-      // The Order List card already plays a confirmation haptic on press; no
-      // need to double up here.
+      }
 
       if (nudgeTimerRef.current) {
         clearTimeout(nudgeTimerRef.current);
         nudgeTimerRef.current = null;
       }
 
-      // The items live in the cart now — clear the Quick Order session so the
-      // chat starts fresh next time. Best-effort; a failed update doesn't block
-      // navigation since the cart already has the items.
-      if (closingSessionId) {
-        try {
-          await supabase
-            .from("quick_order_sessions")
-            .update({ status: "abandoned", messages: [], parsed_items: [] })
-            .eq("id", closingSessionId);
-        } catch (error) {
-          console.warn(
-            "[QuickOrder] Failed to close session after confirm:",
-            error,
-          );
-        }
-      }
-
       setMessages([]);
       setConfirmedClarifications({});
+      setDismissedClarifications({});
       setParsedItems([]);
       setPendingClarifications([]);
       setEditingState(null);
@@ -2652,26 +3303,48 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       setIsVoiceListening(false);
       setSessionId(null);
       setNudgeSent(false);
+      quickOrderPendingOrderIdRef.current = null;
 
-      router.push(mode.cartRoute as never);
+      if (sessionToClose) {
+        try {
+          await supabase
+            .from("quick_order_sessions")
+            .update({
+              status: "abandoned",
+              messages: [],
+              parsed_items: [],
+            })
+            .eq("id", sessionToClose);
+        } catch (closeError) {
+          console.warn(
+            "[QuickOrder] Failed to close session after confirm:",
+            closeError,
+          );
+        }
+      }
+
+      router.push("/(tabs)/cart" as never);
     } catch (error) {
-      console.warn("[QuickOrder] Failed to move order to cart:", error);
+      console.warn("[QuickOrder] Failed to add items to cart:", error);
       Alert.alert(
-        "Could not confirm order",
-        "Couldn't move these items to your cart. Please try again.",
+        "Could not open cart",
+        error instanceof Error
+          ? error.message
+          : "Couldn't add these items to your cart. Please try again.",
       );
     } finally {
+      isConfirmingRef.current = false;
       setIsConfirming(false);
     }
   }, [
     addToCart,
     isConfirming,
+    isSending,
     issueCount,
     loadInventoryItems,
     locationId,
-    mode.cartRoute,
-    mode.scope,
     parsedItems,
+    router,
     sessionId,
     userId,
   ]);
@@ -2679,14 +3352,44 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const renderChatMessage = useCallback(
     ({ item: message }: { item: QuickOrderMessage }) => {
       const layoutHandler =
-        message.id === messages[messages.length - 1]?.id
+        message.id === displayMessages[displayMessages.length - 1]?.id
           ? handleMessageLayout
           : undefined;
 
+      if (isQuickOrderWelcomeMessage(message)) {
+        return <QuickOrderWelcomeMessageCard onLayout={layoutHandler} />;
+      }
+
       if (message.role === "assistant") {
+        const renderableClarifications = (message.pendingClarifications ?? []).filter(
+          (clarification) =>
+            clarification.actions.length > 0 ||
+            Boolean(confirmedClarifications[clarification.id]) ||
+            Boolean(dismissedClarifications[clarification.id]),
+        );
+        const clarificationItemKeys = new Set(
+          renderableClarifications
+            .map((c) => c.item_id ?? c.item_name?.toLowerCase() ?? "")
+            .filter((key) => key.length > 0),
+        );
+        const filteredSafetyWarnings = (message.safetyWarnings ?? []).filter(
+          (warning) => {
+            const key =
+              warning.item_id ?? warning.item_name?.toLowerCase() ?? "";
+            return key.length === 0 || !clarificationItemKeys.has(key);
+          },
+        );
+        const suppressAssistantPill =
+          renderableClarifications.length > 0 ||
+          filteredSafetyWarnings.length > 0;
+        const showInfoCard = isQaAnswerMessage(message);
         return (
           <View>
-            <AIResponsePill message={message} onLayout={layoutHandler} />
+            {suppressAssistantPill ? null : showInfoCard ? (
+              <InfoCard text={message.text} onLayout={layoutHandler} />
+            ) : (
+              <AIResponsePill message={message} onLayout={layoutHandler} />
+            )}
             {message.blockedOperations?.map((operation, index) => (
               <BlockedOperationCard
                 key={`${message.id}:blocked:${index}`}
@@ -2694,7 +3397,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
                 onLayout={layoutHandler}
               />
             ))}
-            {message.safetyWarnings?.map((warning, index) => (
+            {filteredSafetyWarnings.map((warning, index) => (
               <SafetyWarningCard
                 key={`${message.id}:warning:${index}`}
                 warning={warning}
@@ -2707,27 +3410,24 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
                 onLayout={layoutHandler}
               />
             ) : null}
-            {(message.pendingClarifications ?? [])
-              .filter(
-                (clarification) =>
-                  clarification.actions.length > 0 ||
-                  Boolean(confirmedClarifications[clarification.id]),
-              )
-              .map((clarification) => (
-                <ClarificationCard
-                  key={clarification.id}
-                  clarification={clarification}
-                  confirmed={Boolean(confirmedClarifications[clarification.id])}
-                  confirmedLabel={confirmedClarifications[clarification.id]}
-                  onAction={handleClarificationAction}
-                  onLayout={layoutHandler}
-                />
-              ))}
+            {renderableClarifications.map((clarification) => (
+              <ClarificationCard
+                key={clarification.id}
+                clarification={clarification}
+                confirmed={Boolean(confirmedClarifications[clarification.id])}
+                dismissed={Boolean(dismissedClarifications[clarification.id])}
+                confirmedLabel={confirmedClarifications[clarification.id]}
+                onAction={handleClarificationAction}
+                onReject={handleRejectClarification}
+                onLayout={layoutHandler}
+              />
+            ))}
             {(message.suggestions ?? []).map((suggestion, index) => (
               <SuggestionCard
                 key={`${message.id}:suggestion:${index}`}
                 suggestion={suggestion}
                 onAdd={handleAddSuggestion}
+                onReject={handleRejectSuggestion}
                 onLayout={layoutHandler}
               />
             ))}
@@ -2794,19 +3494,23 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       return (
         <QuickOrderUserMessage
           text={message.text}
-          source={message.source}
+          source={message.source === "voice" ? "voice" : "typed"}
           onLayout={layoutHandler}
         />
       );
     },
     [
       ds,
+      displayMessages,
       handleAddSuggestion,
+      handleRejectSuggestion,
       handleAddRecommendations,
       handleClarificationAction,
+      handleRejectClarification,
       handleMessageLayout,
       handleRetry,
-      messages,
+      confirmedClarifications,
+      dismissedClarifications,
     ],
   );
 
@@ -2876,7 +3580,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           {/* Layer 1 — the chat scrolls the full height, passing beneath the card. */}
           <FlatList
             ref={chatListRef}
-            data={isLoadingSession ? [] : messages}
+            data={isLoadingSession ? [] : displayMessages}
             keyExtractor={keyExtractor}
             renderItem={renderChatMessage}
             keyboardShouldPersistTaps="handled"
@@ -2905,6 +3609,45 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
               isLoadingSession ? (
                 <View style={styles.loadingRow}>
                   <ActivityIndicator color={colors.primary} />
+                </View>
+              ) : sessionLoadError ? (
+                <View
+                  style={[
+                    styles.sessionErrorCard,
+                    {
+                      borderRadius: ds.radius(16),
+                      padding: ds.spacing(14),
+                      marginTop: ds.spacing(10),
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.sessionErrorText,
+                      { fontSize: ds.fontSize(15) },
+                    ]}
+                  >
+                    {sessionLoadError}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry loading session"
+                    onPress={retrySessionLoad}
+                    style={({ pressed }) => [
+                      styles.retryButton,
+                      {
+                        marginTop: ds.spacing(10),
+                        borderRadius: ds.radius(12),
+                        opacity: pressed ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[styles.retryText, { fontSize: ds.fontSize(14) }]}
+                    >
+                      Retry
+                    </Text>
+                  </Pressable>
                 </View>
               ) : null
             }
@@ -3012,6 +3755,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 32,
   },
+  sessionErrorCard: {
+    alignSelf: "stretch",
+    backgroundColor: colors.statusRedBg,
+    borderWidth: glassHairlineWidth,
+    borderColor: colors.statusRed,
+  },
+  sessionErrorText: {
+    color: colors.statusRed,
+    fontWeight: "700",
+    letterSpacing: 0,
+  },
   errorCard: {
     alignSelf: "flex-start",
     maxWidth: "92%",
@@ -3066,15 +3820,14 @@ const styles = StyleSheet.create({
   },
   aiPillCaution: {
     backgroundColor: colors.statusAmberBg,
-    borderColor: colors.statusAmber,
-    borderWidth: 1,
+    borderWidth: 0,
   },
   aiPillSuccess: {
     backgroundColor: colors.statusGreenBg,
-    borderColor: colors.statusGreen,
+    borderWidth: 0,
   },
   aiPillText: {
-    flex: 1,
+    flexShrink: 1,
     marginLeft: 10,
     color: colors.textPrimary,
     fontWeight: "600",
@@ -3082,45 +3835,98 @@ const styles = StyleSheet.create({
   },
   aiPillTextCaution: {
     color: colors.textPrimary,
+    fontWeight: "500",
+  },
+  chatWhiteCard: {
+    alignSelf: "flex-start",
+    width: "94%",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  chatWhiteCardText: {
+    color: colors.textPrimary,
+    fontWeight: "500",
+    letterSpacing: 0,
+  },
+  chatDismissedPillCard: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  cardBadge: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    gap: 4,
+  },
+  cardBadgeText: {
+    fontSize: 11,
     fontWeight: "800",
+    letterSpacing: 0.4,
   },
   clarificationCard: {
     alignSelf: "flex-start",
     maxWidth: "94%",
-    backgroundColor: colors.statusAmberBg,
+    backgroundColor: "#FEF3C7",
     borderWidth: glassHairlineWidth,
-    borderColor: colors.statusAmber,
+    borderColor: "#FDE68A",
   },
   clarificationCardConfirmed: {
-    backgroundColor: colors.statusGreenBg,
-    borderColor: colors.statusGreen,
+    backgroundColor: "#DCFCE7",
+    borderColor: "#BBF7D0",
+  },
+  clarificationCardDismissed: {
+    backgroundColor: colors.glassCircle,
+    borderColor: glassColors.cardBorder,
   },
   clarificationHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
   },
   clarificationText: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontWeight: "500",
+    letterSpacing: 0,
+  },
+  clarificationTextConfirmed: {
     flex: 1,
     color: colors.textPrimary,
     fontWeight: "700",
     letterSpacing: 0,
   },
-  clarificationTextConfirmed: {
-    color: colors.textPrimary,
-    fontWeight: "800",
+  clarificationTextDismissed: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontWeight: "600",
+    letterSpacing: 0,
   },
   clarificationActions: {
     flexDirection: "row",
     flexWrap: "wrap",
+    alignItems: "center",
   },
-  clarificationButton: {
+  clarificationPrimaryButton: {
     backgroundColor: colors.white,
-    borderWidth: glassHairlineWidth,
-    borderColor: glassColors.cardBorder,
+    borderWidth: 1,
+    borderColor: "#F59E0B",
   },
-  clarificationButtonText: {
-    color: colors.primary,
+  clarificationPrimaryButtonText: {
+    color: "#92400E",
     fontWeight: "800",
+    letterSpacing: 0,
+  },
+  clarificationGhostButton: {
+    backgroundColor: "transparent",
+  },
+  clarificationGhostButtonText: {
+    color: "#92400E",
+    fontWeight: "700",
     letterSpacing: 0,
   },
   noticeCard: {
@@ -3177,14 +3983,48 @@ const styles = StyleSheet.create({
   suggestionCard: {
     alignSelf: "flex-start",
     width: "94%",
-    backgroundColor: colors.white,
+    backgroundColor: "#FEF3C7",
     borderWidth: glassHairlineWidth,
-    borderColor: glassColors.cardBorder,
+    borderColor: "#FDE68A",
   },
   suggestionCardAdded: {
     width: "auto",
     maxWidth: "94%",
+    backgroundColor: "#DCFCE7",
+    borderColor: "#BBF7D0",
+  },
+  suggestionCardDismissed: {
+    width: "auto",
+    maxWidth: "94%",
     backgroundColor: colors.glassCircle,
+    borderColor: glassColors.cardBorder,
+  },
+  suggestionDismissedText: {
+    color: colors.textSecondary,
+    fontWeight: "700",
+    letterSpacing: 0,
+  },
+  suggestionButtonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  suggestionPrimaryButton: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+  },
+  suggestionPrimaryButtonText: {
+    color: "#92400E",
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  suggestionGhostButton: {
+    backgroundColor: "transparent",
+  },
+  suggestionGhostButtonText: {
+    color: "#92400E",
+    fontWeight: "700",
+    letterSpacing: 0,
   },
   suggestionHeader: {
     flexDirection: "row",
@@ -3197,13 +4037,13 @@ const styles = StyleSheet.create({
   },
   suggestionTitle: {
     color: colors.textPrimary,
-    fontWeight: "800",
+    fontWeight: "500",
     letterSpacing: 0,
   },
   suggestionMessage: {
     marginTop: 2,
     color: colors.textSecondary,
-    fontWeight: "600",
+    fontWeight: "400",
     letterSpacing: 0,
   },
   suggestionItems: {

@@ -21,12 +21,17 @@ import { useAuthStore, useOrderStore, useSettingsStore } from '@/store';
 import { useShallow } from 'zustand/react/shallow';
 import { supabase } from '@/lib/supabase';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
-import { FulfillmentConfirmItemRow, QuantityExportSelector } from '@/features/fulfillment/components';
+import {
+  FulfillmentConfirmItemRow,
+  QuantityExportSelector,
+  SupplierPickerBottomSheet,
+} from '@/features/fulfillment/components';
 import { OrderLaterScheduleModal } from '@/features/fulfillment/components/OrderLaterScheduleModal';
+import type { SupplierPickerOption } from '@/features/fulfillment/components';
 import { GlassSurface, ItemActionSheet } from '@/components';
 import type { ItemActionSheetSection } from '@/components';
 import { buildSupplierConfirmationData } from '@/services/fulfillmentDataSource';
-import { loadSupplierLookup } from '@/services/supplierResolver';
+import { loadSupplierLookup, type SupplierLookupRow } from '@/services/supplierResolver';
 import {
   UnitConversionLookup,
   applyUnitConversion,
@@ -708,7 +713,9 @@ export default function FulfillmentConfirmationScreen() {
     getSupplierDraftItems,
     getLastOrderedQuantities,
     markOrderItemsStatus,
+    removeSupplierDraftItem,
     removeSupplierDraftItems,
+    addSupplierDraftItem,
     setSupplierOverride,
     updateSupplierDraftItemQuantity,
   } = useOrderStore(useShallow((state) => ({
@@ -718,7 +725,9 @@ export default function FulfillmentConfirmationScreen() {
     getSupplierDraftItems: state.getSupplierDraftItems,
     getLastOrderedQuantities: state.getLastOrderedQuantities,
     markOrderItemsStatus: state.markOrderItemsStatus,
+    removeSupplierDraftItem: state.removeSupplierDraftItem,
     removeSupplierDraftItems: state.removeSupplierDraftItems,
+    addSupplierDraftItem: state.addSupplierDraftItem,
     setSupplierOverride: state.setSupplierOverride,
     updateSupplierDraftItemQuantity: state.updateSupplierDraftItemQuantity,
   })));
@@ -871,6 +880,13 @@ export default function FulfillmentConfirmationScreen() {
     | { kind: 'remaining'; id: string }
     | null
   >(null);
+  const [supplierPickerTarget, setSupplierPickerTarget] = useState<
+    | { kind: 'regular'; item: ConfirmationItem }
+    | { kind: 'remaining'; item: RemainingConfirmationItem }
+    | null
+  >(null);
+  const [isMovingSupplier, setIsMovingSupplier] = useState(false);
+  const [supplierOptions, setSupplierOptions] = useState<SupplierLookupRow[]>([]);
   const [noteEditorTarget, setNoteEditorTarget] = useState<
     | { kind: 'regular'; id: string }
     | { kind: 'remaining'; id: string }
@@ -935,6 +951,7 @@ export default function FulfillmentConfirmationScreen() {
     setIsFinalizing(false);
     setOrderLaterTarget(null);
     setOverflowTarget(null);
+    setSupplierPickerTarget(null);
     setNoteEditorTarget(null);
     setNoteDraft('');
     setExportSettings({});
@@ -1012,6 +1029,37 @@ export default function FulfillmentConfirmationScreen() {
       active = false;
     };
   }, [inventoryItemLookupSignature]);
+
+  useEffect(() => {
+    let active = true;
+    loadSupplierLookup()
+      .then((lookup) => {
+        if (!active) return;
+        setSupplierOptions(lookup.suppliers);
+      })
+      .catch((error) => {
+        if (__DEV__) {
+          console.warn('[Fulfillment:Confirm] Unable to load suppliers.', error);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const supplierPickerOptions = useMemo<SupplierPickerOption[]>(
+    () =>
+      supplierOptions
+        .filter((row) => row.active)
+        .map((row) => ({ id: row.id, name: row.name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [supplierOptions]
+  );
+
+  const hasAlternateSupplierOptions = useMemo(
+    () => supplierPickerOptions.some((row) => row.id !== supplierId),
+    [supplierId, supplierPickerOptions]
+  );
 
   const refreshFromSupplierSource = useCallback(async () => {
     if (!supplierId) return null;
@@ -1752,6 +1800,109 @@ export default function FulfillmentConfirmationScreen() {
     [setSupplierOverride]
   );
 
+  const moveDraftItemsToSupplier = useCallback(
+    (draftIds: string[], targetSupplierId: string) => {
+      const store = useOrderStore.getState();
+      const allDrafts = Object.values(store.supplierDrafts || {}).flat();
+
+      draftIds.forEach((draftId) => {
+        const draft = allDrafts.find((row) => row.id === draftId);
+        if (!draft) return;
+
+        removeSupplierDraftItem(draftId);
+        addSupplierDraftItem({
+          supplierId: targetSupplierId,
+          inventoryItemId: draft.inventoryItemId,
+          name: draft.name,
+          category: draft.category,
+          quantity: draft.quantity,
+          unitType: draft.unitType,
+          unitLabel: draft.unitLabel,
+          locationGroup: draft.locationGroup,
+          locationId: draft.locationId,
+          locationName: draft.locationName,
+          note: draft.note,
+          sourceOrderLaterItemId: draft.sourceOrderLaterItemId,
+        });
+      });
+    },
+    [addSupplierDraftItem, removeSupplierDraftItem]
+  );
+
+  const moveRegularItemToSupplier = useCallback(
+    async (item: ConfirmationItem, targetSupplierId: string) => {
+      if (!targetSupplierId || targetSupplierId === supplierId) return false;
+
+      const hasOrderItems = item.sourceOrderItemIds.length > 0;
+      const hasDraftItems = item.sourceDraftItemIds.length > 0;
+      if (!hasOrderItems && !hasDraftItems) return false;
+
+      if (hasOrderItems) {
+        const moved = await setSupplierOverride(item.sourceOrderItemIds, targetSupplierId);
+        if (!moved) return false;
+      }
+
+      if (hasDraftItems) {
+        try {
+          moveDraftItemsToSupplier(item.sourceDraftItemIds, targetSupplierId);
+        } catch {
+          return false;
+        }
+      }
+
+      setItems((prev) => prev.filter((row) => row.id !== item.id));
+      setExpandedItems((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
+      return true;
+    },
+    [moveDraftItemsToSupplier, setSupplierOverride, supplierId]
+  );
+
+  const moveRemainingItemToSupplier = useCallback(
+    async (item: RemainingConfirmationItem, targetSupplierId: string) => {
+      if (!targetSupplierId || targetSupplierId === supplierId || !item.orderItemId) {
+        return false;
+      }
+
+      const moved = await setSupplierOverride([item.orderItemId], targetSupplierId);
+      if (!moved) return false;
+
+      setRemainingItems((prev) => prev.filter((row) => row.orderItemId !== item.orderItemId));
+      return true;
+    },
+    [setSupplierOverride, supplierId]
+  );
+
+  const handleSupplierPickerSelect = useCallback(
+    async (targetSupplierId: string) => {
+      if (!supplierPickerTarget) return;
+
+      setIsMovingSupplier(true);
+      try {
+        const success =
+          supplierPickerTarget.kind === 'regular'
+            ? await moveRegularItemToSupplier(supplierPickerTarget.item, targetSupplierId)
+            : await moveRemainingItemToSupplier(supplierPickerTarget.item, targetSupplierId);
+
+        if (!success) {
+          Alert.alert('Unable to Move Item', 'Please try again.');
+          return;
+        }
+
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        setSupplierPickerTarget(null);
+      } finally {
+        setIsMovingSupplier(false);
+      }
+    },
+    [moveRegularItemToSupplier, moveRemainingItemToSupplier, supplierPickerTarget]
+  );
+
   const handleDelete = useCallback(
     (item: ConfirmationItem) => {
       Alert.alert('Remove Item', `Remove ${item.name} from this supplier order?`, [
@@ -2103,10 +2254,7 @@ export default function FulfillmentConfirmationScreen() {
 
     if (overflowRegularItem) {
       const sections: ItemActionSheetSection[] = [];
-      sections.push({
-        id: 'regular-logistics',
-        title: 'Logistics',
-        items: [
+      const regularLogisticsItems: ItemActionSheetSection['items'] = [
           {
             id: 'regular-order-later',
             label: 'Move to Order Later',
@@ -2151,7 +2299,29 @@ export default function FulfillmentConfirmationScreen() {
                 },
               ]
             : []),
-        ],
+      ];
+
+      if (
+        hasAlternateSupplierOptions &&
+        (overflowRegularItem.sourceOrderItemIds.length > 0 ||
+          overflowRegularItem.sourceDraftItemIds.length > 0)
+      ) {
+        regularLogisticsItems.push({
+          id: 'regular-move-supplier',
+          label: 'Move to Different Supplier',
+          icon: 'swap-horizontal',
+          detail: 'Reassign this line to another supplier for this order.',
+          onPress: () => {
+            setOverflowTarget(null);
+            setSupplierPickerTarget({ kind: 'regular', item: overflowRegularItem });
+          },
+        });
+      }
+
+      sections.push({
+        id: 'regular-logistics',
+        title: 'Logistics',
+        items: regularLogisticsItems,
       });
 
       const supplierItems = [];
@@ -2210,7 +2380,7 @@ export default function FulfillmentConfirmationScreen() {
     if (overflowRemainingItem) {
       const sections: ItemActionSheetSection[] = [];
       const breakdown = remainingContributorBreakdownByOrderItemId[overflowRemainingItem.orderItemId] ?? [];
-      const logisticsItems = [
+      const logisticsItems: ItemActionSheetSection['items'] = [
         {
           id: 'remaining-order-later',
           label: 'Move to Order Later',
@@ -2234,6 +2404,20 @@ export default function FulfillmentConfirmationScreen() {
             ]
           : []),
       ];
+
+      if (hasAlternateSupplierOptions && overflowRemainingItem.orderItemId) {
+        logisticsItems.push({
+          id: 'remaining-move-supplier',
+          label: 'Move to Different Supplier',
+          icon: 'swap-horizontal',
+          detail: 'Reassign this line to another supplier for this order.',
+          onPress: () => {
+            setOverflowTarget(null);
+            setSupplierPickerTarget({ kind: 'remaining', item: overflowRemainingItem });
+          },
+        });
+      }
+
       sections.push({
         id: 'remaining-logistics',
         title: 'Logistics',
@@ -2297,6 +2481,7 @@ export default function FulfillmentConfirmationScreen() {
     handleDeleteRemaining,
     handleMoveRemainingToSecondarySupplier,
     handleMoveToSecondarySupplier,
+    hasAlternateSupplierOptions,
     handleOpenRegularNoteEditor,
     handleOpenRemainingNoteEditor,
     handleResolveUnitCombine,
@@ -3692,6 +3877,28 @@ export default function FulfillmentConfirmationScreen() {
             </TouchableOpacity>
           )}
         </View>
+
+        <SupplierPickerBottomSheet
+          visible={Boolean(supplierPickerTarget)}
+          itemName={
+            supplierPickerTarget?.kind === 'regular'
+              ? supplierPickerTarget.item.name
+              : supplierPickerTarget?.kind === 'remaining'
+                ? supplierPickerTarget.item.name
+                : undefined
+          }
+          suppliers={supplierPickerOptions}
+          currentSupplierId={supplierId}
+          isMoving={isMovingSupplier}
+          onSelect={(targetSupplierId) => {
+            void handleSupplierPickerSelect(targetSupplierId);
+          }}
+          onClose={() => {
+            if (!isMovingSupplier) {
+              setSupplierPickerTarget(null);
+            }
+          }}
+        />
 
         <OrderLaterScheduleModal
           visible={Boolean(orderLaterRegularItem || orderLaterRemainingItem)}

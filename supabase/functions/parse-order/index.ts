@@ -1,17 +1,18 @@
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { corsHeaders, corsHeadersForRequest } from '../_shared/cors.ts';
+import { userCanAccessLocation } from '../_shared/location-access.ts';
 import { PARSER_VERSION } from './orchestrator.ts';
 import { getModelConfig } from './model-router.ts';
 import { processQuickOrderMessage } from './process-message.ts';
-import { configureUnitAliases } from './units.ts';
+import { classifyQuickOrderInput } from './input-classifier.ts';
+import { buildUnitAliases, normalizeUnitForComparison, type UnitAliasMap } from './units.ts';
 import type {
   CatalogItem,
   ItemAllowedUnitRule,
   ItemOrderLimit,
   ParsedItem,
   ParserCorrection,
-  ParserExample,
   ParseFlag,
   ParseResponse,
   ParseSuggestion,
@@ -49,7 +50,9 @@ type SessionContext = {
 
 const CATALOG_CACHE_MS = 5 * 60 * 1000;
 const LLM_TIMEOUT_MS = 8000;
-const MAX_EXAMPLES = 25;
+const MAX_MESSAGE_CHARS = 8000;
+const MAX_ORDER_QUANTITY = 10_000;
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_PREVIOUS_MESSAGES = 20;
 const MAX_CORRECTIONS = 25;
 const HISTORY_ORDER_LIMIT = 10;
@@ -70,7 +73,6 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-const catalogCache = new Map<string, CachedCatalog>();
 const globalCatalogCache = new Map<string, CachedCatalog>();
 
 /** Development-safe structured logger. Never exposes sensitive data. */
@@ -132,14 +134,8 @@ function chooseProvider(): Provider | null {
   return null;
 }
 
-function getDefaultUnit(row: Record<string, unknown>): string | null {
-  const inventory = isRecord(row.inventory_items) ? row.inventory_items : {};
-  return (
-    asNullableString(row.order_unit) ??
-    asNullableString(inventory.base_unit) ??
-    asNullableString(inventory.pack_unit) ??
-    asNullableString(row.unit_type)
-  );
+function getDefaultInventoryUnit(row: Record<string, unknown>): string | null {
+  return asNullableString(row.base_unit) ?? asNullableString(row.pack_unit);
 }
 
 async function getAuthenticatedUser(req: Request) {
@@ -175,58 +171,6 @@ async function getAuthenticatedUser(req: Request) {
   return { error: null, status: 200, user, role: typeof profile?.role === 'string' ? profile.role : null };
 }
 
-async function fetchCatalog(locationId: string): Promise<CatalogItem[]> {
-  const cached = catalogCache.get(locationId);
-  if (cached && cached.expiresAt > Date.now()) return cached.items;
-
-  const { data, error } = await supabaseAdmin
-    .from('area_items')
-    .select(`
-      inventory_item_id,
-      unit_type,
-      order_unit,
-      active,
-      inventory_items!inner(id, name, aliases, base_unit, pack_unit, allowed_units, active),
-      storage_areas!inner(id, location_id, active)
-    `)
-    .eq('storage_areas.location_id', locationId)
-    .eq('active', true)
-    .eq('storage_areas.active', true)
-    .eq('inventory_items.active', true)
-    .limit(2000);
-
-  if (error) {
-    throw new Error(`Unable to load item catalog: ${error.message}`);
-  }
-
-  const byId = new Map<string, CatalogItem>();
-  for (const row of (data ?? []) as Record<string, unknown>[]) {
-    const inventory = isRecord(row.inventory_items) ? row.inventory_items : {};
-    const id = asTrimmedString(inventory.id ?? row.inventory_item_id);
-    const name = asTrimmedString(inventory.name);
-    if (!id || !name || byId.has(id)) continue;
-
-    byId.set(id, {
-      id,
-      name,
-      aliases: Array.isArray(inventory.aliases)
-        ? inventory.aliases.filter((alias): alias is string => typeof alias === 'string')
-        : [],
-      default_unit: getDefaultUnit(row),
-      base_unit: asNullableString(inventory.base_unit),
-      pack_unit: asNullableString(inventory.pack_unit),
-      order_unit: asNullableString(row.order_unit),
-      allowed_units: Array.isArray(inventory.allowed_units)
-        ? inventory.allowed_units.filter((unit): unit is string => typeof unit === 'string')
-        : null,
-    });
-  }
-
-  const items = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
-  catalogCache.set(locationId, { expiresAt: Date.now() + CATALOG_CACHE_MS, items });
-  return items;
-}
-
 async function fetchGlobalCatalog(): Promise<CatalogItem[]> {
   const cacheKey = 'global-active-inventory';
   const cached = globalCatalogCache.get(cacheKey);
@@ -239,7 +183,7 @@ async function fetchGlobalCatalog(): Promise<CatalogItem[]> {
     .limit(5000);
 
   if (error) {
-    console.warn('parse-order global catalog diagnostic fetch failed', error);
+    console.warn('parse-order active inventory catalog fetch failed', error);
     return [];
   }
 
@@ -254,7 +198,7 @@ async function fetchGlobalCatalog(): Promise<CatalogItem[]> {
         aliases: Array.isArray(row.aliases)
           ? row.aliases.filter((alias): alias is string => typeof alias === 'string')
           : [],
-        default_unit: asNullableString(row.base_unit) ?? asNullableString(row.pack_unit),
+        default_unit: getDefaultInventoryUnit(row),
         base_unit: asNullableString(row.base_unit),
         pack_unit: asNullableString(row.pack_unit),
         allowed_units: Array.isArray(row.allowed_units)
@@ -269,28 +213,24 @@ async function fetchGlobalCatalog(): Promise<CatalogItem[]> {
   return items;
 }
 
-async function fetchExamples(): Promise<ParserExample[]> {
-  const { data, error } = await supabaseAdmin
-    .from('parser_examples')
-    .select('id, raw_text, structured_output')
-    .eq('is_active', true)
-    .order('created_at', { ascending: false })
-    .limit(MAX_EXAMPLES);
-
-  if (error) throw new Error(`Unable to load parser examples: ${error.message}`);
-  return (data ?? []) as ParserExample[];
-}
-
-async function fetchSessionContext(sessionId: string | null): Promise<SessionContext> {
+async function fetchSessionContext(
+  sessionId: string | null,
+  userId: string,
+  locationId: string,
+): Promise<SessionContext> {
   if (!sessionId) return { messages: [], parsedItems: [] };
 
   const { data, error } = await supabaseAdmin
     .from('quick_order_sessions')
-    .select('messages, parsed_items')
+    .select('user_id, location_id, messages, parsed_items')
     .eq('id', sessionId)
     .maybeSingle();
 
-  if (error) throw new Error(`Unable to load quick order session: ${error.message}`);
+  if (error) throw new Error('Unable to load quick order session.');
+  if (!data) return { messages: [], parsedItems: [] };
+  if (data.user_id !== userId || (data.location_id && data.location_id !== locationId)) {
+    throw new Error('Quick Order session does not belong to this request.');
+  }
 
   return {
     messages: Array.isArray(data?.messages)
@@ -353,10 +293,16 @@ async function fetchItemOrderLimits(locationId: string): Promise<ItemOrderLimit[
   return (data ?? []) as ItemOrderLimit[];
 }
 
-async function fetchItemAllowedUnitRules(): Promise<ItemAllowedUnitRule[]> {
-  const { data, error } = await supabaseAdmin
+async function fetchItemAllowedUnitRules(catalogItemIds: string[]): Promise<ItemAllowedUnitRule[]> {
+  let query = supabaseAdmin
     .from('item_allowed_units')
     .select('id,item_id,unit,is_default,conversion_to_base_unit,min_quantity,soft_max_quantity,hard_max_quantity');
+
+  if (catalogItemIds.length > 0) {
+    query = query.in('item_id', catalogItemIds.slice(0, 500));
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.warn('parse-order item_allowed_units unavailable', error);
@@ -377,8 +323,8 @@ async function persistCurrentStockSnapshots(input: {
     confidence: number;
     original_text: string;
   }[];
-}): Promise<void> {
-  if (input.updates.length === 0) return;
+}): Promise<{ ok: boolean; error?: string }> {
+  if (input.updates.length === 0) return { ok: true };
   const { error } = await supabaseAdmin.from('current_stock_snapshots').insert(
     input.updates.map((update) => ({
       location_id: input.locationId,
@@ -394,7 +340,36 @@ async function persistCurrentStockSnapshots(input: {
   );
   if (error) {
     console.warn('parse-order current_stock_snapshots insert failed', error);
+    return { ok: false, error: error.message };
   }
+  return { ok: true };
+}
+
+function sanitizeExistingItems(
+  items: ParsedItem[],
+  catalog: CatalogItem[],
+  unitAliases: UnitAliasMap,
+): ParsedItem[] {
+  const catalogIds = new Set(catalog.map((item) => item.id));
+  return items
+    .filter((item) => typeof item.item_id === 'string' && catalogIds.has(item.item_id))
+    .map((item) => {
+      const quantity = clampOrderQuantity(item.quantity);
+      const unit = item.unit
+        ? normalizeUnitForComparison(item.unit, unitAliases) ?? item.unit.trim().toLowerCase()
+        : null;
+      return {
+        ...item,
+        quantity,
+        unit,
+        unit_normalized: unit,
+      };
+    });
+}
+
+function clampOrderQuantity(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
+  return Math.min(value, MAX_ORDER_QUANTITY);
 }
 
 async function fetchDowSuggestions(input: {
@@ -787,7 +762,7 @@ function safeParseFailureResponse(flags: ParseFlag[] = []): ParseResponse {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeadersForRequest(req) });
   if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405);
 
   const callStartTime = Date.now();
@@ -823,9 +798,33 @@ Deno.serve(async (req) => {
     });
 
     if (!rawText) return jsonResponse({ error: 'Missing required field: message' }, 400);
+    if (rawText.length > MAX_MESSAGE_CHARS) {
+      return jsonResponse({
+        error: `Message exceeds maximum length of ${MAX_MESSAGE_CHARS} characters.`,
+        code: 'message_too_long',
+      }, 400);
+    }
     if (!locationId) return jsonResponse({ error: 'Missing required field: location_id' }, 400);
+    if (!UUID_PATTERN.test(locationId)) {
+      return jsonResponse({ error: 'location_id must be a valid UUID.', code: 'invalid_location_id' }, 400);
+    }
     if (!requestedUserId) return jsonResponse({ error: 'Missing required field: user_id' }, 400);
     if (requestedUserId !== authenticatedUserId) return jsonResponse({ error: 'Authenticated user mismatch' }, 403);
+    if (sessionId && !UUID_PATTERN.test(sessionId)) {
+      return jsonResponse({ error: 'session_id must be a valid UUID.', code: 'invalid_session_id' }, 400);
+    }
+
+    const locationAccess = await userCanAccessLocation(
+      supabaseAdmin,
+      authenticatedUserId,
+      locationId,
+    );
+    if (!locationAccess.allowed) {
+      return jsonResponse(
+        { error: locationAccess.error || 'Forbidden' },
+        locationAccess.status,
+      );
+    }
 
     const { data: configRows } = await supabaseAdmin
       .from('app_config')
@@ -890,7 +889,7 @@ Deno.serve(async (req) => {
     const parserMode = typeof config.quick_order_parser_mode === 'string'
       ? config.quick_order_parser_mode
       : 'auto';
-    configureUnitAliases(isRecord(config.quick_order_unit_synonyms) ? config.quick_order_unit_synonyms : null);
+    const unitAliases = buildUnitAliases(isRecord(config.quick_order_unit_synonyms) ? config.quick_order_unit_synonyms : null);
     const hasApiKey = Boolean(geminiApiKey || anthropicApiKey);
     const llmEnabled = parserMode === 'live' || (parserMode === 'auto' && hasApiKey);
 
@@ -921,14 +920,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    const [catalog, globalCatalog, examples, sessionContext, corrections, limits, allowedUnitRules, recentOrders] = await Promise.all([
-      fetchCatalog(locationId),
-      fetchGlobalCatalog(),
-      fetchExamples(),
-      fetchSessionContext(sessionId),
+    const catalog = await fetchGlobalCatalog();
+    const globalCatalog = catalog;
+    const catalogItemIds = [...new Set(catalog.map((item) => item.id).filter(Boolean))];
+
+    const [sessionContext, corrections, limits, allowedUnitRules, recentOrders] = await Promise.all([
+      fetchSessionContext(sessionId, authenticatedUserId, locationId),
       fetchCorrections(authenticatedUserId, locationId),
       fetchItemOrderLimits(locationId),
-      fetchItemAllowedUnitRules(),
+      fetchItemAllowedUnitRules(catalogItemIds),
       fetchRecentOrders({ locationId, userId: authenticatedUserId, limit: HISTORY_ORDER_LIMIT }),
     ]);
 
@@ -936,7 +936,6 @@ Deno.serve(async (req) => {
       catalog_count: catalog.length,
       global_catalog_count: globalCatalog.length,
       first_5_names: catalog.slice(0, 5).map((item) => item.name),
-      examples_count: examples.length,
       corrections_count: corrections.length,
       limits_count: limits.length,
       allowed_unit_rules_count: allowedUnitRules.length,
@@ -946,13 +945,13 @@ Deno.serve(async (req) => {
 
     if (catalog.length === 0) {
       devLog('catalog_empty', { location_id: locationId });
-      const emptyMessage = 'I had trouble loading the item catalog for this location. Please try again.';
+      const emptyMessage = 'I had trouble loading the item catalog. Please try again.';
       return jsonResponse({
         status: 'error',
         assistant_message: emptyMessage,
         reply_text: emptyMessage,
         parsed_items: [],
-        flags: [{ type: 'unresolved_item', message: 'No catalog items found for this location.' }],
+        flags: [{ type: 'unresolved_item', message: 'No catalog items found.' }],
         suggestions: [],
         pending_actions: [],
         pending_clarifications: [],
@@ -972,11 +971,22 @@ Deno.serve(async (req) => {
 
     devLog('parser_start', {
       parser_mode: llmEnabled ? 'deterministic_plus_llm' : 'deterministic_only',
-      raw_text_preview: rawText.slice(0, 100),
+      raw_text_length: rawText.length,
     });
 
-    const requestExistingItems = normalizeParsedItemArray(payload.existing_items);
+    const requestExistingItems = sanitizeExistingItems(
+      normalizeParsedItemArray(payload.existing_items),
+      catalog,
+      unitAliases,
+    );
+    const sessionExistingItems = sanitizeExistingItems(sessionContext.parsedItems, catalog, unitAliases);
     const requestRecentMessages = normalizeMessageArray(payload.recent_messages);
+    const previousMessages = requestRecentMessages.length > 0 ? requestRecentMessages : sessionContext.messages;
+    const classification = classifyQuickOrderInput(rawText, {
+      hasPendingDuplicateAction: previousMessages.some((message) =>
+        (message.pending_clarifications ?? []).some((entry) => entry.type === 'quantity_conflict' || entry.type === 'unit_conflict')
+      ),
+    });
     const result = await processQuickOrderMessage({
       request: {
         source,
@@ -994,14 +1004,15 @@ Deno.serve(async (req) => {
       },
       catalog,
       globalCatalog,
-      examples,
       corrections,
-      previousMessages: sessionContext.messages,
-      existingParsedItems: requestExistingItems.length > 0 ? requestExistingItems : sessionContext.parsedItems,
+      previousMessages,
+      existingParsedItems: requestExistingItems.length > 0 ? requestExistingItems : sessionExistingItems,
       limits,
       allowedUnitRules,
       recentOrders,
       userRole: authResult.role,
+      unitAliases,
+      classification,
       modelConfig: {
         ...modelConfig,
         advancedEnabled: config.quick_order_advanced_model_routing_enabled !== false && modelConfig.advancedEnabled,
@@ -1100,7 +1111,10 @@ Deno.serve(async (req) => {
         metrics: { error_code: 'parser_error' },
       });
     }
-    return jsonResponse(safeParseFailureResponse(), 200);
+    return jsonResponse({
+      error: 'Internal server error',
+      code: 'parser_error',
+    }, 500);
   }
 });
 

@@ -16,6 +16,7 @@ import {
   normalizeCartContext,
   mergeCartItem,
   findCartItemIndex,
+  cartItemToPayload,
 } from '../store/helpers/cartHelpers';
 import type { CartItem } from '../store/orderStore.types';
 
@@ -132,6 +133,40 @@ describe('isSubmittableCartItem', () => {
         makeCartItem({ inputMode: 'remaining', remainingReported: null })
       )
     ).toBe(true);
+  });
+});
+
+describe('cartItemToPayload', () => {
+  test('preserves zero remaining quantity without converting it to one', () => {
+    const payload = cartItemToPayload(
+      makeCartItem({
+        inputMode: 'remaining',
+        quantity: 0,
+        quantityRequested: null,
+        remainingReported: 0,
+        decidedQuantity: null,
+      })
+    );
+
+    expect(payload.quantity).toBe(0);
+    expect(payload.input_mode).toBe('remaining');
+    expect(payload.remaining_reported).toBe(0);
+  });
+
+  test('uses manager decided quantity for remaining-mode payloads when present', () => {
+    const payload = cartItemToPayload(
+      makeCartItem({
+        inputMode: 'remaining',
+        quantity: 0,
+        quantityRequested: null,
+        remainingReported: 2,
+        decidedQuantity: 5,
+      })
+    );
+
+    expect(payload.quantity).toBe(5);
+    expect(payload.remaining_reported).toBe(2);
+    expect(payload.decided_quantity).toBe(5);
   });
 });
 

@@ -1,6 +1,6 @@
 import { Redirect, Tabs, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useOrderStore, useDraftStore } from "@/store";
+import { useOrderStore } from "@/store";
 import { AuthLoadingScreen } from "@/components";
 import { useProtectedAuthGuard } from "@/hooks";
 import { colors } from "@/theme/design";
@@ -15,7 +15,6 @@ export default function TabsLayout() {
   const cartTotal = useOrderStore((state) =>
     state.getTotalCartCount("employee"),
   );
-  const draftCount = useDraftStore((state) => state.getTotalItemCount());
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = getTabBarBottomInset(insets.bottom);
   const guard = useProtectedAuthGuard();
@@ -57,8 +56,6 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size, focused }) => (
             <TabButton name="flash-outline" label="Quick" size={size} color={color} focused={focused} />
           ),
-          tabBarBadge: draftCount > 0 ? draftCount : undefined,
-          tabBarBadgeStyle: tabBarBadgeStyle,
         }}
       />
 
@@ -75,16 +72,8 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Stock Check */}
-      <Tabs.Screen
-        name="stock-check"
-        options={{
-          title: "Stock",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="clipboard-outline" label="Stock" size={size} color={color} focused={focused} />
-          ),
-        }}
-      />
+      {/* Stock Check — opened from Settings, not the tab bar */}
+      <Tabs.Screen name="stock-check" options={{ href: null }} />
 
       <Tabs.Screen
         name="voice"

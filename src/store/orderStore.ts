@@ -114,11 +114,20 @@ function normalizeCartItemUnitForSubmit(cartItem: CartItem): CartItem {
   };
 }
 
+function getPendingSubmitKey(
+  context: string,
+  sourceLocationId: string,
+  submitLocationId = sourceLocationId
+): string {
+  return `${context}:${sourceLocationId}->${submitLocationId}`;
+}
+
 export const useOrderStore = create<OrderState>()(
   persist(
     (set, get) => ({
       cartByLocation: {},
       managerCartByLocation: {},
+      pendingSubmitByLocation: {},
       orders: [],
       currentOrder: null,
       isLoading: false,
@@ -641,11 +650,15 @@ export const useOrderStore = create<OrderState>()(
         }
       },
 
-      createOrder: async (locationId, userId, context) => {
+      createOrder: async (locationId, userId, context, options) => {
         const resolvedContext = normalizeCartContext(context);
         const { clearLocationCart } = get();
         const cartByLocation = getCartByContext(get(), resolvedContext);
         const locationCart = getLocationCart(cartByLocation, locationId);
+        const pendingSubmitKey = options?.pendingSubmitKey
+          ?? getPendingSubmitKey(resolvedContext, locationId);
+        const pendingSubmit = get().pendingSubmitByLocation[pendingSubmitKey];
+        const orderId = options?.orderId ?? pendingSubmit?.orderId ?? generateUUID();
 
         if (locationCart.length === 0) {
           throw new Error('Cart is empty for this location');
@@ -658,27 +671,49 @@ export const useOrderStore = create<OrderState>()(
 
         set({ isLoading: true });
         try {
+          set((state) => ({
+            pendingSubmitByLocation: {
+              ...state.pendingSubmitByLocation,
+              [pendingSubmitKey]: {
+                orderId,
+                entryMethod: options?.entryMethod ?? 'manual',
+                quickSessionId: options?.quickSessionId ?? null,
+                createdAt: pendingSubmit?.createdAt ?? new Date().toISOString(),
+              },
+            },
+          }));
+
           const result = await submitOrderService({
-            orderId: generateUUID(),
+            orderId,
             locationId,
             userId,
             status: 'draft',
             items: cartItemsForInsert.map(normalizeCartItemUnitForSubmit).map(cartItemToPayload),
+            entryMethod: options?.entryMethod ?? 'manual',
+            quickSessionId: options?.quickSessionId ?? null,
           });
 
           syncProfileService(userId, result.order.created_at);
           clearLocationCart(locationId, resolvedContext);
+          set((state) => {
+            const { [pendingSubmitKey]: _submitted, ...remaining } = state.pendingSubmitByLocation;
+            return { pendingSubmitByLocation: remaining };
+          });
           return result.order;
         } finally {
           set({ isLoading: false });
         }
       },
 
-      createAndSubmitOrder: async (locationId, userId, context) => {
+      createAndSubmitOrder: async (locationId, userId, context, options) => {
         const resolvedContext = normalizeCartContext(context);
         const { clearLocationCart } = get();
         const cartByLocation = getCartByContext(get(), resolvedContext);
         const locationCart = getLocationCart(cartByLocation, locationId);
+        const pendingSubmitKey = options?.pendingSubmitKey
+          ?? getPendingSubmitKey(resolvedContext, locationId);
+        const pendingSubmit = get().pendingSubmitByLocation[pendingSubmitKey];
+        const orderId = options?.orderId ?? pendingSubmit?.orderId ?? generateUUID();
 
         if (locationCart.length === 0) {
           throw new Error('Cart is empty for this location');
@@ -691,16 +726,34 @@ export const useOrderStore = create<OrderState>()(
 
         set({ isLoading: true });
         try {
+          set((state) => ({
+            pendingSubmitByLocation: {
+              ...state.pendingSubmitByLocation,
+              [pendingSubmitKey]: {
+                orderId,
+                entryMethod: options?.entryMethod ?? 'manual',
+                quickSessionId: options?.quickSessionId ?? null,
+                createdAt: pendingSubmit?.createdAt ?? new Date().toISOString(),
+              },
+            },
+          }));
+
           const result = await submitOrderService({
-            orderId: generateUUID(),
+            orderId,
             locationId,
             userId,
             status: 'submitted',
             items: cartItemsForInsert.map(normalizeCartItemUnitForSubmit).map(cartItemToPayload),
+            entryMethod: options?.entryMethod ?? 'manual',
+            quickSessionId: options?.quickSessionId ?? null,
           });
 
           syncProfileService(userId, result.order.created_at);
           clearLocationCart(locationId, resolvedContext);
+          set((state) => {
+            const { [pendingSubmitKey]: _submitted, ...remaining } = state.pendingSubmitByLocation;
+            return { pendingSubmitByLocation: remaining };
+          });
           set({ currentOrder: result.order });
           return result.order;
         } finally {
@@ -712,12 +765,17 @@ export const useOrderStore = create<OrderState>()(
         sourceLocationId,
         submitLocationId,
         userId,
-        context
+        context,
+        options
       ) => {
         const resolvedContext = normalizeCartContext(context);
         const { clearLocationCart } = get();
         const cartByLocation = getCartByContext(get(), resolvedContext);
         const sourceLocationCart = getLocationCart(cartByLocation, sourceLocationId);
+        const pendingSubmitKey = options?.pendingSubmitKey
+          ?? getPendingSubmitKey(resolvedContext, sourceLocationId, submitLocationId);
+        const pendingSubmit = get().pendingSubmitByLocation[pendingSubmitKey];
+        const orderId = options?.orderId ?? pendingSubmit?.orderId ?? generateUUID();
 
         if (sourceLocationCart.length === 0) {
           throw new Error('Cart is empty for this location');
@@ -730,16 +788,34 @@ export const useOrderStore = create<OrderState>()(
 
         set({ isLoading: true });
         try {
+          set((state) => ({
+            pendingSubmitByLocation: {
+              ...state.pendingSubmitByLocation,
+              [pendingSubmitKey]: {
+                orderId,
+                entryMethod: options?.entryMethod ?? 'manual',
+                quickSessionId: options?.quickSessionId ?? null,
+                createdAt: pendingSubmit?.createdAt ?? new Date().toISOString(),
+              },
+            },
+          }));
+
           const result = await submitOrderService({
-            orderId: generateUUID(),
+            orderId,
             locationId: submitLocationId,
             userId,
             status: 'submitted',
             items: cartItemsForInsert.map(normalizeCartItemUnitForSubmit).map(cartItemToPayload),
+            entryMethod: options?.entryMethod ?? 'manual',
+            quickSessionId: options?.quickSessionId ?? null,
           });
 
           syncProfileService(userId, result.order.created_at);
           clearLocationCart(sourceLocationId, resolvedContext);
+          set((state) => {
+            const { [pendingSubmitKey]: _submitted, ...remaining } = state.pendingSubmitByLocation;
+            return { pendingSubmitByLocation: remaining };
+          });
           set({ currentOrder: result.order });
           return result.order;
         } finally {
@@ -2560,6 +2636,7 @@ export const useOrderStore = create<OrderState>()(
       partialize: (state) => ({
         cartByLocation: state.cartByLocation,
         managerCartByLocation: state.managerCartByLocation,
+        pendingSubmitByLocation: state.pendingSubmitByLocation,
         supplierDrafts: state.supplierDrafts,
         orderLaterQueue: state.orderLaterQueue,
         pastOrders: state.pastOrders,
@@ -2592,6 +2669,7 @@ export const useOrderStore = create<OrderState>()(
           ...persisted,
           cartByLocation: mergedCart,
           managerCartByLocation: {},
+          pendingSubmitByLocation: (persistedState as any)?.pendingSubmitByLocation ?? {},
           supplierDrafts: normalizeSupplierDrafts((persistedState as any)?.supplierDrafts),
           orderLaterQueue: normalizeOrderLaterQueue((persistedState as any)?.orderLaterQueue),
           pastOrders: normalizePastOrders((persistedState as any)?.pastOrders),

@@ -8,7 +8,13 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "test:ci": "jest --runInBand --watchman=false",
+    "audit:prod": "npm audit --omit=dev --audit-level=critical",
+    "audit:quick-order-recognition": "node scripts/audit-quick-order-recognition.js",
+    "verify:submit-order-rpc": "node scripts/verify-submit-order-rpc.js",
+    "doctor": "npx expo-doctor"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -22,7 +28,7 @@
     "expo": "~54.0.33",
     "expo-auth-session": "~7.0.8",
     "expo-av": "~16.0.8",
-    "expo-blur": "^55.0.9",
+    "expo-blur": "~15.0.8",
     "expo-camera": "^17.0.10",
     "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
@@ -65,6 +71,7 @@
     "babel-preset-expo": "^54.0.10",
     "eslint": "^9.39.2",
     "eslint-config-expo": "^10.0.0",
+    "jest": "^29.7.0",
     "react-refresh": "^0.14.2",
     "react-test-renderer": "^19.1.0",
     "ts-jest": "^29.4.6",

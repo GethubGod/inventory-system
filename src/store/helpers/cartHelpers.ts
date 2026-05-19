@@ -2,7 +2,7 @@
 // Pure functions for cart item normalization, merging, and context resolution.
 
 import { UnitType } from '@/types';
-import type { OrderItemPayload } from '@/services/orderSubmission';
+import type { OrderItemPayload } from '@/services/orderValidation';
 import type {
   CartByLocation,
   CartContext,
@@ -250,7 +250,7 @@ export function findCartItemIndex(
 export function cartItemToPayload(item: CartItem): OrderItemPayload {
   const quantity =
     item.inputMode === 'remaining'
-      ? Math.max(item.remainingReported ?? 0, 1)
+      ? (item.decidedQuantity ?? item.remainingReported ?? 0)
       : getEffectiveQuantity(item);
 
   return {

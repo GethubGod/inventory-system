@@ -1,6 +1,6 @@
 import type { CatalogItem } from './types.ts';
 
-const DEFAULT_UNIT_ALIASES: Record<string, string> = {
+export const DEFAULT_UNIT_ALIASES: Record<string, string> = {
   cs: 'cs',
   case: 'cs',
   cases: 'cs',
@@ -33,45 +33,49 @@ const DEFAULT_UNIT_ALIASES: Record<string, string> = {
   packages: 'pack',
 };
 
-let configuredUnitAliases: Record<string, string> = { ...DEFAULT_UNIT_ALIASES };
+export type UnitAliasMap = Record<string, string>;
 
 function normalizeUnitKey(value: string): string {
   return value.normalize('NFKC').trim().toLowerCase().replace(/\.$/, '');
 }
 
-export function configureUnitAliases(extraAliases: Record<string, unknown> | null | undefined): void {
-  configuredUnitAliases = { ...DEFAULT_UNIT_ALIASES };
-  if (!extraAliases) return;
+export function buildUnitAliases(extraAliases: Record<string, unknown> | null | undefined): UnitAliasMap {
+  const aliases: UnitAliasMap = { ...DEFAULT_UNIT_ALIASES };
+  if (!extraAliases) return aliases;
 
   for (const [rawAlias, rawUnit] of Object.entries(extraAliases)) {
     if (typeof rawUnit !== 'string' || !rawAlias.trim() || !rawUnit.trim()) continue;
-    const normalizedUnit = normalizeUnit(rawUnit) ?? normalizeUnitKey(rawUnit);
-    configuredUnitAliases[normalizeUnitKey(rawAlias)] = normalizedUnit;
+    const normalizedUnit = aliases[normalizeUnitKey(rawUnit)] ?? normalizeUnitKey(rawUnit);
+    aliases[normalizeUnitKey(rawAlias)] = normalizedUnit;
   }
+  return aliases;
 }
 
-export function getUnitAliases(): Record<string, string> {
-  return { ...configuredUnitAliases };
+export function getUnitWords(unitAliases: UnitAliasMap = DEFAULT_UNIT_ALIASES): string[] {
+  return Object.keys(unitAliases).sort((a, b) => b.length - a.length);
 }
 
-export function getUnitWords(): string[] {
-  return Object.keys(configuredUnitAliases).sort((a, b) => b.length - a.length);
-}
-
-export const UNIT_WORDS = getUnitWords();
-
-export function normalizeUnit(value: string | null | undefined): string | null {
+export function normalizeUnit(
+  value: string | null | undefined,
+  unitAliases: UnitAliasMap = DEFAULT_UNIT_ALIASES,
+): string | null {
   if (!value) return null;
   const key = normalizeUnitKey(value);
-  return configuredUnitAliases[key] ?? null;
+  return unitAliases[key] ?? null;
 }
 
-export function normalizeUnitForComparison(value: string | null | undefined): string | null {
-  return normalizeUnit(value) ?? (value?.trim().toLowerCase() || null);
+export function normalizeUnitForComparison(
+  value: string | null | undefined,
+  unitAliases: UnitAliasMap = DEFAULT_UNIT_ALIASES,
+): string | null {
+  return normalizeUnit(value, unitAliases) ?? (value?.trim().toLowerCase() || null);
 }
 
-export function isKnownUnit(value: string | null | undefined): boolean {
-  return normalizeUnit(value) != null;
+export function isKnownUnit(
+  value: string | null | undefined,
+  unitAliases: UnitAliasMap = DEFAULT_UNIT_ALIASES,
+): boolean {
+  return normalizeUnit(value, unitAliases) != null;
 }
 
 export function deriveAllowedUnits(item: CatalogItem | null | undefined): string[] {

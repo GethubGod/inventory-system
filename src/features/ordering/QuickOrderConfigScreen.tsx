@@ -210,6 +210,9 @@ export function QuickOrderConfigScreen() {
               return (
                 <Pressable
                   key={tab}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: isActive }}
+                  accessibilityLabel={TAB_LABELS[tab]}
                   onPress={() => setActiveTab(tab)}
                   style={{
                     flex: 1,

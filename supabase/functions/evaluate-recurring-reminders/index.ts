@@ -20,6 +20,7 @@ const WEEKDAY_MAP: Record<string, number> = {
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const cronSecret = Deno.env.get('CRON_SECRET');
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
@@ -120,7 +121,7 @@ Deno.serve(async (req) => {
   let authorized = false;
   let actorUserId: string | null = null;
 
-  if (token === serviceRoleKey) {
+  if (cronSecret && token === cronSecret) {
     authorized = true;
   } else {
     const requester = await getRequesterFromToken(supabaseAdmin, token);

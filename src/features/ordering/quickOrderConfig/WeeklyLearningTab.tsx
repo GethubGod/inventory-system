@@ -178,7 +178,7 @@ export function WeeklyLearningTab({
               paddingVertical: ds.spacing(40),
             }}
           >
-            No correction patterns yet. They'll show up here once employees correct the parser.
+            No correction patterns yet. They&apos;ll show up here once employees correct the parser.
           </Text>
         ) : null}
       </View>

@@ -21,13 +21,8 @@ import { useAuthStore } from '@/store/authStore';
 import {
   OrderSubmissionError,
   validateSubmitRequest,
-  type OrderItemPayload,
   type SubmitOrderRequest,
 } from './orderValidation';
-
-// Re-export types and classes for consumers
-export { OrderSubmissionError, validateSubmitRequest };
-export type { OrderItemPayload, SubmitOrderRequest };
 
 export interface SubmitOrderResult {
   order: OrderWithDetails;
@@ -127,6 +122,8 @@ export async function submitOrder(req: SubmitOrderRequest): Promise<SubmitOrderR
     p_user_id: req.userId,
     p_status: req.status,
     p_items: req.items,
+    p_entry_method: req.entryMethod ?? 'manual',
+    p_quick_session_id: req.quickSessionId ?? null,
   };
 
   // ── Execute ──

@@ -283,6 +283,8 @@ function AliasItemCard({
                 {alias}
               </Text>
               <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={`Remove alias ${alias}`}
                 onPress={() => onRemoveAlias(alias)}
                 hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
               >

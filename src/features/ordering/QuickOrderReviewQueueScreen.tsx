@@ -907,6 +907,19 @@ export function QuickOrderReviewQueueScreen() {
     </Modal>
   );
 
+  if (manager?.role !== 'manager') {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }}>
+        <StackScreenHeader title="Pending Review" subtitle="Manager access required" />
+        <View style={{ padding: glassSpacing.screen }}>
+          <Text style={{ color: glassColors.textSecondary }}>
+            Only managers can review Quick Order safety queue items.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
       <ManagerScaleContainer>

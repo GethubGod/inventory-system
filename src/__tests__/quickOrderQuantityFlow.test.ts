@@ -86,12 +86,12 @@ describe('advanceQuantityFlow', () => {
 });
 
 describe('formatQuantityWithUnit / formatAddQuantityCta', () => {
-  it('pluralizes regular units but not abbreviations / "each"', () => {
+  it('pluralizes regular units but not abbreviations', () => {
     expect(formatQuantityWithUnit(2, 'case')).toBe('2 cases');
     expect(formatQuantityWithUnit(1, 'case')).toBe('1 case');
     expect(formatQuantityWithUnit(3, 'pack')).toBe('3 packs');
     expect(formatQuantityWithUnit(5, 'lb')).toBe('5 lb');
-    expect(formatQuantityWithUnit(4, 'each')).toBe('4 each');
+    expect(formatQuantityWithUnit(4, 'each')).toBe('4 pieces');
     expect(formatQuantityWithUnit(2, 'pieces')).toBe('2 pieces');
   });
 
@@ -113,7 +113,7 @@ describe('resolveQuantityUnitOptions', () => {
       { value: 'pack', label: 'pack', available: false },
       { value: 'case', label: 'case', available: false },
       { value: 'lb', label: 'lb', available: true },
-      { value: 'each', label: 'each', available: false },
+      { value: 'each', label: 'piece', available: false },
     ]);
     expect(result.defaultValue).toBe('lb');
   });
@@ -128,7 +128,7 @@ describe('resolveQuantityUnitOptions', () => {
       { value: 'pack', label: 'pack', available: false },
       { value: 'case', label: 'case', available: true },
       { value: 'lb', label: 'lb', available: true },
-      { value: 'each', label: 'each', available: false },
+      { value: 'each', label: 'piece', available: false },
     ]);
     expect(result.defaultValue).toBe('case');
   });
@@ -152,7 +152,7 @@ describe('resolveQuantityUnitOptions', () => {
       { value: 'pack', label: 'pack', available: false },
       { value: 'case', label: 'case', available: false },
       { value: 'lb', label: 'lb', available: true },
-      { value: 'each', label: 'each', available: false },
+      { value: 'each', label: 'piece', available: false },
       { value: 'bottle', label: 'bottle', available: true },
     ]);
   });
@@ -231,7 +231,7 @@ describe('resolveQuantityUnitOptions', () => {
       { value: 'pack', label: 'pack', available: true },
       { value: 'case', label: 'case', available: true },
       { value: 'lb', label: 'lb', available: true },
-      { value: 'each', label: 'each', available: true },
+      { value: 'each', label: 'piece', available: true },
     ]);
     expect(result.defaultValue).toBe('lb');
   });

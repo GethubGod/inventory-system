@@ -1,6 +1,6 @@
 import { matchCatalogItem } from './catalog-matcher.ts';
 import { parseDeterministicOrder } from './deterministic-parser.ts';
-import { normalizeUnitForComparison } from './units.ts';
+import { DEFAULT_UNIT_ALIASES, normalizeUnitForComparison, type UnitAliasMap } from './units.ts';
 import type { CatalogItem, ParserCorrection, QuickOrderSource, StockOperation } from './types.ts';
 
 export type StockUpdateExtraction = {
@@ -41,6 +41,8 @@ export function extractStockUpdates(input: {
   source: QuickOrderSource;
   catalog: CatalogItem[];
   corrections: ParserCorrection[];
+  catalogIndex?: import('./catalog-search-index.ts').CatalogSearchIndex;
+  unitAliases?: import('./units.ts').UnitAliasMap;
 }): StockUpdateExtraction {
   const hasStockSignal = STOCK_SIGNAL.test(input.message);
   if (!hasStockSignal) {
@@ -76,6 +78,8 @@ function parseStockSegment(
     source: QuickOrderSource;
     catalog: CatalogItem[];
     corrections: ParserCorrection[];
+    catalogIndex?: import('./catalog-search-index.ts').CatalogSearchIndex;
+    unitAliases?: UnitAliasMap;
   },
 ): StockOperation | null {
   const trimmed = segment.trim();
@@ -99,7 +103,8 @@ function parseStockSegment(
   if (hasForm) normalized = `${hasForm[2]} ${hasForm[1]}`;
   normalized = replaceNumberWords(normalized);
 
-  const candidates = parseDeterministicOrder(normalized);
+  const unitAliases = input.unitAliases ?? DEFAULT_UNIT_ALIASES;
+  const candidates = parseDeterministicOrder(normalized, unitAliases);
   const candidate = candidates[0];
   if (!candidate || candidate.quantity == null) return null;
 
@@ -123,12 +128,15 @@ function buildStockOperation(input: {
     source: QuickOrderSource;
     catalog: CatalogItem[];
     corrections: ParserCorrection[];
+    catalogIndex?: import('./catalog-search-index.ts').CatalogSearchIndex;
+    unitAliases?: UnitAliasMap;
   };
 }): StockOperation | null {
-  const match = matchCatalogItem(input.itemText, input.input.catalog, input.input.corrections);
+  const match = matchCatalogItem(input.itemText, input.input.catalog, input.input.corrections, input.input.catalogIndex);
   const item = match.item_id ? input.input.catalog.find((entry) => entry.id === match.item_id) ?? null : null;
   if (!item) return null;
-  const unit = normalizeUnitForComparison(input.unit) ?? item.default_unit ?? item.base_unit ?? item.pack_unit ?? null;
+  const unitAliases = input.input.unitAliases ?? DEFAULT_UNIT_ALIASES;
+  const unit = normalizeUnitForComparison(input.unit, unitAliases) ?? item.default_unit ?? item.base_unit ?? item.pack_unit ?? null;
   return {
     item_id: item.id,
     item_name: item.name,

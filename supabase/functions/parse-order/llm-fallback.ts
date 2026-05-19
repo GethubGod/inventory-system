@@ -1,4 +1,6 @@
+import type { CatalogSearchIndex } from './catalog-search-index.ts';
 import type { CatalogItem, ParsedItem, ParseFlag } from './types.ts';
+import type { UnitAliasMap } from './units.ts';
 import { validateLlmItem } from './validator.ts';
 
 export type LlmFallbackInput = {
@@ -6,6 +8,8 @@ export type LlmFallbackInput = {
   catalog: CatalogItem[];
   prompt: string;
   callLlm?: (prompt: string) => Promise<string>;
+  catalogIndex?: CatalogSearchIndex;
+  unitAliases?: UnitAliasMap;
 };
 
 export type LlmFallbackResult = {
@@ -25,14 +29,14 @@ export async function parseWithLlmFallback(input: LlmFallbackInput): Promise<Llm
     const rawText = await input.callLlm(input.prompt);
     const parsed = parseJsonPayload(rawText);
     if (parsed.value) {
-      return validateLlmPayload(parsed.value, input.catalog, parsed.repairNeeded, false, rawText);
+      return validateLlmPayload(parsed.value, input, parsed.repairNeeded, false, rawText);
     }
 
     const repairPrompt = `Convert the following into valid JSON matching this schema. Return JSON only.\nSchema: {"reply_text":"string","parsed_items":[{"item_id":"uuid or null","item_name":"string","raw_token":"string","quantity":1,"unit":"lb","confidence":0.8}]}\nContent:\n${rawText}`;
     const repairedRaw = await input.callLlm(repairPrompt);
     const repaired = parseJsonPayload(repairedRaw);
     if (repaired.value) {
-      return validateLlmPayload(repaired.value, input.catalog, true, false, repairedRaw);
+      return validateLlmPayload(repaired.value, input, true, false, repairedRaw);
     }
 
     return invalidJsonFallback(true, false, repairedRaw);
@@ -110,7 +114,7 @@ function repairJsonText(text: string): string {
 
 function validateLlmPayload(
   payload: unknown,
-  catalog: CatalogItem[],
+  input: LlmFallbackInput,
   repairNeeded: boolean,
   llmFailed: boolean,
   rawText: string,
@@ -127,7 +131,12 @@ function validateLlmPayload(
 
   for (const rawItem of rawItems) {
     if (!rawItem || typeof rawItem !== 'object') continue;
-    const validated = validateLlmItem({ raw: rawItem as Record<string, unknown>, catalog });
+    const validated = validateLlmItem({
+      raw: rawItem as Record<string, unknown>,
+      catalog: input.catalog,
+      catalogIndex: input.catalogIndex,
+      unitAliases: input.unitAliases,
+    });
     items.push(validated.item);
     flags.push(...validated.flags);
   }

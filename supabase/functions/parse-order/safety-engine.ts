@@ -51,12 +51,81 @@ type SafetyDecision =
 
 const LOW_CONFIDENCE_READY_THRESHOLD = 0.8;
 
+export function deduplicatePendingClarifications(
+  clarifications: PendingQuickOrderClarification[],
+): PendingQuickOrderClarification[] {
+  const seen = new Map<string, PendingQuickOrderClarification>();
+  for (const clarification of clarifications) {
+    const lineId = clarification.incoming_item?.line_id ?? '';
+    const key = `${clarification.type}:${clarification.item_name ?? ''}:${lineId}`;
+    if (!seen.has(key)) seen.set(key, clarification);
+  }
+  return [...seen.values()];
+}
+
+export function applyStockSafetyLimits(input: {
+  stockUpdates: import('./types.ts').StockOperation[];
+  catalog: CatalogItem[];
+  locationId: string;
+  source: QuickOrderSource;
+  limits: ItemOrderLimit[];
+  allowedUnitRules: ItemAllowedUnitRule[];
+  userRole?: string | null;
+}): {
+  accepted: import('./types.ts').StockOperation[];
+  blocked: BlockedOperation[];
+  warnings: SafetyWarning[];
+} {
+  const accepted: import('./types.ts').StockOperation[] = [];
+  const blocked: BlockedOperation[] = [];
+  const warnings: SafetyWarning[] = [];
+
+  for (const update of input.stockUpdates) {
+    const decision = evaluateQuantity({
+      itemId: update.item_id,
+      itemName: update.item_name,
+      quantity: update.quantity,
+      unit: update.unit,
+      source: input.source,
+      limit: findLimit(input.limits, update.item_id, input.locationId),
+      unitRule: findUnitRule(input.allowedUnitRules, update.item_id, update.unit),
+      userRole: input.userRole,
+    });
+    if (decision.action === 'allow') {
+      accepted.push(update);
+      continue;
+    }
+    warnings.push({
+      type: decision.warningType,
+      message: decision.message,
+      item_id: update.item_id,
+      item_name: update.item_name,
+      quantity: update.quantity,
+      unit: update.unit,
+      severity: decision.severity,
+    });
+    if (decision.action === 'block' || decision.action === 'manager_approval') {
+      blocked.push({
+        type: 'stock_update',
+        item_id: update.item_id,
+        item_name: update.item_name,
+        attempted_quantity: update.quantity,
+        unit: update.unit,
+        reason: decision.warningType,
+        message: decision.message,
+      });
+    }
+  }
+
+  return { accepted, blocked, warnings };
+}
+
 export function validateQuickOrderSafety(input: SafetyValidationInput): SafetyValidationResult {
   const warnings: SafetyWarning[] = [];
   const blockedOperations: BlockedOperation[] = [];
-  const pendingClarifications: PendingQuickOrderClarification[] = [
+  const pendingClarifications: PendingQuickOrderClarification[] = deduplicatePendingClarifications([
     ...(input.parseResponse.pending_clarifications ?? input.parseResponse.pending_actions ?? []),
-  ];
+  ]);
   const acceptedItems: ParsedItem[] = [];
 
   for (const item of input.parseResponse.parsed_items) {
@@ -128,19 +197,21 @@ export function validateQuickOrderSafety(input: SafetyValidationInput): SafetyVa
       ? 'needs_clarification'
       : input.parseResponse.status;
 
+  const dedupedClarifications = deduplicatePendingClarifications(pendingClarifications);
+
   return {
     response: {
       ...input.parseResponse,
       status,
       parsed_items: acceptedItems,
-      pending_actions: pendingClarifications,
-      pending_clarifications: pendingClarifications,
+      pending_actions: dedupedClarifications,
+      pending_clarifications: dedupedClarifications,
       operations: safeOperations,
       diagnostics: {
         ...(input.parseResponse.diagnostics ?? {}),
         items_after_validation: acceptedItems.length,
         items_accepted: acceptedItems.length,
-        pending_action_count: pendingClarifications.length,
+        pending_action_count: dedupedClarifications.length,
         rejected_reasons: [
           ...(input.parseResponse.diagnostics?.rejected_reasons ?? []),
           ...warnings.map((warning) => warning.type),
@@ -149,7 +220,7 @@ export function validateQuickOrderSafety(input: SafetyValidationInput): SafetyVa
     },
     warnings,
     blockedOperations,
-    pendingClarifications,
+    pendingClarifications: dedupedClarifications,
   };
 }
 

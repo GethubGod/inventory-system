@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Redirect, Tabs, usePathname } from "expo-router";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuthStore, useDraftStore } from "@/store";
+import { useAuthStore } from "@/store";
 import { supabase } from "@/lib/supabase";
 import { AuthLoadingScreen } from "@/components";
 import { useProtectedAuthGuard } from "@/hooks";
@@ -16,7 +16,6 @@ import {
 
 export default function ManagerLayout() {
   const session = useAuthStore((s) => s.session);
-  const draftCount = useDraftStore((state) => state.getTotalItemCount());
   const insets = useSafeAreaInsets();
   const [pendingFulfillmentCount, setPendingFulfillmentCount] = useState(0);
   const badgeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -173,8 +172,6 @@ export default function ManagerLayout() {
           tabBarIcon: ({ color, size, focused }) => (
             <TabButton name="flash-outline" label="Quick" size={size} color={color} focused={focused} />
           ),
-          tabBarBadge: draftCount > 0 ? draftCount : undefined,
-          tabBarBadgeStyle: tabBarBadgeStyle,
         }}
       />
 

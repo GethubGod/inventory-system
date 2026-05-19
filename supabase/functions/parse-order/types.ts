@@ -1,4 +1,4 @@
-export type ParseStatus = 'ok' | 'needs_review' | 'needs_clarification' | 'error';
+export type ParseStatus = 'ok' | 'needs_review' | 'needs_clarification' | 'qa_answer' | 'error';
 
 export type QuickOrderSource = 'typed' | 'voice';
 
@@ -7,6 +7,7 @@ export type ProcessQuickOrderStatus =
   | 'needs_clarification'
   | 'blocked'
   | 'partial_success'
+  | 'qa_answer'
   | 'error';
 
 export type QuickOrderModelUsed =

@@ -8,15 +8,18 @@ import type {
   ParseSource,
 } from './types.ts';
 import { matchCatalogItem } from './catalog-matcher.ts';
+import type { CatalogSearchIndex } from './catalog-search-index.ts';
 import {
   deriveAllowedUnitLabels,
   deriveAllowedUnits,
   displayUnitLabel,
   formatAllowedUnitList,
+  getUnitWords,
   isKnownUnit,
   isUnitAllowedForItem,
   normalizeUnit,
-  UNIT_WORDS,
+  DEFAULT_UNIT_ALIASES,
+  type UnitAliasMap,
 } from './units.ts';
 
 export function validateParsedLine(input: {
@@ -24,13 +27,15 @@ export function validateParsedLine(input: {
   match: CatalogMatchResult;
   catalog: CatalogItem[];
   parseSource?: ParseSource;
+  unitAliases?: UnitAliasMap;
 }): { item: ParsedItem; flags: ParseFlag[] } {
+  const unitAliases = input.unitAliases ?? DEFAULT_UNIT_ALIASES;
   const { candidate, match, catalog } = input;
   const flags: ParseFlag[] = [];
   const catalogItem = match.item_id ? catalog.find((item) => item.id === match.item_id) ?? null : null;
   const quantity = candidate.quantity != null && candidate.quantity > 0 ? candidate.quantity : null;
   const rawUnit = candidate.unit_raw ?? candidate.unit;
-  const normalizedUnit = normalizeUnit(candidate.unit);
+  const normalizedUnit = normalizeUnit(candidate.unit, unitAliases);
   const unit = normalizedUnit ?? rawUnit?.trim().toLowerCase() ?? null;
   const unresolved = !catalogItem;
   let needsClarification = unresolved || match.needs_clarification;
@@ -71,7 +76,7 @@ export function validateParsedLine(input: {
       item_id: catalogItem?.id,
       reason: 'unit_missing',
     });
-  } else if (!isKnownUnit(unit)) {
+  } else if (!isKnownUnit(unit, unitAliases)) {
     needsClarification = true;
     invalidUnit = true;
     const validUnits = deriveAllowedUnitLabels(catalogItem);
@@ -152,17 +157,21 @@ export function validateParsedLine(input: {
   };
 
   return {
-    item: normalizeParsedItemStatus(item, catalogItem),
+    item: normalizeParsedItemStatus(item, catalogItem, unitAliases),
     flags,
   };
 }
 
-export function normalizeParsedItemStatus(item: ParsedItem, catalogItem: CatalogItem | null | undefined): ParsedItem {
+export function normalizeParsedItemStatus(
+  item: ParsedItem,
+  catalogItem: CatalogItem | null | undefined,
+  unitAliases: UnitAliasMap = DEFAULT_UNIT_ALIASES,
+): ParsedItem {
   const quantity = item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
     ? item.quantity
     : null;
   const rawUnit = item.unit_raw ?? item.unit;
-  const normalizedUnit = normalizeUnit(item.unit);
+  const normalizedUnit = normalizeUnit(item.unit, unitAliases);
   const unit = normalizedUnit ?? rawUnit?.trim().toLowerCase() ?? null;
   const hasItem = Boolean(item.item_id && catalogItem);
   let status: ParsedItem['status'];
@@ -192,7 +201,7 @@ export function normalizeParsedItemStatus(item: ParsedItem, catalogItem: Catalog
     unresolved = false;
     issueCode = status;
     issue = `What unit would you like for ${catalogItem?.name ?? item.item_name ?? 'this item'}?`;
-  } else if (!isKnownUnit(unit) || !isUnitAllowedForItem(catalogItem, unit)) {
+  } else if (!isKnownUnit(unit, unitAliases) || !isUnitAllowedForItem(catalogItem, unit)) {
     status = 'invalid_unit';
     unresolved = false;
     issueCode = status;
@@ -284,13 +293,16 @@ function getParsedItemStatus(input: {
 export function validateLlmItem(input: {
   raw: Record<string, unknown>;
   catalog: CatalogItem[];
+  catalogIndex?: CatalogSearchIndex;
+  unitAliases?: UnitAliasMap;
 }): { item: ParsedItem; flags: ParseFlag[] } {
+  const unitAliases = input.unitAliases ?? DEFAULT_UNIT_ALIASES;
   const rawToken = stringValue(input.raw.raw_token) ?? stringValue(input.raw.raw_text) ?? stringValue(input.raw.item_name) ?? '';
-  const semanticInput = semanticInputFromRaw(rawToken) || stringValue(input.raw.item_text) || stringValue(input.raw.item_name) || rawToken;
+  const semanticInput = semanticInputFromRaw(rawToken, unitAliases) || stringValue(input.raw.item_text) || stringValue(input.raw.item_name) || rawToken;
   const quantity = numberValue(input.raw.quantity);
   const rawUnit = stringValue(input.raw.unit);
-  const unit = normalizeUnit(rawUnit) ?? rawUnit;
-  const match = matchCatalogItem(semanticInput, input.catalog);
+  const unit = normalizeUnit(rawUnit, unitAliases) ?? rawUnit;
+  const match = matchCatalogItem(semanticInput, input.catalog, [], input.catalogIndex);
   const catalogItem = match.item_id ? input.catalog.find((item) => item.id === match.item_id) ?? null : null;
   const validatedMatch: CatalogMatchResult = catalogItem
     ? {
@@ -326,11 +338,12 @@ export function validateLlmItem(input: {
     match: validatedMatch,
     catalog: input.catalog,
     parseSource: 'llm',
+    unitAliases,
   });
 }
 
-function semanticInputFromRaw(value: string): string {
-  const unitPattern = UNIT_WORDS.join('|');
+function semanticInputFromRaw(value: string, unitAliases: UnitAliasMap): string {
+  const unitPattern = getUnitWords(unitAliases).join('|');
   return value
     .replace(/\b\d+(?:\.\d+)?\s*(?:[a-zA-Z]+)?\b/g, ' ')
     .replace(new RegExp(`\\b(?:${unitPattern})\\b`, 'gi'), ' ')

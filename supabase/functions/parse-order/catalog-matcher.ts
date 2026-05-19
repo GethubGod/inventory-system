@@ -15,6 +15,7 @@ import type {
   CatalogMatchResult,
   ParserCorrection,
 } from './types.ts';
+import type { CatalogSearchIndex } from './catalog-search-index.ts';
 
 export {
   buildCatalogSearchIndex,
@@ -32,8 +33,9 @@ export function matchCatalogItem(
   itemText: string,
   catalog: CatalogItem[],
   corrections: ParserCorrection[] = [],
+  index?: CatalogSearchIndex,
 ): CatalogMatchResult {
-  return matchCatalogIndex(itemText, buildCatalogSearchIndex(catalog, corrections));
+  return matchCatalogIndex(itemText, index ?? buildCatalogSearchIndex(catalog, corrections));
 }
 
 export function getTopCatalogAlternatives(
@@ -41,6 +43,7 @@ export function getTopCatalogAlternatives(
   catalog: CatalogItem[],
   corrections: ParserCorrection[] = [],
   limit = 3,
+  index?: CatalogSearchIndex,
 ): CatalogAlternative[] {
-  return findCatalogAlternatives(itemText, buildCatalogSearchIndex(catalog, corrections), limit);
+  return findCatalogAlternatives(itemText, index ?? buildCatalogSearchIndex(catalog, corrections), limit);
 }

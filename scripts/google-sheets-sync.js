@@ -4,7 +4,10 @@
 //
 // SETUP: Set these in Apps Script Project Settings > Script Properties
 //   SUPABASE_URL  — e.g. https://xxxxx.supabase.co
-//   SUPABASE_KEY  — your service_role key (NOT the anon key)
+//   SUPABASE_KEY  — prefer a dedicated sync credential with table-scoped access;
+//                   service_role works but grants full DB access — restrict spreadsheet editors.
+//   ENABLE_ORPHAN_DELETE — set to "true" to delete DB rows missing from core sheets (default off)
+//   ENABLE_OPTIONAL_QUICK_ORDER_ORPHAN_DELETE — set to "true" for optional Quick Order tabs
 //
 // Or hardcode them here for simplicity:
 // const SUPABASE_URL = 'https://xxxxx.supabase.co';
@@ -248,14 +251,22 @@ function isOptionalTableUnavailable(response) {
   return /Could not find the table|schema cache|42P01|PGRST205/i.test(body);
 }
 
-function isOptionalQuickOrderOrphanDeleteEnabled() {
+function isScriptPropertyEnabled(key) {
   try {
     if (typeof PropertiesService === 'undefined') return false;
-    var value = PropertiesService.getScriptProperties().getProperty('ENABLE_OPTIONAL_QUICK_ORDER_ORPHAN_DELETE');
+    var value = PropertiesService.getScriptProperties().getProperty(key);
     return String(value).toLowerCase() === 'true';
   } catch (e) {
     return false;
   }
+}
+
+function isOrphanDeleteEnabled() {
+  return isScriptPropertyEnabled('ENABLE_ORPHAN_DELETE');
+}
+
+function isOptionalQuickOrderOrphanDeleteEnabled() {
+  return isScriptPropertyEnabled('ENABLE_OPTIONAL_QUICK_ORDER_ORPHAN_DELETE');
 }
 
 // ============================================================
@@ -288,11 +299,15 @@ function syncAllToSupabase() {
     }
   }
 
-  // Delete orphans in REVERSE order (children first)
+  // Delete orphans in REVERSE order (children first) — disabled by default for safety
   for (var i = SYNC_CONFIG.length - 1; i >= 0; i--) {
     var config = SYNC_CONFIG[i];
     if (config.optional && !isOptionalQuickOrderOrphanDeleteEnabled()) {
       log.push('ℹ️ ' + config.sheet + ': optional orphan deletion disabled');
+      continue;
+    }
+    if (!config.optional && !isOrphanDeleteEnabled()) {
+      log.push('ℹ️ ' + config.sheet + ': core orphan deletion disabled (set ENABLE_ORPHAN_DELETE=true to enable)');
       continue;
     }
     try {
@@ -342,6 +357,8 @@ function syncCurrentSheet() {
 
   if (config.optional && !isOptionalQuickOrderOrphanDeleteEnabled()) {
     log.push('ℹ️ ' + currentName + ': optional orphan deletion disabled');
+  } else if (!config.optional && !isOrphanDeleteEnabled()) {
+    log.push('ℹ️ ' + currentName + ': core orphan deletion disabled (set ENABLE_ORPHAN_DELETE=true to enable)');
   } else {
     try {
       var deleted = deleteRemovedRows(ss, config);
@@ -678,6 +695,7 @@ if (typeof module !== 'undefined') {
     normalizeOptionalBoolean: normalizeOptionalBoolean,
     rowHasMeaningfulOptionalData: rowHasMeaningfulOptionalData,
     isOptionalTableUnavailable: isOptionalTableUnavailable,
+    isOrphanDeleteEnabled: isOrphanDeleteEnabled,
     isOptionalQuickOrderOrphanDeleteEnabled: isOptionalQuickOrderOrphanDeleteEnabled,
     syncSheetUpsertOnly: syncSheetUpsertOnly,
   };

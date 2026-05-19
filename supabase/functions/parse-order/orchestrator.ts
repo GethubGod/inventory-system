@@ -1,24 +1,29 @@
 import {
-  buildCatalogSearchIndex,
   analyzeSemanticTokens,
+  buildCatalogSearchIndex,
   catalogNameStructuralSegmentMatches,
   findCatalogAlternatives,
   isStrongDeterministicMatch,
   matchCatalogIndex,
   normalizeSearchText,
 } from './catalog-matcher.ts';
+import type { CatalogSearchIndex } from './catalog-search-index.ts';
+import { deduplicatePendingClarifications } from './safety-engine.ts';
 import { parseDeterministicOrder } from './deterministic-parser.ts';
 import { createClientKey, detectRepeatedOrderList, getParserItemKey, resolveParsedItemConflicts } from './conflicts.ts';
 import { classifyQuickOrderInput } from './input-classifier.ts';
 import type { QuickOrderInputClassificationResult } from './input-classifier.ts';
 import { buildCommandOperations } from './operations.ts';
 import { parseWithLlmFallback } from './llm-fallback.ts';
+import { answerProductQuestion, type QaContextProduct } from './qa-handler.ts';
 import {
   deriveAllowedUnitLabels,
   displayUnitLabel,
   formatAllowedUnitList,
   formatQuantityWithUnit,
   normalizeUnitForComparison,
+  DEFAULT_UNIT_ALIASES,
+  type UnitAliasMap,
 } from './units.ts';
 import type {
   CatalogAlternative,
@@ -34,11 +39,10 @@ import type {
 } from './types.ts';
 import { normalizeParsedItemStatus, validateParsedLine } from './validator.ts';
 
-type CatalogSearchIndex = ReturnType<typeof buildCatalogSearchIndex>;
-
 type OrchestratorInput = {
   rawText: string;
   locationId?: string;
+  userId?: string | null;
   catalog: CatalogItem[];
   globalCatalog?: CatalogItem[];
   examples: ParserExample[];
@@ -46,6 +50,11 @@ type OrchestratorInput = {
   previousMessages: QuickOrderMessage[];
   existingParsedItems: ParsedItem[];
   callLlm?: (prompt: string) => Promise<string>;
+  unitAliases?: UnitAliasMap;
+  catalogIndex?: CatalogSearchIndex;
+  globalCatalogIndex?: CatalogSearchIndex;
+  classification?: QuickOrderInputClassificationResult;
+  debugCatalog?: boolean;
 };
 
 /** Command intents that should be routed to the operations builder. */
@@ -67,17 +76,33 @@ const MIN_PLAUSIBLE_REVIEW_CONFIDENCE = 0.75;
 export const PARSER_VERSION = 'quick-order-parser-v3-line-based';
 
 export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseResponse> {
+  const unitAliases = input.unitAliases ?? DEFAULT_UNIT_ALIASES;
+  const catalogIndex = input.catalogIndex ?? buildCatalogSearchIndex(input.catalog, input.corrections);
+  const globalCatalogIndex = input.globalCatalogIndex ?? (
+    input.globalCatalog ? buildCatalogSearchIndex(input.globalCatalog, input.corrections) : undefined
+  );
+  const catalogDebug = buildCatalogDebug(input, catalogIndex, input.debugCatalog === true);
+
   // ----------------------------------------------------------------
   // 1. Detect intent BEFORE parsing items.
   // ----------------------------------------------------------------
-  const classification = classifyQuickOrderInput(input.rawText, {
+  const classification = input.classification ?? classifyQuickOrderInput(input.rawText, {
     hasPendingDuplicateAction: input.previousMessages.some((message) =>
       (message.pending_clarifications ?? []).some((entry) => entry.type === 'quantity_conflict' || entry.type === 'unit_conflict')
     ),
   });
   const intentResult = classification.intentResult;
   const textToParse = intentResult.strippedText || input.rawText;
-  const preParseResponse = buildPreParseResponse(input, classification, buildCatalogDebug(input, buildCatalogSearchIndex(input.catalog, input.corrections)));
+
+  // ----------------------------------------------------------------
+  // 1a. Product Q&A — short product questions go to Gemini before any
+  //     order-parsing logic runs. We bypass the parser entirely.
+  // ----------------------------------------------------------------
+  if (classification.classification === 'product_question') {
+    return await buildProductQuestionResponse(input, classification, catalogDebug);
+  }
+
+  const preParseResponse = buildPreParseResponse(input, classification, catalogDebug);
   if (preParseResponse) return preParseResponse;
 
   // ----------------------------------------------------------------
@@ -90,18 +115,18 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   // ----------------------------------------------------------------
   // 3. Parse the (stripped) text into candidate items.
   // ----------------------------------------------------------------
-  const candidates = parseDeterministicOrder(textToParse);
+  const candidates = parseDeterministicOrder(textToParse, unitAliases);
   const omittedTargetResolution = resolveOmittedTargetCandidates({
     input,
     candidates,
     intent: intentResult.intent,
+    unitAliases,
+    catalogIndex,
   });
   if (omittedTargetResolution.response) return omittedTargetResolution.response;
   const candidatesToMatch = omittedTargetResolution.candidates;
   const parsedItems: ParsedItem[] = [];
   const flags: ParseFlag[] = [];
-  const catalogIndex = buildCatalogSearchIndex(input.catalog, input.corrections);
-  const catalogDebug = buildCatalogDebug(input, catalogIndex);
 
   for (const candidate of candidatesToMatch) {
     const baseMatch = matchCatalogIndex(candidate.item_text, catalogIndex);
@@ -110,7 +135,7 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
       maybeAmbiguousBareCatalogToken(candidate, baseMatch, catalogIndex),
       catalogIndex,
     );
-    const validated = validateParsedLine({ candidate, match, catalog: input.catalog });
+    const validated = validateParsedLine({ candidate, match, catalog: input.catalog, unitAliases });
     parsedItems.push(validated.item);
     flags.push(...validated.flags);
   }
@@ -213,6 +238,8 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
       catalog: input.catalog,
       prompt: buildFocusedFallbackPrompt(input, unresolvedForLlm),
       callLlm: input.callLlm,
+      catalogIndex,
+      unitAliases,
     });
     llmRepairNeeded = llmResult.repairNeeded;
     llmFailed = llmResult.llmFailed;
@@ -280,10 +307,11 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   );
   if (!invariantErrorCode && rejectedHighConfidence) invariantErrorCode = 'high_confidence_candidate_rejected';
 
-  const pendingClarifications = [
+  const pendingClarifications = deduplicatePendingClarifications([
+    ...omittedTargetResolution.omittedClarifications,
     ...orderGate.pendingClarifications,
     ...conflictResult.pendingClarifications,
-  ];
+  ]);
   const unresolvedCount = finalItems.filter((item) => item.needs_clarification || item.unresolved).length;
   const readyToSubmit = finalItems.length > 0 && unresolvedCount === 0 && pendingClarifications.length === 0;
   const unchangedCountForReply = conflictResult.updatedItems.length > 0 ? 0 : repeatedList.unchangedCount;
@@ -336,7 +364,7 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
     pending_action_count: pendingClarifications.length,
     unchanged_count: repeatedList.unchangedCount,
     repeated_existing_count: repeatedList.unchangedCount,
-    item_diagnostics: buildItemDiagnostics(finalItems, catalogIndex, input.globalCatalog ? buildCatalogSearchIndex(input.globalCatalog, input.corrections) : undefined),
+    item_diagnostics: buildItemDiagnostics(finalItems, catalogIndex, globalCatalogIndex),
     catalog_debug: catalogDebug,
     raw_input_length: input.rawText.length,
     candidate_lines: candidatesToMatch.length,
@@ -415,6 +443,7 @@ type DeterministicCandidate = ReturnType<typeof parseDeterministicOrder>[number]
 
 type OmittedTargetResolution = {
   candidates: DeterministicCandidate[];
+  omittedClarifications: NonNullable<ParseResponse['pending_clarifications']>;
   response: ParseResponse | null;
 };
 
@@ -433,38 +462,46 @@ function resolveOmittedTargetCandidates(input: {
   input: OrchestratorInput;
   candidates: DeterministicCandidate[];
   intent: string;
+  unitAliases: UnitAliasMap;
+  catalogIndex: CatalogSearchIndex;
 }): OmittedTargetResolution {
   const resolvedCandidates: DeterministicCandidate[] = [];
+  const omittedClarifications: NonNullable<ParseResponse['pending_clarifications']> = [];
 
   for (const candidate of input.candidates) {
-    const patchKind = getContextPatchKind(candidate);
+    const patchKind = getContextPatchKind(candidate, input.unitAliases);
     if (!patchKind) {
       resolvedCandidates.push(candidate);
       continue;
     }
 
-    const target = inferRecentTargetItem(input.input, candidate, patchKind, input.intent);
+    const target = inferRecentTargetItem(input.input, candidate, patchKind, input.intent, input.catalogIndex, input.unitAliases);
     if (target.status === 'resolved') {
       resolvedCandidates.push(buildContextPatchedCandidate(candidate, target.item, patchKind));
       continue;
     }
 
-    return {
-      candidates: resolvedCandidates,
-      response: buildOmittedTargetResponse({
-        orchestratorInput: input.input,
-        candidate,
-        intent: input.intent,
-        patchKind,
-        targets: target.status === 'ambiguous' ? target.items : [],
-      }),
-    };
+    omittedClarifications.push(...buildOmittedTargetPending({
+      orchestratorInput: input.input,
+      candidate,
+      intent: input.intent,
+      patchKind,
+      targets: target.status === 'ambiguous' ? target.items : [],
+    }));
   }
 
-  return { candidates: resolvedCandidates, response: null };
+  const response = resolvedCandidates.length === 0 && omittedClarifications.length > 0
+    ? buildOmittedTargetOnlyResponse({
+        orchestratorInput: input.input,
+        clarifications: omittedClarifications,
+        candidateCount: input.candidates.length,
+      })
+    : null;
+
+  return { candidates: resolvedCandidates, omittedClarifications, response };
 }
 
-function getContextPatchKind(candidate: DeterministicCandidate): ContextPatchKind | null {
+function getContextPatchKind(candidate: DeterministicCandidate, unitAliases: UnitAliasMap): ContextPatchKind | null {
   const itemText = normalizeSearchText(candidate.item_text ?? '');
   if (!itemText) {
     if (candidate.quantity != null && candidate.unit) return 'quantity_unit';
@@ -472,17 +509,17 @@ function getContextPatchKind(candidate: DeterministicCandidate): ContextPatchKin
     if (candidate.quantity != null) return 'quantity_only';
     return null;
   }
-  const unit = normalizeUnitForComparison(candidate.unit);
-  const rawUnit = normalizeUnitForComparison(candidate.unit_raw);
-  if (unit && (normalizeUnitForComparison(itemText) === unit || normalizeUnitForComparison(itemText) === rawUnit)) {
+  const unit = normalizeUnitForComparison(candidate.unit, unitAliases);
+  const rawUnit = normalizeUnitForComparison(candidate.unit_raw, unitAliases);
+  if (unit && (normalizeUnitForComparison(itemText, unitAliases) === unit || normalizeUnitForComparison(itemText, unitAliases) === rawUnit)) {
     if (candidate.quantity != null) return 'quantity_unit';
     return 'unit_only';
   }
   return null;
 }
 
-function isOmittedItemCandidate(candidate: DeterministicCandidate): boolean {
-  return getContextPatchKind(candidate) != null;
+function isOmittedItemCandidate(candidate: DeterministicCandidate, unitAliases: UnitAliasMap): boolean {
+  return getContextPatchKind(candidate, unitAliases) != null;
 }
 
 function buildContextPatchedCandidate(
@@ -514,8 +551,10 @@ function inferRecentTargetItem(
   candidate: DeterministicCandidate,
   patchKind: ContextPatchKind,
   intent: string,
+  catalogIndex: CatalogSearchIndex,
+  unitAliases: UnitAliasMap,
 ): { status: 'resolved'; item: RecentTargetItem } | { status: 'ambiguous'; items: RecentTargetItem[] } | { status: 'none' } {
-  const contextInterrupted = isRecentContextInterrupted(input.previousMessages, input.catalog);
+  const contextInterrupted = isRecentContextInterrupted(input.previousMessages, input.catalog, catalogIndex, unitAliases);
 
   if (!contextInterrupted) {
     const pendingTargets = uniqueRecentTargets(
@@ -523,14 +562,14 @@ function inferRecentTargetItem(
         .filter((item) => item.item_id && !item.unresolved && isAwaitingQuantityOrUnit(item))
         .map(targetFromParsedItem),
     ).filter((item) => canApplyContextPatch(item, patchKind, intent));
-    const pendingByUnit = filterTargetsByUnit(pendingTargets, candidate.unit);
+    const pendingByUnit = filterTargetsByUnit(pendingTargets, candidate.unit, unitAliases);
     if (pendingByUnit.length === 1) return { status: 'resolved', item: pendingByUnit[0] };
     if (pendingTargets.length === 1) return { status: 'resolved', item: pendingTargets[0] };
     if (pendingTargets.length > 1) return { status: 'ambiguous', items: pendingTargets };
 
-    const recentTargets = latestTargetsFromMessages(input.previousMessages, input.catalog)
+    const recentTargets = latestTargetsFromMessages(input.previousMessages, input.catalog, catalogIndex, unitAliases)
       .filter((item) => canApplyContextPatch(item, patchKind, intent));
-    const recentByUnit = filterTargetsByUnit(recentTargets, candidate.unit);
+    const recentByUnit = filterTargetsByUnit(recentTargets, candidate.unit, unitAliases);
     if (recentByUnit.length === 1) return { status: 'resolved', item: recentByUnit[0] };
     if (recentTargets.length === 1) return { status: 'resolved', item: recentTargets[0] };
     if (recentTargets.length > 1) return { status: 'ambiguous', items: recentTargets };
@@ -541,7 +580,7 @@ function inferRecentTargetItem(
       .filter((item) => item.item_id && !item.unresolved && (!contextInterrupted || !isAwaitingQuantityOrUnit(item)))
       .map(targetFromParsedItem),
   ).filter((item) => canApplyContextPatch(item, patchKind, intent));
-  const existingByUnit = filterTargetsByUnit(existingTargets, candidate.unit);
+  const existingByUnit = filterTargetsByUnit(existingTargets, candidate.unit, unitAliases);
   if (existingByUnit.length === 1) return { status: 'resolved', item: existingByUnit[0] };
   if (existingTargets.length === 1) return { status: 'resolved', item: existingTargets[0] };
   if (existingTargets.length > 1) return { status: 'ambiguous', items: existingTargets };
@@ -566,7 +605,12 @@ function isCommandContextPatch(intent: string): boolean {
   return COMMAND_INTENTS.has(intent);
 }
 
-function isRecentContextInterrupted(messages: QuickOrderMessage[], catalog: CatalogItem[]): boolean {
+function isRecentContextInterrupted(
+  messages: QuickOrderMessage[],
+  catalog: CatalogItem[],
+  catalogIndex: CatalogSearchIndex,
+  unitAliases: UnitAliasMap,
+): boolean {
   const start = Math.max(0, messages.length - 6);
   for (let index = messages.length - 1; index >= start; index -= 1) {
     const message = messages[index];
@@ -578,7 +622,7 @@ function isRecentContextInterrupted(messages: QuickOrderMessage[], catalog: Cata
     const role = message.role ?? '';
     const text = message.content ?? message.text ?? message.raw_text ?? '';
     if (role === 'user' && text.trim()) {
-      return targetsFromUserText(text, catalog).length === 0;
+      return targetsFromUserText(text, catalog, catalogIndex, unitAliases).length === 0;
     }
   }
   return false;
@@ -594,6 +638,8 @@ function isAwaitingQuantityOrUnit(item: ParsedItem): boolean {
 function latestTargetsFromMessages(
   messages: QuickOrderMessage[],
   catalog: CatalogItem[],
+  catalogIndex: CatalogSearchIndex,
+  unitAliases: UnitAliasMap,
 ): RecentTargetItem[] {
   const start = Math.max(0, messages.length - 6);
   for (let index = messages.length - 1; index >= start; index -= 1) {
@@ -612,7 +658,7 @@ function latestTargetsFromMessages(
     const role = message.role ?? '';
     const text = message.content ?? message.text ?? message.raw_text ?? '';
     if (role === 'user' && text.trim()) {
-      const textTargets = targetsFromUserText(text, catalog);
+      const textTargets = targetsFromUserText(text, catalog, catalogIndex, unitAliases);
       if (textTargets.length > 0) return textTargets;
       return [];
     }
@@ -620,12 +666,16 @@ function latestTargetsFromMessages(
   return [];
 }
 
-function targetsFromUserText(text: string, catalog: CatalogItem[]): RecentTargetItem[] {
-  const candidates = parseDeterministicOrder(text).filter((candidate) => !isOmittedItemCandidate(candidate));
+function targetsFromUserText(
+  text: string,
+  catalog: CatalogItem[],
+  catalogIndex: CatalogSearchIndex,
+  unitAliases: UnitAliasMap,
+): RecentTargetItem[] {
+  const candidates = parseDeterministicOrder(text, unitAliases).filter((candidate) => !isOmittedItemCandidate(candidate, unitAliases));
   if (candidates.length === 0) return [];
-  const index = buildCatalogSearchIndex(catalog, []);
   const targets = candidates
-    .map((candidate) => matchCatalogIndex(candidate.item_text, index))
+    .map((candidate) => matchCatalogIndex(candidate.item_text, catalogIndex))
     .filter((match) => match.item_id && !match.needs_clarification)
     .map((match) => ({
       item_id: match.item_id as string,
@@ -655,19 +705,23 @@ function uniqueRecentTargets(items: RecentTargetItem[]): RecentTargetItem[] {
   return [...byId.values()];
 }
 
-function filterTargetsByUnit(items: RecentTargetItem[], unit: string | null | undefined): RecentTargetItem[] {
-  const normalized = normalizeUnitForComparison(unit);
+function filterTargetsByUnit(
+  items: RecentTargetItem[],
+  unit: string | null | undefined,
+  unitAliases: UnitAliasMap,
+): RecentTargetItem[] {
+  const normalized = normalizeUnitForComparison(unit, unitAliases);
   if (!normalized) return [];
-  return items.filter((item) => normalizeUnitForComparison(item.unit) === normalized);
+  return items.filter((item) => normalizeUnitForComparison(item.unit, unitAliases) === normalized);
 }
 
-function buildOmittedTargetResponse(input: {
+function buildOmittedTargetPending(input: {
   orchestratorInput: OrchestratorInput;
   candidate: DeterministicCandidate;
   intent: string;
   patchKind: ContextPatchKind;
   targets: RecentTargetItem[];
-}): ParseResponse {
+}): NonNullable<ParseResponse['pending_clarifications']> {
   const patchLabel = formatContextPatchLabel(input.candidate, input.patchKind);
   const isRemoval = input.intent === 'remove' || input.intent === 'decrease';
   const message = input.targets.length > 0
@@ -675,45 +729,55 @@ function buildOmittedTargetResponse(input: {
       ? `Which item should I remove ${patchLabel} from?`
       : `Which item should I apply ${patchLabel} to?`
     : `I need the item name for ${patchLabel}.`;
-  const pending = input.targets.length > 0
-    ? [{
-        id: createClientKey(isRemoval ? 'remove_target' : 'target'),
-        type: isRemoval ? 'remove_ambiguous' as const : 'choose_existing_line' as const,
-        item_id: null,
-        item_name: patchLabel,
-        message,
-        actions: [
-          ...input.targets.slice(0, 4).map((target) => ({
-            id: 'choose_existing' as const,
-            label: target.display_name ?? target.item_name,
-            existing_item_key: target.existing_item_key,
-          })),
-          { id: 'cancel' as const, label: 'Cancel' },
-        ],
-      }]
-    : [{
-        id: createClientKey('missing_item'),
-        type: 'item_not_found' as const,
-        item_id: null,
-        item_name: patchLabel,
-        message,
-        actions: [],
-      }];
+  return [{
+    id: createClientKey(input.targets.length > 0 ? (isRemoval ? 'remove_target' : 'target') : 'missing_item'),
+    type: input.targets.length > 0
+      ? (isRemoval ? 'remove_ambiguous' as const : 'choose_existing_line' as const)
+      : 'item_not_found' as const,
+    item_id: null,
+    item_name: patchLabel,
+    message,
+    incoming_item: {
+      line_id: input.candidate.line_id,
+      raw_text: input.candidate.raw_text,
+      raw_token: input.candidate.raw_text,
+      item_text: patchLabel,
+      quantity: input.candidate.quantity,
+      unit: input.candidate.unit,
+    } as ParsedItem,
+    actions: input.targets.length > 0
+      ? [
+        ...input.targets.slice(0, 4).map((target) => ({
+          id: 'choose_existing' as const,
+          label: target.display_name ?? target.item_name,
+          existing_item_key: target.existing_item_key,
+        })),
+        { id: 'cancel' as const, label: 'Cancel' },
+      ]
+      : [],
+  }];
+}
 
+function buildOmittedTargetOnlyResponse(input: {
+  orchestratorInput: OrchestratorInput;
+  clarifications: NonNullable<ParseResponse['pending_clarifications']>;
+  candidateCount: number;
+}): ParseResponse {
+  const message = input.clarifications[0]?.message ?? 'I need more context for that update.';
   return {
     status: 'needs_clarification',
     assistant_message: message,
     reply_text: message,
     parsed_items: [],
     flags: [{
-      type: input.targets.length > 0 ? 'ambiguous_item' : 'unresolved_item',
+      type: input.clarifications.some((c) => c.actions.length > 0) ? 'ambiguous_item' : 'unresolved_item',
       message,
-      raw_token: input.candidate.raw_text,
-      reason: input.targets.length > 0 ? 'omitted_item_ambiguous' : 'omitted_item_no_context',
+      raw_token: input.clarifications[0]?.incoming_item?.raw_text,
+      reason: input.clarifications.some((c) => c.actions.length > 0) ? 'omitted_item_ambiguous' : 'omitted_item_no_context',
     }],
     suggestions: [],
-    pending_actions: pending,
-    pending_clarifications: pending,
+    pending_actions: input.clarifications,
+    pending_clarifications: input.clarifications,
     session_state: {
       total_items: input.orchestratorInput.existingParsedItems.length,
       ready_to_submit: false,
@@ -722,18 +786,18 @@ function buildOmittedTargetResponse(input: {
       parser_version: PARSER_VERSION,
       parse_mode: 'deterministic_only',
       catalog_count: input.orchestratorInput.catalog.length,
-      candidate_count: 1,
-      items_before_validation: 1,
+      candidate_count: input.candidateCount,
+      items_before_validation: input.candidateCount,
       items_after_validation: 0,
       valid_count: 0,
       review_count: 0,
-      items_received: 1,
+      items_received: input.candidateCount,
       items_accepted: 0,
-      items_rejected: 1,
-      rejected_reasons: [input.targets.length > 0 ? 'omitted_item_ambiguous' : 'omitted_item_no_context'],
-      pending_action_count: pending.length,
+      items_rejected: input.candidateCount,
+      rejected_reasons: ['omitted_item_unresolved'],
+      pending_action_count: input.clarifications.length,
       raw_input_length: input.orchestratorInput.rawText.length,
-      candidate_lines: 1,
+      candidate_lines: input.candidateCount,
     },
   };
 }
@@ -873,30 +937,30 @@ type ItemDiagnostic = NonNullable<NonNullable<ParseResponse['diagnostics']>['ite
 function buildPreParseResponse(
   input: OrchestratorInput,
   classification: QuickOrderInputClassificationResult,
-  catalogDebug: ReturnType<typeof buildCatalogDebug>,
+  catalogDebug: ParseDiagnostics['catalog_debug'],
 ): ParseResponse | null {
   switch (classification.classification) {
     case 'current_stock_update':
-      return buildNonOrderResponse(input, classification, 'Stock count noted.');
+      return buildNonOrderResponse(input, classification, 'Stock count noted.', catalogDebug);
     case 'recommend_order_request':
-      return buildNonOrderResponse(input, classification, 'I don’t have enough current stock context to recommend an order yet.');
+      return buildNonOrderResponse(input, classification, 'I don’t have enough current stock context to recommend an order yet.', catalogDebug);
     case 'mixed_stock_and_order_request':
     case 'mixed_stock_and_recommendation_request':
       return null;
     case 'suggestion_request':
-      return buildNonOrderResponse(input, classification, 'I don’t have enough order history to suggest a usual order yet.');
+      return buildNonOrderResponse(input, classification, 'I don’t have enough order history to suggest a usual order yet.', catalogDebug);
     case 'history_request':
-      return buildNonOrderResponse(input, classification, getHistoryPlaceholderMessage(classification.normalizedText));
+      return buildNonOrderResponse(input, classification, getHistoryPlaceholderMessage(classification.normalizedText), catalogDebug);
     case 'identity_question':
-      return buildNonOrderResponse(input, classification, 'I’m Tuna Intelligence. I help create Quick Order drafts from typed orders.');
+      return buildNonOrderResponse(input, classification, 'I’m Tuna Intelligence. I help create Quick Order drafts from typed orders.', catalogDebug);
     case 'duplicate_resolution_action':
       if (classification.reason === 'no_pending_duplicate_action') {
-        return buildNonOrderResponse(input, classification, 'There is nothing to combine right now.');
+        return buildNonOrderResponse(input, classification, 'There is nothing to combine right now.', catalogDebug);
       }
       return null;
     case 'clear_request':
       if (input.existingParsedItems.length === 0) {
-        return buildNonOrderResponse(input, classification, 'There is no current Quick Order list to clear.');
+        return buildNonOrderResponse(input, classification, 'There is no current Quick Order list to clear.', catalogDebug);
       }
       return {
         status: 'needs_clarification',
@@ -934,7 +998,7 @@ function buildPreParseResponse(
         diagnostics: buildClassificationDiagnostics(input, classification, catalogDebug),
       };
     case 'unknown_non_order':
-      return buildNonOrderResponse(input, classification, 'I couldn’t recognize that as an inventory item.');
+      return buildNonOrderResponse(input, classification, 'I couldn’t recognize that as an inventory item.', catalogDebug);
     case 'order_entry':
     case 'order_command':
     case 'clarification_answer':
@@ -959,8 +1023,8 @@ function buildNonOrderResponse(
   input: OrchestratorInput,
   classification: QuickOrderInputClassificationResult,
   message: string,
+  catalogDebug: ParseDiagnostics['catalog_debug'],
 ): ParseResponse {
-  const catalogIndex = buildCatalogSearchIndex(input.catalog, input.corrections);
   return {
     status: 'ok',
     assistant_message: message,
@@ -975,7 +1039,7 @@ function buildNonOrderResponse(
       ready_to_submit: false,
     },
     diagnostics: {
-      ...buildClassificationDiagnostics(input, classification, buildCatalogDebug(input, catalogIndex)),
+      ...buildClassificationDiagnostics(input, classification, catalogDebug),
       item_diagnostics: [{
         raw_text: input.rawText,
         item_text: input.rawText.trim(),
@@ -991,7 +1055,7 @@ function buildNonOrderResponse(
 function buildClassificationDiagnostics(
   input: OrchestratorInput,
   classification: QuickOrderInputClassificationResult,
-  catalogDebug: ReturnType<typeof buildCatalogDebug>,
+  catalogDebug: ParseDiagnostics['catalog_debug'],
 ): ParseDiagnostics {
   return {
     parser_version: PARSER_VERSION,
@@ -1415,6 +1479,96 @@ function looksLikeKeyboardNoise(value: string): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Product question helper — bypasses order parsing and asks Gemini directly.
+// ---------------------------------------------------------------------------
+
+function unitsForCatalogItem(item: CatalogItem): string[] {
+  const collected: string[] = [];
+  if (Array.isArray(item.allowed_units)) {
+    for (const unit of item.allowed_units) {
+      if (typeof unit === 'string' && unit.trim()) collected.push(unit.trim());
+    }
+  }
+  for (const candidate of [item.default_unit, item.base_unit, item.pack_unit, item.order_unit]) {
+    if (typeof candidate === 'string' && candidate.trim() && !collected.includes(candidate.trim())) {
+      collected.push(candidate.trim());
+    }
+  }
+  return collected;
+}
+
+async function buildProductQuestionResponse(
+  input: OrchestratorInput,
+  classification: QuickOrderInputClassificationResult,
+  catalogDebug: ParseDiagnostics['catalog_debug'],
+): Promise<ParseResponse> {
+  const catalogByName = new Map(input.catalog.map((item) => [item.name.toLowerCase(), item]));
+
+  const cartItems: QaContextProduct[] = input.existingParsedItems
+    .map((item): QaContextProduct | null => {
+      const name = item.item_name ?? item.item_text ?? null;
+      if (!name) return null;
+      const catalogMatch = item.item_id
+        ? input.catalog.find((entry) => entry.id === item.item_id)
+        : catalogByName.get(name.toLowerCase());
+      const units = catalogMatch
+        ? unitsForCatalogItem(catalogMatch)
+        : (item.unit ? [item.unit] : []);
+      return { name, units };
+    })
+    .filter((entry): entry is QaContextProduct => Boolean(entry));
+
+  // Recent matches: pull from prior assistant messages' parsed_items if present.
+  const recentMatches: QaContextProduct[] = [];
+  const seenRecent = new Set<string>();
+  for (const message of input.previousMessages.slice(-5)) {
+    const items = Array.isArray(message?.parsed_items) ? message.parsed_items : [];
+    for (const rawItem of items) {
+      if (!rawItem || typeof rawItem !== 'object') continue;
+      const candidate = rawItem as { item_id?: string | null; item_name?: string | null };
+      const name = typeof candidate.item_name === 'string' ? candidate.item_name : null;
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seenRecent.has(key)) continue;
+      seenRecent.add(key);
+      const catalogMatch = candidate.item_id
+        ? input.catalog.find((entry) => entry.id === candidate.item_id)
+        : catalogByName.get(key);
+      const units = catalogMatch ? unitsForCatalogItem(catalogMatch) : [];
+      recentMatches.push({ name, units });
+      if (recentMatches.length >= 10) break;
+    }
+    if (recentMatches.length >= 10) break;
+  }
+
+  const qaResult = await answerProductQuestion({
+    userInput: input.rawText,
+    cartItems,
+    recentMatches,
+    userId: input.userId ?? null,
+  });
+
+  return {
+    status: 'qa_answer',
+    assistant_message: qaResult.assistantMessage,
+    reply_text: qaResult.assistantMessage,
+    parsed_items: [],
+    flags: [],
+    suggestions: [],
+    pending_actions: [],
+    pending_clarifications: [],
+    session_state: {
+      total_items: input.existingParsedItems.length,
+      ready_to_submit: false,
+    },
+    diagnostics: {
+      ...buildClassificationDiagnostics(input, classification, catalogDebug),
+      parse_mode: 'qa_answer',
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Confirm helper
 // ---------------------------------------------------------------------------
 
@@ -1744,7 +1898,13 @@ function extractRawUnit(rawText: string): string | null {
   return match?.[1] ?? null;
 }
 
-function buildCatalogDebug(input: OrchestratorInput, catalogIndex: CatalogSearchIndex) {
+function buildCatalogDebug(
+  input: OrchestratorInput,
+  catalogIndex: CatalogSearchIndex,
+  enabled = false,
+): ParseDiagnostics['catalog_debug'] {
+  if (!enabled) return undefined;
+
   const searchedTerms = ['crawfish', 'soft shell crab', 'izumidai', 'canadian clam'];
   const selectedContains = {
     crawfish: catalogHasMatch('crawfish', catalogIndex),
@@ -1756,7 +1916,9 @@ function buildCatalogDebug(input: OrchestratorInput, catalogIndex: CatalogSearch
     searchedTerms.map((term) => [normalizeDebugKey(term), findCatalogAlternatives(term, catalogIndex, 3)]),
   ) as Record<string, CatalogAlternative[]>;
 
-  const globalIndex = input.globalCatalog ? buildCatalogSearchIndex(input.globalCatalog, input.corrections) : null;
+  const globalIndex = input.globalCatalogIndex ?? (
+    input.globalCatalog ? buildCatalogSearchIndex(input.globalCatalog, input.corrections) : null
+  );
   const globalContains = globalIndex
     ? {
       crawfish: catalogHasMatch('crawfish', globalIndex),

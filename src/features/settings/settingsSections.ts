@@ -161,21 +161,26 @@ export function buildSettingsGroups({
           subtitle: 'Use the classic item search ordering flow',
           onPress: () => onNavigate(routeFor(view, '/settings/quick-search')),
         }),
-        makeItem('orderingInventory', {
-          key: view === 'manager' ? 'inventory' : 'stock',
-          icon: 'cube-outline',
-          title: view === 'manager' ? 'Inventory' : 'Stock',
-          subtitle:
-            view === 'manager'
-              ? 'Manage station inventory and stock levels'
-              : 'Tune stock warning preferences',
-          onPress: () =>
-            onNavigate(
-              view === 'manager'
-                ? '/(manager)/inventory'
-                : routeFor(view, '/settings/stock-settings'),
-            ),
-        }),
+        ...(view === 'employee'
+          ? [
+              makeItem('orderingInventory', {
+                key: 'stock-settings',
+                icon: 'clipboard-outline',
+                title: 'Stock Settings',
+                subtitle: 'Count inventory, warnings, and preferences',
+                onPress: () =>
+                  onNavigate(routeFor(view, '/settings/stock-settings')),
+              }),
+            ]
+          : [
+              makeItem('orderingInventory', {
+                key: 'inventory',
+                icon: 'cube-outline',
+                title: 'Inventory',
+                subtitle: 'Manage station inventory and stock levels',
+                onPress: () => onNavigate('/(manager)/inventory'),
+              }),
+            ]),
       ],
     },
   ];

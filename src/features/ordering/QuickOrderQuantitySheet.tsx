@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Keyboard,
   KeyboardAvoidingView,
   KeyboardEvent,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -20,13 +22,12 @@ import { useScaledStyles } from "@/hooks/useScaledStyles";
 // Hardcoded so the mockup colors render reliably regardless of theme-token
 // drift. These match the visual values used in PreviousQuantitySuggestionCard,
 // QuantityStepper, and UnitSegmentedControl so the sheet reads as one piece.
-const SHEET_BG = "#F2F0EB";
+const SHEET_BG = "#F4F0E8";
 const SHEET_BORDER = "rgba(0, 0, 0, 0.04)";
 const SCRIM = "rgba(0, 0, 0, 0.45)";
-const PRIMARY = "#E8503A";
+const PRIMARY = "#EF4B3D";
 const TEXT_PRIMARY = "#1C1C1E";
 const TEXT_SECONDARY = "#8E8E93";
-const TEXT_MUTED = "#AEAEB2";
 const TEXT_ON_PRIMARY = "#FFFFFF";
 const WHITE = "#FFFFFF";
 const TRACK_BG = "#E5E1DC";
@@ -42,6 +43,7 @@ import type { PreviousQuantitySuggestion } from "./quickOrderHistorySuggestions"
 import {
   findUnitOption,
   formatAddQuantityCta,
+  formatQuantityWithUnit,
   getQuantitySheetInitialState,
   getUsablePreviousQuantitySuggestion,
   resolveQuantityUnitOptions,
@@ -122,7 +124,8 @@ function SheetBody({
 }: SheetBodyProps) {
   const ds = useScaledStyles();
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const sheetTranslateY = React.useRef(new Animated.Value(0)).current;
 
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
@@ -228,18 +231,73 @@ function SheetBody({
     onApply({ quantity, unit });
   };
 
+  // CTA text: "Add 2 cases →" — uses formatAddQuantityCta for consistency
   const ctaLabel = quantityOk
     ? `${formatAddQuantityCta(quantity, selectedLabel)}`
     : "Add quantity";
 
+  // Pluralized unit label for the stepper display (e.g. "cases" not "case")
+  const stepperUnitLabel = quantityOk
+    ? formatQuantityWithUnit(quantity, selectedLabel).replace(/^\d+\s*/, '')
+    : selectedLabel;
+
   const sheetMaxHeight = Math.max(
-    windowHeight - insets.top - keyboardHeight - ds.spacing(20),
-    ds.spacing(280),
+    windowHeight - insets.top - keyboardHeight - 8,
+    320,
   );
 
   const progressRatio = isMulti
     ? Math.min(1, Math.max(0, (index + 1) / queue.length))
     : 0;
+
+  // Safe-area bottom padding ensures the CTA is never hidden behind the home
+  // indicator. Use a generous minimum so the button feels "lifted" on notched
+  // phones and still has breathing room on older devices.
+  const safeBottom = Math.max(insets.bottom + 12, 24);
+  const sheetHorizontalPadding = 20;
+  const contentWidth = Math.max(0, windowWidth - sheetHorizontalPadding * 2);
+  const dismissWithDrag = React.useCallback(() => {
+    Animated.timing(sheetTranslateY, {
+      toValue: windowHeight,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) onClose();
+    });
+  }, [onClose, sheetTranslateY, windowHeight]);
+  const panResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          gesture.dy > 8 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderMove: (_, gesture) => {
+          sheetTranslateY.setValue(Math.max(0, gesture.dy));
+        },
+        onPanResponderRelease: (_, gesture) => {
+          if (gesture.dy > 120 || gesture.vy > 1.2) {
+            dismissWithDrag();
+            return;
+          }
+          Animated.spring(sheetTranslateY, {
+            toValue: 0,
+            damping: 18,
+            stiffness: 180,
+            mass: 0.7,
+            useNativeDriver: true,
+          }).start();
+        },
+        onPanResponderTerminate: () => {
+          Animated.spring(sheetTranslateY, {
+            toValue: 0,
+            damping: 18,
+            stiffness: 180,
+            mass: 0.7,
+            useNativeDriver: true,
+          }).start();
+        },
+      }),
+    [dismissWithDrag, sheetTranslateY],
+  );
 
   return (
     <KeyboardAvoidingView
@@ -251,36 +309,38 @@ function SheetBody({
         style={styles.backdrop}
         onPress={onClose}
       />
-      <View
+      <Animated.View
+        {...panResponder.panHandlers}
         style={[
           styles.sheet,
           {
             maxHeight: sheetMaxHeight,
-            borderTopLeftRadius: ds.radius(26),
-            borderTopRightRadius: ds.radius(26),
-            paddingHorizontal: ds.spacing(22),
-            paddingTop: ds.spacing(10),
-            paddingBottom: Math.max(
-              insets.bottom + ds.spacing(8),
-              ds.spacing(18),
-            ),
+            borderTopLeftRadius: 42,
+            borderTopRightRadius: 42,
+            paddingHorizontal: sheetHorizontalPadding,
+            paddingTop: 16,
+            paddingBottom: safeBottom,
+            transform: [{ translateY: sheetTranslateY }],
           },
         ]}
       >
+        {/* Drag handle */}
         <View style={styles.grabberRow}>
           <View style={styles.grabber} />
         </View>
 
+        {/* Multi-item progress bar */}
         {isMulti ? (
           <View
             style={[
               styles.progressRow,
-              { gap: ds.spacing(12), marginBottom: ds.spacing(14) },
+              { gap: 12, marginBottom: 16 },
             ]}
           >
             <Text
-              style={[styles.progressLabel, { fontSize: ds.fontSize(14) }]}
+              style={[styles.progressLabel, { fontSize: 14 }]}
               numberOfLines={1}
+              allowFontScaling={false}
             >
               {`Item ${index + 1} of ${queue.length}`}
             </Text>
@@ -298,15 +358,14 @@ function SheetBody({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close"
-              hitSlop={8}
+              hitSlop={10}
               onPress={onClose}
-              style={({ pressed }) => [
+              style={[
                 styles.closeButton,
                 {
-                  width: ds.spacing(34),
-                  height: ds.spacing(34),
-                  borderRadius: ds.radius(17),
-                  opacity: pressed ? 0.6 : 1,
+                  width: ds.spacing(36),
+                  height: ds.spacing(36),
+                  borderRadius: ds.radius(18),
                 },
               ]}
             >
@@ -315,16 +374,20 @@ function SheetBody({
           </View>
         ) : null}
 
+        {/* Header: item name + issue label + close button */}
         <View
           style={[
             styles.headerRow,
-            { gap: ds.spacing(14), marginTop: ds.spacing(4) },
+            { gap: 14, marginTop: 4 },
           ]}
         >
           <View style={styles.headerTextCluster}>
             <Text
-              style={[styles.title, { fontSize: ds.fontSize(28) }]}
+              style={styles.title}
               numberOfLines={2}
+              allowFontScaling={false}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
             >
               {name}
             </Text>
@@ -332,13 +395,14 @@ function SheetBody({
               <View
                 style={[
                   styles.issueRow,
-                  { marginTop: ds.spacing(8), gap: ds.spacing(7) },
+                  { marginTop: 8, gap: 8 },
                 ]}
               >
                 <View style={styles.issueDot} />
                 <Text
-                  style={[styles.issueText, { fontSize: ds.fontSize(15) }]}
+                  style={styles.issueText}
                   numberOfLines={1}
+                  allowFontScaling={false}
                 >
                   {issueLabel}
                 </Text>
@@ -349,69 +413,72 @@ function SheetBody({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close"
-              hitSlop={8}
+              hitSlop={10}
               onPress={onClose}
-              style={({ pressed }) => [
+              style={[
                 styles.closeButton,
                 {
-                  width: ds.spacing(40),
-                  height: ds.spacing(40),
-                  borderRadius: ds.radius(20),
-                  opacity: pressed ? 0.6 : 1,
+                  width: 48,
+                  height: 48,
+                  borderRadius: 24,
                 },
               ]}
             >
-              <Ionicons name="close" size={ds.icon(20)} color={TEXT_PRIMARY} />
+              <Ionicons name="close" size={24} color={TEXT_PRIMARY} />
             </Pressable>
           ) : null}
         </View>
 
+        {/* Scrollable content: suggestion card + stepper + unit selector */}
         <ScrollView
-          style={[styles.flexShrink, { marginTop: ds.spacing(20) }]}
+          style={[styles.flexShrink, { marginTop: 24 }]}
           contentContainerStyle={{
-            gap: ds.spacing(16),
-            paddingBottom: ds.spacing(4),
+            alignItems: "center",
+            paddingBottom: 2,
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {usableSuggestion ? (
-            <PreviousQuantitySuggestionCard
-              suggestion={usableSuggestion}
-              onUse={handleUseSuggestion}
+          <View style={[styles.contentStack, { width: contentWidth, gap: 22 }]}>
+            {usableSuggestion ? (
+              <PreviousQuantitySuggestionCard
+                suggestion={usableSuggestion}
+                onUse={handleUseSuggestion}
+                disabled={isSaving}
+              />
+            ) : null}
+
+            <QuantityStepper
+              value={quantity}
+              unitLabel={stepperUnitLabel}
+              onChange={(next) => {
+                setQuantity(next);
+                setQuantityTouched(true);
+                setError(null);
+              }}
               disabled={isSaving}
             />
-          ) : null}
 
-          <QuantityStepper
-            value={quantity}
-            unitLabel={selectedLabel}
-            onChange={(next) => {
-              setQuantity(next);
-              setQuantityTouched(true);
-              setError(null);
-            }}
-            disabled={isSaving}
-          />
+            <UnitSegmentedControl
+              options={options}
+              value={unit}
+              onChange={setUnit}
+              disabled={isSaving}
+            />
 
-          <UnitSegmentedControl
-            options={options}
-            value={unit}
-            onChange={setUnit}
-            disabled={isSaving}
-          />
-
-          {error ? (
-            <Text style={[styles.errorText, { fontSize: ds.fontSize(13) }]}>
-              {error}
-            </Text>
-          ) : null}
+            {error ? (
+              <Text style={styles.errorText} allowFontScaling={false}>
+                {error}
+              </Text>
+            ) : null}
+          </View>
         </ScrollView>
 
+        {/* Footer: Skip (multi only) + primary CTA */}
         <View
           style={[
             styles.footer,
-            { marginTop: ds.spacing(18), gap: ds.spacing(10) },
+            { width: contentWidth, marginTop: 24, gap: 10 },
           ]}
         >
           {isMulti ? (
@@ -420,18 +487,19 @@ function SheetBody({
               accessibilityLabel="Skip this item"
               disabled={isSaving}
               onPress={onSkip}
-              style={({ pressed }) => [
+              style={[
                 styles.secondaryButton,
                 {
                   borderRadius: ds.radius(999),
                   minHeight: ds.spacing(56),
                   paddingHorizontal: ds.spacing(20),
-                  opacity: isSaving ? 0.6 : pressed ? 0.82 : 1,
+                  opacity: isSaving ? 0.6 : 1,
                 },
               ]}
             >
               <Text
                 style={[styles.secondaryText, { fontSize: ds.fontSize(16) }]}
+                allowFontScaling={false}
               >
                 Skip
               </Text>
@@ -443,15 +511,15 @@ function SheetBody({
             accessibilityLabel={isMulti ? "Add and go to next item" : ctaLabel}
             disabled={!canSubmit}
             onPress={handleApply}
-            style={({ pressed }) => [
+            style={[
               styles.primaryButton,
               isMulti ? styles.primaryButtonMulti : styles.primaryButtonSingle,
               {
                 borderRadius: 999,
-                minHeight: ds.spacing(68),
-                paddingHorizontal: ds.spacing(24),
+                minHeight: 72,
+                paddingHorizontal: 24,
                 backgroundColor: PRIMARY,
-                opacity: !canSubmit ? 0.85 : pressed ? 0.86 : 1,
+                opacity: !canSubmit ? 0.85 : 1,
                 shadowColor: "#000000",
                 shadowOffset: { width: 0, height: 6 },
                 shadowOpacity: 0.18,
@@ -467,23 +535,26 @@ function SheetBody({
                 <Text
                   style={[
                     styles.primaryText,
-                    { fontSize: ds.fontSize(18), color: TEXT_ON_PRIMARY },
+                    { color: TEXT_ON_PRIMARY },
                   ]}
                   numberOfLines={1}
+                  allowFontScaling={false}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.82}
                 >
                   {isMulti ? "Add & next" : ctaLabel}
                 </Text>
                 <Ionicons
                   name="arrow-forward"
-                  size={ds.icon(20)}
+                  size={22}
                   color={TEXT_ON_PRIMARY}
-                  style={{ marginLeft: ds.spacing(8) }}
+                  style={{ marginLeft: 10 }}
                 />
               </View>
             )}
           </Pressable>
         </View>
-      </View>
+      </Animated.View>
     </KeyboardAvoidingView>
   );
 }
@@ -495,6 +566,10 @@ const styles = StyleSheet.create({
   flexShrink: {
     flexShrink: 1,
   },
+  contentStack: {
+    alignSelf: "center",
+    alignItems: "stretch",
+  },
   backdrop: {
     flex: 1,
     backgroundColor: SCRIM,
@@ -503,6 +578,7 @@ const styles = StyleSheet.create({
     backgroundColor: SHEET_BG,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: SHEET_BORDER,
+    overflow: "hidden",
     shadowColor: "#000000",
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.12,
@@ -511,13 +587,13 @@ const styles = StyleSheet.create({
   },
   grabberRow: {
     alignItems: "center",
-    paddingBottom: 10,
+    paddingBottom: 22,
   },
   grabber: {
-    width: 40,
-    height: 5,
+    width: 58,
+    height: 6,
     borderRadius: 3,
-    backgroundColor: "#C7C7CC",
+    backgroundColor: "#C9C6C0",
   },
   progressRow: {
     flexDirection: "row",
@@ -562,11 +638,8 @@ const styles = StyleSheet.create({
   title: {
     color: TEXT_PRIMARY,
     fontWeight: "800",
-    letterSpacing: -0.4,
-  },
-  subtitle: {
-    color: TEXT_SECONDARY,
-    fontWeight: "600",
+    fontSize: 34,
+    lineHeight: 40,
     letterSpacing: 0,
   },
   issueRow: {
@@ -581,21 +654,18 @@ const styles = StyleSheet.create({
   },
   issueText: {
     color: PRIMARY,
-    fontWeight: "700",
-    letterSpacing: 0,
-  },
-  sectionLabel: {
-    color: TEXT_SECONDARY,
+    fontSize: 20,
     fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
+    letterSpacing: 0,
   },
   errorText: {
     color: STATUS_RED,
+    fontSize: 13,
     fontWeight: "700",
     letterSpacing: 0,
   },
   footer: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "stretch",
   },
@@ -615,6 +685,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: PRIMARY,
   },
   primaryButtonSingle: {
     flex: 1,
@@ -626,15 +697,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    width: "100%",
   },
   primaryText: {
+    fontSize: 22,
     fontWeight: "800",
     letterSpacing: 0,
     flexShrink: 1,
-  },
-  doneText: {
-    marginLeft: 12,
-    fontWeight: "800",
-    letterSpacing: 0,
   },
 });

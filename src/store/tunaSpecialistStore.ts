@@ -124,7 +124,10 @@ async function invokeEdgeFunction(body: Record<string, unknown>, timeoutMs = 30_
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await supabase.functions.invoke('voice-order', { body });
+    return await supabase.functions.invoke('voice-order', {
+      body,
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timer);
   }
@@ -240,9 +243,22 @@ async function performSendToIntelligence(
       geminiTurn: IntelligenceModelMessage;
     };
 
-    // Store raw response for debug
+    // Store raw response for debug (redacted — lengths/counts only)
     if (__DEV__) {
-      set({ lastRawResponse: JSON.stringify(data, null, 2) });
+      const parsedItems = Array.isArray((data as { parsedItems?: unknown[] })?.parsedItems)
+        ? (data as { parsedItems: unknown[] }).parsedItems
+        : [];
+      set({
+        lastRawResponse: JSON.stringify(
+          {
+            aiMessageLength: String((data as { aiMessage?: string })?.aiMessage ?? '').length,
+            parsedItemCount: parsedItems.length,
+            hasGeminiTurn: Boolean((data as { geminiTurn?: unknown })?.geminiTurn),
+          },
+          null,
+          2,
+        ),
+      });
     }
 
     const aiMsg: ConversationMessage = {

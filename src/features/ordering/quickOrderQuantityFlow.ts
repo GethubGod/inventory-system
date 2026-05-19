@@ -25,7 +25,7 @@ export type QuantityUnitOption = {
   label: string;
   /**
    * Whether this unit is actually orderable for the current item. The sheet
-   * always renders the four standard units (`pack` / `case` / `lb` / `each`)
+   * always renders the four standard units (`pack` / `case` / `lb` / `piece`)
    * so the layout stays consistent — units the catalog doesn't support are
    * rendered as a disabled, grayed-out segment.
    */
@@ -64,7 +64,7 @@ const STANDARD_UNITS: ReadonlyArray<{ canonical: string; value: string; label: s
   { canonical: 'pack', value: 'pack', label: 'pack' },
   { canonical: 'cs', value: 'case', label: 'case' },
   { canonical: 'lb', value: 'lb', label: 'lb' },
-  { canonical: 'pc', value: 'each', label: 'each' },
+  { canonical: 'pc', value: 'each', label: 'piece' },
 ];
 
 /**
@@ -93,8 +93,8 @@ export function advanceQuantityFlow(state: QuantityFlowState): { index: number }
   return next < state.queue.length ? { index: next } : null;
 }
 
-/** Units that read awkwardly when an "s" is appended (abbreviations, "each"). */
-const NON_PLURALIZED_UNITS = new Set(['lb', 'oz', 'kg', 'g', 'ml', 'l', 'each']);
+/** Units that read awkwardly when an "s" is appended (mostly abbreviations). */
+const NON_PLURALIZED_UNITS = new Set(['lb', 'oz', 'kg', 'g', 'ml', 'l']);
 
 /** "2 cases" / "1 case" / "5 lb" — quantity with a (lightly pluralized) unit. */
 export function formatQuantityWithUnit(quantity: number, unitLabel: string): string {
@@ -114,7 +114,7 @@ export function formatAddQuantityCta(quantity: number, unitLabel: string): strin
 
 /**
  * Builds the unit choices for an item. The sheet's segmented control always
- * shows the four standard units (`pack` / `case` / `lb` / `each`), with each
+ * shows the four standard units (`pack` / `case` / `lb` / `piece`), with each
  * one marked `available: true` when the catalog/parser actually supports it.
  * Non-standard units (e.g. `bottle`) get appended as additional available
  * segments so we never hide a real option. When nothing is known about the
@@ -155,7 +155,7 @@ export function resolveQuantityUnitOptions(input: {
     if (raw) consumed.add(std.canonical);
     options.push({
       value: raw ?? std.value,
-      label: raw ? prettifyUnitLabel(raw) : std.label,
+      label: std.label,
       available,
     });
   }
@@ -249,7 +249,7 @@ export function getQuantitySheetInitialState(input: {
 function prettifyUnitLabel(raw: string): string {
   const value = raw.trim();
   const lower = value.toLowerCase();
-  if (lower === 'each' || lower === 'ea') return 'each';
+  if (lower === 'each' || lower === 'ea') return 'piece';
   if (lower === 'piece' || lower === 'pieces' || lower === 'pc' || lower === 'pcs') return 'piece';
   switch (normalizeQuickOrderUnit(value)) {
     case 'cs':

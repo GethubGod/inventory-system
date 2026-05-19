@@ -34,7 +34,8 @@ function resolveAuthRole(
         ? session.user.app_metadata.role
         : null;
 
-  return user?.role ?? profile?.role ?? (metadataRole === 'manager' ? 'manager' : metadataRole === 'employee' ? 'employee' : null);
+  // Canonical role is profiles.role (DB); never prefer client-writable session metadata.
+  return profile?.role ?? user?.role ?? (metadataRole === 'manager' ? 'manager' : metadataRole === 'employee' ? 'employee' : null);
 }
 
 export function getAuthenticatedHomeHref(

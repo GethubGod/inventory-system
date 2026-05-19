@@ -14,6 +14,7 @@ export type QuickOrderInputClassification =
   | 'confirm_request'
   | 'clear_request'
   | 'identity_question'
+  | 'product_question'
   | 'unknown_non_order';
 
 export type QuickOrderInputClassifierContext = {
@@ -64,6 +65,16 @@ const HISTORY_PATTERNS = [
 ];
 
 const QUESTION_PATTERN = /^(?:what|when|where|why|how|can|could|should|do|did|is|are)\b/i;
+const PRODUCT_QUESTION_PATTERNS = [
+  /\bwhat units?\b/i,
+  /\bwhat (?:sizes?|packs?|cases?|amounts?)\b/i,
+  /\bhow (?:much|many)\b/i,
+  /\bdoes\b.+\bcome\b/i,
+  /\bis\b.+\bavailable\b/i,
+  /\bdo you (?:have|sell|carry)\b/i,
+  /\bcan i (?:get|order)\b/i,
+  /\btell me about\b/i,
+];
 const IDENTITY_PATTERNS = [
   /\bwho are you\b/i,
   /\bwhat are you\b/i,
@@ -145,8 +156,20 @@ export function classifyQuickOrderInput(
     return { classification: 'order_command', intentResult, normalizedText, reason: `${intentResult.intent}_command` };
   }
 
-  if (QUESTION_PATTERN.test(nfkcText)) {
-    return { classification: 'unknown_non_order', intentResult, normalizedText, reason: 'question_like_text' };
+  const endsWithQuestionMark = /\?\s*$/.test(nfkcText.trim());
+  const matchesProductQuestionPhrase = PRODUCT_QUESTION_PATTERNS.some((pattern) => pattern.test(nfkcText));
+  const matchesQuestionStart = QUESTION_PATTERN.test(nfkcText);
+  if (endsWithQuestionMark || matchesProductQuestionPhrase || matchesQuestionStart) {
+    return {
+      classification: 'product_question',
+      intentResult,
+      normalizedText,
+      reason: matchesProductQuestionPhrase
+        ? 'product_question_phrase'
+        : endsWithQuestionMark
+          ? 'question_mark_terminated'
+          : 'question_word_lead',
+    };
   }
 
   return { classification: 'order_entry', intentResult, normalizedText, reason: 'default_order_entry' };

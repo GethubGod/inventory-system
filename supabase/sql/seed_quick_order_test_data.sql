@@ -129,7 +129,7 @@ BEGIN
   -- Link all seed items to the storage area via area_items
   FOR v_item IN SELECT item_id, base_unit FROM _seed_items
   LOOP
-    INSERT INTO area_items (storage_area_id, inventory_item_id, unit_type, active)
+    INSERT INTO area_items (area_id, inventory_item_id, unit_type, active)
     VALUES (v_area_id, v_item.item_id, v_item.base_unit, true)
     ON CONFLICT DO NOTHING;
   END LOOP;

@@ -2,6 +2,7 @@
 module.exports = {
   testMatch: ['**/src/__tests__/**/*.test.ts'],
   testPathIgnorePatterns: ['/node_modules/', '/\\.claude/'],
+  modulePathIgnorePatterns: ['<rootDir>/.claude/'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: {

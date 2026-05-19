@@ -1,8 +1,10 @@
-// @ts-nocheck
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { corsHeadersForRequest } from '../_shared/cors.ts';
 
 type Role = 'employee' | 'manager';
+type ValidateAccessCodeRpcResult =
+  | { ok: true; role: Role }
+  | { ok: false; code?: string };
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -16,24 +18,48 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 const ACCESS_CODE_REGEX = /^\d{4}$/;
+const FAILURE_DELAY_MS = 350;
 
-function jsonResponse(body: Record<string, unknown>, status = 200) {
+function getClientIp(req: Request): string {
+  const forwarded = req.headers.get('x-forwarded-for');
+  if (forwarded) {
+    const first = forwarded.split(',')[0]?.trim();
+    if (first) return first;
+  }
+  return req.headers.get('x-real-ip')?.trim() || 'unknown';
+}
+
+function jsonResponse(req: Request, body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
   });
+}
+
+async function delay(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const encoded = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', encoded);
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeadersForRequest(req) });
   }
 
   if (req.method !== 'POST') {
-    return jsonResponse({ error: 'Method not allowed' }, 405);
+    return jsonResponse(req, { error: 'Method not allowed' }, 405);
   }
 
+  const clientIp = getClientIp(req);
   let accessCode = '';
+  let subject = '';
 
   try {
     const payload = await req.json();
@@ -41,26 +67,41 @@ Deno.serve(async (req) => {
       typeof payload?.accessCode === 'string'
         ? payload.accessCode.trim()
         : '';
+    subject =
+      typeof payload?.email === 'string'
+        ? payload.email.trim().toLowerCase()
+        : typeof payload?.subject === 'string'
+          ? payload.subject.trim().toLowerCase()
+          : '';
   } catch {
-    return jsonResponse({ error: 'Invalid request body' }, 400);
+    return jsonResponse(req, { error: 'Invalid request body' }, 400);
   }
+
+  const identifierHash = await sha256Hex(`${clientIp}:${req.headers.get('user-agent') ?? ''}`);
+  const subjectHash = subject ? await sha256Hex(subject) : null;
 
   if (!ACCESS_CODE_REGEX.test(accessCode)) {
-    return jsonResponse({ error: 'Access code must be exactly 4 digits' }, 400);
+    await delay(FAILURE_DELAY_MS);
+    return jsonResponse(req, { error: 'Invalid access code' }, 400);
   }
 
-  const { data, error } = await supabaseAdmin.rpc('get_access_code_role', {
+  const { data, error } = await supabaseAdmin.rpc('validate_access_code_attempt', {
     p_access_code: accessCode,
+    p_identifier_hash: identifierHash,
+    p_subject_hash: subjectHash,
   });
 
   if (error) {
-    console.error('get_access_code_role failed', error);
-    return jsonResponse({ error: 'Unable to validate access code' }, 500);
+    console.error('validate_access_code_attempt failed', error);
+    await delay(FAILURE_DELAY_MS);
+    return jsonResponse(req, { error: 'Unable to validate access code' }, 500);
   }
 
-  if (data !== 'employee' && data !== 'manager') {
-    return jsonResponse({ error: 'Invalid access code' }, 400);
+  const result = data as ValidateAccessCodeRpcResult | null;
+  if (!result?.ok || (result.role !== 'employee' && result.role !== 'manager')) {
+    await delay(FAILURE_DELAY_MS);
+    return jsonResponse(req, { error: 'Invalid access code' }, 400);
   }
 
-  return jsonResponse({ role: data as Role });
+  return jsonResponse(req, { role: result.role });
 });

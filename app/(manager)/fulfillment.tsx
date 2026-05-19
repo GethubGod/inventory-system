@@ -33,6 +33,7 @@ import {
   FulfillmentSupplierCard,
   OrderLaterAddToSheet,
   OrderLaterScheduleModal,
+  SupplierPickerBottomSheet,
 } from '@/features/fulfillment/components';
 import type {
   FulfillmentSupplierEmployee,
@@ -376,6 +377,8 @@ export default function FulfillmentScreen() {
   const [isAddingToSupplierDraft, setIsAddingToSupplierDraft] = useState(false);
   const [scheduleEditItemId, setScheduleEditItemId] = useState<string | null>(null);
   const [overflowItem, setOverflowItem] = useState<LocationGroupedItem | null>(null);
+  const [supplierPickerItem, setSupplierPickerItem] = useState<LocationGroupedItem | null>(null);
+  const [isMovingSupplier, setIsMovingSupplier] = useState(false);
   const [breakdownItem, setBreakdownItem] = useState<LocationGroupedItem | null>(null);
   const [noteEditorItem, setNoteEditorItem] = useState<LocationGroupedItem | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
@@ -1705,6 +1708,14 @@ export default function FulfillmentScreen() {
     () => orderLaterQueue.find((item) => item.id === addToTargetItemId) ?? null,
     [addToTargetItemId, orderLaterQueue]
   );
+  const supplierPickerOptions = useMemo<OrderLaterSupplierOption[]>(
+    () =>
+      availableSuppliers
+        .filter((supplier) => supplier.active)
+        .map((supplier) => ({ id: supplier.id, name: supplier.name })),
+    [availableSuppliers]
+  );
+
   const addToSupplierOptions = useMemo<OrderLaterSupplierOption[]>(
     () =>
       availableSuppliers.map((supplier) => ({
@@ -1905,6 +1916,44 @@ export default function FulfillmentScreen() {
     [fetchPendingFulfillmentOrders, managerLocationIds, runLockedAction, setSupplierOverride]
   );
 
+  const handleSupplierPickerSelect = useCallback(
+    async (targetSupplierId: string) => {
+      const item = supplierPickerItem;
+      if (!item || item.sourceOrderItemIds.length === 0) return;
+      if (targetSupplierId === item.effectiveSupplierId) return;
+
+      setIsMovingSupplier(true);
+      try {
+        const lockIds = [...item.sourceOrderItemIds].sort().join(',');
+        const success = await runLockedAction(`move-supplier:${lockIds}`, async () => {
+          const moved = await setSupplierOverride(item.sourceOrderItemIds, targetSupplierId);
+          if (!moved) {
+            Alert.alert('Error', 'Failed to move item. Please try again.');
+            return;
+          }
+
+          if (Platform.OS !== 'web') {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          }
+          setSupplierPickerItem(null);
+          await fetchPendingFulfillmentOrders(managerLocationIds);
+        });
+        if (!success) {
+          Alert.alert('Error', 'Failed to move item. Please try again.');
+        }
+      } finally {
+        setIsMovingSupplier(false);
+      }
+    },
+    [
+      fetchPendingFulfillmentOrders,
+      managerLocationIds,
+      runLockedAction,
+      setSupplierOverride,
+      supplierPickerItem,
+    ]
+  );
+
   const handleMoveBackToPrimarySupplier = useCallback(
     (item: LocationGroupedItem) => {
       if (!item.isOverridden || item.sourceOrderItemIds.length === 0) return;
@@ -2094,6 +2143,22 @@ export default function FulfillmentScreen() {
           setOrderLaterScheduleItem(overflowItem);
         },
       });
+
+      const hasAlternateSupplier = supplierPickerOptions.some(
+        (supplier) => supplier.id !== overflowItem.effectiveSupplierId
+      );
+      if (hasAlternateSupplier) {
+        logisticsItems.push({
+          id: 'move-different-supplier',
+          label: 'Move to Different Supplier',
+          icon: 'swap-horizontal',
+          detail: 'Reassign this line to another supplier for this order.',
+          onPress: () => {
+            setOverflowItem(null);
+            setSupplierPickerItem(overflowItem);
+          },
+        });
+      }
     }
 
     if (getHasMultiEmployeeBreakdown(overflowItem)) {
@@ -2211,6 +2276,7 @@ export default function FulfillmentScreen() {
     handleRemoveSupplierItem,
     overflowItem,
     resolveSupplierName,
+    supplierPickerOptions,
   ]);
 
   const handleItemOverflowMenu = useCallback((item: LocationGroupedItem) => {
@@ -2782,6 +2848,22 @@ export default function FulfillmentScreen() {
             </Pressable>
           </Pressable>
         </Modal>
+
+        <SupplierPickerBottomSheet
+          visible={Boolean(supplierPickerItem)}
+          itemName={supplierPickerItem?.inventoryItem.name}
+          suppliers={supplierPickerOptions}
+          currentSupplierId={supplierPickerItem?.effectiveSupplierId ?? null}
+          isMoving={isMovingSupplier}
+          onSelect={(targetSupplierId) => {
+            void handleSupplierPickerSelect(targetSupplierId);
+          }}
+          onClose={() => {
+            if (!isMovingSupplier) {
+              setSupplierPickerItem(null);
+            }
+          }}
+        />
 
         <OrderLaterAddToSheet
           visible={Boolean(addToTargetItem)}

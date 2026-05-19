@@ -11,9 +11,16 @@ import {
   type QuickOrderOperationResult,
 } from './quickOrderItems';
 
-export type QuickOrderParseStatus = 'ok' | 'needs_review' | 'needs_clarification' | 'error';
+export type QuickOrderParseStatus =
+  | 'ok'
+  | 'needs_review'
+  | 'needs_clarification'
+  | 'partial_success'
+  | 'blocked'
+  | 'qa_answer'
+  | 'error';
 
-export type QuickOrderMessageSource = 'typed' | 'voice';
+export type QuickOrderMessageSource = 'typed' | 'voice' | 'welcome';
 
 export type QuickOrderStockUpdate = {
   item_id: string;
@@ -118,6 +125,8 @@ export type RawQuickOrderParseResponse = {
 
 export type NormalizedQuickOrderParseResponse = {
   status: QuickOrderParseStatus;
+  isBlocked: boolean;
+  isPartialSuccess: boolean;
   assistantMessage: string;
   displayMessage: string;
   speechMessage: string;
@@ -158,6 +167,8 @@ export function normalizeQuickOrderParseResponse(
   const pendingActions = normalizePendingActions(raw.pending_actions ?? raw.pending_clarifications ?? raw.clarifications);
   const operations = normalizeOperations((raw as Record<string, unknown>).operations ?? raw.cart_operations);
   const status = normalizeStatus(raw.status ?? raw.legacy_status, parsedItems, pendingActions, raw.error);
+  const isBlocked = status === 'blocked';
+  const isPartialSuccess = status === 'partial_success';
   const assistantMessage = sanitizeAssistantReply(
     stringValue(raw.display_message) ?? stringValue(raw.assistant_message) ?? stringValue(raw.reply_text),
     status === 'error'
@@ -173,6 +184,8 @@ export function normalizeQuickOrderParseResponse(
 
   return {
     status,
+    isBlocked,
+    isPartialSuccess,
     assistantMessage,
     displayMessage: assistantMessage,
     speechMessage,
@@ -237,6 +250,10 @@ export function buildQuickOrderAssistantMessage(input: {
   const { normalized, mergeResult, pendingCount, operationResult } = input;
   const reviewCount = mergeResult.reviewCount + pendingCount;
 
+  if (normalized.status === 'qa_answer') {
+    return normalized.assistantMessage || "I couldn't answer that — try rephrasing.";
+  }
+
   // If operations were applied, build message from operations.
   if (operationResult && (operationResult.removedCount > 0 || operationResult.updatedCount > 0)) {
     const parts: string[] = [];
@@ -267,6 +284,12 @@ export function buildQuickOrderAssistantMessage(input: {
     if (mergeResult.unchangedCount > 0) {
       const label = formatAddedItems(mergeResult.addedItems);
       return `Added ${label}. The other ${mergeResult.unchangedCount} item${mergeResult.unchangedCount === 1 ? ' was' : 's were'} already in your order.`;
+    }
+    if (mergeResult.addedItems.length === 1) {
+      return formatAddedItemMessage(mergeResult.addedItems[0]);
+    }
+    if (mergeResult.addedItems.length > 1) {
+      return formatMultiAddMessage(mergeResult.addedItems);
     }
     return 'Done';
   }
@@ -599,9 +622,18 @@ function normalizeStatus(
   pendingActions: PendingQuickOrderClarification[],
   error: unknown,
 ): QuickOrderParseStatus {
-  if (value === 'ok' || value === 'needs_review' || value === 'needs_clarification' || value === 'error') return value;
+  if (
+    value === 'ok' ||
+    value === 'needs_review' ||
+    value === 'needs_clarification' ||
+    value === 'partial_success' ||
+    value === 'blocked' ||
+    value === 'qa_answer' ||
+    value === 'error'
+  ) {
+    return value;
+  }
   if (value === 'success') return 'ok';
-  if (value === 'partial_success' || value === 'blocked') return 'needs_clarification';
   if (error) return 'error';
   if (pendingActions.length > 0) return 'needs_clarification';
   if (items.some((item) => getParsedItemIssue(item))) return 'needs_review';
@@ -611,6 +643,36 @@ function normalizeStatus(
 function formatAddedItems(items: ParsedQuickOrderItem[]): string {
   if (items.length === 1) return getParsedItemDisplayName(items[0]);
   return `${items.length} items`;
+}
+
+function formatAddedItemMessage(item: ParsedQuickOrderItem): string {
+  const name = getParsedItemDisplayName(item);
+  if (item.quantity != null && item.unit) {
+    return `Added ${formatQuickOrderQuantity(item.quantity, item.unit)} of ${name}.`;
+  }
+  if (item.quantity != null) {
+    return `Added ${item.quantity} ${name}.`;
+  }
+  return `Added ${name}.`;
+}
+
+function formatMultiAddMessage(items: ParsedQuickOrderItem[]): string {
+  const previewCount = Math.min(items.length, 2);
+  const previewParts = items.slice(0, previewCount).map((item) => {
+    const name = getParsedItemDisplayName(item);
+    if (item.quantity != null && item.unit) {
+      return `${name} (${formatQuickOrderQuantity(item.quantity, item.unit)})`;
+    }
+    if (item.quantity != null) {
+      return `${name} (${item.quantity})`;
+    }
+    return name;
+  });
+  const remainder = items.length - previewCount;
+  if (remainder <= 0) {
+    return `Added ${previewParts.join(' and ')}.`;
+  }
+  return `Added ${previewParts.join(', ')} and ${remainder} more.`;
 }
 
 function formatUpdatedItemMessage(item: ParsedQuickOrderItem): string {

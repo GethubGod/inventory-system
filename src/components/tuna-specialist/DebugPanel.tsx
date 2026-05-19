@@ -10,6 +10,47 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTunaSpecialistStore } from '@/store';
 import { colors } from '@/constants';
 
+const SENSITIVE_KEY_PATTERN =
+  /(transcript|message|text|token|id|email|name|raw|reply|speech|body|history)/i;
+
+function fingerprintText(value: string): string {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+  }
+  return `${value.length} chars · ${(hash >>> 0).toString(16).slice(0, 8)}`;
+}
+
+function redactDebugValue(value: unknown, key?: string): unknown {
+  if (typeof value === 'string') {
+    if (key && SENSITIVE_KEY_PATTERN.test(key)) {
+      return fingerprintText(value);
+    }
+    return value.length > 120 ? `${fingerprintText(value)} (truncated)` : value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactDebugValue(entry));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([entryKey, entryValue]) => [
+        entryKey,
+        redactDebugValue(entryValue, entryKey),
+      ]),
+    );
+  }
+  return value;
+}
+
+function formatRedactedRawResponse(raw: string): string {
+  try {
+    const parsed = JSON.parse(raw);
+    return JSON.stringify(redactDebugValue(parsed), null, 2);
+  } catch {
+    return fingerprintText(raw);
+  }
+}
+
 const TEST_TRANSCRIPTS = [
   { label: 'Simple order', text: '10 cases of salmon and 5 tuna' },
   { label: 'Chinese order', text: '三文鱼十箱 金枪鱼五箱' },
@@ -156,7 +197,7 @@ export function DebugPanel({ locationShortCode }: DebugPanelProps) {
               }}
             >
               <Text style={{ fontSize: 10, color: colors.gray[500], fontFamily: 'monospace' }}>
-                {lastRawResponse}
+                {formatRedactedRawResponse(lastRawResponse)}
               </Text>
             </ScrollView>
           )}

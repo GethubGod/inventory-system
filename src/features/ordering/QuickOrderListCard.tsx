@@ -30,7 +30,7 @@ import {
 const CARD_PADDING = 14;
 const CARD_SECTION_GAP = 10;
 const VISIBLE_ROW_SLOTS = 4;
-const CTA_HEIGHT = 52;
+const CTA_HEIGHT = 44;
 
 type QuickOrderListCardProps = {
   items: ParsedQuickOrderItem[];
@@ -129,9 +129,13 @@ export function QuickOrderListCard({
     onConfirm();
   }, [confirmState, onConfirm]);
 
-  const summary = `${count} item${count === 1 ? "" : "s"}${
-    issueCount > 0 ? ` · ${issueCount} to fix` : ""
-  }`;
+  const itemWord = count === 1 ? "item" : "items";
+  const summary =
+    issueCount > 0
+      ? `${count} ${itemWord} · ${issueCount} to fix`
+      : `${count} ${itemWord} · all set`;
+  const moreCount = Math.max(0, count - VISIBLE_ROW_SLOTS);
+  const moreWord = moreCount === 1 ? "item" : "items";
 
   // Find the first item that needs attention so we can scroll it into view.
   const firstIssueIndex = useMemo(() => {
@@ -191,12 +195,32 @@ export function QuickOrderListCard({
           <Text style={[styles.title, { fontSize: ds.fontSize(17) }]}>
             Order list
           </Text>
-          <Text
-            style={[styles.summary, { fontSize: ds.fontSize(13) }]}
-            numberOfLines={1}
-          >
-            {summary}
-          </Text>
+          {count > 0 ? (
+            <View
+              style={[
+                styles.statusBadge,
+                issueCount > 0 ? styles.statusBadgeAmber : styles.statusBadgeGreen,
+                {
+                  paddingHorizontal: ds.spacing(6),
+                  paddingVertical: ds.spacing(2),
+                  borderRadius: ds.radius(999),
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.statusBadgeText,
+                  issueCount > 0
+                    ? styles.statusBadgeTextAmber
+                    : styles.statusBadgeTextGreen,
+                  { fontSize: ds.fontSize(12) },
+                ]}
+                numberOfLines={1}
+              >
+                {summary}
+              </Text>
+            </View>
+          ) : null}
         </View>
 
         {/* 2. List slot */}
@@ -211,22 +235,16 @@ export function QuickOrderListCard({
               style={[
                 styles.emptyPanel,
                 {
-                  paddingVertical: ds.spacing(24),
+                  paddingVertical: ds.spacing(20),
                   paddingHorizontal: ds.spacing(12),
-                  gap: ds.spacing(10),
                 },
               ]}
             >
-              <Ionicons
-                name="keypad-outline"
-                size={ds.icon(28)}
-                color={grayScale[400]}
-              />
               <Text
                 style={[styles.emptyText, { fontSize: ds.fontSize(14) }]}
-                numberOfLines={1}
+                numberOfLines={2}
               >
-                Type below or tap a shortcut
+                Items you add will appear here
               </Text>
             </View>
           ) : (
@@ -257,11 +275,7 @@ export function QuickOrderListCard({
             </ScrollView>
           )}
 
-          {/* Scroll affordance: a clearly-tappable chevron pill horizontally
-              centered at the bottom of the list slot, just above the confirm
-              button. Tap to jump to the bottom (or back to the top once you're
-              already there). */}
-          {scrollable ? (
+          {scrollable && moreCount > 0 ? (
             <View style={styles.scrollHintWrap} pointerEvents="box-none">
               <Pressable
                 accessibilityRole="button"
@@ -272,54 +286,45 @@ export function QuickOrderListCard({
                 onPress={handleScrollHintPress}
                 style={({ pressed }) => [
                   styles.scrollHint,
-                  {
-                    width: ds.spacing(36),
-                    height: ds.spacing(28),
-                    borderRadius: ds.radius(999),
-                    opacity: pressed ? 0.7 : 1,
-                  },
+                  { opacity: pressed ? 0.7 : 1 },
                 ]}
               >
                 <Ionicons
                   name={isAtBottom ? "chevron-up" : "chevron-down"}
-                  size={ds.icon(20)}
+                  size={ds.icon(16)}
                   color={colors.textSecondary}
                 />
+                <Text
+                  style={[styles.scrollHintText, { fontSize: ds.fontSize(12) }]}
+                  numberOfLines={1}
+                >
+                  {`${moreCount} more ${moreWord}`}
+                </Text>
               </Pressable>
             </View>
           ) : null}
         </View>
 
-        {/* 3. Confirm footer + decorative overlay (ready state).
-            The footer is a relative-positioned wrapper. The underlying
-            TouchableOpacity is the real CTA. In the `ready` state we also
-            mount an absolutely-positioned decorative pill on top — it has the
-            same press handler, so it is the visible Confirm Order button. */}
-        <View
-          style={[
-            styles.footerWrap,
-            {
-              marginTop: ds.spacing(CARD_SECTION_GAP),
-              height: ds.spacing(CTA_HEIGHT),
-            },
-          ]}
-        >
-          <ConfirmButton
-            state={confirmState}
-            onPress={handleConfirmPress}
-            radius={ds.radius(999)}
-            fontSize={ds.fontSize(15)}
-            paddingHorizontal={ds.spacing(20)}
-          />
-
-          {confirmState === "ready" ? (
-            <DecorativeConfirmOverlay
+        {/* 3. Full-width confirm button. Hidden when empty. */}
+        {confirmState !== "empty" ? (
+          <View
+            style={[
+              styles.footerWrap,
+              {
+                marginTop: ds.spacing(CARD_SECTION_GAP),
+                height: ds.spacing(CTA_HEIGHT),
+              },
+            ]}
+          >
+            <ConfirmButton
+              state={confirmState}
               onPress={handleConfirmPress}
               radius={ds.radius(999)}
               fontSize={ds.fontSize(15)}
+              iconSize={ds.icon(18)}
             />
-          ) : null}
-        </View>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -382,14 +387,14 @@ type ConfirmButtonProps = {
   onPress: () => void;
   radius: number;
   fontSize: number;
-  paddingHorizontal: number;
+  iconSize: number;
 };
 
 const FOOTER_LABEL: Record<ConfirmState, string> = {
-  empty: "Add items to confirm",
-  "needs-fixing": "Fix cart to confirm",
+  empty: "Add item",
+  "needs-fixing": "Fix cart",
   ready: "Confirm order",
-  confirming: "Adding to cart…",
+  confirming: "Confirming…",
 };
 
 function ConfirmButton({
@@ -397,7 +402,7 @@ function ConfirmButton({
   onPress,
   radius,
   fontSize,
-  paddingHorizontal,
+  iconSize,
 }: ConfirmButtonProps) {
   const disabled = state !== "ready";
   const variant = FOOTER_VARIANT[state];
@@ -421,7 +426,6 @@ function ConfirmButton({
         borderColor: variant.border,
         borderWidth: variant.borderWidth,
         borderRadius: radius,
-        paddingHorizontal,
         alignItems: "center",
         justifyContent: "center",
         flexDirection: "row",
@@ -430,7 +434,8 @@ function ConfirmButton({
       {state === "confirming" ? (
         <ActivityIndicator
           color={variant.foreground}
-          style={{ marginRight: 10 }}
+          style={{ marginRight: 6 }}
+          size="small"
         />
       ) : null}
       <Text
@@ -445,54 +450,14 @@ function ConfirmButton({
       >
         {label}
       </Text>
-    </TouchableOpacity>
-  );
-}
-
-/**
- * Visible "Confirm order" pill stacked on top of the real CTA. Exists because
- * the underlying button has historically failed to paint in some states; this
- * overlay guarantees the user sees the button and can tap it.
- */
-function DecorativeConfirmOverlay({
-  onPress,
-  radius,
-  fontSize,
-}: {
-  onPress: () => void;
-  radius: number;
-  fontSize: number;
-}) {
-  return (
-    <TouchableOpacity
-      activeOpacity={0.85}
-      accessibilityRole="button"
-      accessibilityLabel="Confirm order"
-      onPress={onPress}
-      style={{
-        position: "absolute",
-        left: 0,
-        right: 0,
-        top: 0,
-        bottom: 0,
-        backgroundColor: "#E8503A",
-        borderRadius: radius,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      <Text
-        style={{
-          color: "#FFFFFF",
-          fontSize,
-          fontWeight: "800",
-          letterSpacing: 0,
-          textAlign: "center",
-        }}
-        numberOfLines={1}
-      >
-        Confirm order
-      </Text>
+      {state === "ready" ? (
+        <Ionicons
+          name="arrow-forward"
+          size={iconSize}
+          color={variant.foreground}
+          style={{ marginLeft: 6 }}
+        />
+      ) : null}
     </TouchableOpacity>
   );
 }
@@ -583,21 +548,41 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 0,
     right: 0,
-    bottom: -2,
+    bottom: 0,
     alignItems: "center",
     justifyContent: "flex-end",
   },
   scrollHint: {
+    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.white,
-    borderWidth: glassHairlineWidth,
-    borderColor: glassColors.cardBorder,
-    shadowColor: colors.textPrimary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    elevation: 3,
+  },
+  scrollHintText: {
+    color: colors.textSecondary,
+    fontWeight: "600",
+    letterSpacing: 0,
+    marginTop: 2,
+  },
+  statusBadge: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 12,
+  },
+  statusBadgeAmber: {
+    backgroundColor: "#FEF3C7",
+  },
+  statusBadgeGreen: {
+    backgroundColor: "#DCFCE7",
+  },
+  statusBadgeText: {
+    fontWeight: "700",
+    letterSpacing: 0,
+  },
+  statusBadgeTextAmber: {
+    color: "#92400E",
+  },
+  statusBadgeTextGreen: {
+    color: "#166534",
   },
   footerWrap: {
     width: "100%",

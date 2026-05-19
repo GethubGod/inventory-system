@@ -24,6 +24,8 @@ export interface SubmitOrderRequest {
   userId: string;
   status: 'submitted' | 'draft';
   items: OrderItemPayload[];
+  entryMethod?: 'manual' | 'quick_order' | 'voice_order' | 'suggested_order';
+  quickSessionId?: string | null;
 }
 
 export class OrderSubmissionError extends Error {
@@ -50,8 +52,16 @@ export function validateSubmitRequest(req: SubmitOrderRequest): string | null {
   for (let i = 0; i < req.items.length; i++) {
     const item = req.items[i];
     if (!item.inventory_item_id) return `Item ${i + 1} is missing a product reference`;
-    if (typeof item.quantity !== 'number' || !isFinite(item.quantity) || item.quantity <= 0) {
+    const isRemainingMode = item.input_mode === 'remaining';
+    const invalidQuantity =
+      typeof item.quantity !== 'number' ||
+      !isFinite(item.quantity) ||
+      (isRemainingMode ? item.quantity < 0 : item.quantity <= 0);
+    if (invalidQuantity) {
       return `Item ${i + 1} has an invalid quantity`;
+    }
+    if (isRemainingMode && (typeof item.remaining_reported !== 'number' || item.remaining_reported < 0)) {
+      return `Item ${i + 1} is missing a valid remaining quantity`;
     }
   }
 

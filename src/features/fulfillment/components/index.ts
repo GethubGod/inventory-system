@@ -11,5 +11,7 @@ export type {
 } from './FulfillmentSupplierCard';
 export { OrderLaterAddToSheet } from './OrderLaterAddToSheet';
 export type { OrderLaterSupplierOption } from './OrderLaterAddToSheet';
+export { SupplierPickerBottomSheet } from './SupplierPickerBottomSheet';
+export type { SupplierPickerOption } from './SupplierPickerBottomSheet';
 export { OrderLaterScheduleModal } from './OrderLaterScheduleModal';
 export { QuantityExportSelector } from './QuantityExportSelector';

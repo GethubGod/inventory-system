@@ -1,10 +1,15 @@
 // @ts-nocheck
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
-import { corsHeaders } from '../_shared/cors.ts';
+import { corsHeadersForRequest } from '../_shared/cors.ts';
+import { userCanAccessLocation } from '../_shared/location-access.ts';
 
 const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY');
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+const MAX_TRANSCRIPT_CHARS = 8000;
+const MAX_HISTORY_TURNS = 20;
+const MAX_HISTORY_CHARS = 8000;
+const DEFAULT_DAILY_LIMIT = 50;
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
@@ -14,10 +19,82 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 });
 
-function jsonResponse(body: Record<string, unknown>, status = 200) {
+function jsonResponse(req: Request, body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
+  });
+}
+
+function sanitizeConversationHistory(value: unknown): { role: 'user' | 'model'; parts: { text: string }[] }[] {
+  if (!Array.isArray(value)) return [];
+
+  const sanitized: { role: 'user' | 'model'; parts: { text: string }[] }[] = [];
+  let totalChars = 0;
+
+  for (const entry of value.slice(-MAX_HISTORY_TURNS)) {
+    const role = entry?.role === 'model' ? 'model' : entry?.role === 'user' ? 'user' : null;
+    const text = Array.isArray(entry?.parts)
+      ? entry.parts
+          .map((part: any) => (typeof part?.text === 'string' ? part.text : ''))
+          .join('\n')
+          .trim()
+      : '';
+
+    if (!role || !text) continue;
+    const remainingChars = MAX_HISTORY_CHARS - totalChars;
+    if (remainingChars <= 0) break;
+    const cappedText = text.slice(0, remainingChars);
+    totalChars += cappedText.length;
+    sanitized.push({ role, parts: [{ text: cappedText }] });
+  }
+
+  return sanitized;
+}
+
+async function getDailyVoiceLimit(): Promise<number> {
+  const { data } = await supabaseAdmin
+    .from('app_config')
+    .select('value')
+    .eq('key', 'voice_order_daily_limit_per_user')
+    .maybeSingle();
+  const configured = Number(data?.value);
+  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_DAILY_LIMIT;
+}
+
+async function isVoiceRateLimited(userId: string): Promise<boolean> {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const dailyLimit = await getDailyVoiceLimit();
+  const { count } = await supabaseAdmin
+    .from('parser_usage_log')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('call_type', 'voice-order')
+    .gte('created_at', startOfDay.toISOString());
+  return (count ?? 0) >= dailyLimit;
+}
+
+async function recordVoiceUsage(params: {
+  userId: string;
+  sessionId?: string | null;
+  durationMs: number;
+  succeeded: boolean;
+  errorCode?: string | null;
+}) {
+  await supabaseAdmin.from('parser_usage_log').insert({
+    user_id: params.userId,
+    session_id: params.sessionId ?? null,
+    call_type: 'voice-order',
+    parser_mode: 'live',
+    ai_provider: 'gemini',
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+    estimated_cost_usd: 0,
+    duration_ms: params.durationMs,
+    succeeded: params.succeeded,
+    error_code: params.errorCode ?? null,
   });
 }
 
@@ -56,17 +133,19 @@ async function getAuthenticatedUser(req: Request) {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeadersForRequest(req) });
   }
 
   if (req.method !== 'POST') {
-    return jsonResponse({ error: 'Method not allowed' }, 405);
+    return jsonResponse(req, { error: 'Method not allowed' }, 405);
   }
+
+  const callStartedAt = Date.now();
 
   try {
     const authResult = await getAuthenticatedUser(req);
     if (authResult.error || !authResult.user) {
-      return jsonResponse({ error: authResult.error || 'Unauthorized' }, authResult.status);
+      return jsonResponse(req, { error: authResult.error || 'Unauthorized' }, authResult.status);
     }
 
     const {
@@ -82,20 +161,57 @@ Deno.serve(async (req) => {
     const effectiveEmployeeId = authResult.user.id;
 
     if (!normalizedTranscript) {
-      return jsonResponse({ error: 'Missing required field: transcript' }, 400);
+      return jsonResponse(req, { error: 'Missing required field: transcript' }, 400);
+    }
+    if (normalizedTranscript.length > MAX_TRANSCRIPT_CHARS) {
+      return jsonResponse(req, { error: 'Transcript is too long' }, 400);
     }
     if (!normalizedLocationShortCode) {
-      return jsonResponse({ error: 'Missing required field: locationShortCode' }, 400);
+      return jsonResponse(req, { error: 'Missing required field: locationShortCode' }, 400);
+    }
+    if (!/^[a-z0-9_-]{1,32}$/i.test(normalizedLocationShortCode)) {
+      return jsonResponse(req, { error: 'Invalid location' }, 403);
     }
     if (
       typeof employeeId === 'string' &&
       employeeId.trim().length > 0 &&
       employeeId.trim() !== effectiveEmployeeId
     ) {
-      return jsonResponse({ error: 'Authenticated user mismatch' }, 403);
+      return jsonResponse(req, { error: 'Authenticated user mismatch' }, 403);
     }
     if (!GOOGLE_API_KEY) {
-      return jsonResponse({ error: 'GOOGLE_API_KEY not configured' }, 500);
+      return jsonResponse(req, { error: 'Voice ordering is temporarily unavailable' }, 500);
+    }
+    if (await isVoiceRateLimited(effectiveEmployeeId)) {
+      return jsonResponse(req, { error: 'Daily voice ordering limit reached. Try again tomorrow.' }, 429);
+    }
+
+    const { data: locationRow, error: locationLookupError } = await supabaseAdmin
+      .from('locations')
+      .select('id')
+      .eq('short_code', normalizedLocationShortCode)
+      .eq('active', true)
+      .maybeSingle();
+
+    if (locationLookupError) {
+      console.error('Location lookup failed:', locationLookupError);
+      return jsonResponse(req, { error: 'Unable to resolve location' }, 500);
+    }
+
+    if (!locationRow?.id) {
+      return jsonResponse(req, { error: 'Invalid location' }, 403);
+    }
+
+    const locationAccess = await userCanAccessLocation(
+      supabaseAdmin,
+      effectiveEmployeeId,
+      locationRow.id,
+    );
+    if (!locationAccess.allowed) {
+      return jsonResponse(req,
+        { error: locationAccess.error || 'Forbidden' },
+        locationAccess.status,
+      );
     }
 
     // ── Step 1: Fetch inventory for this location ──
@@ -115,7 +231,7 @@ Deno.serve(async (req) => {
 
     if (dbError) {
       console.error('Database query failed:', dbError);
-      return jsonResponse({ error: `Database error: ${dbError.message}` }, 500);
+      return jsonResponse(req, { error: 'Unable to load inventory for this location' }, 500);
     }
 
     const inventoryList = (areaItems || []).map((item) => ({
@@ -127,6 +243,9 @@ Deno.serve(async (req) => {
       order_unit: item.order_unit || item.unit_type,
       count_unit: item.unit_type,
     }));
+
+    const allowedAreaItemIds = new Set(inventoryList.map((item) => item.area_item_id));
+    const allowedInventoryItemIds = new Set(inventoryList.map((item) => item.inventory_item_id));
 
     const inventoryForPrompt = inventoryList
       .map(
@@ -143,14 +262,7 @@ Deno.serve(async (req) => {
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      // Get location ID from short code
-      const { data: locationData } = await supabaseAdmin
-        .from('locations')
-        .select('id')
-        .eq('short_code', normalizedLocationShortCode)
-        .maybeSingle();
-
-      if (locationData) {
+      if (locationRow.id) {
         const { data: recentOrders } = await supabaseAdmin
           .from('orders')
           .select(`
@@ -164,7 +276,7 @@ Deno.serve(async (req) => {
             )
           `)
           .eq('user_id', effectiveEmployeeId)
-          .eq('location_id', locationData.id)
+          .eq('location_id', locationRow.id)
           .gte('created_at', thirtyDaysAgo.toISOString())
           .in('status', ['submitted', 'processing', 'fulfilled'])
           .order('created_at', { ascending: false })
@@ -251,7 +363,7 @@ The "message" field is what gets displayed to the employee.`;
 
     // Build contents with conversation history + new user message
     const contents = [
-      ...(Array.isArray(conversationHistory) ? conversationHistory : []),
+      ...sanitizeConversationHistory(conversationHistory),
       { role: 'user', parts: [{ text: normalizedTranscript }] },
     ];
 
@@ -261,10 +373,10 @@ The "message" field is what gets displayed to the employee.`;
     let geminiResponse;
     try {
       geminiResponse = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GOOGLE_API_KEY}`,
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GOOGLE_API_KEY },
           signal: geminiController.signal,
           body: JSON.stringify({
             systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -283,7 +395,13 @@ The "message" field is what gets displayed to the employee.`;
     if (!geminiResponse.ok) {
       const geminiError = await geminiResponse.text();
       console.error('Gemini API error:', geminiError);
-      return jsonResponse({
+      await recordVoiceUsage({
+        userId: effectiveEmployeeId,
+        durationMs: Date.now() - callStartedAt,
+        succeeded: false,
+        errorCode: 'gemini_error',
+      });
+      return jsonResponse(req, {
         success: false,
         aiMessage: "I'm having trouble thinking right now. Try again in a moment.",
         parsedItems: [],
@@ -309,26 +427,41 @@ The "message" field is what gets displayed to the employee.`;
           aiMessage = parsed.message || aiMessage;
           parsedItems = Array.isArray(parsed.items) ? parsed.items : [];
         } catch {
-          console.error('Failed to parse Gemini response:', rawText);
-          aiMessage = rawText || aiMessage;
+          console.error('Failed to parse Gemini response.');
         }
       } else {
-        aiMessage = rawText || aiMessage;
+        console.error('Gemini response did not contain JSON.');
       }
     }
 
-    return jsonResponse({
+    const filteredParsedItems = parsedItems.filter((item) => {
+      const areaItemId = typeof item?.area_item_id === 'string' ? item.area_item_id : '';
+      const inventoryItemId =
+        typeof item?.inventory_item_id === 'string' ? item.inventory_item_id : '';
+      return (
+        (areaItemId && allowedAreaItemIds.has(areaItemId))
+        || (inventoryItemId && allowedInventoryItemIds.has(inventoryItemId))
+      );
+    });
+
+    await recordVoiceUsage({
+      userId: effectiveEmployeeId,
+      durationMs: Date.now() - callStartedAt,
+      succeeded: true,
+    });
+
+    return jsonResponse(req, {
       success: true,
       aiMessage,
-      parsedItems,
+      parsedItems: filteredParsedItems,
       geminiTurn: {
         role: 'model',
-        parts: [{ text: rawText }],
+        parts: [{ text: aiMessage }],
       },
     });
   } catch (err) {
     console.error('voice-order error:', err);
-    return jsonResponse({
+    return jsonResponse(req, {
       success: false,
       aiMessage: "I'm having trouble thinking right now. Try again in a moment.",
       parsedItems: [],

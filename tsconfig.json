@@ -47,7 +47,8 @@
     "ios",
     "babel.config.js",
     "metro.config.js",
-    "scratch_query.ts"
+    "scripts/scratch_query.ts",
+    "supabase/functions/**"
   ],
   "include": [
     "**/*.ts",

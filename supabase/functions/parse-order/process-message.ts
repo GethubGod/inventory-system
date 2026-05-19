@@ -1,10 +1,11 @@
-import { classifyQuickOrderInput } from './input-classifier.ts';
+import { buildCatalogSearchIndex } from './catalog-matcher.ts';
+import type { QuickOrderInputClassificationResult } from './input-classifier.ts';
 import { routeQuickOrderModel, type QuickOrderModelConfig } from './model-router.ts';
 import { parseQuickOrder, PARSER_VERSION } from './orchestrator.ts';
 import { buildQuickOrderRecommendations, type RecommendationHistoryOrder } from './recommendation-engine.ts';
 import { buildProcessMessages } from './response-formatter.ts';
 import { routeQuickOrderSegments } from './segment-router.ts';
-import { validateQuickOrderSafety } from './safety-engine.ts';
+import { applyStockSafetyLimits, deduplicatePendingClarifications, validateQuickOrderSafety } from './safety-engine.ts';
 import { extractStockUpdates, type StockUpdateExtraction } from './stock-updates.ts';
 import { QuickOrderTimer } from './timing.ts';
 import type {
@@ -12,7 +13,6 @@ import type {
   ItemAllowedUnitRule,
   ItemOrderLimit,
   ParserCorrection,
-  ParserExample,
   ParseResponse,
   ParsedItem,
   ProcessQuickOrderMessageRequest,
@@ -21,12 +21,12 @@ import type {
   QuickOrderModelUsed,
   StockOperation,
 } from './types.ts';
+import type { UnitAliasMap } from './units.ts';
 
 export type ProcessQuickOrderMessageInput = {
   request: ProcessQuickOrderMessageRequest;
   catalog: CatalogItem[];
   globalCatalog?: CatalogItem[];
-  examples: ParserExample[];
   corrections: ParserCorrection[];
   previousMessages: QuickOrderMessage[];
   existingParsedItems: ParsedItem[];
@@ -35,8 +35,10 @@ export type ProcessQuickOrderMessageInput = {
   recentOrders: RecommendationHistoryOrder[];
   userRole?: string | null;
   modelConfig: QuickOrderModelConfig;
+  unitAliases: UnitAliasMap;
+  classification: QuickOrderInputClassificationResult;
   callLlm?: (prompt: string, model: string | null) => Promise<string>;
-  persistStockUpdates?: (updates: StockOperation[]) => Promise<void>;
+  persistStockUpdates?: (updates: StockOperation[]) => Promise<{ ok: boolean; error?: string }>;
   debugTimings?: boolean;
 };
 
@@ -49,11 +51,11 @@ export async function processQuickOrderMessage(
   const globalOrderCatalog = input.globalCatalog
     ? applyAllowedUnitRulesToCatalog(input.globalCatalog, input.allowedUnitRules)
     : undefined;
-  const classification = classifyQuickOrderInput(request.message, {
-    hasPendingDuplicateAction: input.previousMessages.some((message) =>
-      (message.pending_clarifications ?? []).some((entry) => entry.type === 'quantity_conflict' || entry.type === 'unit_conflict')
-    ),
-  });
+  const catalogIndex = buildCatalogSearchIndex(orderCatalog, input.corrections);
+  const globalCatalogIndex = globalOrderCatalog
+    ? buildCatalogSearchIndex(globalOrderCatalog, input.corrections)
+    : undefined;
+  const classification = input.classification;
   const segmentRoute = routeQuickOrderSegments(request.message);
 
   const stockExtraction = timer.measure('deterministic_parse', (): StockUpdateExtraction =>
@@ -63,9 +65,21 @@ export async function processQuickOrderMessage(
           source: request.source,
           catalog: input.catalog,
           corrections: input.corrections,
+          catalogIndex,
+          unitAliases: input.unitAliases,
         })
       : emptyStockExtraction(request.message)
   );
+
+  const stockSafety = applyStockSafetyLimits({
+    stockUpdates: stockExtraction.stockUpdates,
+    catalog: orderCatalog,
+    locationId: request.location_id,
+    source: request.source,
+    limits: input.limits,
+    allowedUnitRules: input.allowedUnitRules,
+    userRole: input.userRole,
+  });
 
   const shouldRecommend =
     classification.classification === 'recommend_order_request' ||
@@ -78,11 +92,17 @@ export async function processQuickOrderMessage(
       classification.classification === 'recommend_order_request' ||
       classification.classification === 'mixed_stock_and_recommendation_request'
     );
-  const parserText = segmentRoute.orderSegments.length > 0
-    ? segmentRoute.orderSegments.join('\n')
-    : shouldSkipOrderParse
-      ? ''
-      : stockExtraction.remainingText || request.message;
+  // Product questions must always reach the orchestrator so it can route them
+  // to the Q&A handler (the orchestrator's `product_question` branch bypasses
+  // order parsing entirely).
+  const isProductQuestion = classification.classification === 'product_question';
+  const parserText = isProductQuestion
+    ? request.message
+    : segmentRoute.orderSegments.length > 0
+      ? segmentRoute.orderSegments.join('\n')
+      : shouldSkipOrderParse
+        ? ''
+        : stockExtraction.remainingText || request.message;
 
   const modelRoute = routeQuickOrderModel({
     message: parserText || request.message,
@@ -94,15 +114,21 @@ export async function processQuickOrderMessage(
     ? await timer.measureAsync('llm_fallback', () => parseQuickOrder({
         rawText: parserText,
         locationId: request.location_id,
+        userId: request.user_id,
         catalog: orderCatalog,
         globalCatalog: globalOrderCatalog,
-        examples: input.examples,
+        examples: [],
         corrections: input.corrections,
         previousMessages: request.recent_messages ?? input.previousMessages,
         existingParsedItems: request.existing_items.length > 0 ? request.existing_items : input.existingParsedItems,
         callLlm: modelRoute.allowLlmFallback && input.callLlm
           ? (prompt) => input.callLlm!(prompt, modelRoute.model)
           : undefined,
+        unitAliases: input.unitAliases,
+        catalogIndex,
+        globalCatalogIndex,
+        classification,
+        debugCatalog: input.debugTimings === true,
       }))
     : emptyParseResponse({
         existingCount: input.existingParsedItems.length,
@@ -121,26 +147,32 @@ export async function processQuickOrderMessage(
     userRole: input.userRole,
   }));
 
-  if (stockExtraction.stockUpdates.length > 0 && input.persistStockUpdates) {
-    await timer.measureAsync('db_write', () => input.persistStockUpdates!(stockExtraction.stockUpdates));
+  let stockPersistError: string | null = null;
+  if (stockSafety.accepted.length > 0 && input.persistStockUpdates) {
+    const persistResult = await timer.measureAsync('db_write', () => input.persistStockUpdates!(stockSafety.accepted));
+    if (!persistResult.ok) {
+      stockPersistError = persistResult.error ?? 'Failed to save stock counts.';
+    }
   }
 
   const recommendationResult = shouldRecommend
     ? timer.measure('recommendation_engine', () => buildQuickOrderRecommendations({
         catalog: orderCatalog,
-        stockUpdates: stockExtraction.stockUpdates,
+        stockUpdates: stockSafety.accepted,
         recentOrders: input.recentOrders,
         limits: input.limits,
         allowedUnitRules: input.allowedUnitRules,
       }))
     : { recommendations: [], warnings: [] };
 
+  const allWarnings = [...safety.warnings, ...recommendationResult.warnings, ...stockSafety.warnings];
+  const allBlocked = [...safety.blockedOperations, ...stockSafety.blocked];
   const messages = timer.measure('response_build', () => buildProcessMessages({
     parseResponse: safety.response,
-    stockUpdates: stockExtraction.stockUpdates,
+    stockUpdates: stockSafety.accepted,
     recommendations: recommendationResult.recommendations,
-    safetyWarnings: [...safety.warnings, ...recommendationResult.warnings],
-    blockedOperations: safety.blockedOperations,
+    safetyWarnings: allWarnings,
+    blockedOperations: allBlocked,
   }));
 
   const actualModelUsed: QuickOrderModelUsed = safety.response.metrics?.llm_used
@@ -148,10 +180,11 @@ export async function processQuickOrderMessage(
     : 'none';
   const processStatus = deriveProcessStatus({
     parseResponse: safety.response,
-    stockUpdates: stockExtraction.stockUpdates,
+    stockUpdates: stockSafety.accepted,
     recommendationsCount: recommendationResult.recommendations.length,
-    warningsCount: safety.warnings.length + recommendationResult.warnings.length,
-    blockedCount: safety.blockedOperations.length,
+    warningsCount: allWarnings.length,
+    blockedCount: allBlocked.length,
+    stockPersistError,
   });
   const timings = timer.snapshot();
 
@@ -163,26 +196,28 @@ export async function processQuickOrderMessage(
     }));
   }
 
+  const pendingClarifications = deduplicatePendingClarifications(safety.pendingClarifications);
+
   return {
     ...safety.response,
     status: processStatus,
     legacy_status: safety.response.status ?? 'ok',
-    display_message: messages.displayMessage,
-    speech_message: messages.speechMessage,
-    assistant_message: messages.displayMessage,
-    reply_text: messages.displayMessage,
+    display_message: stockPersistError ?? messages.displayMessage,
+    speech_message: stockPersistError ?? messages.speechMessage,
+    assistant_message: stockPersistError ?? messages.displayMessage,
+    reply_text: stockPersistError ?? messages.displayMessage,
     parsed_items: safety.response.parsed_items,
     cart_operations: safety.response.operations ?? [],
     operations: safety.response.operations ?? [],
-    stock_updates: stockExtraction.stockUpdates,
+    stock_updates: stockSafety.accepted,
     recommendations: recommendationResult.recommendations,
-    clarifications: safety.pendingClarifications,
-    pending_actions: safety.pendingClarifications,
-    pending_clarifications: safety.pendingClarifications,
-    safety_warnings: [...safety.warnings, ...recommendationResult.warnings],
-    blocked_operations: safety.blockedOperations,
+    clarifications: pendingClarifications,
+    pending_actions: pendingClarifications,
+    pending_clarifications: pendingClarifications,
+    safety_warnings: allWarnings,
+    blocked_operations: allBlocked,
     model_used: actualModelUsed,
-    confidence: responseConfidence(safety.response, stockExtraction.stockUpdates),
+    confidence: responseConfidence(safety.response, stockSafety.accepted),
     timings,
     diagnostics: {
       ...(safety.response.diagnostics ?? {}),
@@ -200,7 +235,8 @@ export async function processQuickOrderMessage(
       })),
       model_route: modelRoute.reason,
       model_used: actualModelUsed,
-      stock_update_count: stockExtraction.stockUpdates.length,
+      stock_update_count: stockSafety.accepted.length,
+      stock_persist_error: stockPersistError,
       recommendation_count: recommendationResult.recommendations.length,
     } as ProcessQuickOrderResponse['diagnostics'],
   };
@@ -301,8 +337,13 @@ function deriveProcessStatus(input: {
   recommendationsCount: number;
   warningsCount: number;
   blockedCount: number;
+  stockPersistError: string | null;
 }): ProcessQuickOrderResponse['status'] {
+  if (input.stockPersistError && input.stockUpdates.length === 0 && input.parseResponse.parsed_items.length === 0) {
+    return 'error';
+  }
   if (input.parseResponse.status === 'error') return 'error';
+  if (input.parseResponse.status === 'qa_answer') return 'qa_answer';
   const hasSuccess =
     input.parseResponse.parsed_items.length > 0 ||
     (input.parseResponse.operations ?? []).some((operation) => operation.status === 'applied') ||

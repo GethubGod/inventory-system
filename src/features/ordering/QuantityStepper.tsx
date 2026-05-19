@@ -1,12 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerSelectionHaptic } from '@/lib/haptics';
 
 type QuantityStepperProps = {
   value: number;
-  /** Unit label shown beneath the big number (e.g. "cases", "lb"). */
+  /** Pluralized unit label shown beneath the big number (e.g. "cases", "lb"). */
   unitLabel: string;
   onChange: (next: number) => void;
   /** Smallest value the stepper will go down to. Defaults to 0. */
@@ -15,21 +14,11 @@ type QuantityStepperProps = {
 };
 
 const QUICK_INCREMENTS = [1, 5, 10] as const;
-
-// Hardcoded so the contrast can never collapse against the cream sheet bg
-// (the design-system grayScale[100] is too close to background for the chips
-// to read as filled pills).
-const PILL_BG = '#F0ECE3';
-const PILL_BG_PRESSED = '#E2DDD2';
-const PILL_BORDER = '#E2DDD2';
-const PRIMARY = '#E8503A';
-const PRIMARY_TINT = '#FBE5E1';
-const PRIMARY_TINT_PRESSED = '#F5D0C8';
-const ROUND_BG = '#F0ECE3';
-const ROUND_BG_PRESSED = '#E2DDD2';
 const TEXT_PRIMARY = '#1C1C1E';
-const TEXT_SECONDARY = '#8E8E93';
-const TEXT_MUTED = '#AEAEB2';
+const TEXT_SECONDARY = '#8F8F95';
+const PRIMARY = '#EF4B3D';
+const NEUTRAL_PILL = '#F1EADF';
+const PRIMARY_PILL = '#FBE3DF';
 
 function formatStepperValue(value: number): string {
   if (!Number.isFinite(value)) return '0';
@@ -37,13 +26,18 @@ function formatStepperValue(value: number): string {
 }
 
 /**
- * Apple-style quantity picker that matches the mockup: rounded white card with
- * a big bold number flanked by circular −/+ buttons (gray / pink), and a row
- * of pill chips for +1/+5/+10 + a "Type" toggle that swaps the number for a
- * numeric input.
+ * Apple-style quantity picker matching the mockup:
+ *
+ * - White rounded card
+ * - Large circular minus button (beige bg, dark −)
+ * - Very large bold centered quantity number
+ * - Smaller gray unit label below the number
+ * - Large circular plus button (pink bg, red +)
+ * - Row of pill chips: +1 / +5 / +10 / Type
+ *
+ * All styles are inline to avoid NativeWind / StyleSheet.create conflicts.
  */
 export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled = false }: QuantityStepperProps) {
-  const ds = useScaledStyles();
   const [typing, setTyping] = useState(false);
   const [text, setText] = useState('');
   const inputRef = useRef<TextInput | null>(null);
@@ -76,30 +70,58 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
   }, [min, onChange, text]);
 
   const canDecrement = !disabled && value > min;
-  const roundSize = ds.spacing(76);
+
+  const roundSize = 74;
+  const roundIconSize = 30;
 
   return (
     <View
-      style={[
-        styles.card,
-        {
-          borderRadius: ds.radius(24),
-          paddingVertical: ds.spacing(22),
-          paddingHorizontal: ds.spacing(22),
-        },
-      ]}
+      style={{
+        width: '100%',
+        alignSelf: 'stretch',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 24,
+        paddingVertical: 28,
+        paddingHorizontal: 24,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.06,
+        shadowRadius: 10,
+        elevation: 3,
+      }}
     >
-      <View style={[styles.valueRow, { marginBottom: ds.spacing(18) }]}>
-        <RoundButton
-          icon="remove"
+      {/* Quantity value row: [−]  number  [+] */}
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: 28,
+        }}
+      >
+        {/* Minus button */}
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel="Decrease quantity"
+          accessibilityState={{ disabled: !canDecrement }}
           disabled={!canDecrement}
           onPress={() => bump(-1)}
-          size={roundSize}
-          iconSize={ds.icon(28)}
-        />
+          hitSlop={12}
+          style={{
+            width: roundSize,
+            height: roundSize,
+            borderRadius: roundSize / 2,
+            backgroundColor: NEUTRAL_PILL,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: !canDecrement ? 0.35 : 1,
+          }}
+        >
+          <Ionicons name="remove" size={roundIconSize} color={TEXT_PRIMARY} />
+        </Pressable>
 
-        <View style={styles.valueColumn}>
+        {/* Center: number + unit label */}
+        <View style={{ flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }}>
           {typing ? (
             <TextInput
               ref={inputRef}
@@ -110,44 +132,114 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
               keyboardType="decimal-pad"
               returnKeyType="done"
               placeholder="0"
-              placeholderTextColor={TEXT_MUTED}
-              style={[styles.valueInput, { fontSize: ds.fontSize(56), minWidth: ds.spacing(80) }]}
+              placeholderTextColor="#AEAEB2"
+              allowFontScaling={false}
+              style={{
+                fontSize: 60,
+                fontWeight: '800',
+                color: TEXT_PRIMARY,
+                letterSpacing: 0,
+                textAlign: 'center',
+                padding: 0,
+                width: '100%',
+                maxWidth: 160,
+              }}
             />
           ) : (
-            <Text style={[styles.valueText, { fontSize: ds.fontSize(56) }]} numberOfLines={1}>
+            <Text
+              numberOfLines={1}
+              allowFontScaling={false}
+              adjustsFontSizeToFit
+              minimumFontScale={0.55}
+              style={{
+                fontSize: 60,
+                fontWeight: '800',
+                color: TEXT_PRIMARY,
+                letterSpacing: 0,
+                maxWidth: 160,
+              }}
+            >
               {formatStepperValue(value)}
             </Text>
           )}
-          <Text style={[styles.unitText, { fontSize: ds.fontSize(15), marginTop: ds.spacing(2) }]} numberOfLines={1}>
+          <Text
+            numberOfLines={1}
+            allowFontScaling={false}
+            style={{
+              fontSize: 19,
+              fontWeight: '500',
+              color: TEXT_SECONDARY,
+              marginTop: 4,
+              letterSpacing: 0,
+            }}
+          >
             {unitLabel || ' '}
           </Text>
         </View>
 
-        <RoundButton
-          icon="add"
+        {/* Plus button */}
+        <Pressable
+          accessibilityRole="button"
           accessibilityLabel="Increase quantity"
+          accessibilityState={{ disabled }}
           disabled={disabled}
           onPress={() => bump(1)}
-          size={roundSize}
-          iconSize={ds.icon(28)}
-          accent
-        />
+          hitSlop={12}
+          style={{
+            width: roundSize,
+            height: roundSize,
+            borderRadius: roundSize / 2,
+            backgroundColor: PRIMARY_PILL,
+            alignItems: 'center',
+            justifyContent: 'center',
+            opacity: disabled ? 0.35 : 1,
+          }}
+        >
+          <Ionicons name="add" size={roundIconSize} color={PRIMARY} />
+        </Pressable>
       </View>
 
-      <View style={[styles.chipRow, { gap: ds.spacing(10) }]}>
+      {/* Quick increment pills: +1 / +5 / +10 / Type */}
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
         {QUICK_INCREMENTS.map((amount) => (
-          <PillChip
+          <Pressable
             key={amount}
-            label={`+${amount}`}
+            accessibilityRole="button"
+            accessibilityLabel={`+${amount}`}
+            accessibilityState={{ disabled }}
             disabled={disabled}
             onPress={() => bump(amount)}
-            ds={ds}
-          />
+            style={{
+              flex: 1,
+              minWidth: 0,
+              borderRadius: 999,
+              minHeight: 46,
+              paddingVertical: 11,
+              paddingHorizontal: 8,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: NEUTRAL_PILL,
+              opacity: disabled ? 0.5 : 1,
+            }}
+          >
+            <Text
+              allowFontScaling={false}
+              style={{
+                fontSize: 17,
+                fontWeight: '800',
+                color: '#5D5D63',
+                letterSpacing: 0,
+              }}
+            >
+              {`+${amount}`}
+            </Text>
+          </Pressable>
         ))}
-        <PillChip
-          label="Type"
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Type"
+          accessibilityState={{ disabled, selected: typing }}
           disabled={disabled}
-          selected={typing}
           onPress={() => {
             void triggerSelectionHaptic();
             setTyping((current) => {
@@ -158,137 +250,32 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
               return true;
             });
           }}
-          ds={ds}
-        />
+          style={{
+            flex: 1,
+            minWidth: 0,
+            borderRadius: 999,
+            minHeight: 46,
+            paddingVertical: 11,
+            paddingHorizontal: 8,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: typing ? PRIMARY_PILL : NEUTRAL_PILL,
+            opacity: disabled ? 0.5 : 1,
+          }}
+        >
+          <Text
+            allowFontScaling={false}
+            style={{
+              fontSize: 17,
+              fontWeight: '800',
+              color: typing ? PRIMARY : '#5D5D63',
+              letterSpacing: 0,
+            }}
+          >
+            Type
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
 }
-
-type PillChipProps = {
-  label: string;
-  disabled: boolean;
-  onPress: () => void;
-  selected?: boolean;
-  ds: ReturnType<typeof useScaledStyles>;
-};
-
-function PillChip({ label, disabled, onPress, selected = false, ds }: PillChipProps) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled, selected }}
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => ({
-        flex: 1,
-        minWidth: 0,
-        borderRadius: 999,
-        paddingVertical: ds.spacing(14),
-        paddingHorizontal: ds.spacing(10),
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: selected
-          ? pressed
-            ? PRIMARY_TINT_PRESSED
-            : PRIMARY_TINT
-          : pressed
-            ? PILL_BG_PRESSED
-            : PILL_BG,
-        borderWidth: 1,
-        borderColor: selected ? PRIMARY_TINT : PILL_BORDER,
-        opacity: disabled ? 0.5 : 1,
-      })}
-    >
-      <Text
-        style={{
-          fontSize: ds.fontSize(16),
-          fontWeight: '800',
-          color: selected ? PRIMARY : TEXT_PRIMARY,
-          letterSpacing: 0,
-        }}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
-type RoundButtonProps = {
-  icon: keyof typeof Ionicons.glyphMap;
-  accessibilityLabel: string;
-  disabled: boolean;
-  onPress: () => void;
-  size: number;
-  iconSize: number;
-  accent?: boolean;
-};
-
-function RoundButton({ icon, accessibilityLabel, disabled, onPress, size, iconSize, accent = false }: RoundButtonProps) {
-  const bg = accent ? PRIMARY_TINT : PILL_BG;
-  const iconColor = accent ? PRIMARY : TEXT_PRIMARY;
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ disabled }}
-      disabled={disabled}
-      onPress={onPress}
-      hitSlop={8}
-      style={({ pressed }) => ({
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        backgroundColor: pressed ? (accent ? '#F5D0C8' : PILL_BG_PRESSED) : bg,
-        alignItems: 'center',
-        justifyContent: 'center',
-        opacity: disabled ? 0.35 : 1,
-      })}
-    >
-      <Ionicons name={icon} size={iconSize} color={iconColor} />
-    </Pressable>
-  );
-}
-
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  valueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  valueColumn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  valueText: {
-    color: TEXT_PRIMARY,
-    fontWeight: '800',
-    letterSpacing: -1.5,
-  },
-  valueInput: {
-    color: TEXT_PRIMARY,
-    fontWeight: '800',
-    letterSpacing: -1.5,
-    textAlign: 'center',
-    padding: 0,
-  },
-  unitText: {
-    color: TEXT_SECONDARY,
-    fontWeight: '500',
-    letterSpacing: 0,
-  },
-  chipRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-});

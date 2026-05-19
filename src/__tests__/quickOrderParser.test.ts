@@ -5,7 +5,9 @@ import { detectQuickOrderIntent } from '../../supabase/functions/parse-order/int
 import { parseJsonPayload } from '../../supabase/functions/parse-order/llm-fallback.ts';
 import { routeQuickOrderModel } from '../../supabase/functions/parse-order/model-router.ts';
 import { parseQuickOrder, reconcileParsedSources } from '../../supabase/functions/parse-order/orchestrator.ts';
+import { classifyQuickOrderInput } from '../../supabase/functions/parse-order/input-classifier.ts';
 import { processQuickOrderMessage } from '../../supabase/functions/parse-order/process-message.ts';
+import { buildUnitAliases } from '../../supabase/functions/parse-order/units.ts';
 import type { CatalogItem, ParsedItem, ParserCorrection } from '../../supabase/functions/parse-order/types.ts';
 import { validateParsedLine } from '../../supabase/functions/parse-order/validator.ts';
 import {
@@ -473,7 +475,7 @@ describe('frontend quick order merge and clarification helpers', () => {
       normalized,
       mergeResult,
       pendingCount: 0,
-    })).toBe('Done');
+    })).toBe('Added 7 pieces of Uni.');
   });
 
   test('assistant message keeps changed totals and summarizes other additions', () => {
@@ -812,7 +814,7 @@ describe('frontend response normalization', () => {
     });
     expect(message).not.toContain('trouble');
     expect(message).not.toContain('try again');
-    expect(message).toBe('Done');
+    expect(message).toBe('Added 2 cases of Salmon.');
   });
 
   test('response with rawError but items still returns items count > 0', () => {
@@ -849,7 +851,7 @@ describe('frontend response normalization', () => {
     });
 
     const mergeResult = mergeQuickOrderParsedItemsDetailed([], normalized.parsedItems);
-    expect(normalized.status).toBe('needs_clarification');
+    expect(normalized.status).toBe('partial_success');
     expect(mergeResult.items).toHaveLength(2);
     expect(mergeResult.addedItems.filter((item) => getParsedItemIssue(item) == null)).toHaveLength(2);
     expect(mergeResult.rejectedReasons).toContain('invalid_unit_not_added');
@@ -1501,6 +1503,8 @@ const robustCatalog: CatalogItem[] = extendedCatalog.map((item) => {
 
 const semanticCatalog: CatalogItem[] = [
   ...robustCatalog,
+  { id: 'asahi-small-id', name: 'Asahi Small', aliases: [], default_unit: 'Bottle', base_unit: 'Bottle', pack_unit: 'case', allowed_units: ['Bottle', 'case'] },
+  { id: 'asahi-large-id', name: 'Asahi Large', aliases: [], default_unit: 'Bottle', base_unit: 'Bottle', pack_unit: 'case', allowed_units: ['Bottle', 'case'] },
   { id: 'sapporo-small-id', name: 'Sapporo Small', aliases: [], default_unit: 'cs', base_unit: 'cs', pack_unit: null, allowed_units: ['cs'] },
   { id: 'sapporo-large-id', name: 'Sapporo Large', aliases: [], default_unit: 'cs', base_unit: 'cs', pack_unit: null, allowed_units: ['cs'] },
   { id: 'wasabi-powder-id', name: 'Wasabi Powder', aliases: [], default_unit: 'cs', base_unit: 'cs', pack_unit: null, allowed_units: ['cs'] },
@@ -2018,6 +2022,25 @@ describe('robust selected-location catalog matching', () => {
     );
   });
 
+  test('Asahi small matches the global inventory item without storage-area metadata', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'Asahi small',
+      catalog: semanticCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+    });
+
+    expect(result.parsed_items).toHaveLength(1);
+    expect(result.parsed_items[0]).toMatchObject({
+      item_id: 'asahi-small-id',
+      item_name: 'Asahi Small',
+      match_type: 'exact_name',
+      status: 'missing_quantity',
+    });
+  });
+
   test('Sapporo smal fuzzy-matches Sapporo Small with strict token coverage', async () => {
     const result = await parseQuickOrder({
       rawText: 'Sapporo smal',
@@ -2130,6 +2153,7 @@ Tuna loin 1 cs`;
       corrections: [],
       previousMessages: [],
       existingParsedItems: [],
+      debugCatalog: true,
     });
 
     expect(result.parsed_items).toHaveLength(17);
@@ -2794,16 +2818,18 @@ describe('shared processQuickOrderMessage brain', () => {
   ];
 
   async function processBrain(message: string, overrides: Partial<Parameters<typeof processQuickOrderMessage>[0]> = {}) {
+    const resolvedMessage = overrides.request?.message ?? message;
     return processQuickOrderMessage({
       catalog: brainCatalog,
       globalCatalog: brainCatalog,
-      examples: [],
       corrections: [],
       previousMessages: [],
       existingParsedItems: [],
       limits: [],
       allowedUnitRules: [],
       recentOrders: [],
+      unitAliases: buildUnitAliases(null),
+      classification: classifyQuickOrderInput(resolvedMessage, { hasPendingDuplicateAction: false }),
       modelConfig: {
         defaultModel: 'gemini-2.5-flash',
         fallbackModel: 'gemini-2.5-flash',
@@ -2814,7 +2840,7 @@ describe('shared processQuickOrderMessage brain', () => {
       ...overrides,
       request: {
         source: overrides.request?.source ?? 'typed',
-        message: overrides.request?.message ?? message,
+        message: resolvedMessage,
         session_id: overrides.request?.session_id ?? 'session-id',
         location_id: overrides.request?.location_id ?? 'location-id',
         user_id: overrides.request?.user_id ?? 'user-id',

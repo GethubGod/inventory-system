@@ -249,12 +249,15 @@ function isSubTermOfName(term: string, itemName: string): boolean {
   return normalizeCatalogText(itemName) !== normalizeCatalogText(term);
 }
 
+const MAX_ALIAS_LENGTH = 64;
+
 function addEntry(
   entries: CatalogSearchEntry[],
   rawTerm: string,
   item: CatalogItem,
   type: SearchTermType,
 ): void {
+  if (rawTerm.trim().length > MAX_ALIAS_LENGTH) return;
   const normalized = normalizeCatalogText(rawTerm);
   if (normalized.length < 2) return;
   const pluralNormalized = pluralNormalizedText(normalized);

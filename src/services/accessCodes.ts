@@ -50,15 +50,16 @@ async function getFunctionErrorMessage(error: unknown): Promise<string | null> {
   return null;
 }
 
-export async function validateAccessCode(accessCode: string): Promise<UserRole> {
+export async function validateAccessCode(accessCode: string, subjectEmail?: string | null): Promise<UserRole> {
   const normalizedCode = accessCode.trim();
+  const normalizedEmail = typeof subjectEmail === 'string' ? subjectEmail.trim().toLowerCase() : '';
 
   if (!ACCESS_CODE_REGEX.test(normalizedCode)) {
     throw new Error('Access code must be exactly 4 digits');
   }
 
   const { data, error } = await supabase.functions.invoke('validate-access-code', {
-    body: { accessCode: normalizedCode },
+    body: { accessCode: normalizedCode, email: normalizedEmail || undefined },
   });
   const typedData = data as ValidateAccessCodeResponse | null;
 

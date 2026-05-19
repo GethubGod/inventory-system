@@ -1,6 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { Pressable, Text, View } from 'react-native';
 import { triggerSelectionHaptic } from '@/lib/haptics';
 import type { QuantityUnitOption } from './quickOrderQuantityFlow';
 
@@ -13,71 +12,94 @@ type UnitSegmentedControlProps = {
 };
 
 /**
- * The four unit pills under the stepper. Each option renders as a SEPARATE
- * rounded pill so the layout matches the mockup: white-filled pills with a
- * subtle border for unselected/available units, a red filled pill with white
- * text for the selected unit, and a dimmed transparent pill for unavailable
- * units (kept in place so the row never reflows).
+ * Full-width segmented control for unit selection (pack / case / lb / piece).
+ *
+ * Renders as a single white rounded card with evenly-spaced segments inside.
+ * The selected segment gets a red pill background with white text.
+ * Unselected segments show dark text on the white background.
+ * Unavailable units still take up space so the row never collapses.
+ *
+ * Layout: all segments use `flex: 1` inside a `flexDirection: 'row'` container
+ * to guarantee equal widths. `overflow: 'hidden'` on segments + `numberOfLines={1}`
+ * on text prevents any overlap between adjacent labels like "lb" and "piece".
  */
 export function UnitSegmentedControl({ options, value, onChange, disabled = false }: UnitSegmentedControlProps) {
-  const ds = useScaledStyles();
-
   return (
     <View
-      style={[
-        styles.card,
-        {
-          borderRadius: ds.radius(20),
-          padding: ds.spacing(6),
-          gap: ds.spacing(6),
-        },
-      ]}
+      style={{
+        width: '100%',
+        alignSelf: 'stretch',
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        borderRadius: 999,
+        padding: 6,
+        minHeight: 62,
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.06,
+        shadowRadius: 8,
+        elevation: 3,
+        overflow: 'hidden',
+      }}
     >
       {options.map((option) => {
         const selected = option.value === value;
         const unavailable = option.available === false;
         const segmentDisabled = disabled || unavailable;
-        const background = selected
-          ? '#E8503A'
-          : 'transparent';
-        const textColor = selected
-          ? '#FFFFFF'
-          : unavailable
-            ? '#C7C7CC'
-            : '#1C1C1E';
+        const selectedAndAvailable = selected && !unavailable;
+
         return (
           <Pressable
             key={option.value}
             accessibilityRole="button"
             accessibilityState={{ selected, disabled: segmentDisabled }}
-            accessibilityLabel={`Use unit ${option.label}`}
+            accessibilityLabel={
+              unavailable
+                ? `${option.label} unavailable`
+                : `Use unit ${option.label}`
+            }
             disabled={segmentDisabled}
             onPress={() => {
               if (segmentDisabled) return;
               void triggerSelectionHaptic();
               onChange(option.value);
             }}
-            style={({ pressed }) => [
-              styles.pill,
-              {
-                borderRadius: 999,
-                paddingVertical: ds.spacing(13),
-                paddingHorizontal: ds.spacing(8),
-                backgroundColor: background,
-                opacity: disabled ? 0.5 : pressed ? 0.75 : 1,
-              },
-            ]}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 999,
+              minHeight: 50,
+              paddingVertical: 12,
+              paddingHorizontal: 2,
+              overflow: 'hidden',
+              backgroundColor: selectedAndAvailable
+                ? '#EF4B3D'
+                : unavailable
+                  ? '#F6F3ED'
+                  : 'transparent',
+              opacity: disabled ? 0.5 : 1,
+            }}
           >
             <Text
-              style={[
-                styles.pillText,
-                {
-                  fontSize: ds.fontSize(16),
-                  color: textColor,
-                  fontWeight: selected ? '800' : '700',
-                },
-              ]}
               numberOfLines={1}
+              allowFontScaling={false}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              style={{
+                fontSize: 17,
+                fontWeight: selectedAndAvailable ? '800' : '600',
+                color: selectedAndAvailable
+                  ? '#FFFFFF'
+                  : unavailable
+                    ? '#C7C1B8'
+                    : '#5D5D63',
+                textAlign: 'center',
+                letterSpacing: 0,
+                width: '100%',
+              }}
             >
               {option.label}
             </Text>
@@ -87,26 +109,3 @@ export function UnitSegmentedControl({ options, value, onChange, disabled = fals
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  pill: {
-    flex: 1,
-    minWidth: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pillText: {
-    letterSpacing: 0,
-    textAlign: 'center',
-  },
-});

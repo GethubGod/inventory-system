@@ -1442,7 +1442,7 @@ export const useAuthStore = create<AuthState>()(
           }
 
           await hydrateAuthenticatedSession(activeSession, {
-            bootstrapInput: { profileCompleted: true },
+            bootstrapInput: { profileCompleted: false },
             repairIfNeeded: true,
             shouldThrowOnSuspended: true,
           });
@@ -1460,7 +1460,7 @@ export const useAuthStore = create<AuthState>()(
           const normalizedEmail = normalizeEmail(email) ?? email.trim().toLowerCase();
           const normalizedName = normalizeName(name);
           const normalizedLocationId = normalizeLocationId(locationId);
-          const role = await validateAccessCode(accessCode);
+          const role = await validateAccessCode(accessCode, normalizedEmail);
           const bootstrapInput: SessionBootstrapInput = {
             email: normalizedEmail,
             fullName: normalizedName,
@@ -1527,7 +1527,7 @@ export const useAuthStore = create<AuthState>()(
             throw new Error('Please enter your full name.');
           }
 
-          const role = await validateAccessCode(accessCode);
+          const role = await validateAccessCode(accessCode, session.user.email);
           const provider = getSessionAuthProvider(session.user);
 
           const user = await hydrateAuthenticatedSession(session, {

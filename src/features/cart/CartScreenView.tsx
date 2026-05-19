@@ -34,7 +34,7 @@ import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { completePendingRemindersForUser } from '@/services/notificationService';
 import type { OrderingMode } from '@/features/ordering/types';
 import { resolveActiveLocationReminders } from '@/services/locationReminderService';
-import { OrderSubmissionError } from '@/services/orderSubmission';
+import { OrderSubmissionError } from '@/services/orderValidation';
 import { BROWSE_INVENTORY_ROUTE } from '@/features/browse/config';
 import {
   formatOrderConfirmationSummary,

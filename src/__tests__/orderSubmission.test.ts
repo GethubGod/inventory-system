@@ -159,6 +159,51 @@ describe('validateSubmitRequest', () => {
     ).toBeNull();
   });
 
+  test('accepts remaining-mode item with zero reported remaining quantity', () => {
+    expect(
+      validateSubmitRequest(
+        makeRequest({
+          items: [
+            makeItem({
+              input_mode: 'remaining',
+              quantity: 0,
+              quantity_requested: null,
+              remaining_reported: 0,
+            }),
+          ],
+        })
+      )
+    ).toBeNull();
+  });
+
+  test('rejects remaining-mode item when remaining_reported is missing', () => {
+    expect(
+      validateSubmitRequest(
+        makeRequest({
+          items: [
+            makeItem({
+              input_mode: 'remaining',
+              quantity: 0,
+              quantity_requested: null,
+              remaining_reported: null,
+            }),
+          ],
+        })
+      )
+    ).toBe('Item 1 is missing a valid remaining quantity');
+  });
+
+  test('accepts Quick Order metadata fields', () => {
+    expect(
+      validateSubmitRequest(
+        makeRequest({
+          entryMethod: 'quick_order',
+          quickSessionId: 'session-001',
+        })
+      )
+    ).toBeNull();
+  });
+
   test('accepts draft status', () => {
     expect(validateSubmitRequest(makeRequest({ status: 'draft' }))).toBeNull();
   });

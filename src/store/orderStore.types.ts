@@ -10,6 +10,21 @@ import type { PendingFulfillmentDataResult } from '@/services/fulfillmentDataSou
 export type OrderInputMode = 'quantity' | 'remaining';
 export type CartScope = 'employee' | 'manager';
 export type CartContext = CartScope;
+export type OrderEntryMethod = 'manual' | 'quick_order' | 'voice_order' | 'suggested_order';
+
+export interface SubmitOrderOptions {
+  orderId?: string;
+  entryMethod?: OrderEntryMethod;
+  quickSessionId?: string | null;
+  pendingSubmitKey?: string;
+}
+
+export interface PendingSubmitMetadata {
+  orderId: string;
+  entryMethod?: OrderEntryMethod;
+  quickSessionId?: string | null;
+  createdAt: string;
+}
 
 export interface CartItem {
   id: string;
@@ -246,6 +261,7 @@ export interface LastOrderedQuantityCacheValue {
 export interface OrderState {
   cartByLocation: CartByLocation;
   managerCartByLocation: CartByLocation;
+  pendingSubmitByLocation: Record<string, PendingSubmitMetadata>;
   orders: Order[];
   currentOrder: OrderWithDetails | null;
   isLoading: boolean;
@@ -318,17 +334,19 @@ export interface OrderState {
   fetchUserOrders: (userId: string) => Promise<void>;
   fetchManagerOrders: (locationId?: string | null, status?: OrderStatus | null) => Promise<void>;
   fetchOrder: (orderId: string) => Promise<void>;
-  createOrder: (locationId: string, userId: string, context?: CartContext) => Promise<Order>;
+  createOrder: (locationId: string, userId: string, context?: CartContext, options?: SubmitOrderOptions) => Promise<Order>;
   createAndSubmitOrder: (
     locationId: string,
     userId: string,
-    context?: CartContext
+    context?: CartContext,
+    options?: SubmitOrderOptions
   ) => Promise<OrderWithDetails>;
   createAndSubmitOrderFromSourceLocation: (
     sourceLocationId: string,
     submitLocationId: string,
     userId: string,
-    context?: CartContext
+    context?: CartContext,
+    options?: SubmitOrderOptions
   ) => Promise<OrderWithDetails>;
   submitOrder: (orderId: string) => Promise<void>;
   updateOrderStatus: (orderId: string, status: OrderStatus, fulfilledBy?: string) => Promise<void>;
