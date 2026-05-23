@@ -14,6 +14,7 @@ import {
   DEFAULT_INVENTORY_VIEW,
   DEFAULT_STOCK_SETTINGS,
 } from '@/types/settings';
+import type { ComposerMode } from '@/features/ordering/quickOrderComposer';
 
 interface SettingsState {
   // Profile
@@ -49,6 +50,10 @@ interface SettingsState {
 
   // Reset
   resetAllToDefaults: () => void;
+
+  // Quick Order Settings
+  quickOrderComposerMode: ComposerMode;
+  setQuickOrderComposerMode: (mode: ComposerMode) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -67,6 +72,9 @@ export const useSettingsStore = create<SettingsState>()(
       exportFormat: DEFAULT_EXPORT_FORMAT_SETTINGS,
       inventoryView: DEFAULT_INVENTORY_VIEW,
       stockSettings: DEFAULT_STOCK_SETTINGS,
+
+      // Quick Order - Initial State
+      quickOrderComposerMode: 'order',
 
       // Profile Actions
       setAvatarUri: (avatarUri) => set({ avatarUri }),
@@ -146,6 +154,9 @@ export const useSettingsStore = create<SettingsState>()(
           stockSettings: { ...state.stockSettings, ...settings },
         })),
 
+      // Quick Order Actions
+      setQuickOrderComposerMode: (quickOrderComposerMode) => set({ quickOrderComposerMode }),
+
       // Reset Actions
       resetAllToDefaults: () =>
         set({
@@ -155,6 +166,7 @@ export const useSettingsStore = create<SettingsState>()(
           exportFormat: DEFAULT_EXPORT_FORMAT_SETTINGS,
           inventoryView: DEFAULT_INVENTORY_VIEW,
           stockSettings: DEFAULT_STOCK_SETTINGS,
+          quickOrderComposerMode: 'order',
         }),
     }),
     {

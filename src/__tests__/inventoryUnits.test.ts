@@ -51,7 +51,7 @@ describe('inventoryUnits helpers', () => {
     expect(getInventoryConversionSummary(makeItem({ base_unit: '', pack_unit: 'bag' }))).toBe('Ordering unit: bag');
   });
 
-  test('normalizes inventory item input and requires at least one unit', () => {
+  test('normalizes inventory item input and requires base unit', () => {
     expect(
       normalizeInventoryItemUnits({
         base_unit: ' gallon ',
@@ -70,6 +70,6 @@ describe('inventoryUnits helpers', () => {
         pack_unit: '',
         pack_size: null,
       })
-    ).toThrow('At least one unit is required.');
+    ).toThrow('Base unit is required.');
   });
 });

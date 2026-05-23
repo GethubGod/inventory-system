@@ -50,6 +50,10 @@ export type ParsedQuickOrderItem = {
   merge_behavior?: 'add_to_existing' | 'replace_existing' | 'keep_separate';
   merge_delta_quantity?: number | null;
   existing_item_key?: string;
+  source?: 'manual' | 'inventory_recommendation' | 'remaining_recommendation' | 'remaining_inventory' | 'history_reorder' | 'missing_item';
+  isSuggested?: boolean;
+  suggestionReason?: string;
+  suggestionSource?: 'remaining_inventory' | 'missing_item' | 'history';
 };
 
 export type QuickOrderMergeResult = {
@@ -755,6 +759,17 @@ export function applyQuickOrderClarificationAction(
         unresolved: false,
       });
     });
+  }
+
+  if (action.id === 'add') {
+    return mergeQuickOrderParsedItemsDetailed(items, [
+      normalizeQuickOrderItemForDisplay({
+        ...incoming,
+        client_key: incoming.client_key ?? createQuickOrderClientKey('add'),
+        needs_clarification: false,
+        unresolved: false,
+      }),
+    ]).items;
   }
 
   if ((action.id === 'replace' || action.id === 'choose_existing') && existingKey) {

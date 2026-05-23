@@ -65,6 +65,7 @@ export function routeQuickOrderModel(input: {
   }
 
   if (
+    classification.classification === 'tutorial_request' ||
     classification.classification === 'recommend_order_request' ||
     classification.classification === 'mixed_stock_and_recommendation_request'
   ) {

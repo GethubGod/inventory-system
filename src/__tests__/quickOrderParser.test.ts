@@ -3,6 +3,8 @@ import { resolveParsedItemConflicts } from '../../supabase/functions/parse-order
 import { parseDeterministicOrder } from '../../supabase/functions/parse-order/deterministic-parser.ts';
 import { detectQuickOrderIntent } from '../../supabase/functions/parse-order/intent-detector.ts';
 import { parseJsonPayload } from '../../supabase/functions/parse-order/llm-fallback.ts';
+import type { LlmIntentRoute } from '../../supabase/functions/parse-order/llm-intent-router.ts';
+import { buildMissingItemSuggestions } from '../../supabase/functions/parse-order/missing-items-engine.ts';
 import { routeQuickOrderModel } from '../../supabase/functions/parse-order/model-router.ts';
 import { parseQuickOrder, reconcileParsedSources } from '../../supabase/functions/parse-order/orchestrator.ts';
 import { classifyQuickOrderInput } from '../../supabase/functions/parse-order/input-classifier.ts';
@@ -41,6 +43,12 @@ const catalog: CatalogItem[] = [
   { id: 'soy-id', name: 'Soy Sauce', aliases: ['soy'], default_unit: 'ea', base_unit: 'ea', pack_unit: 'cs' },
 ];
 
+const employeeAliasCatalog: CatalogItem[] = [
+  ...catalog,
+  { id: 'ebi-id', name: 'Ebi (Cooked Shrimp)', aliases: ['shrimp'], default_unit: 'lb', base_unit: 'lb', pack_unit: 'cs', allowed_units: ['lb', 'cs'] },
+  { id: 'amaebi-id', name: 'Amaebi (Sweet Shrimp)', aliases: [], default_unit: 'lb', base_unit: 'lb', pack_unit: 'cs', allowed_units: ['lb', 'cs'] },
+];
+
 function parsed(overrides: Partial<ParsedItem>): ParsedItem {
   return {
     item_id: 'salmon-id',
@@ -54,6 +62,10 @@ function parsed(overrides: Partial<ParsedItem>): ParsedItem {
     notes: null,
     ...overrides,
   };
+}
+
+function llmRoute(route: LlmIntentRoute): LlmIntentRoute {
+  return route;
 }
 
 describe('deterministic quick order parser', () => {
@@ -171,7 +183,7 @@ describe('validation', () => {
     const result = validateParsedLine({
       candidate,
       match: matchCatalogItem(candidate.item_text, catalog),
-      catalog,
+      catalog: employeeAliasCatalog,
     });
     expect(result.item).toMatchObject({
       item_id: 'salmon-id',
@@ -187,7 +199,7 @@ describe('validation', () => {
     const result = validateParsedLine({
       candidate,
       match: matchCatalogItem(candidate.item_text, catalog),
-      catalog,
+      catalog: employeeAliasCatalog,
     });
     expect(result.item.needs_clarification).toBe(true);
     expect(result.flags.some((flag) => flag.type === 'unsupported_unit')).toBe(true);
@@ -265,6 +277,132 @@ describe('repeated item conflicts', () => {
 });
 
 describe('quick order orchestration', () => {
+  test('employee aliases override global aliases for exact phrase matches', async () => {
+    const devin = await parseQuickOrder({
+      rawText: 'shrimp 2 lb',
+      catalog: employeeAliasCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+      employeeAliases: [{
+        employee_name: 'Devin',
+        employee_name_key: 'devin',
+        alias_text: 'shrimp',
+        alias_key: 'shrimp',
+        inventory_item_id: 'ebi-id',
+        location_id: 'sushi-location',
+        active: true,
+      }],
+      locationId: 'sushi-location',
+    });
+    const alex = await parseQuickOrder({
+      rawText: 'shrimp 2 lb',
+      catalog: employeeAliasCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+      employeeAliases: [{
+        employee_name: 'Alex',
+        employee_name_key: 'alex',
+        alias_text: 'shrimp',
+        alias_key: 'shrimp',
+        inventory_item_id: 'amaebi-id',
+        location_id: 'sushi-location',
+        active: true,
+      }],
+      locationId: 'sushi-location',
+    });
+
+    expect(devin.parsed_items[0]).toMatchObject({ item_id: 'ebi-id', match_type: 'employee_alias', quantity: 2 });
+    expect(alex.parsed_items[0]).toMatchObject({ item_id: 'amaebi-id', match_type: 'employee_alias', quantity: 2 });
+  });
+
+  test('inactive employee aliases are ignored and global aliases still work', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'shrimp 2 lb',
+      catalog: employeeAliasCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+      employeeAliases: [{
+        employee_name: 'Devin',
+        employee_name_key: 'devin',
+        alias_text: 'shrimp',
+        alias_key: 'shrimp',
+        inventory_item_id: 'amaebi-id',
+        location_id: 'sushi-location',
+        active: false,
+      }],
+      locationId: 'sushi-location',
+    });
+
+    expect(result.parsed_items[0]).toMatchObject({ item_id: 'ebi-id', match_type: 'exact_alias' });
+  });
+
+  test('employee aliases support multi-word phrases', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'cooked shrimp 2 lb',
+      catalog: employeeAliasCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+      employeeAliases: [{
+        employee_name: 'Devin',
+        employee_name_key: 'devin',
+        alias_text: 'cooked shrimp',
+        alias_key: 'cooked shrimp',
+        inventory_item_id: 'ebi-id',
+        location_id: null,
+        active: true,
+      }],
+      locationId: 'sushi-location',
+    });
+
+    expect(result.parsed_items[0]).toMatchObject({ item_id: 'ebi-id', match_type: 'employee_alias' });
+  });
+
+  test('official item names beat employee aliases', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'Uni 2 oz',
+      catalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+      employeeAliases: [{
+        employee_name: 'Devin',
+        employee_name_key: 'devin',
+        alias_text: 'Uni',
+        alias_key: 'uni',
+        inventory_item_id: 'ebi-id',
+        location_id: null,
+        active: true,
+      }],
+      locationId: 'sushi-location',
+    });
+
+    expect(result.parsed_items[0]).toMatchObject({ item_id: 'uni-id', match_type: 'exact_name' });
+  });
+
+  test('blank employee profile context falls back to existing global alias behavior', async () => {
+    const result = await parseQuickOrder({
+      rawText: 'shrimp 2 lb',
+      catalog: employeeAliasCatalog,
+      examples: [],
+      corrections: [],
+      previousMessages: [],
+      existingParsedItems: [],
+      employeeAliases: [],
+      locationId: 'sushi-location',
+    });
+
+    expect(result.parsed_items[0]).toMatchObject({ item_id: 'ebi-id', match_type: 'exact_alias' });
+  });
+
   test('mixed multiline order preserves successes and keeps low-confidence tai out of the cart', async () => {
     const result = await parseQuickOrder({
       rawText: 'Tuna loin 1cs\n1pc salmon\n1cs tai\nUnii 1 oz\nBeef brisket 4lb\n1 lb escolar',
@@ -2815,6 +2953,8 @@ describe('shared processQuickOrderMessage brain', () => {
     { id: 'tuna-id', name: 'Tuna', aliases: ['maguro'], default_unit: 'lb', base_unit: 'lb', pack_unit: null, allowed_units: ['lb'] },
     { id: 'tuna-loin-id', name: 'Tuna Loin', aliases: ['tuna loin'], default_unit: 'lb', base_unit: 'lb', pack_unit: 'cs', allowed_units: ['lb', 'cs'] },
     { id: 'shrimp-id', name: 'Shrimp (Frozen)', aliases: ['shrimp'], default_unit: 'case', base_unit: 'lb', pack_unit: 'pack', allowed_units: ['case', 'pack', 'lb'] },
+    { id: 'avocado-id', name: 'Avocado', aliases: [], default_unit: 'box', base_unit: 'each', pack_unit: 'box', allowed_units: ['box', 'case'] },
+    { id: 'rice-id', name: 'Rice', aliases: [], default_unit: 'bag', base_unit: 'lb', pack_unit: 'bag', allowed_units: ['bag'] },
   ];
 
   async function processBrain(message: string, overrides: Partial<Parameters<typeof processQuickOrderMessage>[0]> = {}) {
@@ -2839,14 +2979,13 @@ describe('shared processQuickOrderMessage brain', () => {
       },
       ...overrides,
       request: {
-        source: overrides.request?.source ?? 'typed',
+        source: 'typed',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+        ...overrides.request,
         message: resolvedMessage,
-        session_id: overrides.request?.session_id ?? 'session-id',
-        location_id: overrides.request?.location_id ?? 'location-id',
-        user_id: overrides.request?.user_id ?? 'user-id',
-        existing_items: overrides.request?.existing_items ?? [],
-        recent_messages: overrides.request?.recent_messages,
-        voice_metadata: overrides.request?.voice_metadata,
       },
     });
   }
@@ -2931,6 +3070,26 @@ describe('shared processQuickOrderMessage brain', () => {
     ]);
   });
 
+  test('stock count phrases accept half and approximate language without creating order items', async () => {
+    const result = await processBrain('we have half case salmon left, around one case masago remaining, almost five pounds tuna on hand');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates.map((update) => [update.item_id, update.quantity, update.unit])).toEqual([
+      ['salmon-id', 0.5, 'cs'],
+      ['masago-id', 1, 'cs'],
+      ['tuna-id', 5, 'lb'],
+    ]);
+  });
+
+  test('low-on stock phrase is captured as approximate zero stock for preview-first recommendation', async () => {
+    const result = await processBrain('we are low on salmon');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates[0]).toMatchObject({
+      item_id: 'salmon-id',
+      quantity: 0,
+      approximate_modifier: 'low',
+    });
+  });
+
   test('mixed stock and recommendation uses deterministic history-based recommendation', async () => {
     const result = await processBrain('we have one case salmon left, what should we order?', {
       recentOrders: [{
@@ -2947,9 +3106,64 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(result.stock_updates).toHaveLength(1);
     expect(result.recommendations[0]).toMatchObject({
       item_id: 'salmon-id',
-      suggested_quantity: 3,
+      suggested_quantity: 2,
       unit: 'cs',
     });
+  });
+
+  test('recommendation rounding keeps weight units to halves and rounds case units up', async () => {
+    const result = await processBrain('what should we order?', {
+      recentOrders: [{
+        created_at: new Date().toISOString(),
+        items: [
+          { item_id: 'salmon-id', item_name: 'Salmon', quantity: 2.1, unit: 'cs' },
+          { item_id: 'tuna-id', item_name: 'Tuna', quantity: 2.3, unit: 'lb' },
+        ],
+      }],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.recommendations.map((recommendation) => [
+      recommendation.item_id,
+      recommendation.suggested_quantity,
+      recommendation.unit,
+    ])).toEqual(expect.arrayContaining([
+      ['salmon-id', 4, 'cs'],
+      ['tuna-id', 3.5, 'lb'],
+    ]));
+  });
+
+  test.each([
+    ['what did I order last week', 'No matching order from last week was found for this location.'],
+    ['reorder recent', 'I couldn’t find a recent order for this location yet.'],
+  ])('history question %s previews a response without mutating the current order', async (message, assistantMessage) => {
+    const existingSalmon = parsed({
+      item_id: 'salmon-id',
+      item_name: 'Salmon',
+      display_name: 'Salmon',
+      quantity: 2,
+      unit: 'cs',
+      status: 'valid',
+      needs_clarification: false,
+      unresolved: false,
+    });
+    const before = JSON.parse(JSON.stringify(existingSalmon));
+    const result = await processBrain(message, {
+      request: {
+        source: 'typed',
+        message,
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [existingSalmon],
+      },
+    });
+
+    expect(result.assistant_message).toBe(assistantMessage);
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.operations ?? []).toHaveLength(0);
+    expect(result.session_state?.total_items).toBe(1);
+    expect(existingSalmon).toEqual(before);
   });
 
   test('typed MVP simple order adds to cart-ready parsed items', async () => {
@@ -2958,6 +3172,441 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(result.parsed_items).toMatchObject([
       { item_id: 'salmon-id', quantity: 2, unit: 'cs', status: 'valid' },
     ]);
+  });
+
+  test('composer order mode keeps bare item quantities as order entries', async () => {
+    const result = await processBrain('Salmon 2 cases', {
+      request: {
+        source: 'typed',
+        mode: 'order',
+        message: 'Salmon 2 cases',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+
+    expect(result.stock_updates).toHaveLength(0);
+    expect(result.parsed_items).toMatchObject([
+      { item_id: 'salmon-id', quantity: 2, unit: 'cs', status: 'valid' },
+    ]);
+  });
+
+  test('composer inventory mode treats bare item quantities as current stock and recommends without cart mutation', async () => {
+    const result = await processBrain('Salmon 2 cases', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: 'Salmon 2 cases',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      reorderRules: [{
+        item_id: 'salmon-id',
+        location_id: 'location-id',
+        target_stock_quantity: 5,
+        target_stock_unit: 'cs',
+        usual_order_unit: 'cs',
+        min_order_quantity: 1,
+        order_increment: 1,
+        rounding_policy: 'ceil',
+      }],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates).toMatchObject([{ item_id: 'salmon-id', quantity: 2, unit: 'cs' }]);
+    expect(result.recommendations).toMatchObject([{ item_id: 'salmon-id', suggested_quantity: 3, unit: 'cs' }]);
+  });
+
+  test('inventory mode uses spreadsheet reorder rules before treating quantities as orders', async () => {
+    const enough = await processBrain('Salmon 5 cases', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: 'Salmon 5 cases',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      inventoryReorderRules: [{
+        active: true,
+        inventory_item_id: 'salmon-id',
+        location_id: 'location-id',
+        applies_to_mode: 'inventory_only',
+        trigger_type: 'below',
+        trigger_qty: 1,
+        trigger_unit: 'cs',
+        order_strategy: 'fixed_order_qty',
+        order_qty: 1,
+        order_unit: 'cs',
+        priority: 100,
+      }],
+    });
+
+    expect(enough.parsed_items).toHaveLength(0);
+    expect(enough.stock_updates).toMatchObject([{ item_id: 'salmon-id', quantity: 5, unit: 'cs' }]);
+    expect(enough.recommendations).toHaveLength(0);
+    expect(enough.safety_warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'no_order_needed', item_id: 'salmon-id' }),
+    ]));
+
+    const low = await processBrain('Salmon 0.5 case', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: 'Salmon 0.5 case',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      inventoryReorderRules: [{
+        active: true,
+        inventory_item_id: 'salmon-id',
+        location_id: 'location-id',
+        applies_to_mode: 'inventory_only',
+        trigger_type: 'below',
+        trigger_qty: 1,
+        trigger_unit: 'cs',
+        order_strategy: 'fixed_order_qty',
+        order_qty: 1,
+        order_unit: 'cs',
+        priority: 100,
+      }],
+    });
+
+    expect(low.parsed_items).toHaveLength(0);
+    expect(low.recommendations).toMatchObject([{ item_id: 'salmon-id', suggested_quantity: 1, unit: 'cs' }]);
+  });
+
+  test('inventory status terms support no-order and zero-stock rule checks only in inventory mode', async () => {
+    const inventory = await processBrain('a lot salmon\nno more masago', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: 'a lot salmon\nno more masago',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      inventoryStatusTerms: [
+        {
+          active: true,
+          phrase: 'a lot',
+          phrase_key: 'a lot',
+          status: 'enough',
+          remaining_qty: null,
+          remaining_unit_behavior: 'none',
+          recommendation_action: 'no_order',
+          priority: 100,
+        },
+        {
+          active: true,
+          phrase: 'no more',
+          phrase_key: 'no more',
+          status: 'zero',
+          remaining_qty: 0,
+          remaining_unit_behavior: 'item_default_unit',
+          recommendation_action: 'check_reorder_rule',
+          priority: 10,
+        },
+      ],
+      inventoryReorderRules: [{
+        active: true,
+        inventory_item_id: 'masago-id',
+        location_id: 'location-id',
+        applies_to_mode: 'inventory_only',
+        trigger_type: 'at_or_below',
+        trigger_qty: 0,
+        trigger_unit: 'cs',
+        order_strategy: 'fixed_order_qty',
+        order_qty: 1,
+        order_unit: 'cs',
+        priority: 100,
+      }],
+    });
+
+    expect(inventory.parsed_items).toHaveLength(0);
+    expect(inventory.stock_updates).toMatchObject([{ item_id: 'masago-id', quantity: 0, unit: 'cs' }]);
+    expect(inventory.recommendations).toMatchObject([{ item_id: 'masago-id', suggested_quantity: 1, unit: 'cs' }]);
+    expect(inventory.safety_warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'no_order_needed', item_id: 'salmon-id' }),
+    ]));
+
+    const orderMode = await processBrain('a lot salmon', {
+      request: {
+        source: 'typed',
+        mode: 'order',
+        message: 'a lot salmon',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      inventoryStatusTerms: [{
+        active: true,
+        phrase: 'a lot',
+        phrase_key: 'a lot',
+        status: 'enough',
+        remaining_qty: null,
+        remaining_unit_behavior: 'none',
+        recommendation_action: 'no_order',
+        priority: 100,
+      }],
+    });
+
+    expect(orderMode.stock_updates).toHaveLength(0);
+    expect(orderMode.safety_warnings.some((warning) => warning.type === 'no_order_needed')).toBe(false);
+    expect(orderMode.parsed_items[0]?.status).not.toBe('valid');
+  });
+
+  test('composer inventory mode treats quantity-first remaining input as stock, not an order', async () => {
+    const result = await processBrain('4cs of tuna loin', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: '4cs of tuna loin',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      reorderRules: [{
+        item_id: 'tuna-loin-id',
+        location_id: 'location-id',
+        target_stock_quantity: 5,
+        target_stock_unit: 'cs',
+        usual_order_unit: 'cs',
+        min_order_quantity: 1,
+        order_increment: 1,
+        rounding_policy: 'ceil',
+      }],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates).toMatchObject([{ item_id: 'tuna-loin-id', quantity: 4, unit: 'cs' }]);
+    expect(result.recommendations).toMatchObject([{ item_id: 'tuna-loin-id', suggested_quantity: 1, unit: 'cs' }]);
+    expect(result.assistant_message).toContain('You have 4 cases of Tuna Loin remaining');
+    expect(result.assistant_message).toContain('I suggest ordering 1 case');
+  });
+
+  test('composer inventory mode handles multi-line counts with one missing quantity and returns all calculable suggestions', async () => {
+    const inventoryCatalog: CatalogItem[] = [
+      { id: 'tamago-id', name: 'Tamago', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
+      { id: 'masago-id', name: 'Masago', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
+      { id: 'mackerel-id', name: 'Mackerel', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
+      { id: 'albacore-id', name: 'Albacore', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
+      { id: 'tuna-loin-id', name: 'Tuna Loin', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
+      { id: 'crawfish-id', name: 'Crawfish', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
+      { id: 'octopus-id', name: 'Octopus', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
+      { id: 'squid-id', name: 'Squid', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
+      { id: 'shrimp-id', name: 'Shrimp (Frozen)', aliases: ['shrimp'], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
+      { id: 'history-only-id', name: 'History Only', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
+    ];
+    const countedIds = inventoryCatalog.slice(0, 8).map((item) => item.id);
+    const result = await processBrain([
+      'Tamago 1 pack',
+      'Masago 1 pack',
+      'Mackerel 4 packs',
+      'Albacore 1 pack',
+      'Tuna Loin 1 pack',
+      'Crawfish 2 packs',
+      'Octopus 3 packs',
+      'Squid 1 pack',
+      'Shrimp',
+    ].join('\n'), {
+      catalog: inventoryCatalog,
+      globalCatalog: inventoryCatalog,
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: [
+          'Tamago 1 pack',
+          'Masago 1 pack',
+          'Mackerel 4 packs',
+          'Albacore 1 pack',
+          'Tuna Loin 1 pack',
+          'Crawfish 2 packs',
+          'Octopus 3 packs',
+          'Squid 1 pack',
+          'Shrimp',
+        ].join('\n'),
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      reorderRules: countedIds.map((item_id) => ({
+        item_id,
+        location_id: 'location-id',
+        target_stock_quantity: item_id === 'tamago-id' ? 9 : 10,
+        target_stock_unit: 'pack',
+        usual_order_unit: 'pack',
+        min_order_quantity: 1,
+        order_increment: 1,
+        rounding_policy: 'ceil',
+      })),
+      recentOrders: [{
+        created_at: new Date().toISOString(),
+        items: [{ item_id: 'history-only-id', item_name: 'History Only', quantity: 20, unit: 'pack' }],
+      }],
+    });
+
+    expect(result.stock_updates.map((update) => update.item_id)).toEqual(countedIds);
+    expect(result.parsed_items).toMatchObject([
+      {
+        item_id: 'shrimp-id',
+        item_name: 'Shrimp (Frozen)',
+        quantity: null,
+        status: 'missing_quantity',
+        source: 'remaining_inventory',
+      },
+    ]);
+    expect(result.recommendations).toHaveLength(8);
+    expect(result.recommendations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ item_id: 'tamago-id', suggested_quantity: 8, unit: 'pack' }),
+      ]),
+    );
+    expect(result.recommendations.some((entry) => entry.item_id === 'history-only-id')).toBe(false);
+  });
+
+  test('composer inventory mode parses decimal stock counts', async () => {
+    const result = await processBrain('Avocado 3.5 cases', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: 'Avocado 3.5 cases',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates).toMatchObject([{ item_id: 'avocado-id', quantity: 3.5 }]);
+  });
+
+  test('inventory mode with missing target quantity does not guess or add current quantity', async () => {
+    const result = await processBrain('2 cases salmon', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: '2 cases salmon',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      reorderRules: [],
+      orderProfiles: [],
+      recentOrders: [],
+      limits: [],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates).toMatchObject([{ item_id: 'salmon-id', quantity: 2, unit: 'cs' }]);
+    expect(result.recommendations).toHaveLength(0);
+    expect(result.assistant_message).toContain('I found Salmon at 2 cases remaining');
+    expect(result.assistant_message).toContain('I don’t know the target quantity yet');
+  });
+
+  test('inventory mode says no order is needed when current stock matches target', async () => {
+    const result = await processBrain('5 cases salmon', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: '5 cases salmon',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      reorderRules: [{
+        item_id: 'salmon-id',
+        location_id: 'location-id',
+        target_stock_quantity: 5,
+        target_stock_unit: 'cs',
+        usual_order_unit: 'cs',
+      }],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.recommendations).toHaveLength(0);
+    expect(result.assistant_message).toBe('You already have 5 cases of Salmon, which matches the usual target. No order is needed.');
+  });
+
+  test('explicit stock question overrides order mode', async () => {
+    const result = await processBrain('I have 2 cases salmon how many should I order', {
+      request: {
+        source: 'typed',
+        mode: 'order',
+        message: 'I have 2 cases salmon how many should I order',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      reorderRules: [{
+        item_id: 'salmon-id',
+        location_id: 'location-id',
+        target_stock_quantity: 5,
+        target_stock_unit: 'cs',
+        usual_order_unit: 'cs',
+      }],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates).toMatchObject([{ item_id: 'salmon-id', quantity: 2, unit: 'cs' }]);
+    expect(result.recommendations[0]).toMatchObject({ item_id: 'salmon-id', suggested_quantity: 3 });
+  });
+
+  test('explicit order wording in inventory mode asks before adding', async () => {
+    const result = await processBrain('Order Salmon 2 cases', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: 'Order Salmon 2 cases',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates).toHaveLength(0);
+    expect(result.pending_clarifications?.[0]).toMatchObject({
+      id: expect.stringContaining('mode_conflict_order_in_inventory'),
+      message: expect.stringContaining('Inventory mode'),
+    });
+  });
+
+  test.each([
+    'What am I missing?',
+    'What did I order last week?',
+  ])('inventory mode leaves natural language question %s out of inventory parsing', async (message) => {
+    const result = await processBrain(message, {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message,
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates).toHaveLength(0);
+    expect(result.diagnostics?.input_classification).not.toBe('current_stock_update');
   });
 
   test('explicit add with item name adds to an existing same-unit item', async () => {
@@ -3091,7 +3740,302 @@ describe('shared processQuickOrderMessage brain', () => {
   test('identity question says Tuna Intelligence helps create orders', async () => {
     const result = await processBrain('who are you?');
     expect(result.parsed_items).toHaveLength(0);
-    expect(result.assistant_message).toBe('I’m Tuna Intelligence. I help create Quick Order drafts from typed orders.');
+    expect(result.assistant_message).toContain('I’m Tuna Intelligence');
+    expect(result.assistant_message).toContain('Salmon 3 cases');
+  });
+
+  test.each([
+    ['what do you do?', 'tutorial_request'],
+    ['what are you?', 'tutorial_request'],
+    ['what you can do', 'tutorial_request'],
+    ['tell me what you can do', 'tutorial_request'],
+    ['u are what', 'tutorial_request'],
+    ['what are u', 'tutorial_request'],
+    ['how do I use this', 'tutorial_request'],
+    ['can you help me order', 'tutorial_request'],
+    ['how do I use Quick Order?', 'tutorial_request'],
+  ])('tutorial/help intent %s is classified before item parsing', (rawText, classification) => {
+    const result = classifyQuickOrderInput(rawText);
+    expect(result.classification).toBe(classification);
+    expect(['unknown', 'add']).toContain(result.intentResult.intent);
+  });
+
+  test.each([
+    'salmon 3 cases',
+    'avocado 2 boxes',
+    'rice 1 bag',
+  ])('normal deterministic order input %s skips the LLM intent router', async (message) => {
+    const callLlm = jest.fn(async () => {
+      throw new Error('LLM intent router should not be called for deterministic order input');
+    });
+    const result = await processBrain(message, { callLlm });
+
+    expect(callLlm).not.toHaveBeenCalled();
+    expect(result.parsed_items.length).toBeGreaterThan(0);
+    expect(result.parsed_items[0].item_id).toBeTruthy();
+    expect(result.model_used).toBe('none');
+  });
+
+  test.each([
+    'What am I missing?',
+    'Did I forget anything?',
+    'Does this look complete?',
+    'Anything else I usually order?',
+  ])('missing item phrase %s is classified as a recommendation request', (message) => {
+    const result = classifyQuickOrderInput(message);
+    expect(result.classification).toBe('recommend_order_request');
+  });
+
+  test.each([
+    'What can you do',
+    'What you can do',
+    'Tell me what you can do',
+    'what can you do?',
+    'What are you',
+    'Who are you',
+    'What do you do',
+    'U are what',
+    'What are u',
+    'How can I order?',
+    'How do I use this',
+    'Help',
+    'What can I say?',
+    'Can you help me order',
+    'Show examples',
+    'How does this work',
+    'How does Quick Order work?',
+  ])('tutorial phrase %s returns a useful help answer without cart mutation or LLM', async (message) => {
+    const callLlm = jest.fn(async () => JSON.stringify(llmRoute({
+      classification: 'tutorial_request',
+      intent: 'ask_help',
+      confidence: 0.95,
+      entities: {},
+      requires_action: true,
+      should_mutate_cart: false,
+      user_message: message,
+    })));
+    const result = await processBrain(message, { callLlm });
+
+    expect(callLlm).not.toHaveBeenCalled();
+    expect(result.diagnostics?.input_classification).toBe('tutorial_request');
+    expect(result.assistant_message).toContain('I’m Tuna Intelligence');
+    expect(result.assistant_message).toContain('Remove salmon');
+    expect(result.assistant_message).toContain('You can say:\n- "Salmon 3 cases"');
+    expect(result.assistant_message).toContain('\n\nI’ll ask if something is unclear.');
+    expect(result.assistant_message).not.toContain('supplier');
+    expect(result.assistant_message).not.toContain('Try the item name again');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.operations ?? []).toHaveLength(0);
+    expect(result.assistantMessage?.type).toBe('tutorial');
+  });
+
+  test.each([
+    'Do we have salmon?',
+    'What unit does avocado come in?',
+    'Who supplies tuna?',
+    'What is the supplier for salmon?',
+  ])('product question %s still routes to product Q&A when an item is named', async (message) => {
+    const result = await processBrain(message);
+
+    expect(result.status).toBe('qa_answer');
+    expect(result.diagnostics?.input_classification).toBe('product_question');
+    expect(result.assistant_message).not.toContain('I’m Tuna Intelligence');
+    expect(result.assistant_message).not.toContain('Try the item name again');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.operations ?? []).toHaveLength(0);
+  });
+
+  test.each([
+    ['Show me my recent orders', 'show_recent_orders', 'recent'],
+    ['What did I order recently?', 'show_recent_orders', 'recent'],
+    ['What did I order last week?', 'show_last_week_order', 'last_week'],
+    ['Show last week’s order', 'show_last_week_order', 'last_week'],
+    ['What did I order last month?', 'show_recent_orders', 'last_month'],
+  ] as const)('history phrase %s returns a history answer without mutation', async (message, intent, timeRange) => {
+    const callLlm = jest.fn(async () => JSON.stringify(llmRoute({
+      classification: 'history_request',
+      intent,
+      confidence: 0.9,
+      entities: { time_range: timeRange },
+      requires_action: true,
+      should_mutate_cart: false,
+      user_message: message,
+    })));
+    const result = await processBrain(message, {
+      callLlm,
+      recentOrders: [{
+        created_at: '2026-05-19T12:00:00Z',
+        items: [{ item_id: 'salmon-id', item_name: 'Salmon', quantity: 2, unit: 'cs' }],
+      }],
+    });
+
+    expect(result.assistant_message).toContain('Salmon');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.operations ?? []).toHaveLength(0);
+    expect(result.assistantMessage?.type).toBe('history_answer');
+  });
+
+  test.each([
+    ['Use what I normally order', 'show_recent_orders', { time_range: 'usual' }],
+    ['Order based on what’s low', 'recommend_from_stock', {}],
+    ['Build my usual order', 'show_recent_orders', { time_range: 'usual' }],
+    ['What should I buy if I have 2 cases salmon left?', 'recommend_from_stock', { item_names: ['salmon'], quantities: [{ item_name: 'salmon', quantity: 2, unit: 'cases' }] }],
+    ['We have 3.5 cases avocado, what should I order?', 'recommend_from_stock', { item_names: ['avocado'], quantities: [{ item_name: 'avocado', quantity: 3.5, unit: 'cases' }] }],
+  ] as const)('recommendation phrase %s routes to recommendation handling without direct cart mutation', async (message, intent, entities) => {
+    const callLlm = jest.fn(async () => JSON.stringify(llmRoute({
+      classification: 'recommend_order_request',
+      intent,
+      confidence: 0.88,
+      entities: JSON.parse(JSON.stringify(entities)),
+      requires_action: true,
+      should_mutate_cart: false,
+      user_message: message,
+    })));
+    const result = await processBrain(message, {
+      callLlm,
+      recentOrders: [{
+        created_at: '2026-05-18T12:00:00Z',
+        items: [{ item_id: 'salmon-id', item_name: 'Salmon', quantity: 4, unit: 'cs' }],
+      }],
+    });
+
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.operations ?? []).toHaveLength(0);
+    expect(result.assistant_message ?? '').not.toBe('');
+    expect(result.diagnostics?.input_classification).toMatch(/recommend_order_request|mixed_stock_and_recommendation_request/);
+  });
+
+  describe('missing item engine', () => {
+    const catalog = [
+      { id: 'salmon-id', name: 'Salmon', aliases: [], default_unit: 'case' },
+      { id: 'tuna-id', name: 'Tuna', aliases: [], default_unit: 'case' },
+      { id: 'squid-id', name: 'Squid', aliases: [], default_unit: 'pack' },
+    ] satisfies CatalogItem[];
+
+    const historyOrders = [0, 1, 2, 3, 4].map((daysAgo) => ({
+      id: `order-${daysAgo}`,
+      placedAt: new Date(Date.UTC(2026, 4, 19 - daysAgo * 7, 12)).toISOString(),
+      locationId: 'loc-1',
+      source: 'submitted_orders' as const,
+      items: [
+        { itemId: 'salmon-id', itemName: 'Salmon', quantity: 2, unit: 'case' },
+        { itemId: 'tuna-id', itemName: 'Tuna', quantity: 1, unit: 'case' },
+        { itemId: 'squid-id', itemName: 'Squid', quantity: 1, unit: 'pack' },
+      ],
+    }));
+
+    test('suggests the usual item missing from the current draft', () => {
+      const suggestions = buildMissingItemSuggestions({
+        currentItems: [
+          { item_id: 'salmon-id', item_name: 'Salmon', raw_token: 'Salmon', quantity: 2, unit: 'case', confidence: 1, needs_clarification: false, unresolved: false, notes: null },
+          { item_id: 'tuna-id', item_name: 'Tuna', raw_token: 'Tuna', quantity: 1, unit: 'case', confidence: 1, needs_clarification: false, unresolved: false, notes: null },
+        ] as ParsedItem[],
+        historyOrders,
+        catalog,
+        locationId: 'loc-1',
+        now: new Date(Date.UTC(2026, 4, 19, 12)),
+      });
+
+      expect(suggestions).toHaveLength(1);
+      expect(suggestions[0]).toMatchObject({
+        itemId: 'squid-id',
+        itemName: 'Squid',
+        confidence: 'high',
+        occurrenceCount: 4,
+        sampleSize: 4,
+      });
+      expect(suggestions[0].reason).toContain('4');
+    });
+
+    test('returns no suggestions when all expected items are present', () => {
+      const suggestions = buildMissingItemSuggestions({
+        currentItems: catalog.map((item) => ({
+          item_id: item.id,
+          item_name: item.name,
+          raw_token: item.name,
+          quantity: 1,
+          unit: item.default_unit,
+          confidence: 1,
+          needs_clarification: false,
+          unresolved: false,
+          notes: null,
+        })) as ParsedItem[],
+        historyOrders,
+        catalog,
+        locationId: 'loc-1',
+        now: new Date(Date.UTC(2026, 4, 19, 12)),
+      });
+
+      expect(suggestions).toHaveLength(0);
+    });
+  });
+
+  test.each([
+    'Remove salmon',
+    'Remove that',
+    'Change it to 2 cases',
+    'Update avocado to 3 cases',
+    'Clear cart',
+  ])('strong command %s skips the LLM intent router', async (message) => {
+    const callLlm = jest.fn(async () => {
+      throw new Error('LLM intent router should not be called for strong commands');
+    });
+    await processBrain(message, { callLlm });
+
+    expect(callLlm).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    'asdf random words',
+    'I like turtles',
+    'What’s the weather?',
+  ])('unknown phrase %s never silently fails', async (message) => {
+    const callLlm = jest.fn(async () => JSON.stringify(llmRoute({
+      classification: 'unknown_non_order',
+      intent: 'none',
+      confidence: 0.8,
+      entities: {},
+      requires_action: false,
+      should_mutate_cart: false,
+      user_message: message,
+    })));
+    const result = await processBrain(message, { callLlm });
+
+    expect(result.assistant_message).toMatch(/I can help with ordering|I’m not sure what you want me to do/);
+    expect(result.assistant_message).not.toContain('Try the item name again');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.operations ?? []).toHaveLength(0);
+  });
+
+  test.each([
+    'asdf random words',
+    'I like turtles',
+  ])('conversational unknown %s falls back without LLM or item parser error', async (message) => {
+    const result = await processBrain(message);
+
+    expect(result.assistant_message).toContain('I’m not sure what you want me to do');
+    expect(result.assistant_message).not.toContain('Try the item name again');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.operations ?? []).toHaveLength(0);
+  });
+
+  test('low-confidence LLM intent route asks clarification instead of acting', async () => {
+    const callLlm = jest.fn(async () => JSON.stringify(llmRoute({
+      classification: 'history_request',
+      intent: 'show_recent_orders',
+      confidence: 0.5,
+      entities: {},
+      requires_action: true,
+      should_mutate_cart: false,
+      clarification_question: 'Do you want past orders, a recommendation, or help?',
+      user_message: 'do the thing',
+    })));
+    const result = await processBrain('do the thing', { callLlm });
+
+    expect(result.status).toBe('needs_clarification');
+    expect(result.assistant_message).toBe('Do you want past orders, a recommendation, or help?');
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.operations ?? []).toHaveLength(0);
   });
 
   test('unit-only follow-up applies to the item awaiting unit', async () => {
@@ -3545,7 +4489,7 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(result.pending_clarifications?.[0]).toMatchObject({ type: 'invalid_unit', item_id: 'tuna-id' });
   });
 
-  test('recommendation uses configured order units instead of stock usage units', async () => {
+  test('recommendation asks for clarification when stock and order units need missing conversion data', async () => {
     const result = await processBrain('we have 2 oz masago left, what should we order?', {
       catalog: [{
         id: 'masago-id',
@@ -3573,9 +4517,10 @@ describe('shared processQuickOrderMessage brain', () => {
     });
 
     expect(result.stock_updates).toMatchObject([{ item_id: 'masago-id', quantity: 2, unit: 'oz' }]);
-    expect(result.recommendations[0]).toMatchObject({
+    expect(result.recommendations).toHaveLength(0);
+    expect(result.safety_warnings[0]).toMatchObject({
       item_id: 'masago-id',
-      unit: 'cs',
+      type: 'unusual_unit',
     });
   });
 
@@ -3588,6 +4533,75 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(result.status).toBe('success');
     expect(result.parsed_items).toMatchObject([{ item_id: 'salmon-id', quantity: 2, unit: 'cs' }]);
     expect(result.safety_warnings).toHaveLength(0);
+  });
+
+  test('uses item-level hard_cap and soft_cap as safety limits when no overrides exist', async () => {
+    const customCatalog: CatalogItem[] = [{
+      id: 'salmon-id',
+      name: 'Salmon',
+      aliases: ['salmon'],
+      default_unit: 'cs',
+      base_unit: 'lb',
+      pack_unit: 'cs',
+      allowed_units: ['cs'],
+      hard_cap: 10,
+      soft_cap: 5,
+    }];
+
+    // 1. Check soft cap warning
+    const softResult = await processBrain('salmon 6cs', {
+      catalog: customCatalog,
+      globalCatalog: customCatalog,
+      limits: [],
+    });
+    expect(softResult.safety_warnings).toHaveLength(1);
+    expect(softResult.safety_warnings[0]).toMatchObject({
+      item_id: 'salmon-id',
+      type: 'above_soft_max',
+    });
+
+    // 2. Check hard cap blocking
+    const hardResult = await processBrain('salmon 12cs', {
+      catalog: customCatalog,
+      globalCatalog: customCatalog,
+      limits: [],
+    });
+    expect(hardResult.blocked_operations).toHaveLength(1);
+    expect(hardResult.blocked_operations[0]).toMatchObject({
+      item_id: 'salmon-id',
+      reason: 'above_hard_max',
+    });
+  });
+
+  test('uses item-level safety_stock, target_stock, and default_order_unit for suggestions', async () => {
+    const customCatalog: CatalogItem[] = [{
+      id: 'tuna-id',
+      name: 'Tuna',
+      aliases: ['tuna'],
+      default_unit: 'cs',
+      base_unit: 'lb',
+      pack_unit: 'cs',
+      allowed_units: ['lb', 'cs'],
+      safety_stock: 5,
+      target_stock: 20,
+      default_order_unit: 'cs',
+    }];
+
+    const result = await processBrain('we have 12 cs tuna, what should we order?', {
+      catalog: customCatalog,
+      globalCatalog: customCatalog,
+      limits: [],
+      reorderRules: [],
+      orderProfiles: [],
+    });
+
+    expect(result.recommendations).toHaveLength(1);
+    expect(result.recommendations[0]).toMatchObject({
+      item_id: 'tuna-id',
+      suggested_quantity: 8, // target_stock (20) - current stock (12)
+      unit: 'cs', // default_order_unit
+      reason: 'Usual target is 20 cases.',
+    });
   });
 
   test('model router reserves advanced model for complex planning only', () => {

@@ -18,20 +18,11 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
-
-// Hardcoded so the mockup colors render reliably regardless of theme-token
-// drift. These match the visual values used in PreviousQuantitySuggestionCard,
-// QuantityStepper, and UnitSegmentedControl so the sheet reads as one piece.
-const SHEET_BG = "#F4F0E8";
-const SHEET_BORDER = "rgba(0, 0, 0, 0.04)";
-const SCRIM = "rgba(0, 0, 0, 0.45)";
-const PRIMARY = "#EF4B3D";
-const TEXT_PRIMARY = "#1C1C1E";
-const TEXT_SECONDARY = "#8E8E93";
-const TEXT_ON_PRIMARY = "#FFFFFF";
-const WHITE = "#FFFFFF";
-const TRACK_BG = "#E5E1DC";
-const STATUS_RED = "#A32D2D";
+import { triggerSelectionHaptic } from "@/lib/haptics";
+import {
+  colors,
+  quickOrderAccent,
+} from "@/theme/design";
 import {
   getParsedItemDisplayName,
   getParsedItemIssue,
@@ -81,6 +72,8 @@ type QuickOrderQuantitySheetProps = {
   onApply: (result: QuickOrderQuantityResult) => void;
   /** Leave the current item unresolved and advance (multi-item flow only). */
   onSkip: () => void;
+  /** Remove the current item from the order (parent should confirm). */
+  onRemove: () => void;
 };
 
 /**
@@ -120,6 +113,7 @@ function SheetBody({
   onClose,
   onApply,
   onSkip,
+  onRemove,
   current,
 }: SheetBodyProps) {
   const ds = useScaledStyles();
@@ -158,6 +152,10 @@ function SheetBody({
   const { options, defaultValue } = useMemo(
     () => resolveQuantityUnitOptions({ item, inventoryItem, suggestion }),
     [inventoryItem, item, suggestion],
+  );
+  const availableOptions = useMemo(
+    () => options.filter((option) => option.available !== false),
+    [options],
   );
   const usableSuggestion = useMemo(
     () => getUsablePreviousQuantitySuggestion(suggestion, options),
@@ -253,8 +251,8 @@ function SheetBody({
   // Safe-area bottom padding ensures the CTA is never hidden behind the home
   // indicator. Use a generous minimum so the button feels "lifted" on notched
   // phones and still has breathing room on older devices.
-  const safeBottom = Math.max(insets.bottom + 12, 24);
-  const sheetHorizontalPadding = 20;
+  const safeBottom = Math.max(insets.bottom + 8, 18);
+  const sheetHorizontalPadding = 18;
   const contentWidth = Math.max(0, windowWidth - sheetHorizontalPadding * 2);
   const dismissWithDrag = React.useCallback(() => {
     Animated.timing(sheetTranslateY, {
@@ -265,6 +263,13 @@ function SheetBody({
       if (finished) onClose();
     });
   }, [onClose, sheetTranslateY, windowHeight]);
+
+  const handleRemovePress = () => {
+    if (isSaving) return;
+    void triggerSelectionHaptic();
+    onRemove();
+  };
+
   const panResponder = React.useMemo(
     () =>
       PanResponder.create({
@@ -315,10 +320,10 @@ function SheetBody({
           styles.sheet,
           {
             maxHeight: sheetMaxHeight,
-            borderTopLeftRadius: 42,
-            borderTopRightRadius: 42,
+            borderTopLeftRadius: 34,
+            borderTopRightRadius: 34,
             paddingHorizontal: sheetHorizontalPadding,
-            paddingTop: 16,
+            paddingTop: 10,
             paddingBottom: safeBottom,
             transform: [{ translateY: sheetTranslateY }],
           },
@@ -334,7 +339,7 @@ function SheetBody({
           <View
             style={[
               styles.progressRow,
-              { gap: 12, marginBottom: 16 },
+              { gap: 10, marginBottom: 12 },
             ]}
           >
             <Text
@@ -369,28 +374,51 @@ function SheetBody({
                 },
               ]}
             >
-              <Ionicons name="close" size={ds.icon(18)} color={TEXT_PRIMARY} />
+              <Ionicons name="close" size={ds.icon(18)} color={colors.textPrimary} />
             </Pressable>
           </View>
         ) : null}
 
-        {/* Header: item name + issue label + close button */}
+        {/* Header: item name + remove pill (left), close (right) */}
         <View
           style={[
             styles.headerRow,
-            { gap: 14, marginTop: 4 },
+            { gap: 12, marginTop: 2 },
           ]}
         >
           <View style={styles.headerTextCluster}>
-            <Text
-              style={styles.title}
-              numberOfLines={2}
-              allowFontScaling={false}
-              adjustsFontSizeToFit
-              minimumFontScale={0.82}
-            >
-              {name}
-            </Text>
+            <View style={[styles.titleRow, { gap: ds.spacing(10) }]}>
+              <Text
+                style={styles.title}
+                numberOfLines={2}
+                allowFontScaling={false}
+                adjustsFontSizeToFit
+                minimumFontScale={0.82}
+              >
+                {name}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${name} from order`}
+                disabled={isSaving}
+                hitSlop={8}
+                onPress={handleRemovePress}
+                style={({ pressed }) => [
+                  styles.removeButton,
+                  {
+                    borderRadius: ds.radius(999),
+                    paddingHorizontal: ds.spacing(12),
+                    paddingVertical: ds.spacing(8),
+                    opacity: isSaving ? 0.5 : pressed ? 0.82 : 1,
+                  },
+                ]}
+              >
+                <Ionicons name="trash-outline" size={15} color={colors.statusRed} />
+                <Text style={styles.removeButtonText} allowFontScaling={false}>
+                  Remove
+                </Text>
+              </Pressable>
+            </View>
             {issueLabel ? (
               <View
                 style={[
@@ -418,20 +446,20 @@ function SheetBody({
               style={[
                 styles.closeButton,
                 {
-                  width: 48,
-                  height: 48,
-                  borderRadius: 24,
+                  width: 42,
+                  height: 42,
+                  borderRadius: 21,
                 },
               ]}
             >
-              <Ionicons name="close" size={24} color={TEXT_PRIMARY} />
+              <Ionicons name="close" size={22} color={colors.textPrimary} />
             </Pressable>
           ) : null}
         </View>
 
         {/* Scrollable content: suggestion card + stepper + unit selector */}
         <ScrollView
-          style={[styles.flexShrink, { marginTop: 24 }]}
+          style={[styles.flexShrink, { marginTop: 18 }]}
           contentContainerStyle={{
             alignItems: "center",
             paddingBottom: 2,
@@ -439,7 +467,7 @@ function SheetBody({
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.contentStack, { width: contentWidth, gap: 22 }]}>
+          <View style={[styles.contentStack, { width: contentWidth, gap: 14 }]}>
             {usableSuggestion ? (
               <PreviousQuantitySuggestionCard
                 suggestion={usableSuggestion}
@@ -460,7 +488,7 @@ function SheetBody({
             />
 
             <UnitSegmentedControl
-              options={options}
+              options={availableOptions}
               value={unit}
               onChange={setUnit}
               disabled={isSaving}
@@ -478,7 +506,7 @@ function SheetBody({
         <View
           style={[
             styles.footer,
-            { width: contentWidth, marginTop: 24, gap: 10 },
+            { width: contentWidth, marginTop: 16, gap: 8 },
           ]}
         >
           {isMulti ? (
@@ -516,26 +544,21 @@ function SheetBody({
               isMulti ? styles.primaryButtonMulti : styles.primaryButtonSingle,
               {
                 borderRadius: 999,
-                minHeight: 72,
-                paddingHorizontal: 24,
-                backgroundColor: PRIMARY,
+                minHeight: 58,
+                paddingHorizontal: 20,
+                backgroundColor: quickOrderAccent,
                 opacity: !canSubmit ? 0.85 : 1,
-                shadowColor: "#000000",
-                shadowOffset: { width: 0, height: 6 },
-                shadowOpacity: 0.18,
-                shadowRadius: 14,
-                elevation: 6,
               },
             ]}
           >
             {isSaving ? (
-              <ActivityIndicator color={TEXT_ON_PRIMARY} />
+              <ActivityIndicator color={colors.textOnPrimary} />
             ) : (
               <View style={styles.primaryInner}>
                 <Text
                   style={[
                     styles.primaryText,
-                    { color: TEXT_ON_PRIMARY },
+                    { color: colors.textOnPrimary },
                   ]}
                   numberOfLines={1}
                   allowFontScaling={false}
@@ -546,9 +569,9 @@ function SheetBody({
                 </Text>
                 <Ionicons
                   name="arrow-forward"
-                  size={22}
-                  color={TEXT_ON_PRIMARY}
-                  style={{ marginLeft: 10 }}
+                  size={19}
+                  color={colors.textOnPrimary}
+                  style={{ marginLeft: 8 }}
                 />
               </View>
             )}
@@ -572,14 +595,14 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     flex: 1,
-    backgroundColor: SCRIM,
+    backgroundColor: colors.scrimStrong,
   },
   sheet: {
-    backgroundColor: SHEET_BG,
+    backgroundColor: colors.background,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: SHEET_BORDER,
+    borderColor: colors.glassBorder,
     overflow: "hidden",
-    shadowColor: "#000000",
+    shadowColor: colors.textPrimary,
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.12,
     shadowRadius: 20,
@@ -587,12 +610,12 @@ const styles = StyleSheet.create({
   },
   grabberRow: {
     alignItems: "center",
-    paddingBottom: 22,
+    paddingBottom: 16,
   },
   grabber: {
-    width: 58,
-    height: 6,
-    borderRadius: 3,
+    width: 44,
+    height: 5,
+    borderRadius: 2.5,
     backgroundColor: "#C9C6C0",
   },
   progressRow: {
@@ -607,8 +630,13 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  titleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+  },
   progressLabel: {
-    color: TEXT_SECONDARY,
+    color: colors.textSecondary,
     fontWeight: "800",
     letterSpacing: 0,
     flexShrink: 0,
@@ -617,30 +645,52 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: "row",
     height: 6,
-    backgroundColor: TRACK_BG,
+    backgroundColor: colors.divider,
     overflow: "hidden",
   },
   progressFill: {
     height: 6,
-    backgroundColor: PRIMARY,
+    backgroundColor: quickOrderAccent,
+  },
+  removeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    flexShrink: 0,
+    backgroundColor: colors.white,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.glassBorder,
+    shadowColor: colors.textPrimary,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  removeButtonText: {
+    color: colors.statusRed,
+    fontSize: 14,
+    fontWeight: "800",
+    letterSpacing: 0,
   },
   closeButton: {
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    backgroundColor: WHITE,
-    shadowColor: "#000000",
+    backgroundColor: colors.white,
+    shadowColor: colors.textPrimary,
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 1,
   },
   title: {
-    color: TEXT_PRIMARY,
+    color: colors.textPrimary,
     fontWeight: "800",
-    fontSize: 34,
-    lineHeight: 40,
+    fontSize: 28,
+    lineHeight: 34,
     letterSpacing: 0,
+    flexShrink: 1,
+    minWidth: 0,
   },
   issueRow: {
     flexDirection: "row",
@@ -650,16 +700,16 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: PRIMARY,
+    backgroundColor: quickOrderAccent,
   },
   issueText: {
-    color: PRIMARY,
-    fontSize: 20,
+    color: quickOrderAccent,
+    fontSize: 17,
     fontWeight: "800",
     letterSpacing: 0,
   },
   errorText: {
-    color: STATUS_RED,
+    color: colors.statusRed,
     fontSize: 13,
     fontWeight: "700",
     letterSpacing: 0,
@@ -673,19 +723,19 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: WHITE,
+    backgroundColor: colors.white,
     borderWidth: 1,
-    borderColor: "#E5E5EA",
+    borderColor: colors.divider,
   },
   secondaryText: {
-    color: TEXT_PRIMARY,
+    color: colors.textPrimary,
     fontWeight: "800",
     letterSpacing: 0,
   },
   primaryButton: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: PRIMARY,
+    backgroundColor: quickOrderAccent,
   },
   primaryButtonSingle: {
     flex: 1,
@@ -700,7 +750,7 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   primaryText: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "800",
     letterSpacing: 0,
     flexShrink: 1,

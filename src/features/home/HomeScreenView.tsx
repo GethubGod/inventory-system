@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import {
   GestureResponderEvent,
+  Platform,
   RefreshControl,
   Text,
   TouchableOpacity,
@@ -359,7 +360,36 @@ function getGreeting(now: Date): string {
   return 'Good evening';
 }
 
+const WEEKDAY_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+] as const;
+
+const MONTH_NAMES = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
 function formatHeaderDate(now: Date): string {
+  if (Platform.OS === 'android') {
+    return `${WEEKDAY_NAMES[now.getDay()]}, ${MONTH_NAMES[now.getMonth()]} ${now.getDate()}`;
+  }
+
   return now.toLocaleDateString('en-US', {
     weekday: 'long',
     month: 'short',
@@ -368,7 +398,13 @@ function formatHeaderDate(now: Date): string {
 }
 
 function formatReminderDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-US', {
+  const date = new Date(dateString);
+
+  if (Platform.OS === 'android') {
+    return `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}`;
+  }
+
+  return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
   });

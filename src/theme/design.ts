@@ -72,6 +72,34 @@ export const colors = {
   tagIndigoBg: 'rgba(79, 70, 229, 0.08)',
 } as const;
 
+/** Quick Order accent — Android wide-gamut displays make #E8503A read neon vs iOS. */
+export const quickOrderAccent = Platform.select({
+  android: '#D05248',
+  default: colors.primary,
+}) as string;
+
+export const quickOrderAccentLight = Platform.select({
+  android: 'rgba(208, 82, 72, 0.12)',
+  default: colors.primaryLight,
+}) as string;
+
+export const quickOrderAccentPale = Platform.select({
+  android: 'rgba(208, 82, 72, 0.08)',
+  default: colors.primaryPale,
+}) as string;
+
+/** Opaque fills — Android elevation + translucent backgrounds paint gray text boxes. */
+export const quickOrderAssistantPillBackground = Platform.select({
+  android: {
+    success: '#ECFDF3',
+    caution: '#FEF3C7',
+  },
+  default: {
+    success: colors.statusGreenBg,
+    caution: colors.statusAmberBg,
+  },
+}) as { success: string; caution: string };
+
 export const radii = {
   card: 24, // softer, larger radius for cards
   pill: 999, // fully rounded pills

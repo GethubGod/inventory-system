@@ -1,6 +1,6 @@
 import type { InventoryItem, ParserExampleRow, UnitType } from '@/types';
 
-export type ConfigTab = 'aliases' | 'examples' | 'learning';
+export type ConfigTab = 'aliases' | 'examples' | 'learning' | 'historyImport';
 
 export type ConflictPayload = {
   existing_text: string;

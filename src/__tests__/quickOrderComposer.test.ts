@@ -1,5 +1,6 @@
 import {
   clampComposerContentHeight,
+  getComposerPlaceholder,
   isMessageSubmittable,
 } from '../features/ordering/quickOrderComposer';
 
@@ -17,6 +18,16 @@ describe('isMessageSubmittable', () => {
   it('is true for non-empty text when no send is in flight', () => {
     expect(isMessageSubmittable('2 cases tomato', false)).toBe(true);
     expect(isMessageSubmittable('  hello  ', false)).toBe(true);
+  });
+});
+
+describe('getComposerPlaceholder', () => {
+  it('uses order copy by default mode', () => {
+    expect(getComposerPlaceholder('order')).toBe('Add to order...');
+  });
+
+  it('uses inventory copy in inventory mode', () => {
+    expect(getComposerPlaceholder('inventory')).toBe('Enter remaining inventory...');
   });
 });
 

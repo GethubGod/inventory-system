@@ -780,6 +780,9 @@ export const useAuthStore = create<AuthState>()(
         }
 
         if (!locationId) {
+          if (get().location) {
+            return get().location;
+          }
           set({ location: null });
           return null;
         }
@@ -801,6 +804,9 @@ export const useAuthStore = create<AuthState>()(
         if (error) {
           console.error('Failed to fetch default location:', error);
           if (get().session?.user?.id === expectedUserId) {
+            if (get().location) {
+              return get().location;
+            }
             set({ location: null });
           }
           return null;
@@ -1152,7 +1158,21 @@ export const useAuthStore = create<AuthState>()(
       setSession: (session) => set({ session }),
       setUser: (user) => set({ user }),
       setProfile: (profile) => set({ profile }),
-      setLocation: (location) => set({ location }),
+      setLocation: (location) => {
+        set({ location });
+        const { user } = get();
+        if (
+          user &&
+          location &&
+          user.default_location_id !== location.id
+        ) {
+          get()
+            .updateDefaultLocation(location.id)
+            .catch((err) => {
+              console.warn('Failed to sync location to database:', err);
+            });
+        }
+      },
       setIsLoading: (isLoading) => set({ isLoading }),
       setViewMode: (mode) => set({ viewMode: mode }),
 

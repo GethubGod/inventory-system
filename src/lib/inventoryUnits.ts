@@ -129,8 +129,8 @@ export function normalizeInventoryItemUnits(input: {
   const base_unit = normalizeUnitLabel(input.base_unit);
   const pack_unit = normalizeUnitLabel(input.pack_unit);
 
-  if (!base_unit && !pack_unit) {
-    throw new Error('At least one unit is required.');
+  if (!base_unit) {
+    throw new Error('Base unit is required.');
   }
 
   return {

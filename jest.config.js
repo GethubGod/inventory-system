@@ -19,5 +19,8 @@ module.exports = {
   },
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    // Untransformed ESM under ts-jest — see test-mocks/reanimatedSwipeable.tsx.
+    '^react-native-gesture-handler/ReanimatedSwipeable$':
+      '<rootDir>/test-mocks/reanimatedSwipeable.tsx',
   },
 };

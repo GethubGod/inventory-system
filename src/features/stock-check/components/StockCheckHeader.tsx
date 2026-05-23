@@ -32,7 +32,9 @@ interface StockCheckHeaderProps {
   moreIconName?: HeaderIconName;
 }
 
-const ELLIPSIS_BUTTON_SIZE = 40;
+// Matches the location selector pill's `minHeight` so the two affordances are
+// the same size and sit on a shared baseline.
+const ELLIPSIS_BUTTON_SIZE = 48;
 const CHEVRON_TIMING = { duration: 200, easing: Easing.bezier(0.2, 0, 0.2, 1) };
 
 /**
@@ -43,7 +45,8 @@ const CHEVRON_TIMING = { duration: 200, easing: Easing.bezier(0.2, 0, 0.2, 1) };
  *   • A wide location selector pill (flex: 1) that opens an animated dropdown
  *     of all locations when tapped. The trailing chevron rotates 180° in
  *     lock-step with the dropdown's open progress for a tightly-coupled feel.
- *   • A 40×40 ellipsis-menu button beside it for future meta actions.
+ *   • A 48×48 ellipsis-menu button beside it (same size as the pill) for meta
+ *     actions.
  *
  * The dropdown overlay is rendered as a sibling immediately below the pill so
  * it doesn't push the rest of the sticky header (progress bar, station pills)

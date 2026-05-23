@@ -47,8 +47,10 @@ const INTENT_RULES: IntentRule[] = [
     confidence: 0.98,
     patterns: [
       'clear order',
+      'clear cart',
       'clear all',
       'empty order',
+      'empty cart',
       'delete everything',
       'remove everything',
       'start over',

@@ -2,6 +2,8 @@ export type ParseStatus = 'ok' | 'needs_review' | 'needs_clarification' | 'qa_an
 
 export type QuickOrderSource = 'typed' | 'voice';
 
+export type ComposerMode = 'order' | 'inventory';
+
 export type ProcessQuickOrderStatus =
   | 'success'
   | 'needs_clarification'
@@ -38,6 +40,7 @@ export type ParsedItemAction =
 
 export type MatchType =
   | 'exact_name'
+  | 'employee_alias'
   | 'exact_alias'
   | 'correction'
   | 'parenthetical'
@@ -76,8 +79,14 @@ export type CatalogItem = {
   base_unit?: string | null;
   pack_unit?: string | null;
   order_unit?: string | null;
+  supplier_id?: string | null;
   allowed_units?: string[] | null;
   unit_options?: string[] | null;
+  hard_cap?: number | null;
+  soft_cap?: number | null;
+  safety_stock?: number | null;
+  target_stock?: number | null;
+  default_order_unit?: string | null;
 };
 
 export type ItemOrderLimit = {
@@ -110,6 +119,20 @@ export type ItemAllowedUnitRule = {
   min_quantity?: number | null;
   soft_max_quantity?: number | null;
   hard_max_quantity?: number | null;
+};
+
+export type EmployeeQuickOrderAlias = {
+  id?: string;
+  employee_name: string;
+  employee_name_key: string;
+  employee_user_id?: string | null;
+  alias_text: string;
+  alias_key: string;
+  inventory_item_id: string;
+  location_id?: string | null;
+  active?: boolean | null;
+  notes?: string | null;
+  source?: string | null;
 };
 
 export type ParserExample = {
@@ -225,6 +248,10 @@ export type ParsedItem = {
   merge_behavior?: 'add_to_existing' | 'replace_existing' | 'keep_separate';
   merge_delta_quantity?: number | null;
   existing_item_key?: string;
+  source?: 'manual' | 'inventory_recommendation' | 'remaining_recommendation' | 'remaining_inventory' | 'history_reorder' | 'missing_item';
+  isSuggested?: boolean;
+  suggestionReason?: string;
+  suggestionSource?: 'remaining_inventory' | 'missing_item' | 'history';
 };
 
 export type QuickOrderOperationType =
@@ -252,9 +279,47 @@ export type StockOperation = {
   item_name: string;
   quantity: number;
   unit: string | null;
+  approximate_modifier?: 'about' | 'almost' | 'around' | 'only' | 'low' | null;
   source: QuickOrderSource;
   confidence: number;
   original_text: string;
+};
+
+export type InventoryStatusTermStatus = 'enough' | 'zero' | 'partial' | 'low' | 'unknown';
+export type InventoryStatusRemainingUnitBehavior = 'none' | 'detected_unit' | 'item_default_unit';
+export type InventoryStatusRecommendationAction =
+  | 'no_order'
+  | 'check_reorder_rule'
+  | 'ask_quantity'
+  | 'use_existing_recommendation_engine';
+
+export type InventoryStatusTerm = {
+  id?: string;
+  active?: boolean | null;
+  phrase: string;
+  phrase_key: string;
+  status: InventoryStatusTermStatus;
+  remaining_qty?: number | null;
+  remaining_unit_behavior: InventoryStatusRemainingUnitBehavior;
+  recommendation_action: InventoryStatusRecommendationAction;
+  priority?: number | null;
+  notes?: string | null;
+  source?: string | null;
+};
+
+export type InventoryStatusItem = {
+  item_id: string | null;
+  item_name: string | null;
+  item_text: string;
+  phrase: string;
+  phrase_key: string;
+  status: InventoryStatusTermStatus;
+  recommendation_action: InventoryStatusRecommendationAction;
+  remaining_qty: number | null;
+  remaining_unit: string | null;
+  original_text: string;
+  confidence: number;
+  issue?: string | null;
 };
 
 export type SafetyWarningType =
@@ -263,7 +328,9 @@ export type SafetyWarningType =
   | 'unusual_unit'
   | 'voice_number_risk'
   | 'low_confidence_match'
-  | 'manager_approval_required';
+  | 'manager_approval_required'
+  | 'recommendation_unavailable'
+  | 'no_order_needed';
 
 export type SafetyWarning = {
   type: SafetyWarningType;
@@ -301,6 +368,180 @@ export type Recommendation = {
     next_delivery_date?: string | null;
   };
   safety_status: 'normal' | 'confirm' | 'manager_approval' | 'blocked';
+  recommendation_type?: 'stock_reorder_rule' | 'history_profile' | 'recent_history';
+  auto_apply_eligible?: boolean;
+};
+
+export type ReorderRoundingPolicy =
+  | 'none'
+  | 'ceil'
+  | 'floor'
+  | 'half_up'
+  | 'floor_conservative'
+  | 'ceil_prevent_stockout'
+  | 'nearest'
+  | 'floor_normal_ceil_if_low'
+  | 'custom_threshold';
+
+export type ItemReorderRule = {
+  id?: string;
+  item_id: string;
+  location_id: string | null;
+  supplier_id?: string | null;
+  is_active?: boolean | null;
+  target_stock_quantity?: number | null;
+  target_stock_unit?: string | null;
+  reorder_point?: number | null;
+  reorder_to_quantity?: number | null;
+  min_stock_quantity?: number | null;
+  max_stock_quantity?: number | null;
+  usual_order_quantity?: number | null;
+  usual_order_unit?: string | null;
+  preferred_unit?: string | null;
+  min_order_quantity?: number | null;
+  max_order_quantity?: number | null;
+  order_multiple?: number | null;
+  order_increment?: number | null;
+  allow_fractional_stock_count?: boolean | null;
+  allow_fractional_order?: boolean | null;
+  rounding_policy?: ReorderRoundingPolicy | null;
+  safety_stock_quantity?: number | null;
+  lookback_days?: number | null;
+  target_days_on_hand?: number | null;
+  priority?: number | null;
+  criticality?: string | null;
+  shelf_life_days?: number | null;
+  lead_time_days?: number | null;
+  notes?: string | null;
+};
+
+export type InventoryReorderRuleTriggerType =
+  | 'below'
+  | 'at_or_below'
+  | 'equal'
+  | 'between'
+  | 'at_or_above'
+  | 'always';
+
+export type InventoryReorderRuleOrderStrategy =
+  | 'fixed_order_qty'
+  | 'no_order'
+  | 'use_existing_recommendation_engine';
+
+export type InventoryReorderRuleAppliesToMode = 'inventory_only' | 'order_only' | 'both';
+
+export type InventoryReorderRule = {
+  id?: string;
+  active?: boolean | null;
+  location_id: string | null;
+  location_key?: string | null;
+  inventory_item_id: string;
+  applies_to_mode: InventoryReorderRuleAppliesToMode;
+  trigger_type: InventoryReorderRuleTriggerType;
+  trigger_qty?: number | null;
+  trigger_qty_max?: number | null;
+  trigger_unit?: string | null;
+  order_strategy: InventoryReorderRuleOrderStrategy;
+  order_qty?: number | null;
+  order_unit?: string | null;
+  priority?: number | null;
+  notes?: string | null;
+  source?: string | null;
+};
+
+export type ItemOrderProfile = {
+  id?: string;
+  item_id: string;
+  location_id: string | null;
+  supplier_id?: string | null;
+  is_active?: boolean | null;
+  default_order_quantity?: number | null;
+  median_order_quantity?: number | null;
+  average_order_quantity?: number | null;
+  average_daily_usage?: number | null;
+  usual_quantity?: number | null;
+  usual_unit?: string | null;
+  p50_quantity?: number | null;
+  p75_quantity?: number | null;
+  p95_quantity?: number | null;
+  last_order_quantity?: number | null;
+  last_order_unit?: string | null;
+  last_ordered_at?: string | null;
+  weekday_pattern_json?: Record<string, unknown> | null;
+  monthly_pattern_json?: Record<string, unknown> | null;
+  day_of_week_quantities?: Record<string, number> | null;
+  preferred_unit?: string | null;
+  confidence?: number | null;
+  sample_size?: number | null;
+  weekday?: number | null;
+  ordered_count_recent?: number | null;
+  total_similar_orders?: number | null;
+  confidence_score?: number | null;
+  source?: 'manual' | 'history' | 'computed' | 'submitted_orders' | 'manager_import' | null;
+};
+
+export type QuickOrderCartMutationType =
+  | 'recommendation_add'
+  | 'recommendation_update'
+  | 'manual_add'
+  | 'manual_update'
+  | 'remove'
+  | 'clear'
+  | 'accept_suggestion'
+  | 'reject_suggestion';
+
+export type QuickOrderCartMutation = {
+  id?: string;
+  session_id: string | null;
+  user_id: string;
+  location_id: string | null;
+  mutation_type: QuickOrderCartMutationType;
+  item_id: string | null;
+  item_name?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  previous_quantity?: number | null;
+  previous_unit?: string | null;
+  recommendation?: Record<string, unknown> | null;
+  source?: QuickOrderSource | 'system' | 'manager';
+  status?: 'pending' | 'applied' | 'rejected' | 'undone';
+  metadata?: Record<string, unknown> | null;
+  created_at?: string;
+};
+
+export type QuickOrderSmartOrderingContext = {
+  location_id: string;
+  supplier_id?: string | null;
+  current_stock_by_item?: Record<string, number | null>;
+  reorder_rules: ItemReorderRule[];
+  order_profiles: ItemOrderProfile[];
+  cart_mutations?: QuickOrderCartMutation[];
+};
+
+export type SmartAssistantMessageAction = {
+  type: 'revert';
+  label: string;
+  mutationId: string;
+};
+
+export type SmartAssistantMessage = {
+  type: 'smart_suggestion' | 'tutorial' | 'history_answer' | 'clarification' | 'error' | 'success';
+  text: string;
+  actions?: SmartAssistantMessageAction[];
+  explanation?: {
+    reason: string;
+    confidence: 'high' | 'medium' | 'low';
+    dataSources: string[];
+  };
+};
+
+export type QuickOrderContextPatch = {
+  lastReferencedItemId?: string | null;
+  lastReferencedItemName?: string | null;
+  lastAction?: string | null;
+  lastMutationId?: string | null;
+  lastSuggestedQuantity?: number | null;
+  pendingClarificationId?: string | null;
 };
 
 export type ParseFlag = {
@@ -494,6 +735,7 @@ export type ParseDiagnostics = {
   }[];
   suggestion_count?: number;
   history_lookup_result?: string;
+  llm_intent_time_range?: string;
 };
 
 export type ParseResponse = {
@@ -524,6 +766,8 @@ export type VoiceMetadata = {
 
 export type ProcessQuickOrderMessageRequest = {
   source: QuickOrderSource;
+  mode?: ComposerMode;
+  mode_conflict_resolution?: 'keep_inventory';
   message: string;
   session_id: string | null;
   location_id: string;
@@ -531,6 +775,12 @@ export type ProcessQuickOrderMessageRequest = {
   existing_items: ParsedItem[];
   recent_messages?: RecentMessage[];
   voice_metadata?: VoiceMetadata;
+  operation?: 'parse' | 'record_mutation' | 'revert_mutation';
+  mutation_id?: string | null;
+  before_cart?: unknown;
+  after_cart?: unknown;
+  mutation_type?: string | null;
+  assistant_message_text?: string | null;
 };
 
 export type ProcessQuickOrderResponse = Omit<ParseResponse, 'status'> & {
@@ -548,4 +798,7 @@ export type ProcessQuickOrderResponse = Omit<ParseResponse, 'status'> & {
   model_used: QuickOrderModelUsed;
   confidence: number;
   timings: QuickOrderTimings;
+  assistantMessage?: SmartAssistantMessage;
+  contextPatch?: QuickOrderContextPatch;
+  cartUpdates?: unknown[];
 };

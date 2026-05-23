@@ -1,9 +1,9 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
-import { colors } from "@/theme/design";
+import { colors, quickOrderAccent } from "@/theme/design";
 
-const PRIMARY_RED = colors.primary;
+const PRIMARY_RED = quickOrderAccent;
 const PRIMARY_TEXT = "#FFFFFF";
 const GHOST_BG = "#FFFFFF";
 const GHOST_BORDER = "#D1D5DB";
@@ -19,16 +19,19 @@ export type NeedsInputPrimaryAction = {
 type NeedsInputActionButtonsProps = {
   primaryActions: NeedsInputPrimaryAction[];
   onReject: () => void;
+  rejectLabel?: string;
   rejectAccessibilityLabel?: string;
 };
 
 /**
- * "Use this" + "No" row for NEEDS INPUT clarification / suggestion cards.
- * Styles are explicit (not variant-based) so backgrounds stay visible on iOS.
+ * Primary action(s) + secondary reject row for NEEDS INPUT clarification /
+ * suggestion cards. Styles are explicit (not variant-based) so backgrounds stay
+ * visible on iOS.
  */
 export function NeedsInputActionButtons({
   primaryActions,
   onReject,
+  rejectLabel = "No",
   rejectAccessibilityLabel = "No, dismiss this suggestion",
 }: NeedsInputActionButtonsProps) {
   const ds = useScaledStyles();
@@ -104,7 +107,7 @@ export function NeedsInputActionButtons({
               { fontSize: ds.fontSize(14) },
             ]}
           >
-            No
+            {rejectLabel}
           </Text>
         </View>
       </Pressable>

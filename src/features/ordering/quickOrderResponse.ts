@@ -11,6 +11,21 @@ import {
   type QuickOrderOperationResult,
 } from './quickOrderItems';
 
+const QUICK_ORDER_TUTORIAL_MESSAGE = [
+  'I’m Tuna Intelligence. I help create Quick Order drafts from typed orders.',
+  [
+    'You can say:',
+    '- "Salmon 3 cases"',
+    '- "Remove salmon"',
+    '- "We have 2 cases avocado left"',
+    '- "Show my recent orders"',
+    '- "Use last week’s order"',
+    '- "What should I buy if I have 2 cases salmon left?"',
+    '- "Undo that"',
+  ].join('\n'),
+  'I’ll ask if something is unclear.',
+].join('\n\n');
+
 export type QuickOrderParseStatus =
   | 'ok'
   | 'needs_review'
@@ -30,6 +45,7 @@ export type QuickOrderStockUpdate = {
   source: QuickOrderMessageSource;
   confidence: number;
   original_text: string;
+  approximate_modifier?: string | null;
 };
 
 export type QuickOrderSafetyWarning = {
@@ -61,6 +77,19 @@ export type QuickOrderRecommendation = {
   reason: string;
   inputs?: Record<string, unknown>;
   safety_status: 'normal' | 'confirm' | 'manager_approval' | 'blocked';
+  recommendation_type?: 'stock_reorder_rule' | 'history_profile' | 'recent_history';
+  auto_apply_eligible?: boolean;
+};
+
+export type QuickOrderAssistantAction = {
+  id: string;
+  type: string;
+  label: string;
+  operation?: string;
+  mutationId?: string;
+  disabled?: boolean;
+  status?: string;
+  payload?: Record<string, unknown>;
 };
 
 export type QuickOrderParseDiagnostics = {
@@ -100,10 +129,15 @@ export type RawQuickOrderParseResponse = {
   status?: unknown;
   legacy_status?: unknown;
   assistant_message?: unknown;
+  assistantMessage?: unknown;
   reply_text?: unknown;
+  replyText?: unknown;
   display_message?: unknown;
+  displayMessage?: unknown;
   speech_message?: unknown;
+  speechMessage?: unknown;
   parsed_items?: unknown;
+  parsedItems?: unknown;
   pending_actions?: unknown;
   pending_clarifications?: unknown;
   clarifications?: unknown;
@@ -121,6 +155,13 @@ export type RawQuickOrderParseResponse = {
   error?: unknown;
   detail?: unknown;
   code?: unknown;
+  actions?: unknown;
+  assistant_actions?: unknown;
+  assistantActions?: unknown;
+  context_patch?: unknown;
+  contextPatch?: unknown;
+  mutation_id?: unknown;
+  mutationId?: unknown;
 };
 
 export type NormalizedQuickOrderParseResponse = {
@@ -145,13 +186,20 @@ export type NormalizedQuickOrderParseResponse = {
   errorCode?: string;
   rawError?: string;
   operations: QuickOrderOperation[];
+  actions: QuickOrderAssistantAction[];
+  contextPatch: Record<string, unknown> | null;
+  mutationId: string | null;
 };
 
 export function normalizeQuickOrderParseResponse(
   value: unknown,
 ): NormalizedQuickOrderParseResponse {
   const raw = isRecord(value) ? value as RawQuickOrderParseResponse : {};
-  const parsedItemsRaw = Array.isArray(raw.parsed_items) ? raw.parsed_items : [];
+  const parsedItemsRaw = Array.isArray(raw.parsed_items)
+    ? raw.parsed_items
+    : Array.isArray(raw.parsedItems)
+      ? raw.parsedItems
+      : [];
   const parsedItems: ParsedQuickOrderItem[] = [];
   const rejectedReasons: string[] = [];
 
@@ -166,17 +214,28 @@ export function normalizeQuickOrderParseResponse(
 
   const pendingActions = normalizePendingActions(raw.pending_actions ?? raw.pending_clarifications ?? raw.clarifications);
   const operations = normalizeOperations((raw as Record<string, unknown>).operations ?? raw.cart_operations);
+  const contextPatch = normalizeContextPatch(raw.context_patch ?? raw.contextPatch);
+  const mutationId =
+    stringValue(raw.mutation_id) ??
+    stringValue(raw.mutationId) ??
+    stringValue(contextPatch?.mutation_id) ??
+    stringValue(contextPatch?.mutationId);
   const status = normalizeStatus(raw.status ?? raw.legacy_status, parsedItems, pendingActions, raw.error);
   const isBlocked = status === 'blocked';
   const isPartialSuccess = status === 'partial_success';
-  const assistantMessage = sanitizeAssistantReply(
-    stringValue(raw.display_message) ?? stringValue(raw.assistant_message) ?? stringValue(raw.reply_text),
+  const assistantMessage = formatAssistantReplyForDisplay(sanitizeAssistantReply(
+    stringValue(raw.display_message) ??
+      stringValue(raw.displayMessage) ??
+      stringValue(raw.assistant_message) ??
+      stringValue(raw.assistantMessage) ??
+      stringValue(raw.reply_text) ??
+      stringValue(raw.replyText),
     status === 'error'
       ? 'I had trouble reading that order. Please try again.'
       : 'I had trouble reading that order. Please try again or add the items manually.',
-  );
+  ));
   const speechMessage = sanitizeAssistantReply(
-    stringValue(raw.speech_message) ?? assistantMessage,
+    stringValue(raw.speech_message) ?? stringValue(raw.speechMessage) ?? assistantMessage,
     assistantMessage,
   );
   const backendDiagnostics = isRecord(raw.diagnostics) ? raw.diagnostics : {};
@@ -238,6 +297,9 @@ export function normalizeQuickOrderParseResponse(
     errorCode: stringValue(raw.code) ?? undefined,
     rawError: stringValue(raw.error) ?? stringValue(raw.detail) ?? undefined,
     operations,
+    actions: normalizeAssistantActions(raw.actions ?? raw.assistant_actions ?? raw.assistantActions, mutationId),
+    contextPatch,
+    mutationId,
   };
 }
 
@@ -329,6 +391,29 @@ export function buildQuickOrderAssistantMessage(input: {
   return normalized.assistantMessage;
 }
 
+function formatAssistantReplyForDisplay(message: string): string {
+  if (isQuickOrderTutorialReply(message)) {
+    return QUICK_ORDER_TUTORIAL_MESSAGE;
+  }
+  return message;
+}
+
+function isQuickOrderTutorialReply(message: string): boolean {
+  const normalized = message
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+
+  return (
+    normalized.includes("i'm tuna intelligence") &&
+    normalized.includes('quick order drafts') &&
+    normalized.includes('you can say:') &&
+    normalized.includes('salmon 3 cases') &&
+    normalized.includes('undo that')
+  );
+}
+
 function isGenericNoChangeMessage(message: string): boolean {
   const normalized = message.trim().toLowerCase();
   return normalized === '' || normalized === 'got it.' || normalized === 'got it';
@@ -399,7 +484,28 @@ function normalizeParsedItem(value: unknown): ParsedQuickOrderItem | null {
     merge_behavior: normalizeMergeBehavior(value.merge_behavior),
     merge_delta_quantity: numberValue(value.merge_delta_quantity),
     existing_item_key: stringValue(value.existing_item_key) ?? undefined,
+    source: normalizeParsedItemSource(value.source),
+    isSuggested: value.isSuggested === true || value.is_suggested === true,
+    suggestionReason: stringValue(value.suggestionReason) ?? stringValue(value.suggestion_reason) ?? undefined,
+    suggestionSource: normalizeSuggestionSource(value.suggestionSource ?? value.suggestion_source),
   });
+}
+
+function normalizeParsedItemSource(value: unknown): ParsedQuickOrderItem['source'] {
+  return value === 'manual' ||
+    value === 'inventory_recommendation' ||
+    value === 'remaining_recommendation' ||
+    value === 'remaining_inventory' ||
+    value === 'history_reorder' ||
+    value === 'missing_item'
+    ? value
+    : undefined;
+}
+
+function normalizeSuggestionSource(value: unknown): ParsedQuickOrderItem['suggestionSource'] {
+  return value === 'remaining_inventory' || value === 'missing_item' || value === 'history'
+    ? value
+    : undefined;
 }
 
 function normalizeItemStatus(
@@ -539,6 +645,7 @@ function normalizeStockUpdates(value: unknown): QuickOrderStockUpdate[] {
     source: (entry.source === 'voice' ? 'voice' : 'typed') as QuickOrderMessageSource,
     confidence: numberValue(entry.confidence) ?? 0.8,
     original_text: stringValue(entry.original_text) ?? '',
+    approximate_modifier: stringValue(entry.approximate_modifier),
   })).filter((entry) => entry.item_id && entry.item_name);
 }
 
@@ -553,6 +660,8 @@ function normalizeRecommendations(value: unknown): QuickOrderRecommendation[] {
     reason: stringValue(entry.reason) ?? 'Suggested from recent history.',
     inputs: isRecord(entry.inputs) ? entry.inputs : undefined,
     safety_status: normalizeRecommendationSafety(entry.safety_status),
+    recommendation_type: normalizeRecommendationType(entry.recommendation_type),
+    auto_apply_eligible: entry.auto_apply_eligible === true,
   })).filter((entry) => entry.item_id && entry.suggested_quantity > 0);
 }
 
@@ -582,8 +691,48 @@ function normalizeBlockedOperations(value: unknown): QuickOrderBlockedOperation[
   }));
 }
 
+function normalizeAssistantActions(
+  value: unknown,
+  responseMutationId: string | null,
+): QuickOrderAssistantAction[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(isRecord).map((entry, index) => {
+    const type =
+      stringValue(entry.type) ??
+      stringValue(entry.action) ??
+      stringValue(entry.operation) ??
+      stringValue(entry.id) ??
+      'action';
+    const mutationId =
+      stringValue(entry.mutation_id) ??
+      stringValue(entry.mutationId) ??
+      responseMutationId ??
+      undefined;
+    return {
+      id: stringValue(entry.id) ?? `${type}:${mutationId ?? index}`,
+      type,
+      label: stringValue(entry.label) ?? (type === 'revert' ? 'Revert' : 'Action'),
+      operation: stringValue(entry.operation) ?? stringValue(entry.action) ?? undefined,
+      mutationId,
+      disabled: Boolean(entry.disabled),
+      status: stringValue(entry.status) ?? undefined,
+      payload: isRecord(entry.payload) ? entry.payload : undefined,
+    };
+  });
+}
+
+function normalizeContextPatch(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
+}
+
 function normalizeRecommendationSafety(value: unknown): QuickOrderRecommendation['safety_status'] {
   return value === 'confirm' || value === 'manager_approval' || value === 'blocked' ? value : 'normal';
+}
+
+function normalizeRecommendationType(value: unknown): QuickOrderRecommendation['recommendation_type'] {
+  return value === 'stock_reorder_rule' || value === 'history_profile' || value === 'recent_history'
+    ? value
+    : undefined;
 }
 
 function normalizeOperations(value: unknown): QuickOrderOperation[] {

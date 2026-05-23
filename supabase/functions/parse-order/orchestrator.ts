@@ -27,7 +27,9 @@ import {
 } from './units.ts';
 import type {
   CatalogAlternative,
+  CatalogMatchResult,
   CatalogItem,
+  EmployeeQuickOrderAlias,
   ParserCorrection,
   ParseDiagnostics,
   ParserExample,
@@ -53,6 +55,7 @@ type OrchestratorInput = {
   unitAliases?: UnitAliasMap;
   catalogIndex?: CatalogSearchIndex;
   globalCatalogIndex?: CatalogSearchIndex;
+  employeeAliases?: EmployeeQuickOrderAlias[];
   classification?: QuickOrderInputClassificationResult;
   debugCatalog?: boolean;
 };
@@ -74,6 +77,157 @@ const MIN_PLAUSIBLE_REVIEW_CONFIDENCE = 0.75;
 
 /** Hardcoded version string — appears in every response for deployment verification. */
 export const PARSER_VERSION = 'quick-order-parser-v3-line-based';
+
+function matchCatalogWithEmployeeAliases(
+  itemText: string,
+  catalogIndex: CatalogSearchIndex,
+  employeeAliases: EmployeeQuickOrderAlias[],
+  locationId: string | null,
+): CatalogMatchResult {
+  const officialNameMatch = matchOfficialCatalogName(itemText, catalogIndex);
+  if (officialNameMatch) return officialNameMatch;
+
+  const employeeAliasMatch = matchEmployeeQuickOrderAlias(itemText, catalogIndex, employeeAliases, locationId);
+  if (employeeAliasMatch) return employeeAliasMatch;
+
+  return matchCatalogIndex(itemText, catalogIndex);
+}
+
+function matchOfficialCatalogName(
+  itemText: string,
+  catalogIndex: CatalogSearchIndex,
+): CatalogMatchResult | null {
+  const normalized = normalizeSearchText(itemText);
+  if (!normalized) return null;
+  const compact = normalized.replace(/\s+/g, '');
+  const officialEntries = catalogIndex.entries.filter((entry) =>
+    entry.type === 'name' && (entry.normalized === normalized || entry.compact === compact)
+  );
+  const uniqueByItem = uniqueCatalogEntriesByItem(officialEntries);
+  if (uniqueByItem.length === 0) return null;
+  if (uniqueByItem.length === 1) {
+    const entry = uniqueByItem[0];
+    return {
+      item_id: entry.item.id,
+      item_name: entry.item.name,
+      display_name: entry.item.name,
+      match_type: entry.normalized === normalized ? 'exact_name' : 'compact_exact',
+      confidence: entry.normalized === normalized ? 1 : 0.99,
+      needs_clarification: false,
+      matched_term: entry.term,
+      token_coverage: 1,
+      generic_token_overlap: [],
+      specific_token_overlap: normalized.split(' ').filter(Boolean),
+      missing_specific_tokens: [],
+      semantic_validation_passed: true,
+      confidence_tier: 'high',
+      decision_reason: 'official_item_name_exact',
+    };
+  }
+  return ambiguousEmployeeAliasMatch(uniqueByItem.map((entry) => ({
+    item_id: entry.item.id,
+    item_name: entry.item.name,
+    confidence: 1,
+    term: entry.term,
+    matched_term: entry.term,
+    match_type: 'exact_name',
+    reason: 'duplicate_official_item_name',
+  })), 'Official item name matches multiple catalog items.');
+}
+
+function matchEmployeeQuickOrderAlias(
+  itemText: string,
+  catalogIndex: CatalogSearchIndex,
+  employeeAliases: EmployeeQuickOrderAlias[],
+  locationId: string | null,
+): CatalogMatchResult | null {
+  const normalized = normalizeSearchText(itemText);
+  if (!normalized) return null;
+
+  const candidates = employeeAliases.filter((alias) =>
+    alias.active !== false &&
+    alias.alias_key === normalized &&
+    (alias.location_id == null || (locationId != null && alias.location_id === locationId))
+  );
+  const locationSpecific = locationId
+    ? candidates.filter((alias) => alias.location_id === locationId)
+    : [];
+  const scoped = locationSpecific.length > 0
+    ? locationSpecific
+    : candidates.filter((alias) => alias.location_id == null);
+  if (scoped.length === 0) return null;
+
+  const catalogById = new Map(catalogIndex.catalog.map((item) => [item.id, item]));
+  const alternatives = scoped
+    .map((alias): CatalogAlternative | null => {
+      const item = catalogById.get(alias.inventory_item_id);
+      if (!item) return null;
+      return {
+        item_id: item.id,
+        item_name: item.name,
+        confidence: 0.98,
+        term: alias.alias_text,
+        matched_term: alias.alias_text,
+        match_type: 'employee_alias',
+        reason: alias.location_id ? 'employee_location_alias' : 'employee_global_alias',
+      };
+    })
+    .filter((entry): entry is CatalogAlternative => Boolean(entry));
+
+  if (scoped.length !== 1 || alternatives.length !== 1) {
+    return ambiguousEmployeeAliasMatch(
+      alternatives,
+      'Employee-specific alias has multiple active matches. Ask a manager to fix the Google Sheet row.',
+    );
+  }
+
+  const item = catalogById.get(scoped[0].inventory_item_id);
+  if (!item) return null;
+  return {
+    item_id: item.id,
+    item_name: item.name,
+    display_name: item.name,
+    matched_alias: scoped[0].alias_text,
+    matched_term: scoped[0].alias_text,
+    match_type: 'employee_alias',
+    confidence: 0.98,
+    needs_clarification: false,
+    token_coverage: 1,
+    generic_token_overlap: [],
+    specific_token_overlap: normalized.split(' ').filter(Boolean),
+    missing_specific_tokens: [],
+    semantic_validation_passed: true,
+    confidence_tier: 'high',
+    decision_reason: scoped[0].location_id ? 'employee_location_alias' : 'employee_global_alias',
+  };
+}
+
+function ambiguousEmployeeAliasMatch(
+  alternatives: CatalogAlternative[],
+  issue: string,
+): CatalogMatchResult {
+  return {
+    item_id: null,
+    item_name: null,
+    display_name: alternatives[0]?.item_name ?? 'Ambiguous item',
+    match_type: 'ambiguous',
+    confidence: alternatives[0]?.confidence ?? 0,
+    needs_clarification: true,
+    issue,
+    reason: issue,
+    alternatives: alternatives.length > 0 ? alternatives : undefined,
+    confidence_tier: 'medium',
+    decision_reason: 'employee_alias_data_error',
+  };
+}
+
+function uniqueCatalogEntriesByItem(entries: CatalogSearchIndex['entries']): CatalogSearchIndex['entries'] {
+  const byId = new Map<string, CatalogSearchIndex['entries'][number]>();
+  for (const entry of entries) {
+    if (!byId.has(entry.item.id)) byId.set(entry.item.id, entry);
+  }
+  return [...byId.values()];
+}
 
 export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseResponse> {
   const unitAliases = input.unitAliases ?? DEFAULT_UNIT_ALIASES;
@@ -99,6 +253,14 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   //     order-parsing logic runs. We bypass the parser entirely.
   // ----------------------------------------------------------------
   if (classification.classification === 'product_question') {
+    if (!hasProductQuestionContext(input.rawText, input, catalogIndex)) {
+      return buildNonOrderResponse(
+        input,
+        { ...classification, classification: 'unknown_non_order', reason: 'product_question_without_item' },
+        'I’m not sure what you want me to do. Do you want to add items, see past orders, get a recommendation, or ask for help?',
+        catalogDebug,
+      );
+    }
     return await buildProductQuestionResponse(input, classification, catalogDebug);
   }
 
@@ -129,7 +291,12 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   const flags: ParseFlag[] = [];
 
   for (const candidate of candidatesToMatch) {
-    const baseMatch = matchCatalogIndex(candidate.item_text, catalogIndex);
+    const baseMatch = matchCatalogWithEmployeeAliases(
+      candidate.item_text,
+      catalogIndex,
+      input.employeeAliases ?? [],
+      input.locationId ?? null,
+    );
     const match = maybePromoteBareCatalogToken(
       candidate,
       maybeAmbiguousBareCatalogToken(candidate, baseMatch, catalogIndex),
@@ -951,8 +1118,10 @@ function buildPreParseResponse(
       return buildNonOrderResponse(input, classification, 'I don’t have enough order history to suggest a usual order yet.', catalogDebug);
     case 'history_request':
       return buildNonOrderResponse(input, classification, getHistoryPlaceholderMessage(classification.normalizedText), catalogDebug);
+    case 'tutorial_request':
+      return buildNonOrderResponse(input, classification, buildTutorialMessage(), catalogDebug);
     case 'identity_question':
-      return buildNonOrderResponse(input, classification, 'I’m Tuna Intelligence. I help create Quick Order drafts from typed orders.', catalogDebug);
+      return buildNonOrderResponse(input, classification, buildTutorialMessage(), catalogDebug);
     case 'duplicate_resolution_action':
       if (classification.reason === 'no_pending_duplicate_action') {
         return buildNonOrderResponse(input, classification, 'There is nothing to combine right now.', catalogDebug);
@@ -998,7 +1167,7 @@ function buildPreParseResponse(
         diagnostics: buildClassificationDiagnostics(input, classification, catalogDebug),
       };
     case 'unknown_non_order':
-      return buildNonOrderResponse(input, classification, 'I couldn’t recognize that as an inventory item.', catalogDebug);
+      return buildNonOrderResponse(input, classification, 'I’m not sure what you want me to do. Do you want to add items, see past orders, get a recommendation, or ask for help?', catalogDebug);
     case 'order_entry':
     case 'order_command':
     case 'clarification_answer':
@@ -1017,6 +1186,23 @@ function getHistoryPlaceholderMessage(normalizedText: string): string {
     return 'I don’t have enough history to suggest a usual order yet.';
   }
   return 'No matching order from last week was found for this location.';
+}
+
+function buildTutorialMessage(): string {
+  return [
+    'I’m Tuna Intelligence. I help create Quick Order drafts from typed orders.',
+    [
+      'You can say:',
+      '- "Salmon 3 cases"',
+      '- "Remove salmon"',
+      '- "We have 2 cases avocado left"',
+      '- "Show my recent orders"',
+      '- "Use last week’s order"',
+      '- "What should I buy if I have 2 cases salmon left?"',
+      '- "Undo that"',
+    ].join('\n'),
+    'I’ll ask if something is unclear.',
+  ].join('\n\n');
 }
 
 function buildNonOrderResponse(
@@ -1050,6 +1236,28 @@ function buildNonOrderResponse(
       }],
     },
   };
+}
+
+function hasProductQuestionContext(
+  rawText: string,
+  input: OrchestratorInput,
+  catalogIndex: CatalogSearchIndex,
+): boolean {
+  if (input.existingParsedItems.some((item) => item.item_id || item.item_name || item.item_text)) return true;
+  if (catalogTextMentionsItem(rawText, catalogIndex)) return true;
+  return /\b(?:supplier|supplies|carry|sell|available|unit|units|case|pack|size|sizes)\b/i.test(rawText) &&
+    catalogTextMentionsItem(rawText, catalogIndex);
+}
+
+function catalogTextMentionsItem(rawText: string, catalogIndex: CatalogSearchIndex): boolean {
+  const normalizedText = ` ${normalizeSearchText(rawText)} `;
+  if (!normalizedText.trim()) return false;
+  for (const entry of catalogIndex.entries) {
+    const term = normalizeSearchText(entry.term);
+    if (!term || term.length < 3) continue;
+    if (normalizedText.includes(` ${term} `)) return true;
+  }
+  return false;
 }
 
 function buildClassificationDiagnostics(

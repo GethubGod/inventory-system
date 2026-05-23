@@ -14,10 +14,17 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
 import { triggerConfirmationHaptic } from "@/lib/haptics";
-import { colors, glassColors, glassHairlineWidth, grayScale } from "@/theme/design";
+import {
+  colors,
+  glassColors,
+  glassHairlineWidth,
+  grayScale,
+  quickOrderAccent,
+} from "@/theme/design";
 import {
   QUICK_ORDER_ROW_MIN_HEIGHT,
   QuickOrderItemRow,
+  type ResolveQuantityOptions,
 } from "./QuickOrderItemRow";
 import {
   formatParsedItemQuantity,
@@ -31,6 +38,8 @@ const CARD_PADDING = 14;
 const CARD_SECTION_GAP = 10;
 const VISIBLE_ROW_SLOTS = 4;
 const CTA_HEIGHT = 44;
+const SCROLLBAR_WIDTH = 5;
+const SCROLLBAR_MIN_THUMB = 28;
 
 type QuickOrderListCardProps = {
   items: ParsedQuickOrderItem[];
@@ -38,18 +47,28 @@ type QuickOrderListCardProps = {
   issueCount: number;
   isSubmitting: boolean;
   onEditItem: (item: ParsedQuickOrderItem) => void;
-  onResolveQuantity: (item: ParsedQuickOrderItem) => void;
+  onResolveQuantity: (
+    item: ParsedQuickOrderItem,
+    options?: ResolveQuantityOptions,
+  ) => void;
+  /** Removes every parsed item backing a swiped row. */
+  onRemoveItems: (items: ParsedQuickOrderItem[]) => void;
   onConfirm: () => void;
   onHeightChange: (height: number) => void;
 };
 
 type ConfirmState = "empty" | "needs-fixing" | "ready" | "confirming";
 
+type OrderListQuantityLine = {
+  label: string;
+  item: ParsedQuickOrderItem;
+};
+
 type OrderListGroup = {
   key: string;
   item: ParsedQuickOrderItem;
   items: ParsedQuickOrderItem[];
-  quantityLines: string[];
+  quantityLines: OrderListQuantityLine[];
 };
 
 /**
@@ -70,6 +89,7 @@ export function QuickOrderListCard({
   isSubmitting,
   onEditItem,
   onResolveQuantity,
+  onRemoveItems,
   onConfirm,
   onHeightChange,
 }: QuickOrderListCardProps) {
@@ -97,6 +117,16 @@ export function QuickOrderListCard({
   // end of the list. Defaults to "not at bottom" until we get a real event.
   const [isAtBottom, setIsAtBottom] = useState(false);
 
+  // Live scroll geometry powering the always-visible custom scrollbar. The
+  // native indicator fades out after scrolling stops, so we draw our own thumb
+  // and keep it pinned. Seeded from onLayout / onContentSizeChange so the bar
+  // is correct before the first scroll event.
+  const [scrollGeometry, setScrollGeometry] = useState({
+    offsetY: 0,
+    contentHeight: 0,
+    viewportHeight: 0,
+  });
+
   const handleScroll = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } =
@@ -104,9 +134,52 @@ export function QuickOrderListCard({
       const distanceFromBottom =
         contentSize.height - layoutMeasurement.height - contentOffset.y;
       setIsAtBottom(distanceFromBottom <= rowSlot * 0.5);
+      setScrollGeometry({
+        offsetY: contentOffset.y,
+        contentHeight: contentSize.height,
+        viewportHeight: layoutMeasurement.height,
+      });
     },
     [rowSlot],
   );
+
+  const handleScrollContentSizeChange = useCallback(
+    (_width: number, height: number) =>
+      setScrollGeometry((prev) => ({ ...prev, contentHeight: height })),
+    [],
+  );
+
+  const handleScrollViewLayout = useCallback(
+    (event: LayoutChangeEvent) =>
+      setScrollGeometry((prev) => ({
+        ...prev,
+        viewportHeight: event.nativeEvent.layout.height,
+      })),
+    [],
+  );
+
+  // Derive the custom scrollbar thumb geometry. We seed it from the known row
+  // count (available on first render) and refine with measured values once the
+  // ScrollView reports them, so the bar is visible immediately and stays
+  // accurate as rows resize.
+  const viewportHeight =
+    scrollGeometry.viewportHeight > 0 ? scrollGeometry.viewportHeight : listMaxHeight;
+  const contentHeight = Math.max(
+    scrollGeometry.contentHeight,
+    count * rowSlot,
+  );
+  const offsetY = scrollGeometry.offsetY;
+  const showScrollbar = scrollable;
+  const thumbHeight = Math.min(
+    viewportHeight,
+    Math.max(SCROLLBAR_MIN_THUMB, (viewportHeight * viewportHeight) / contentHeight),
+  );
+  const maxOffset = Math.max(0, contentHeight - viewportHeight);
+  const maxThumbTravel = Math.max(0, viewportHeight - thumbHeight);
+  const thumbTop =
+    maxOffset > 0
+      ? Math.min(maxThumbTravel, (offsetY / maxOffset) * maxThumbTravel)
+      : 0;
 
   const handleScrollHintPress = useCallback(() => {
     if (!scrollRef.current) return;
@@ -248,31 +321,57 @@ export function QuickOrderListCard({
               </Text>
             </View>
           ) : (
-            <ScrollView
-              ref={scrollRef}
-              style={{ maxHeight: listMaxHeight }}
-              contentContainerStyle={{ paddingRight: ds.spacing(14) }}
-              showsVerticalScrollIndicator={scrollable}
-              indicatorStyle="black"
-              scrollIndicatorInsets={{ right: 2, top: 2, bottom: 2 }}
-              onScroll={handleScroll}
-              scrollEventThrottle={32}
-              scrollEnabled={scrollable}
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-              bounces={false}
-            >
-              {displayGroups.map((group, index) => (
-                <QuickOrderItemRow
-                  key={`${group.key}::${index}`}
-                  item={group.item}
-                  quantityLines={group.quantityLines}
-                  showDivider={index > 0}
-                  onEdit={onEditItem}
-                  onResolveQuantity={onResolveQuantity}
-                />
-              ))}
-            </ScrollView>
+            <View style={{ position: "relative" }}>
+              <ScrollView
+                ref={scrollRef}
+                style={{ maxHeight: listMaxHeight }}
+                contentContainerStyle={{ paddingRight: ds.spacing(14) }}
+                showsVerticalScrollIndicator={false}
+                onScroll={handleScroll}
+                onLayout={handleScrollViewLayout}
+                onContentSizeChange={handleScrollContentSizeChange}
+                scrollEventThrottle={16}
+                scrollEnabled={scrollable}
+                nestedScrollEnabled
+                keyboardShouldPersistTaps="handled"
+                bounces={false}
+              >
+                {displayGroups.map((group, index) => (
+                  <QuickOrderItemRow
+                    key={`${group.key}::${index}`}
+                    item={group.item}
+                    quantityLines={group.quantityLines}
+                    showDivider={index > 0}
+                    onEdit={onEditItem}
+                    onResolveQuantity={onResolveQuantity}
+                    onRemove={() => onRemoveItems(group.items)}
+                  />
+                ))}
+              </ScrollView>
+              {showScrollbar ? (
+                <View
+                  pointerEvents="none"
+                  style={[
+                    styles.scrollbarTrack,
+                    {
+                      width: ds.spacing(SCROLLBAR_WIDTH),
+                      borderRadius: ds.radius(SCROLLBAR_WIDTH),
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.scrollbarThumb,
+                      {
+                        height: thumbHeight,
+                        top: thumbTop,
+                        borderRadius: ds.radius(SCROLLBAR_WIDTH),
+                      },
+                    ]}
+                  />
+                </View>
+              ) : null}
+            </View>
           )}
 
           {scrollable && moreCount > 0 ? (
@@ -355,7 +454,7 @@ function groupOrderListItems(items: ParsedQuickOrderItem[]): OrderListGroup[] {
   });
 }
 
-function buildQuantityLines(items: ParsedQuickOrderItem[]): string[] {
+function buildQuantityLines(items: ParsedQuickOrderItem[]): OrderListQuantityLine[] {
   const byUnit = new Map<string, ParsedQuickOrderItem>();
   const lines: ParsedQuickOrderItem[] = [];
 
@@ -379,7 +478,10 @@ function buildQuantityLines(items: ParsedQuickOrderItem[]): string[] {
     }
   }
 
-  return lines.map((item) => formatParsedItemQuantity(item));
+  return lines.map((lineItem) => ({
+    label: formatParsedItemQuantity(lineItem),
+    item: lineItem,
+  }));
 }
 
 type ConfirmButtonProps = {
@@ -473,15 +575,15 @@ type FooterVariant = {
 // the pill read as plain text.
 const FOOTER_VARIANT: Record<ConfirmState, FooterVariant> = {
   ready: {
-    background: "#E8503A",
+    background: quickOrderAccent,
     foreground: "#FFFFFF",
-    border: "#E8503A",
+    border: quickOrderAccent,
     borderWidth: 0,
   },
   confirming: {
-    background: "#E8503A",
+    background: quickOrderAccent,
     foreground: "#FFFFFF",
-    border: "#E8503A",
+    border: quickOrderAccent,
     borderWidth: 0,
   },
   "needs-fixing": {
@@ -543,6 +645,20 @@ const styles = StyleSheet.create({
     color: grayScale[500],
     fontWeight: "600",
     letterSpacing: 0,
+  },
+  scrollbarTrack: {
+    position: "absolute",
+    top: 2,
+    bottom: 2,
+    right: 2,
+    backgroundColor: "rgba(60, 60, 67, 0.12)",
+    overflow: "hidden",
+  },
+  scrollbarThumb: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(60, 60, 67, 0.55)",
   },
   scrollHintWrap: {
     position: "absolute",

@@ -84,6 +84,7 @@ describe('QuickOrderListCard', () => {
           isSubmitting: false,
           onEditItem: jest.fn(),
           onResolveQuantity: jest.fn(),
+          onRemoveItems: jest.fn(),
           onConfirm: jest.fn(),
           onHeightChange: jest.fn(),
         }),
@@ -128,6 +129,7 @@ describe('QuickOrderListCard', () => {
           isSubmitting: false,
           onEditItem: jest.fn(),
           onResolveQuantity: jest.fn(),
+          onRemoveItems: jest.fn(),
           onConfirm: jest.fn(),
           onHeightChange: jest.fn(),
         }),
@@ -139,5 +141,111 @@ describe('QuickOrderListCard', () => {
     expect(rendered).toContain('Tako (Octopus)');
     expect(rendered).toContain('3 pieces');
     expect(rendered).toContain('1 pack');
+  });
+
+  test('renders suggested tag for recommendation-generated rows', () => {
+    let component!: renderer.ReactTestRenderer;
+    renderer.act(() => {
+      component = renderer.create(
+        React.createElement(QuickOrderListCard, {
+          items: [
+            {
+              item_id: 'tuna-loin-id',
+              item_name: 'Tuna Loin',
+              quantity: 1,
+              unit: 'cs',
+              status: 'valid',
+              needs_clarification: false,
+              unresolved: false,
+              source: 'inventory_recommendation',
+              isSuggested: true,
+              suggestionSource: 'remaining_inventory',
+            },
+          ],
+          issueCount: 0,
+          isSubmitting: false,
+          onEditItem: jest.fn(),
+          onResolveQuantity: jest.fn(),
+          onRemoveItems: jest.fn(),
+          onConfirm: jest.fn(),
+          onHeightChange: jest.fn(),
+        }),
+      );
+    });
+
+    const rendered = JSON.stringify(component.toJSON());
+    expect(rendered).toContain('Tuna Loin');
+    expect(rendered).toContain('1 case');
+    expect(rendered).toContain('Suggested');
+  });
+
+  test('keeps rows in the original message order instead of alphabetical order', () => {
+    let component!: renderer.ReactTestRenderer;
+    renderer.act(() => {
+      component = renderer.create(
+        React.createElement(QuickOrderListCard, {
+          items: [
+            {
+              item_id: 'garlic-id',
+              item_name: 'Ground Garlic',
+              quantity: 9,
+              unit: 'pack',
+              status: 'valid',
+              needs_clarification: false,
+              unresolved: false,
+              source: 'remaining_recommendation',
+              isSuggested: true,
+              suggestionSource: 'remaining_inventory',
+            },
+            {
+              item_id: 'edamame-id',
+              item_name: 'Edamame',
+              quantity: 7,
+              unit: 'cs',
+              status: 'valid',
+              needs_clarification: false,
+              unresolved: false,
+              source: 'remaining_recommendation',
+              isSuggested: true,
+              suggestionSource: 'remaining_inventory',
+            },
+            {
+              item_id: 'shrimp-id',
+              item_name: 'Shrimp (Frozen)',
+              quantity: null,
+              unit: null,
+              status: 'missing_quantity',
+              needs_clarification: true,
+              unresolved: false,
+              source: 'remaining_inventory',
+            },
+            {
+              item_id: 'albacore-id',
+              item_name: 'Albacore',
+              quantity: 8,
+              unit: 'cs',
+              status: 'valid',
+              needs_clarification: false,
+              unresolved: false,
+              source: 'remaining_recommendation',
+              isSuggested: true,
+              suggestionSource: 'remaining_inventory',
+            },
+          ],
+          issueCount: 1,
+          isSubmitting: false,
+          onEditItem: jest.fn(),
+          onResolveQuantity: jest.fn(),
+          onRemoveItems: jest.fn(),
+          onConfirm: jest.fn(),
+          onHeightChange: jest.fn(),
+        }),
+      );
+    });
+
+    const rendered = JSON.stringify(component.toJSON());
+    expect(rendered.indexOf('Ground Garlic')).toBeLessThan(rendered.indexOf('Edamame'));
+    expect(rendered.indexOf('Edamame')).toBeLessThan(rendered.indexOf('Shrimp (Frozen)'));
+    expect(rendered.indexOf('Shrimp (Frozen)')).toBeLessThan(rendered.indexOf('Albacore'));
   });
 });

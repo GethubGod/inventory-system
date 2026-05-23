@@ -356,6 +356,7 @@ export function matchCatalogIndex(
 export function isStrongDeterministicMatch(match: { match_type?: MatchType; item_id?: string | null }): boolean {
   return Boolean(match.item_id) && (
     match.match_type === 'exact_name' ||
+    match.match_type === 'employee_alias' ||
     match.match_type === 'exact_alias' ||
     match.match_type === 'correction' ||
     match.match_type === 'parenthetical_or_generated_exact' ||

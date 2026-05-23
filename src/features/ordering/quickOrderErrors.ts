@@ -13,6 +13,7 @@ export const QUICK_ORDER_ERROR_MESSAGES: Record<string, string> = {
   feature_disabled: 'Quick Order is temporarily off — please use Browse.',
   rate_limit_user_daily: 'Daily limit reached. Switch to Browse or try tomorrow.',
   rate_limit_org_monthly: 'Monthly AI budget reached. Contact your manager.',
+  quick_order_busy: 'Quick Order is busy right now. Wait a moment and try again.',
   ai_unavailable: 'Sorry, having trouble connecting. Please try again.',
   invalid_json: "I couldn't read that order. Try typing it again — one item per line.",
   parser_error: 'I had trouble processing that. Please try again.',

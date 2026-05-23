@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useAuthStore } from '@/store';
+import { useAuthStore } from '@/store/authStore';
 import type { Location } from '@/types';
 
 function getAvailableLocations(locations: Location[] | null | undefined): Location[] {
@@ -11,7 +11,7 @@ function getAvailableLocations(locations: Location[] | null | undefined): Locati
   return activeLocations.length > 0 ? activeLocations : safeLocations;
 }
 
-function resolveLocation(
+export function resolveLocation(
   currentLocation: Location | null,
   availableLocations: Location[],
 ): Location | null {
@@ -19,14 +19,18 @@ function resolveLocation(
     return null;
   }
 
+  const defaultLocation =
+    availableLocations.find((loc) => loc.name.toLowerCase().includes('sushi')) ??
+    availableLocations[0] ??
+    null;
+
   if (!currentLocation?.id) {
-    return availableLocations[0] ?? null;
+    return defaultLocation;
   }
 
   return (
     availableLocations.find((location) => location.id === currentLocation.id) ??
-    availableLocations[0] ??
-    null
+    defaultLocation
   );
 }
 

@@ -3,6 +3,12 @@ export type ClampComposerHeightInput = {
   maxHeight: number;
 };
 
+export type ComposerMode = 'order' | 'inventory';
+
+export function getComposerPlaceholder(mode: ComposerMode): string {
+  return mode === 'inventory' ? 'Enter remaining inventory...' : 'Add to order...';
+}
+
 export function isMessageSubmittable(text: string, isSending: boolean): boolean {
   if (isSending) return false;
   return text.trim().length > 0;

@@ -6,9 +6,23 @@ import { PARSER_VERSION } from './orchestrator.ts';
 import { getModelConfig } from './model-router.ts';
 import { processQuickOrderMessage } from './process-message.ts';
 import { classifyQuickOrderInput } from './input-classifier.ts';
+import { parseDeterministicOrder } from './deterministic-parser.ts';
+import { buildCatalogSearchIndex, matchCatalogIndex } from './catalog-matcher.ts';
+import {
+  buildMissingItemCartHash,
+  buildMissingItemSuggestions,
+  extractMissingItemTimeRange,
+  isMissingItemCheckRequest,
+  type MissingItemHistoryOrder,
+  type MissingItemSuggestion,
+  type MissingItemTimeRange,
+} from './missing-items-engine.ts';
 import { buildUnitAliases, normalizeUnitForComparison, type UnitAliasMap } from './units.ts';
 import type {
   CatalogItem,
+  EmployeeQuickOrderAlias,
+  InventoryReorderRule,
+  InventoryStatusTerm,
   ItemAllowedUnitRule,
   ItemOrderLimit,
   ParsedItem,
@@ -30,12 +44,49 @@ type ParseRequest = {
   raw_text?: unknown;
   message?: unknown;
   source?: unknown;
+  mode?: unknown;
+  mode_conflict_resolution?: unknown;
+  modeConflictResolution?: unknown;
+  operation?: unknown;
+  action?: unknown;
+  mutation_id?: unknown;
+  mutationId?: unknown;
+  before_cart?: unknown;
+  beforeCart?: unknown;
+  after_cart?: unknown;
+  afterCart?: unknown;
+  mutation_type?: unknown;
+  mutationType?: unknown;
+  assistant_message_text?: unknown;
+  assistantMessageText?: unknown;
   location_id?: unknown;
   session_id?: unknown;
   user_id?: unknown;
   existing_items?: unknown;
   recent_messages?: unknown;
   voice_metadata?: unknown;
+  current_items?: unknown;
+  currentItems?: unknown;
+  ignored_item_ids?: unknown;
+  ignoredItemIds?: unknown;
+  supplier_id?: unknown;
+  supplierId?: unknown;
+  time_range?: unknown;
+  timeRange?: unknown;
+  placed_at?: unknown;
+  placedAt?: unknown;
+  placed_at_text?: unknown;
+  placedAtText?: unknown;
+  employee_id?: unknown;
+  employeeId?: unknown;
+  employee_name?: unknown;
+  employeeName?: unknown;
+  employee_name_text?: unknown;
+  employeeNameText?: unknown;
+  original_text?: unknown;
+  originalText?: unknown;
+  preview_items?: unknown;
+  previewItems?: unknown;
 };
 
 type CachedCatalog = {
@@ -114,6 +165,14 @@ function normalizeSource(value: unknown): 'typed' | 'voice' {
   return value === 'voice' ? 'voice' : 'typed';
 }
 
+function normalizeComposerMode(value: unknown): 'order' | 'inventory' {
+  return value === 'inventory' ? 'inventory' : 'order';
+}
+
+function normalizeModeConflictResolution(value: unknown): 'keep_inventory' | undefined {
+  return value === 'keep_inventory' ? 'keep_inventory' : undefined;
+}
+
 function normalizeParsedItemArray(value: unknown): ParsedItem[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is ParsedItem => Boolean(entry && typeof entry === 'object'))
@@ -156,7 +215,7 @@ async function getAuthenticatedUser(req: Request) {
 
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('is_suspended, role')
+    .select('is_suspended, role, full_name')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -168,7 +227,26 @@ async function getAuthenticatedUser(req: Request) {
     };
   }
 
-  return { error: null, status: 200, user, role: typeof profile?.role === 'string' ? profile.role : null };
+  const { data: legacyUser } = await supabaseAdmin
+    .from('users')
+    .select('name')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const metadata = isRecord(user.user_metadata) ? user.user_metadata : {};
+  const employeeName =
+    asNullableString(profile?.full_name) ??
+    asNullableString(legacyUser?.name) ??
+    asNullableString(metadata.full_name) ??
+    asNullableString(metadata.name);
+
+  return {
+    error: null,
+    status: 200,
+    user,
+    role: typeof profile?.role === 'string' ? profile.role : null,
+    employeeName,
+  };
 }
 
 async function fetchGlobalCatalog(): Promise<CatalogItem[]> {
@@ -178,7 +256,7 @@ async function fetchGlobalCatalog(): Promise<CatalogItem[]> {
 
   const { data, error } = await supabaseAdmin
     .from('inventory_items')
-    .select('id, name, aliases, base_unit, pack_unit, allowed_units, active')
+    .select('id, name, aliases, base_unit, pack_unit, allowed_units, supplier_id, active, hard_cap, soft_cap, safety_stock, target_stock, default_order_unit')
     .eq('active', true)
     .limit(5000);
 
@@ -201,9 +279,15 @@ async function fetchGlobalCatalog(): Promise<CatalogItem[]> {
         default_unit: getDefaultInventoryUnit(row),
         base_unit: asNullableString(row.base_unit),
         pack_unit: asNullableString(row.pack_unit),
+        supplier_id: asNullableString(row.supplier_id),
         allowed_units: Array.isArray(row.allowed_units)
           ? row.allowed_units.filter((unit): unit is string => typeof unit === 'string')
           : null,
+        hard_cap: row.hard_cap != null ? Number(row.hard_cap) : null,
+        soft_cap: row.soft_cap != null ? Number(row.soft_cap) : null,
+        safety_stock: row.safety_stock != null ? Number(row.safety_stock) : null,
+        target_stock: row.target_stock != null ? Number(row.target_stock) : null,
+        default_order_unit: asNullableString(row.default_order_unit),
       };
     })
     .filter((item): item is CatalogItem => Boolean(item))
@@ -261,6 +345,51 @@ async function fetchCorrections(userId: string, locationId: string): Promise<Par
   return (data ?? []) as ParserCorrection[];
 }
 
+async function fetchEmployeeQuickOrderAliases(input: {
+  userId: string;
+  locationId: string;
+  employeeNameKey: string | null;
+}): Promise<EmployeeQuickOrderAlias[]> {
+  const byId = new Map<string, EmployeeQuickOrderAlias>();
+
+  async function fetchBy(column: 'employee_user_id' | 'employee_name_key', value: string): Promise<void> {
+    const { data, error } = await supabaseAdmin
+      .from('employee_quick_order_aliases')
+      .select(`
+        id,
+        employee_name,
+        employee_name_key,
+        employee_user_id,
+        alias_text,
+        alias_key,
+        inventory_item_id,
+        location_id,
+        active,
+        notes,
+        source
+      `)
+      .eq('active', true)
+      .eq(column, value)
+      .or(`location_id.is.null,location_id.eq.${input.locationId}`);
+
+    if (error) {
+      console.warn('parse-order employee_quick_order_aliases unavailable', error);
+      return;
+    }
+
+    for (const row of (data ?? []) as EmployeeQuickOrderAlias[]) {
+      if (row.id) byId.set(row.id, row);
+    }
+  }
+
+  await fetchBy('employee_user_id', input.userId);
+  if (input.employeeNameKey) {
+    await fetchBy('employee_name_key', input.employeeNameKey);
+  }
+
+  return [...byId.values()];
+}
+
 async function fetchItemOrderLimits(locationId: string): Promise<ItemOrderLimit[]> {
   const { data, error } = await supabaseAdmin
     .from('item_order_limits')
@@ -291,6 +420,129 @@ async function fetchItemOrderLimits(locationId: string): Promise<ItemOrderLimit[
     return [];
   }
   return (data ?? []) as ItemOrderLimit[];
+}
+
+async function fetchItemReorderRules(locationId: string): Promise<import('./types.ts').ItemReorderRule[]> {
+  const { data, error } = await supabaseAdmin
+    .from('item_reorder_rules')
+    .select(`
+      id,
+      item_id,
+      location_id,
+      supplier_id,
+      target_stock_quantity,
+      target_stock_unit,
+      min_stock_quantity,
+      max_stock_quantity,
+      usual_order_quantity,
+      usual_order_unit,
+      min_order_quantity,
+      order_increment,
+      allow_fractional_stock_count,
+      allow_fractional_order,
+      rounding_policy,
+      criticality,
+      shelf_life_days,
+      lead_time_days
+    `)
+    .or(`location_id.is.null,location_id.eq.${locationId}`);
+
+  if (error) {
+    console.warn('parse-order item_reorder_rules unavailable', error);
+    return [];
+  }
+  return (data ?? []) as import('./types.ts').ItemReorderRule[];
+}
+
+async function fetchInventoryReorderRules(locationId: string): Promise<InventoryReorderRule[]> {
+  const { data, error } = await supabaseAdmin
+    .from('inventory_reorder_rules')
+    .select(`
+      id,
+      active,
+      location_id,
+      location_key,
+      inventory_item_id,
+      applies_to_mode,
+      trigger_type,
+      trigger_qty,
+      trigger_qty_max,
+      trigger_unit,
+      order_strategy,
+      order_qty,
+      order_unit,
+      priority,
+      notes,
+      source
+    `)
+    .eq('active', true)
+    .or(`location_id.is.null,location_id.eq.${locationId}`);
+
+  if (error) {
+    console.warn('parse-order inventory_reorder_rules unavailable', error);
+    return [];
+  }
+  return (data ?? []) as InventoryReorderRule[];
+}
+
+async function fetchInventoryStatusTerms(): Promise<InventoryStatusTerm[]> {
+  const { data, error } = await supabaseAdmin
+    .from('inventory_status_terms')
+    .select(`
+      id,
+      active,
+      phrase,
+      phrase_key,
+      status,
+      remaining_qty,
+      remaining_unit_behavior,
+      recommendation_action,
+      priority,
+      notes,
+      source
+    `)
+    .eq('active', true)
+    .order('priority', { ascending: true });
+
+  if (error) {
+    console.warn('parse-order inventory_status_terms unavailable', error);
+    return [];
+  }
+  return (data ?? []) as InventoryStatusTerm[];
+}
+
+async function fetchItemOrderProfiles(locationId: string): Promise<import('./types.ts').ItemOrderProfile[]> {
+  const { data, error } = await supabaseAdmin
+    .from('item_order_profiles')
+    .select(`
+      id,
+      item_id,
+      location_id,
+      supplier_id,
+      usual_quantity,
+      usual_unit,
+      p50_quantity,
+      p75_quantity,
+      p95_quantity,
+      last_order_quantity,
+      last_order_unit,
+      last_ordered_at,
+      weekday_pattern_json,
+      monthly_pattern_json,
+      sample_size,
+      weekday,
+      ordered_count_recent,
+      total_similar_orders,
+      confidence_score,
+      source
+    `)
+    .or(`location_id.is.null,location_id.eq.${locationId}`);
+
+  if (error) {
+    console.warn('parse-order item_order_profiles unavailable', error);
+    return [];
+  }
+  return (data ?? []) as import('./types.ts').ItemOrderProfile[];
 }
 
 async function fetchItemAllowedUnitRules(catalogItemIds: string[]): Promise<ItemAllowedUnitRule[]> {
@@ -343,6 +595,245 @@ async function persistCurrentStockSnapshots(input: {
     return { ok: false, error: error.message };
   }
   return { ok: true };
+}
+
+function normalizeMutationType(value: unknown): string {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  return [
+    'smart_suggestion_applied',
+    'stock_recommendation_applied',
+    'history_reorder_applied',
+    'manual_update',
+    'clarification_applied',
+  ].includes(raw)
+    ? raw
+    : 'smart_suggestion_applied';
+}
+
+function collectAffectedItems(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isRecord)
+    .map((entry) => ({
+      item_id: asNullableString(entry.item_id),
+      item_name: asNullableString(entry.item_name) ?? asNullableString(entry.display_name),
+      quantity: asNumber(entry.quantity),
+      unit: asNullableString(entry.unit),
+    }))
+    .filter((entry) => entry.item_id || entry.item_name);
+}
+
+async function recordQuickOrderMutation(input: {
+  sessionId: string | null;
+  userId: string;
+  locationId: string;
+  mutationType: string;
+  sourceMessage: string | null;
+  assistantMessage: string | null;
+  beforeCart: unknown;
+  afterCart: unknown;
+}) {
+  const beforeCart = Array.isArray(input.beforeCart) ? input.beforeCart : [];
+  const afterCart = Array.isArray(input.afterCart) ? input.afterCart : [];
+  const { data, error } = await supabaseAdmin
+    .from('quick_order_cart_mutations')
+    .insert({
+      session_id: sessionIdOrNull(input.sessionId),
+      user_id: input.userId,
+      location_id: input.locationId,
+      mutation_type: normalizeMutationType(input.mutationType),
+      source_message: input.sourceMessage,
+      assistant_message: input.assistantMessage,
+      before_cart: beforeCart,
+      after_cart: afterCart,
+      affected_items: collectAffectedItems(afterCart),
+    })
+    .select('id')
+    .single();
+
+  if (error) throw new Error(`Unable to record Quick Order mutation: ${error.message}`);
+  const mutationId = String((data as { id: string }).id);
+  const message = input.assistantMessage || 'Updated the Quick Order list.';
+  return jsonResponse({
+    status: 'success',
+    legacy_status: 'ok',
+    display_message: message,
+    speech_message: message,
+    assistant_message: message,
+    reply_text: message,
+    parsed_items: [],
+    operations: [],
+    cart_operations: [],
+    stock_updates: [],
+    recommendations: [],
+    clarifications: [],
+    pending_actions: [],
+    pending_clarifications: [],
+    safety_warnings: [],
+    blocked_operations: [],
+    flags: [],
+    suggestions: [],
+    session_state: { total_items: afterCart.length, ready_to_submit: false },
+    model_used: 'none',
+    confidence: 1,
+    timings: { total_ms: 0 },
+    mutation_id: mutationId,
+    mutationId,
+    actions: [{ type: 'revert', label: 'Revert', mutationId }],
+    contextPatch: { lastMutationId: mutationId, mutationId },
+    assistantMessage: {
+      type: 'smart_suggestion',
+      text: message,
+      actions: [{ type: 'revert', label: 'Revert', mutationId }],
+      explanation: {
+        reason: 'Quick Order draft mutation recorded',
+        confidence: 'high',
+        dataSources: ['quick_order_cart_mutations', 'current_cart'],
+      },
+    },
+  });
+}
+
+async function revertQuickOrderMutation(input: {
+  sessionId: string | null;
+  userId: string;
+  locationId: string;
+  mutationId: string;
+  existingItems: unknown;
+}) {
+  const { data, error } = await supabaseAdmin
+    .from('quick_order_cart_mutations')
+    .select('id,session_id,user_id,location_id,before_cart,after_cart,revert_status,affected_items')
+    .eq('id', input.mutationId)
+    .maybeSingle();
+
+  if (error) throw new Error(`Unable to load Quick Order mutation: ${error.message}`);
+  if (!data || data.user_id !== input.userId || (data.location_id && data.location_id !== input.locationId)) {
+    return jsonResponse({
+      status: 'blocked',
+      error: 'Mutation not found for this Quick Order session.',
+      code: 'mutation_not_found',
+      display_message: 'I couldn’t safely find that change to revert.',
+    }, 404);
+  }
+  if (data.session_id && input.sessionId && data.session_id !== input.sessionId) {
+    return jsonResponse({
+      status: 'blocked',
+      error: 'Mutation belongs to a different session.',
+      code: 'mutation_session_mismatch',
+      display_message: 'I couldn’t safely revert this because it belongs to a different Quick Order session.',
+    }, 409);
+  }
+  if (data.revert_status !== 'active') {
+    return jsonResponse({
+      status: 'success',
+      legacy_status: 'ok',
+      display_message: 'That suggestion was already reverted.',
+      speech_message: 'That suggestion was already reverted.',
+      assistant_message: 'That suggestion was already reverted.',
+      reply_text: 'That suggestion was already reverted.',
+      parsed_items: [],
+      operations: [],
+      cart_operations: [],
+      stock_updates: [],
+      recommendations: [],
+      clarifications: [],
+      pending_actions: [],
+      pending_clarifications: [],
+      safety_warnings: [],
+      blocked_operations: [],
+      flags: [],
+      suggestions: [],
+      session_state: { total_items: Array.isArray(data.before_cart) ? data.before_cart.length : 0, ready_to_submit: false },
+      model_used: 'none',
+      confidence: 1,
+      timings: { total_ms: 0 },
+      contextPatch: { parsedItems: Array.isArray(data.before_cart) ? data.before_cart : [] },
+    });
+  }
+
+  const currentItems = Array.isArray(input.existingItems) ? input.existingItems : [];
+  const afterCart = Array.isArray(data.after_cart) ? data.after_cart : [];
+  if (!sameDraftSignature(currentItems, afterCart)) {
+    return jsonResponse({
+      status: 'needs_clarification',
+      legacy_status: 'needs_clarification',
+      display_message: 'I couldn’t safely revert this because the cart changed after that. Review the affected item instead.',
+      speech_message: 'I couldn’t safely revert this because the cart changed after that.',
+      assistant_message: 'I couldn’t safely revert this because the cart changed after that. Review the affected item instead.',
+      reply_text: 'I couldn’t safely revert this because the cart changed after that. Review the affected item instead.',
+      parsed_items: [],
+      operations: [],
+      cart_operations: [],
+      stock_updates: [],
+      recommendations: [],
+      clarifications: [],
+      pending_actions: [],
+      pending_clarifications: [],
+      safety_warnings: [],
+      blocked_operations: [],
+      flags: [],
+      suggestions: [],
+      session_state: { total_items: currentItems.length, ready_to_submit: false },
+      model_used: 'none',
+      confidence: 0.6,
+      timings: { total_ms: 0 },
+    }, 409);
+  }
+
+  const beforeCart = Array.isArray(data.before_cart) ? data.before_cart : [];
+  const update = await supabaseAdmin
+    .from('quick_order_cart_mutations')
+    .update({ revert_status: 'reverted', reverted_at: new Date().toISOString(), reverted_by: input.userId })
+    .eq('id', input.mutationId)
+    .eq('revert_status', 'active');
+  if (update.error) throw new Error(`Unable to mark mutation reverted: ${update.error.message}`);
+
+  const message = 'Reverted the suggestion. Your Quick Order list is back to the previous state.';
+  return jsonResponse({
+    status: 'success',
+    legacy_status: 'ok',
+    display_message: message,
+    speech_message: message,
+    assistant_message: message,
+    reply_text: message,
+    parsed_items: [],
+    operations: [],
+    cart_operations: [],
+    stock_updates: [],
+    recommendations: [],
+    clarifications: [],
+    pending_actions: [],
+    pending_clarifications: [],
+    safety_warnings: [],
+    blocked_operations: [],
+    flags: [],
+    suggestions: [],
+    session_state: { total_items: beforeCart.length, ready_to_submit: false },
+    model_used: 'none',
+    confidence: 1,
+    timings: { total_ms: 0 },
+    contextPatch: { parsedItems: beforeCart, lastMutationId: input.mutationId },
+    context_patch: { parsed_items: beforeCart, last_mutation_id: input.mutationId },
+    assistantMessage: { type: 'success', text: message, actions: [] },
+  });
+}
+
+function sameDraftSignature(left: unknown[], right: unknown[]): boolean {
+  return JSON.stringify(draftSignature(left)) === JSON.stringify(draftSignature(right));
+}
+
+function draftSignature(items: unknown[]): unknown[] {
+  return items
+    .filter(isRecord)
+    .map((item) => ({
+      item_id: asNullableString(item.item_id),
+      name: asNullableString(item.item_name) ?? asNullableString(item.display_name) ?? asNullableString(item.raw_token),
+      quantity: asNumber(item.quantity),
+      unit: asNullableString(item.unit),
+      key: asNullableString(item.client_key) ?? asNullableString(item.line_id) ?? asNullableString(item.id),
+    }))
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
 }
 
 function sanitizeExistingItems(
@@ -568,6 +1059,541 @@ async function fetchRecentOrders(input: { locationId: string; userId: string; li
   return parseJsonRows(data).map(normalizeHistoryOrder).filter((row): row is HistoryOrder => Boolean(row));
 }
 
+async function fetchMissingItemHistoryOrders(input: {
+  locationId: string;
+  userId: string;
+  limit?: number;
+}): Promise<MissingItemHistoryOrder[]> {
+  const submittedSource = UUID_PATTERN.test(input.userId)
+    ? await fetchRecentOrders({
+        locationId: input.locationId,
+        userId: input.userId,
+        limit: input.limit ?? 40,
+      })
+    : [];
+  const submitted = submittedSource.map((order): MissingItemHistoryOrder => ({
+    id: order.id,
+    placedAt: order.created_at,
+    locationId: input.locationId,
+    source: 'submitted_orders',
+    items: order.items.map((item) => ({
+      itemId: item.item_id,
+      itemName: item.item_name,
+      quantity: item.quantity,
+      unit: item.unit,
+    })),
+  }));
+
+  const { data: imports, error: importError } = await supabaseAdmin
+    .from('historical_order_imports')
+    .select('id,employee_id,location_id,supplier_id,placed_at,status')
+    .eq('location_id', input.locationId)
+    .eq('status', 'imported')
+    .order('placed_at', { ascending: false })
+    .limit(input.limit ?? 40);
+
+  if (importError) {
+    console.warn('parse-order historical_order_imports unavailable', importError);
+    return submitted;
+  }
+
+  const importRows = ((imports ?? []) as Record<string, unknown>[]);
+  const importIds = importRows.map((row) => asNullableString(row.id)).filter((id): id is string => Boolean(id));
+  if (importIds.length === 0) return submitted;
+
+  const { data: items, error: itemError } = await supabaseAdmin
+    .from('historical_order_import_items')
+    .select('import_id,item_id,item_name_snapshot,quantity,unit,supplier_id')
+    .in('import_id', importIds);
+
+  if (itemError) {
+    console.warn('parse-order historical_order_import_items unavailable', itemError);
+    return submitted;
+  }
+
+  const itemsByImport = new Map<string, MissingItemHistoryOrder['items']>();
+  for (const row of (items ?? []) as Record<string, unknown>[]) {
+    const importId = asNullableString(row.import_id);
+    const itemId = asNullableString(row.item_id);
+    const itemName = asNullableString(row.item_name_snapshot);
+    const quantity = asNumber(row.quantity);
+    if (!importId || !itemId || !itemName || quantity == null || quantity <= 0) continue;
+    const list = itemsByImport.get(importId) ?? [];
+    list.push({
+      itemId,
+      itemName,
+      quantity,
+      unit: asNullableString(row.unit),
+      supplierId: asNullableString(row.supplier_id),
+    });
+    itemsByImport.set(importId, list);
+  }
+
+  const imported = importRows
+    .map((row): MissingItemHistoryOrder | null => {
+      const id = asNullableString(row.id);
+      const placedAt = asNullableString(row.placed_at);
+      if (!id || !placedAt) return null;
+      const orderItems = itemsByImport.get(id) ?? [];
+      if (orderItems.length === 0) return null;
+      return {
+        id,
+        placedAt,
+        locationId: asNullableString(row.location_id),
+        supplierId: asNullableString(row.supplier_id),
+        employeeId: asNullableString(row.employee_id),
+        source: 'manager_import',
+        items: orderItems,
+      };
+    })
+    .filter((row): row is MissingItemHistoryOrder => Boolean(row));
+
+  return [...submitted, ...imported]
+    .sort((a, b) => new Date(b.placedAt).getTime() - new Date(a.placedAt).getTime());
+}
+
+async function runMissingItemCheck(input: {
+  locationId: string;
+  userId: string;
+  catalog: CatalogItem[];
+  currentItems: ParsedItem[];
+  supplierId?: string | null;
+  timeRange?: MissingItemTimeRange | null;
+  ignoredItemIds?: string[];
+}): Promise<{
+  suggestions: MissingItemSuggestion[];
+  cartHash: string;
+  message: string;
+}> {
+  const historyOrders = await fetchMissingItemHistoryOrders({
+    locationId: input.locationId,
+    userId: input.userId,
+    limit: 60,
+  });
+  const suggestions = buildMissingItemSuggestions({
+    currentItems: input.currentItems,
+    historyOrders,
+    catalog: input.catalog,
+    locationId: input.locationId,
+    supplierId: input.supplierId,
+    timeRange: input.timeRange,
+    ignoredItemIds: input.ignoredItemIds,
+  });
+  const cartHash = buildMissingItemCartHash(input.currentItems);
+  const message = suggestions.length === 0
+    ? 'Your order looks complete based on recent similar orders.'
+    : suggestions.length === 1
+      ? `You may be missing ${suggestions[0].itemName}. I recommended it because it appears in your recent similar orders.`
+      : `You may be missing ${suggestions.length} usual items. I recommended these because they appear in your recent similar orders.`;
+  return { suggestions, cartHash, message };
+}
+
+function suggestionsToParseSuggestions(suggestions: MissingItemSuggestion[]): ParseSuggestion[] {
+  return suggestions.map((suggestion) => ({
+    type: 'missing_item',
+    title: suggestion.itemName,
+    message: suggestion.reason,
+    items: [{
+      item_id: suggestion.itemId,
+      item_name: suggestion.itemName,
+      quantity: suggestion.suggestedQuantity,
+      unit: suggestion.unit,
+      unit_type: null,
+    }],
+    confidence: suggestion.confidence === 'high' ? 0.92 : suggestion.confidence === 'medium' ? 0.74 : 0.55,
+    action: 'add',
+    item_id: suggestion.itemId,
+    item_name: suggestion.itemName,
+    suggested_qty: suggestion.suggestedQuantity,
+    unit: suggestion.unit,
+    unit_type: null,
+    reason: suggestion.reason,
+  }));
+}
+
+function normalizeStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    : [];
+}
+
+function normalizeMissingTimeRange(value: unknown): MissingItemTimeRange | null {
+  return value === 'yesterday' || value === 'last_week' || value === 'recent' || value === 'usual' || value === 'last_month'
+    ? value
+    : null;
+}
+
+type HistoryImportPreviewRow = {
+  id: string;
+  originalLine: string;
+  matchedItemId: string | null;
+  matchedItemName: string | null;
+  quantity: number | null;
+  unit: string | null;
+  supplierId: string | null;
+  status: 'matched' | 'needs_review' | 'invalid' | 'ignored';
+  confidence: number;
+  reason: string | null;
+};
+
+type HistoryImportDatePreview = {
+  placedAt: string | null;
+  placedAtText: string;
+  dateStatus: 'valid' | 'needs_review' | 'invalid';
+  dateReason: string | null;
+};
+
+function normalizeEmployeeNameKey(value: string | null): string | null {
+  if (!value?.trim()) return null;
+  return value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function buildHistoryImportDatePreview(value: unknown, now = new Date()): HistoryImportDatePreview {
+  const text = asNullableString(value) ?? '';
+  const parsed = parseHistoryImportPlacedAt(text, now);
+  return {
+    placedAt: parsed.placedAt,
+    placedAtText: text,
+    dateStatus: parsed.status,
+    dateReason: parsed.reason,
+  };
+}
+
+function parseHistoryImportPlacedAt(text: string, now = new Date()): {
+  placedAt: string | null;
+  status: 'valid' | 'needs_review' | 'invalid';
+  reason: string | null;
+} {
+  const raw = text.normalize('NFKC').trim();
+  if (!raw) return { placedAt: null, status: 'invalid', reason: 'Enter the date for this history.' };
+
+  const direct = new Date(raw);
+  if (Number.isFinite(direct.getTime())) {
+    return { placedAt: normalizeHistoricalDate(direct, now).toISOString(), status: 'valid', reason: null };
+  }
+
+  const numeric = raw.match(/^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?(?:\s+(.+))?$/);
+  if (numeric) {
+    const month = Number(numeric[1]);
+    const day = Number(numeric[2]);
+    const year = numeric[3] ? normalizeYear(Number(numeric[3])) : now.getFullYear();
+    const candidate = applyLooseTime(new Date(year, month - 1, day, 12, 0, 0, 0), numeric[4] ?? raw);
+    if (isValidDateParts(candidate, year, month, day)) {
+      return { placedAt: normalizeHistoricalDate(candidate, now).toISOString(), status: 'valid', reason: null };
+    }
+  }
+
+  const monthNames = 'jan|january|feb|february|mar|march|apr|april|may|jun|june|jul|july|aug|august|sep|sept|september|oct|october|nov|november|dec|december';
+  const monthPattern = new RegExp(`\\b(${monthNames})\\s+(\\d{1,2})(?:,?\\s+(\\d{2,4}))?\\b`, 'i');
+  const monthMatch = raw.match(monthPattern);
+  if (monthMatch) {
+    const month = monthNameToIndex(monthMatch[1]) + 1;
+    const day = Number(monthMatch[2]);
+    const year = monthMatch[3] ? normalizeYear(Number(monthMatch[3])) : now.getFullYear();
+    const candidate = applyLooseTime(new Date(year, month - 1, day, 12, 0, 0, 0), raw);
+    if (isValidDateParts(candidate, year, month, day)) {
+      return { placedAt: normalizeHistoricalDate(candidate, now).toISOString(), status: 'valid', reason: null };
+    }
+  }
+
+  const weekday = weekdayNameToIndex(raw);
+  if (weekday != null) {
+    const candidate = mostRecentWeekday(weekday, now);
+    return { placedAt: applyLooseTime(candidate, raw).toISOString(), status: 'valid', reason: null };
+  }
+
+  return { placedAt: null, status: 'invalid', reason: 'Could not understand this date. Try 5/22, May 22, Friday morning, or 2026-05-22.' };
+}
+
+function normalizeHistoricalDate(date: Date, now: Date): Date {
+  const next = new Date(date);
+  if (next.getTime() > now.getTime() + 24 * 60 * 60 * 1000) {
+    next.setFullYear(next.getFullYear() - 1);
+  }
+  return next;
+}
+
+function applyLooseTime(date: Date, text: string): Date {
+  const next = new Date(date);
+  const lower = text.toLowerCase();
+  const clock = lower.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/);
+  if (clock) {
+    let hour = Number(clock[1]);
+    const minute = Number(clock[2] ?? 0);
+    if (clock[3] === 'pm' && hour < 12) hour += 12;
+    if (clock[3] === 'am' && hour === 12) hour = 0;
+    next.setHours(hour, minute, 0, 0);
+    return next;
+  }
+  if (/\bmorning\b/.test(lower)) next.setHours(9, 0, 0, 0);
+  else if (/\bafternoon\b/.test(lower)) next.setHours(14, 0, 0, 0);
+  else if (/\bevening|night\b/.test(lower)) next.setHours(18, 0, 0, 0);
+  else next.setHours(12, 0, 0, 0);
+  return next;
+}
+
+function normalizeYear(year: number): number {
+  return year < 100 ? 2000 + year : year;
+}
+
+function isValidDateParts(date: Date, year: number, month: number, day: number): boolean {
+  return Number.isFinite(date.getTime()) &&
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day;
+}
+
+function monthNameToIndex(value: string): number {
+  const key = value.toLowerCase().slice(0, 3);
+  return ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'].indexOf(key);
+}
+
+function weekdayNameToIndex(value: string): number | null {
+  const match = value.toLowerCase().match(/\b(sun|sunday|mon|monday|tue|tues|tuesday|wed|wednesday|thu|thur|thurs|thursday|fri|friday|sat|saturday)\b/);
+  if (!match) return null;
+  const key = match[1].slice(0, 3);
+  return ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'].indexOf(key);
+}
+
+function mostRecentWeekday(weekday: number, now: Date): Date {
+  const next = new Date(now);
+  const diff = (next.getDay() - weekday + 7) % 7;
+  next.setDate(next.getDate() - diff);
+  next.setHours(12, 0, 0, 0);
+  return next;
+}
+
+function buildHistoryImportPreview(input: {
+  originalText: string;
+  catalog: CatalogItem[];
+  corrections: ParserCorrection[];
+  unitAliases: UnitAliasMap;
+  allowedUnitRules: ItemAllowedUnitRule[];
+}): HistoryImportPreviewRow[] {
+  const index = buildCatalogSearchIndex(input.catalog, input.corrections);
+  const unitRulesByItem = new Map<string, string[]>();
+  for (const rule of input.allowedUnitRules) {
+    if (!rule.item_id || !rule.unit) continue;
+    const list = unitRulesByItem.get(rule.item_id) ?? [];
+    list.push(rule.unit);
+    unitRulesByItem.set(rule.item_id, list);
+  }
+  return parseDeterministicOrder(input.originalText, input.unitAliases)
+    .map((line, indexInList): HistoryImportPreviewRow => {
+      const match = line.item_text ? matchCatalogIndex(line.item_text, index) : null;
+      const itemId = match?.item_id ?? null;
+      const itemName = match?.item_name ?? null;
+      const unit = line.unit_normalized ?? line.unit ?? null;
+      const allowedUnits = itemId ? unitRulesByItem.get(itemId) ?? [] : [];
+      const unitValid = !unit || allowedUnits.length === 0 || allowedUnits
+        .map((entry) => normalizeUnitForComparison(entry))
+        .includes(normalizeUnitForComparison(unit));
+      const confidence = match?.confidence ?? 0;
+      const status: HistoryImportPreviewRow['status'] = !itemId
+        ? 'invalid'
+        : confidence < 0.86 || line.quantity == null || !unit || !unitValid
+          ? 'needs_review'
+          : 'matched';
+      return {
+        id: line.line_id || `line_${indexInList}`,
+        originalLine: line.raw_text,
+        matchedItemId: itemId,
+        matchedItemName: itemName,
+        quantity: line.quantity,
+        unit,
+        supplierId: itemId ? input.catalog.find((item) => item.id === itemId)?.supplier_id ?? null : null,
+        status,
+        confidence,
+        reason: !itemId
+          ? 'No catalog match'
+          : line.quantity == null
+            ? 'Missing quantity'
+            : !unit
+              ? 'Missing unit'
+              : !unitValid
+                ? 'Unit needs review'
+                : confidence < 0.86
+                  ? 'Low-confidence match'
+                  : null,
+      };
+    });
+}
+
+function normalizePreviewRows(value: unknown): HistoryImportPreviewRow[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(isRecord)
+    .map((row, index): HistoryImportPreviewRow | null => {
+      const status = row.status === 'matched' || row.status === 'needs_review' || row.status === 'invalid' || row.status === 'ignored'
+        ? row.status
+        : 'invalid';
+      const quantity = asNumber(row.quantity);
+      return {
+        id: asNullableString(row.id) ?? `row_${index}`,
+        originalLine: asNullableString(row.originalLine) ?? asNullableString(row.original_line) ?? '',
+        matchedItemId: asNullableString(row.matchedItemId) ?? asNullableString(row.matched_item_id),
+        matchedItemName: asNullableString(row.matchedItemName) ?? asNullableString(row.matched_item_name),
+        quantity,
+        unit: asNullableString(row.unit),
+        supplierId: asNullableString(row.supplierId) ?? asNullableString(row.supplier_id),
+        status,
+        confidence: clampConfidence(row.confidence),
+        reason: asNullableString(row.reason),
+      };
+    })
+    .filter((row): row is HistoryImportPreviewRow => Boolean(row));
+}
+
+async function importHistoricalOrder(input: {
+  importedBy: string;
+  employeeId: string | null;
+  employeeNameText: string | null;
+  locationId: string;
+  supplierId: string | null;
+  placedAt: string;
+  placedAtText: string | null;
+  originalText: string;
+  previewRows: HistoryImportPreviewRow[];
+}): Promise<{ importId: string; importedCount: number }> {
+  const validRows = input.previewRows.filter((row) =>
+    row.status !== 'ignored' &&
+    row.matchedItemId &&
+    row.matchedItemName &&
+    row.quantity != null &&
+    row.quantity > 0 &&
+    row.unit,
+  );
+  if (validRows.length === 0) throw new Error('No valid rows to import.');
+
+  const { data: importRow, error: importError } = await supabaseAdmin
+    .from('historical_order_imports')
+    .insert({
+      imported_by: input.importedBy,
+      employee_id: input.employeeId,
+      employee_name_text: input.employeeNameText,
+      employee_name_key: normalizeEmployeeNameKey(input.employeeNameText),
+      location_id: input.locationId,
+      supplier_id: input.supplierId,
+      placed_at: input.placedAt,
+      placed_at_text: input.placedAtText,
+      original_text: input.originalText,
+      status: 'imported',
+    })
+    .select('id')
+    .single();
+
+  if (importError || !importRow?.id) throw new Error(importError?.message ?? 'Unable to create historical import.');
+
+  const importId = String(importRow.id);
+  const { error: itemError } = await supabaseAdmin
+    .from('historical_order_import_items')
+    .insert(validRows.map((row) => ({
+      import_id: importId,
+      item_id: row.matchedItemId,
+      item_name_snapshot: row.matchedItemName,
+      quantity: row.quantity,
+      unit: row.unit,
+      supplier_id: row.supplierId ?? input.supplierId,
+      original_line: row.originalLine,
+    })));
+
+  if (itemError) throw new Error(itemError.message);
+  await refreshImportedProfiles(input.locationId);
+  return { importId, importedCount: validRows.length };
+}
+
+async function refreshImportedProfiles(locationId: string): Promise<void> {
+  const history = await fetchMissingItemHistoryOrders({ locationId, userId: '', limit: 80 });
+  const catalog = await fetchGlobalCatalog();
+  const catalogById = new Map(catalog.map((item) => [item.id, item]));
+  const stats = new Map<string, {
+    itemId: string;
+    locationId: string;
+    supplierId: string | null;
+    quantities: number[];
+    units: (string | null)[];
+    lastOrderedAt: string;
+    sampleSize: number;
+    imported: boolean;
+  }>();
+  for (const order of history.filter((entry) => entry.locationId === locationId)) {
+    for (const item of order.items) {
+      if (!catalogById.has(item.itemId)) continue;
+      const key = `${item.itemId}:${order.locationId ?? locationId}:${item.supplierId ?? order.supplierId ?? ''}`;
+      const current = stats.get(key) ?? {
+        itemId: item.itemId,
+        locationId: order.locationId ?? locationId,
+        supplierId: item.supplierId ?? order.supplierId ?? null,
+        quantities: [],
+        units: [],
+        lastOrderedAt: order.placedAt,
+        sampleSize: 0,
+        imported: false,
+      };
+      current.quantities.push(item.quantity);
+      current.units.push(item.unit);
+      current.sampleSize += 1;
+      current.imported = current.imported || order.source === 'manager_import';
+      if (new Date(order.placedAt).getTime() > new Date(current.lastOrderedAt).getTime()) {
+        current.lastOrderedAt = order.placedAt;
+      }
+      stats.set(key, current);
+    }
+  }
+
+  const rows = [...stats.values()].map((stat) => {
+    const usual = medianNumber(stat.quantities) ?? 1;
+    return {
+      item_id: stat.itemId,
+      location_id: stat.locationId,
+      supplier_id: stat.supplierId,
+      usual_quantity: usual,
+      usual_unit: mostFrequentString(stat.units),
+      p50_quantity: usual,
+      p75_quantity: percentile(stat.quantities, 0.75),
+      p95_quantity: percentile(stat.quantities, 0.95),
+      last_order_quantity: stat.quantities[stat.quantities.length - 1] ?? usual,
+      last_order_unit: mostFrequentString(stat.units),
+      last_ordered_at: stat.lastOrderedAt,
+      sample_size: stat.sampleSize,
+      ordered_count_recent: stat.sampleSize,
+      total_similar_orders: stat.sampleSize,
+      confidence_score: Math.min(1, stat.sampleSize / 8),
+      source: stat.imported ? 'manager_import' : 'submitted_orders',
+      updated_at: new Date().toISOString(),
+    };
+  });
+  if (rows.length === 0) return;
+  const { error } = await supabaseAdmin
+    .from('item_order_profiles')
+    .upsert(rows, { onConflict: 'item_id,location_id,supplier_id' });
+  if (error) console.warn('parse-order imported profile upsert failed', error);
+}
+
+function medianNumber(values: number[]): number | null {
+  return percentile(values, 0.5);
+}
+
+function percentile(values: number[], p: number): number | null {
+  const sorted = values.filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
+  if (sorted.length === 0) return null;
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.round((sorted.length - 1) * p)));
+  return sorted[index];
+}
+
+function mostFrequentString(values: (string | null)[]): string | null {
+  const counts = new Map<string, { raw: string; count: number }>();
+  for (const value of values) {
+    if (!value?.trim()) continue;
+    const key = normalizeUnitForComparison(value);
+    if (!key) continue;
+    const current = counts.get(key) ?? { raw: value.trim(), count: 0 };
+    current.count += 1;
+    counts.set(key, current);
+  }
+  return [...counts.values()].sort((a, b) => b.count - a.count)[0]?.raw ?? null;
+}
+
 function orderToSuggestion(order: HistoryOrder, type: 'reorder_recent' | 'reorder_last_week', title: string, message: string): ParseSuggestion {
   return {
     type,
@@ -595,11 +1621,53 @@ async function buildIntentSuggestions(input: {
 }): Promise<{ suggestions: ParseSuggestion[]; message: string | null; historyResult?: string }> {
   const normalized = input.rawText.normalize('NFKC').trim().toLowerCase();
   const wantsLastWeek = /\blast week\b/.test(normalized);
+  const wantsLastMonth = /\blast month\b/.test(normalized);
+  const wantsCompareLastWeek = /\bcompare\b.+\blast week\b/.test(normalized);
   const wantsRecent = /\breorder recent\b|\blast order\b|\brecent order\b/.test(normalized);
   const wantsUsual = /\busual\b|usually order/.test(normalized);
 
-  if (input.classification === 'history_request' || wantsLastWeek || wantsRecent || wantsUsual) {
-    const orders = await fetchRecentOrders({ locationId: input.locationId, userId: input.userId, limit: HISTORY_ORDER_LIMIT });
+  if (input.classification === 'history_request' || wantsLastWeek || wantsLastMonth || wantsCompareLastWeek || wantsRecent || wantsUsual) {
+    const orders = await fetchRecentOrders({
+      locationId: input.locationId,
+      userId: input.userId,
+      limit: wantsLastMonth || wantsCompareLastWeek ? 100 : HISTORY_ORDER_LIMIT,
+    });
+    if (wantsLastMonth) {
+      const range = previousCalendarMonthRange(new Date());
+      const matching = orders.filter((order) => {
+        const time = new Date(order.created_at).getTime();
+        return Number.isFinite(time) && time >= range.start.getTime() && time < range.end.getTime();
+      });
+      if (matching.length === 0) {
+        return { suggestions: [], message: `No orders were found for ${range.label}.`, historyResult: 'not_found' };
+      }
+      const itemNameMatch = normalized.match(/how much\s+(.+?)\s+did\s+i\s+order\s+last month/);
+      const itemFilter = itemNameMatch?.[1]?.trim();
+      const summary = summarizeHistoryOrders(matching, itemFilter);
+      return {
+        suggestions: [],
+        message: `${range.label}: ${summary}`,
+        historyResult: 'found',
+      };
+    }
+
+    if (wantsCompareLastWeek) {
+      const currentItems = input.parsedItems.filter((item) => item.item_id && item.quantity != null);
+      const target = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      const lastWeekOrder = orders
+        .map((order) => ({ order, distance: Math.abs(new Date(order.created_at).getTime() - target) }))
+        .filter((entry) => Number.isFinite(entry.distance))
+        .sort((a, b) => a.distance - b.distance)[0]?.order ?? null;
+      if (!lastWeekOrder || currentItems.length === 0) {
+        return { suggestions: [], message: 'I need a current order and a matching order from last week to compare.', historyResult: 'not_found' };
+      }
+      return {
+        suggestions: [],
+        message: compareCurrentToHistory(currentItems, lastWeekOrder),
+        historyResult: 'found',
+      };
+    }
+
     if (wantsLastWeek) {
       const target = Date.now() - 7 * 24 * 60 * 60 * 1000;
       const lastWeekOrder = orders
@@ -664,6 +1732,49 @@ async function buildIntentSuggestions(input: {
   }
 
   return { suggestions: [], message: null };
+}
+
+function previousCalendarMonthRange(now: Date): { start: Date; end: Date; label: string } {
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1, 0, 0, 0, 0));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+  const label = start.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  return { start, end, label };
+}
+
+function summarizeHistoryOrders(orders: HistoryOrder[], itemFilter?: string): string {
+  const totals = new Map<string, { name: string; quantity: number; unit: string | null; count: number }>();
+  const normalizedFilter = itemFilter?.toLowerCase() ?? null;
+  for (const order of orders) {
+    for (const item of order.items) {
+      if (normalizedFilter && !item.item_name.toLowerCase().includes(normalizedFilter)) continue;
+      const key = `${item.item_id}:${item.unit ?? ''}`;
+      const current = totals.get(key) ?? { name: item.item_name, quantity: 0, unit: item.unit, count: 0 };
+      current.quantity += item.quantity;
+      current.count += 1;
+      totals.set(key, current);
+    }
+  }
+  const rows = [...totals.values()].sort((a, b) => b.quantity - a.quantity);
+  if (rows.length === 0) return 'I found orders, but no matching item lines.';
+  return rows.slice(0, 6).map((row) => `${row.name} ${formatHistoryQuantity(row.quantity, row.unit)}`).join(', ');
+}
+
+function compareCurrentToHistory(currentItems: ParsedItem[], order: HistoryOrder): string {
+  const historyByItem = new Map(order.items.map((item) => [item.item_id, item]));
+  const parts = currentItems.slice(0, 6).map((item) => {
+    const historical = item.item_id ? historyByItem.get(item.item_id) : null;
+    const name = item.item_name ?? item.display_name ?? item.raw_token ?? 'Item';
+    if (!historical) return `${name} was not in the closest order from last week`;
+    const diff = (item.quantity ?? 0) - historical.quantity;
+    if (Math.abs(diff) < 0.0001) return `${name} matches last week at ${formatHistoryQuantity(historical.quantity, historical.unit)}`;
+    return `${name} is ${formatHistoryQuantity(Math.abs(diff), item.unit ?? historical.unit)} ${diff > 0 ? 'higher' : 'lower'} than last week`;
+  });
+  return parts.join('. ') + '.';
+}
+
+function formatHistoryQuantity(quantity: number, unit: string | null): string {
+  const rounded = Number.isInteger(quantity) ? String(quantity) : String(Math.round(quantity * 100) / 100);
+  return `${rounded}${unit ? ` ${unit}` : ''}`;
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
@@ -781,7 +1892,12 @@ Deno.serve(async (req) => {
 
     const payload = (await req.json().catch(() => ({}))) as ParseRequest;
     const rawText = asTrimmedString(payload.message) ?? asTrimmedString(payload.raw_text);
+    const operation = asNullableString(payload.operation) ?? asNullableString(payload.action) ?? 'parse';
     const source = normalizeSource(payload.source);
+    const composerMode = normalizeComposerMode(payload.mode);
+    const modeConflictResolution = normalizeModeConflictResolution(
+      payload.mode_conflict_resolution ?? payload.modeConflictResolution,
+    );
     const locationId = asTrimmedString(payload.location_id);
     const sessionId = asNullableString(payload.session_id);
     const requestedUserId = asTrimmedString(payload.user_id);
@@ -794,6 +1910,7 @@ Deno.serve(async (req) => {
       location_id: locationId,
       session_id: sessionId,
       source,
+      mode: composerMode,
       raw_text_length: rawText?.length ?? 0,
     });
 
@@ -824,6 +1941,33 @@ Deno.serve(async (req) => {
         { error: locationAccess.error || 'Forbidden' },
         locationAccess.status,
       );
+    }
+
+    if (operation === 'record_mutation') {
+      return await recordQuickOrderMutation({
+        sessionId,
+        userId: authenticatedUserId,
+        locationId,
+        mutationType: asNullableString(payload.mutation_type) ?? asNullableString(payload.mutationType) ?? 'smart_suggestion_applied',
+        sourceMessage: rawText,
+        assistantMessage: asNullableString(payload.assistant_message_text) ?? asNullableString(payload.assistantMessageText),
+        beforeCart: payload.before_cart ?? payload.beforeCart ?? [],
+        afterCart: payload.after_cart ?? payload.afterCart ?? [],
+      });
+    }
+
+    if (operation === 'revert_mutation' || operation === 'revert') {
+      const mutationId = asNullableString(payload.mutation_id) ?? asNullableString(payload.mutationId);
+      if (!mutationId || !UUID_PATTERN.test(mutationId)) {
+        return jsonResponse({ error: 'mutation_id must be a valid UUID.', code: 'invalid_mutation_id' }, 400);
+      }
+      return await revertQuickOrderMutation({
+        sessionId,
+        userId: authenticatedUserId,
+        locationId,
+        mutationId,
+        existingItems: payload.existing_items,
+      });
     }
 
     const { data: configRows } = await supabaseAdmin
@@ -871,19 +2015,21 @@ Deno.serve(async (req) => {
       }, 403);
     }
 
-    const dailyLimit = typeof config.quick_order_daily_limit_per_user === 'number'
-      ? config.quick_order_daily_limit_per_user
-      : 100;
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const { count: dailyCount } = await supabaseAdmin
-      .from('parser_usage_log')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', authenticatedUserId)
-      .gte('created_at', startOfDay.toISOString());
+    if (operation !== 'check_missing_items') {
+      const dailyLimit = typeof config.quick_order_daily_limit_per_user === 'number'
+        ? config.quick_order_daily_limit_per_user
+        : 100;
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const { count: dailyCount } = await supabaseAdmin
+        .from('parser_usage_log')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', authenticatedUserId)
+        .gte('created_at', startOfDay.toISOString());
 
-    if ((dailyCount ?? 0) >= dailyLimit) {
-      return jsonResponse({ error: 'Daily limit reached. Try tomorrow or contact your manager.', code: 'rate_limit_user_daily' }, 429);
+      if ((dailyCount ?? 0) >= dailyLimit) {
+        return jsonResponse({ error: 'Daily limit reached. Try tomorrow or contact your manager.', code: 'rate_limit_user_daily' }, 429);
+      }
     }
 
     const parserMode = typeof config.quick_order_parser_mode === 'string'
@@ -923,13 +2069,30 @@ Deno.serve(async (req) => {
     const catalog = await fetchGlobalCatalog();
     const globalCatalog = catalog;
     const catalogItemIds = [...new Set(catalog.map((item) => item.id).filter(Boolean))];
+    const employeeNameKey = normalizeEmployeeNameKey(authResult.employeeName ?? null);
 
-    const [sessionContext, corrections, limits, allowedUnitRules, recentOrders] = await Promise.all([
+    const [
+      sessionContext,
+      corrections,
+      limits,
+      allowedUnitRules,
+      reorderRules,
+      orderProfiles,
+      inventoryReorderRules,
+      inventoryStatusTerms,
+      recentOrders,
+      employeeAliases,
+    ] = await Promise.all([
       fetchSessionContext(sessionId, authenticatedUserId, locationId),
       fetchCorrections(authenticatedUserId, locationId),
       fetchItemOrderLimits(locationId),
       fetchItemAllowedUnitRules(catalogItemIds),
+      fetchItemReorderRules(locationId),
+      fetchItemOrderProfiles(locationId),
+      fetchInventoryReorderRules(locationId),
+      fetchInventoryStatusTerms(),
       fetchRecentOrders({ locationId, userId: authenticatedUserId, limit: HISTORY_ORDER_LIMIT }),
+      fetchEmployeeQuickOrderAliases({ userId: authenticatedUserId, locationId, employeeNameKey }),
     ]);
 
     devLog('catalog_loaded', {
@@ -939,6 +2102,11 @@ Deno.serve(async (req) => {
       corrections_count: corrections.length,
       limits_count: limits.length,
       allowed_unit_rules_count: allowedUnitRules.length,
+      reorder_rules_count: reorderRules.length,
+      order_profiles_count: orderProfiles.length,
+      inventory_reorder_rules_count: inventoryReorderRules.length,
+      inventory_status_terms_count: inventoryStatusTerms.length,
+      employee_aliases_count: employeeAliases.length,
       session_messages_count: sessionContext.messages.length,
       session_parsed_items_count: sessionContext.parsedItems.length,
     });
@@ -969,6 +2137,104 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (operation === 'check_missing_items') {
+      const currentItems = sanitizeExistingItems(
+        normalizeParsedItemArray(payload.current_items ?? payload.currentItems ?? payload.existing_items),
+        catalog,
+        unitAliases,
+      );
+      const timeRange =
+        normalizeMissingTimeRange(payload.time_range ?? payload.timeRange) ??
+        extractMissingItemTimeRange(rawText);
+      const missing = await runMissingItemCheck({
+        locationId,
+        userId: authenticatedUserId,
+        catalog,
+        currentItems,
+        supplierId: asNullableString(payload.supplier_id) ?? asNullableString(payload.supplierId),
+        timeRange,
+        ignoredItemIds: normalizeStringArray(payload.ignored_item_ids ?? payload.ignoredItemIds),
+      });
+      return jsonResponse({
+        status: 'success',
+        display_message: missing.message,
+        assistant_message: missing.message,
+        reply_text: missing.message,
+        speech_message: missing.message,
+        missing_item_suggestions: missing.suggestions,
+        suggestions: suggestionsToParseSuggestions(missing.suggestions),
+        cart_hash: missing.cartHash,
+        checked_at: new Date().toISOString(),
+        location_id: locationId,
+        supplier_id: asNullableString(payload.supplier_id) ?? asNullableString(payload.supplierId),
+      });
+    }
+
+    if (operation === 'history_import_preview') {
+      if (authResult.role !== 'manager' && authResult.role !== 'admin') {
+        return jsonResponse({ error: 'Manager access required', code: 'manager_required' }, 403);
+      }
+      const originalText = asNullableString(payload.original_text) ?? asNullableString(payload.originalText) ?? rawText;
+      const datePreview = buildHistoryImportDatePreview(payload.placed_at_text ?? payload.placedAtText ?? payload.placed_at ?? payload.placedAt);
+      const rows = buildHistoryImportPreview({
+        originalText,
+        catalog,
+        corrections,
+        unitAliases,
+        allowedUnitRules,
+      });
+      return jsonResponse({
+        status: 'success',
+        placed_at: datePreview.placedAt,
+        placed_at_text: datePreview.placedAtText,
+        date_status: datePreview.dateStatus,
+        date_reason: datePreview.dateReason,
+        preview_rows: rows,
+        needs_review_count: rows.filter((row) => row.status === 'needs_review').length,
+        invalid_count: rows.filter((row) => row.status === 'invalid').length,
+      });
+    }
+
+    if (operation === 'history_import_commit') {
+      if (authResult.role !== 'manager' && authResult.role !== 'admin') {
+        return jsonResponse({ error: 'Manager access required', code: 'manager_required' }, 403);
+      }
+      const employeeNameText = asNullableString(payload.employee_name_text) ??
+        asNullableString(payload.employeeNameText) ??
+        asNullableString(payload.employee_name) ??
+        asNullableString(payload.employeeName);
+      if (!employeeNameText) {
+        return jsonResponse({ error: 'employee_name_text is required.', code: 'missing_employee_name' }, 400);
+      }
+      const datePreview = buildHistoryImportDatePreview(payload.placed_at_text ?? payload.placedAtText ?? payload.placed_at ?? payload.placedAt);
+      const placedAt = datePreview.placedAt;
+      if (!placedAt || Number.isNaN(new Date(placedAt).getTime())) {
+        return jsonResponse({ error: 'placed_at_text must be a valid date.', code: 'invalid_placed_at', date_reason: datePreview.dateReason }, 400);
+      }
+      const previewRows = normalizePreviewRows(payload.preview_items ?? payload.previewItems);
+      const blocking = previewRows.filter((row) => row.status !== 'ignored' && row.status !== 'matched');
+      if (blocking.length > 0) {
+        return jsonResponse({ error: 'All rows must be matched or ignored before import.', code: 'preview_rows_invalid' }, 400);
+      }
+      const imported = await importHistoricalOrder({
+        importedBy: authenticatedUserId,
+        employeeId: asNullableString(payload.employee_id) ?? asNullableString(payload.employeeId),
+        employeeNameText,
+        locationId,
+        supplierId: null,
+        placedAt,
+        placedAtText: datePreview.placedAtText,
+        originalText: asNullableString(payload.original_text) ?? asNullableString(payload.originalText) ?? rawText,
+        previewRows,
+      });
+      return jsonResponse({
+        status: 'success',
+        import_id: imported.importId,
+        imported_count: imported.importedCount,
+        message: `Imported ${imported.importedCount} historical order items. Smart suggestions have been refreshed.`,
+      });
+    }
+
     devLog('parser_start', {
       parser_mode: llmEnabled ? 'deterministic_plus_llm' : 'deterministic_only',
       raw_text_length: rawText.length,
@@ -987,9 +2253,59 @@ Deno.serve(async (req) => {
         (message.pending_clarifications ?? []).some((entry) => entry.type === 'quantity_conflict' || entry.type === 'unit_conflict')
       ),
     });
+    if (isMissingItemCheckRequest(rawText)) {
+      const timeRange = extractMissingItemTimeRange(rawText);
+      const missing = await runMissingItemCheck({
+        locationId,
+        userId: authenticatedUserId,
+        catalog,
+        currentItems: requestExistingItems.length > 0 ? requestExistingItems : sessionExistingItems,
+        supplierId: asNullableString(payload.supplier_id) ?? asNullableString(payload.supplierId),
+        timeRange,
+        ignoredItemIds: normalizeStringArray(payload.ignored_item_ids ?? payload.ignoredItemIds),
+      });
+      return jsonResponse({
+        status: 'success',
+        legacy_status: 'ok',
+        display_message: missing.message,
+        assistant_message: missing.message,
+        reply_text: missing.message,
+        speech_message: missing.message,
+        parsed_items: [],
+        flags: [],
+        suggestions: suggestionsToParseSuggestions(missing.suggestions),
+        missing_item_suggestions: missing.suggestions,
+        pending_actions: [],
+        pending_clarifications: [],
+        session_state: {
+          total_items: (requestExistingItems.length > 0 ? requestExistingItems : sessionExistingItems).length,
+          ready_to_submit: false,
+        },
+        cart_operations: [],
+        operations: [],
+        stock_updates: [],
+        recommendations: [],
+        clarifications: [],
+        safety_warnings: [],
+        blocked_operations: [],
+        model_used: 'none',
+        confidence: missing.suggestions.some((entry) => entry.confidence === 'high') ? 0.92 : 0.8,
+        timings: { total_ms: Date.now() - callStartTime },
+        cart_hash: missing.cartHash,
+        checked_at: new Date().toISOString(),
+        diagnostics: {
+          parser_version: PARSER_VERSION,
+          input_classification: 'recommend_order_request',
+          input_classification_reason: 'missing_item_check_phrase',
+          llm_intent_intent: 'check_missing_items',
+        },
+      });
+    }
     const result = await processQuickOrderMessage({
       request: {
         source,
+        mode: composerMode,
+        mode_conflict_resolution: modeConflictResolution,
         message: rawText,
         session_id: sessionId,
         location_id: locationId,
@@ -1009,6 +2325,11 @@ Deno.serve(async (req) => {
       existingParsedItems: requestExistingItems.length > 0 ? requestExistingItems : sessionExistingItems,
       limits,
       allowedUnitRules,
+      employeeAliases,
+      inventoryReorderRules,
+      inventoryStatusTerms,
+      reorderRules,
+      orderProfiles,
       recentOrders,
       userRole: authResult.role,
       unitAliases,
@@ -1040,6 +2361,34 @@ Deno.serve(async (req) => {
       items_needing_clarification: result.parsed_items.filter((item) => item.needs_clarification).length,
       items_unresolved: result.parsed_items.filter((item) => item.unresolved).length,
     });
+
+    if (result.diagnostics?.llm_intent_intent === 'check_missing_items') {
+      const missing = await runMissingItemCheck({
+        locationId,
+        userId: authenticatedUserId,
+        catalog,
+        currentItems: requestExistingItems.length > 0 ? requestExistingItems : sessionExistingItems,
+        supplierId: asNullableString(payload.supplier_id) ?? asNullableString(payload.supplierId),
+        timeRange: normalizeMissingTimeRange((result.diagnostics as Record<string, unknown>)?.llm_intent_time_range) ?? extractMissingItemTimeRange(rawText),
+        ignoredItemIds: normalizeStringArray(payload.ignored_item_ids ?? payload.ignoredItemIds),
+      });
+      return jsonResponse({
+        ...result,
+        display_message: missing.message,
+        assistant_message: missing.message,
+        reply_text: missing.message,
+        speech_message: missing.message,
+        parsed_items: [],
+        suggestions: suggestionsToParseSuggestions(missing.suggestions),
+        missing_item_suggestions: missing.suggestions,
+        cart_hash: missing.cartHash,
+        checked_at: new Date().toISOString(),
+        diagnostics: {
+          ...(result.diagnostics ?? {}),
+          suggestion_count: missing.suggestions.length,
+        },
+      });
+    }
 
     const intentSuggestionResult = await buildIntentSuggestions({
       classification: result.diagnostics?.input_classification,

@@ -81,6 +81,7 @@ export function applyStockSafetyLimits(input: {
   const warnings: SafetyWarning[] = [];
 
   for (const update of input.stockUpdates) {
+    const catalogItem = input.catalog.find((entry) => entry.id === update.item_id) ?? null;
     const decision = evaluateQuantity({
       itemId: update.item_id,
       itemName: update.item_name,
@@ -90,6 +91,7 @@ export function applyStockSafetyLimits(input: {
       limit: findLimit(input.limits, update.item_id, input.locationId),
       unitRule: findUnitRule(input.allowedUnitRules, update.item_id, update.unit),
       userRole: input.userRole,
+      catalogItem,
     });
     if (decision.action === 'allow') {
       accepted.push(update);
@@ -250,6 +252,7 @@ function evaluateParsedItem(item: ParsedItem, input: SafetyValidationInput): Saf
     limit: findLimit(input.limits, item.item_id, input.locationId),
     unitRule: findUnitRule(input.allowedUnitRules, item.item_id, item.unit),
     userRole: input.userRole,
+    catalogItem,
   });
 }
 
@@ -345,6 +348,7 @@ function evaluateOperation(operation: QuickOrderOperation, input: SafetyValidati
     limit: findLimit(input.limits, operation.target_item_id, input.locationId),
     unitRule: findUnitRule(input.allowedUnitRules, operation.target_item_id, operation.unit ?? null),
     userRole: input.userRole,
+    catalogItem,
   });
 }
 
@@ -393,11 +397,13 @@ function evaluateQuantity(input: {
   limit: ItemOrderLimit | null;
   unitRule: ItemAllowedUnitRule | null;
   userRole?: string | null;
+  catalogItem?: CatalogItem | null;
 }): SafetyDecision {
   const quantity = input.quantity;
   if (quantity == null || !Number.isFinite(quantity)) return { action: 'allow' };
 
-  const hardMax = minPositive(input.limit?.hard_max_quantity, input.limit?.max_single_order_quantity, input.unitRule?.hard_max_quantity);
+  const hardMaxOverride = minPositive(input.limit?.hard_max_quantity, input.limit?.max_single_order_quantity, input.unitRule?.hard_max_quantity);
+  const hardMax = hardMaxOverride ?? positiveNumber(input.catalogItem?.hard_cap);
   if (hardMax != null && quantity > hardMax) {
     return {
       action: 'block',
@@ -417,7 +423,8 @@ function evaluateQuantity(input: {
     };
   }
 
-  const softMax = minPositive(input.limit?.soft_max_quantity, input.unitRule?.soft_max_quantity);
+  const softMaxOverride = minPositive(input.limit?.soft_max_quantity, input.unitRule?.soft_max_quantity);
+  const softMax = softMaxOverride ?? positiveNumber(input.catalogItem?.soft_cap);
   const p95 = positiveNumber(input.limit?.historical_p95_quantity);
   if (input.source === 'voice' && p95 != null && quantity > p95) {
     return {

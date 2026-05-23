@@ -223,6 +223,11 @@ export interface InventoryItem {
   aliases?: string[];
   created_at: string;
   created_by?: string | null;
+  hard_cap?: number | null;
+  soft_cap?: number | null;
+  safety_stock?: number | null;
+  target_stock?: number | null;
+  default_order_unit?: string | null;
 }
 
 export interface Order {
@@ -379,6 +384,124 @@ export interface ItemAllowedUnit {
   updated_at: string;
 }
 
+export interface EmployeeQuickOrderAlias {
+  id: string;
+  employee_name: string;
+  employee_name_key: string;
+  employee_user_id: string | null;
+  alias_text: string;
+  alias_key: string;
+  inventory_item_id: string;
+  location_id: string | null;
+  location_key: string;
+  active: boolean;
+  notes: string | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EmployeeQuickOrderAliasInsert = Omit<
+  EmployeeQuickOrderAlias,
+  | 'id'
+  | 'employee_name_key'
+  | 'alias_key'
+  | 'employee_user_id'
+  | 'location_id'
+  | 'location_key'
+  | 'active'
+  | 'notes'
+  | 'source'
+  | 'created_at'
+  | 'updated_at'
+> & {
+  id?: string;
+  employee_name_key?: string;
+  alias_key?: string;
+  employee_user_id?: string | null;
+  location_id?: string | null;
+  active?: boolean;
+  notes?: string | null;
+  source?: string;
+};
+
+export type EmployeeQuickOrderAliasUpdate = Partial<EmployeeQuickOrderAliasInsert>;
+
+export interface InventoryReorderRule {
+  id: string;
+  active: boolean;
+  location_id: string | null;
+  location_key: string;
+  inventory_item_id: string;
+  applies_to_mode: 'inventory_only' | 'order_only' | 'both';
+  trigger_type: 'below' | 'at_or_below' | 'equal' | 'between' | 'at_or_above' | 'always';
+  trigger_qty: number | null;
+  trigger_qty_max: number | null;
+  trigger_qty_key: string;
+  trigger_qty_max_key: string;
+  trigger_unit: string | null;
+  trigger_unit_key: string;
+  order_strategy: 'fixed_order_qty' | 'no_order' | 'use_existing_recommendation_engine';
+  order_qty: number | null;
+  order_unit: string | null;
+  priority: number;
+  notes: string | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type InventoryReorderRuleInsert = Omit<
+  InventoryReorderRule,
+  | 'id'
+  | 'location_key'
+  | 'trigger_qty_key'
+  | 'trigger_qty_max_key'
+  | 'trigger_unit_key'
+  | 'active'
+  | 'applies_to_mode'
+  | 'priority'
+  | 'source'
+  | 'created_at'
+  | 'updated_at'
+> & {
+  id?: string;
+  active?: boolean;
+  applies_to_mode?: InventoryReorderRule['applies_to_mode'];
+  priority?: number;
+  source?: string;
+};
+
+export type InventoryReorderRuleUpdate = Partial<InventoryReorderRuleInsert>;
+
+export interface InventoryStatusTerm {
+  id: string;
+  active: boolean;
+  phrase: string;
+  phrase_key: string;
+  status: 'enough' | 'zero' | 'partial' | 'low' | 'unknown';
+  remaining_qty: number | null;
+  remaining_unit_behavior: 'none' | 'detected_unit' | 'item_default_unit';
+  recommendation_action: 'no_order' | 'check_reorder_rule' | 'ask_quantity' | 'use_existing_recommendation_engine';
+  priority: number;
+  notes: string | null;
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type InventoryStatusTermInsert = Omit<
+  InventoryStatusTerm,
+  'id' | 'active' | 'priority' | 'source' | 'created_at' | 'updated_at'
+> & {
+  id?: string;
+  active?: boolean;
+  priority?: number;
+  source?: string;
+};
+
+export type InventoryStatusTermUpdate = Partial<InventoryStatusTermInsert>;
+
 export interface CurrentStockSnapshot {
   id: string;
   location_id: string;
@@ -526,6 +649,21 @@ export interface Database {
         ItemAllowedUnit,
         Omit<ItemAllowedUnit, 'id' | 'created_at' | 'updated_at'>,
         Partial<Omit<ItemAllowedUnit, 'id' | 'created_at' | 'updated_at'>>
+      >;
+      employee_quick_order_aliases: DatabaseTable<
+        EmployeeQuickOrderAlias,
+        EmployeeQuickOrderAliasInsert,
+        EmployeeQuickOrderAliasUpdate
+      >;
+      inventory_reorder_rules: DatabaseTable<
+        InventoryReorderRule,
+        InventoryReorderRuleInsert,
+        InventoryReorderRuleUpdate
+      >;
+      inventory_status_terms: DatabaseTable<
+        InventoryStatusTerm,
+        InventoryStatusTermInsert,
+        InventoryStatusTermUpdate
       >;
       current_stock_snapshots: DatabaseTable<
         CurrentStockSnapshot,

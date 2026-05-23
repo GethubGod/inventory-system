@@ -33,8 +33,14 @@ const STOCK_HEADER_PATTERN =
   /^\s*(?:counted|current\s+stock)(?:\s+[\p{L}\p{N}'()\/ -]+)?\s*$/iu;
 
 const EXPLICIT_STOCK_PATTERNS = [
+  /\b(?:we have|i have)\b.+(?:\d|\bone\b|\btwo\b|\bthree\b|\bfour\b|\bfive\b|\bhalf\b)/i,
   /\b(?:we have|i have|have|has)\b.+\b(?:left|remaining|on hand|in stock)\b/i,
+  /\b(?:if i have|if we have)\b/i,
   /\b(?:left|remaining|on hand|current stock)\b/i,
+  /\bcurrent\b.+\b(?:is|are)\s+(?:\d|\bone\b|\btwo\b|\bthree\b|\bfour\b|\bfive\b|\bhalf\b)/i,
+  /\b(?:is|are)\s+at\s+(?:\d|\bone\b|\btwo\b|\bthree\b|\bfour\b|\bfive\b|\bhalf\b)/i,
+  /\b(?:around|about|almost|nearly)\s+(?:\d|\bone\b|\btwo\b|\bthree\b|\bfour\b|\bfive\b|\bhalf\b)/i,
+  /\blow on\b/i,
   /\bout of\b/i,
   /^\s*no\s+[\p{L}\p{N}'()\/ -]+\s*$/iu,
 ];

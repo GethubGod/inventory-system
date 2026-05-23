@@ -2,7 +2,7 @@
   "expo": {
     "name": "Babytuna Systems",
     "slug": "babytuna-systems",
-    "version": "1.5.0",
+    "version": "2.0",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
     "scheme": "babytunasystems",
@@ -18,7 +18,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.babytuna.systems",
-      "buildNumber": "10",
+      "buildNumber": "11",
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -35,6 +35,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.babytuna.systems",
+      "versionCode": 11,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
@@ -81,7 +82,7 @@
         "projectId": "fd32384c-3175-4fef-81b4-1321513b386e"
       }
     },
-    "runtimeVersion": "1.5.0",
+    "runtimeVersion": "2.0",
     "owner": "gethubgod",
     "updates": {
       "url": "https://u.expo.dev/fd32384c-3175-4fef-81b4-1321513b386e"

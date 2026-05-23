@@ -47,14 +47,21 @@ export function buildProcessMessages(input: {
   }
 
   if (input.stockUpdates.length > 0 && input.recommendations.length > 0) {
-    const stockLabel = input.stockUpdates.length === 1
-      ? input.stockUpdates[0].item_name
-      : `${input.stockUpdates.length} stock counts`;
-    const recLabel = input.recommendations.length === 1
-      ? `${input.recommendations[0].suggested_quantity} ${input.recommendations[0].unit ?? ''} ${input.recommendations[0].item_name}`.trim()
-      : `${input.recommendations.length} order suggestions`;
-    const message = `Stock updated for ${stockLabel}. I suggest ${recLabel}.`;
+    const message = input.stockUpdates.length === 1 && input.recommendations.length === 1
+      ? `You have ${formatQuantity(input.stockUpdates[0].quantity, input.stockUpdates[0].unit)} of ${input.stockUpdates[0].item_name} remaining. I suggest ordering ${formatQuantity(input.recommendations[0].suggested_quantity, input.recommendations[0].unit)}.`
+      : `I checked ${input.stockUpdates.length} current inventory count${input.stockUpdates.length === 1 ? '' : 's'} and found ${input.recommendations.length} suggested order${input.recommendations.length === 1 ? '' : 's'}.`;
     return { displayMessage: message, speechMessage: shorten(message) };
+  }
+
+  const inventoryInfo = input.safetyWarnings.find((entry) =>
+    entry.severity === 'info' &&
+    (entry.type === 'recommendation_unavailable' || entry.type === 'no_order_needed')
+  );
+  if (input.stockUpdates.length > 0 && inventoryInfo) {
+    return {
+      displayMessage: inventoryInfo.message,
+      speechMessage: shorten(inventoryInfo.message),
+    };
   }
 
   if (input.stockUpdates.length > 0) {

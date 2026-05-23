@@ -1,17 +1,26 @@
-import { buildCatalogSearchIndex } from './catalog-matcher.ts';
+import { buildCatalogSearchIndex, matchCatalogIndex } from './catalog-matcher.ts';
+import { parseDeterministicOrder } from './deterministic-parser.ts';
 import type { QuickOrderInputClassificationResult } from './input-classifier.ts';
-import { routeQuickOrderModel, type QuickOrderModelConfig } from './model-router.ts';
+import { routeIntentWithLlm, type LlmIntentRoute } from './llm-intent-router.ts';
+import { normalizeModelUsed, routeQuickOrderModel, type QuickOrderModelConfig } from './model-router.ts';
 import { parseQuickOrder, PARSER_VERSION } from './orchestrator.ts';
 import { buildQuickOrderRecommendations, type RecommendationHistoryOrder } from './recommendation-engine.ts';
 import { buildProcessMessages } from './response-formatter.ts';
-import { routeQuickOrderSegments } from './segment-router.ts';
+import { routeQuickOrderSegments, type QuickOrderSegmentRoute } from './segment-router.ts';
 import { applyStockSafetyLimits, deduplicatePendingClarifications, validateQuickOrderSafety } from './safety-engine.ts';
 import { extractStockUpdates, type StockUpdateExtraction } from './stock-updates.ts';
 import { QuickOrderTimer } from './timing.ts';
+import { validateParsedLine } from './validator.ts';
+import type { CatalogSearchIndex } from './catalog-search-index.ts';
 import type {
   CatalogItem,
+  EmployeeQuickOrderAlias,
+  InventoryReorderRule,
+  InventoryStatusTerm,
   ItemAllowedUnitRule,
+  ItemOrderProfile,
   ItemOrderLimit,
+  ItemReorderRule,
   ParserCorrection,
   ParseResponse,
   ParsedItem,
@@ -32,6 +41,11 @@ export type ProcessQuickOrderMessageInput = {
   existingParsedItems: ParsedItem[];
   limits: ItemOrderLimit[];
   allowedUnitRules: ItemAllowedUnitRule[];
+  employeeAliases?: EmployeeQuickOrderAlias[];
+  inventoryReorderRules?: InventoryReorderRule[];
+  inventoryStatusTerms?: InventoryStatusTerm[];
+  reorderRules?: ItemReorderRule[];
+  orderProfiles?: ItemOrderProfile[];
   recentOrders: RecommendationHistoryOrder[];
   userRole?: string | null;
   modelConfig: QuickOrderModelConfig;
@@ -55,11 +69,76 @@ export async function processQuickOrderMessage(
   const globalCatalogIndex = globalOrderCatalog
     ? buildCatalogSearchIndex(globalOrderCatalog, input.corrections)
     : undefined;
-  const classification = input.classification;
-  const segmentRoute = routeQuickOrderSegments(request.message);
+  let classification = input.classification;
+  const routedMessage = request.mode_conflict_resolution === 'keep_inventory'
+    ? stripExplicitOrderVerb(request.message)
+    : request.message;
+  let segmentRoute = routeQuickOrderSegments(routedMessage);
+  const inventoryModeStock = shouldUseInventoryModeAsStock({
+    request,
+    message: routedMessage,
+    classification,
+    segmentRoute,
+    unitAliases: input.unitAliases,
+  });
+  if (
+    request.mode === 'inventory' &&
+    request.mode_conflict_resolution !== 'keep_inventory' &&
+    isExplicitOrderPhrase(request.message) &&
+    isInventoryDraftMessage(stripExplicitOrderVerb(request.message), input.unitAliases)
+  ) {
+    return buildModeConflictResponse({
+      input,
+      request,
+      orderCatalog,
+      globalOrderCatalog,
+      catalogIndex,
+      globalCatalogIndex,
+    });
+  }
+  if (inventoryModeStock) {
+    classification = {
+      ...classification,
+      classification: 'current_stock_update',
+      reason: request.mode_conflict_resolution === 'keep_inventory'
+        ? 'composer_inventory_mode_conflict_resolution'
+        : 'composer_inventory_mode',
+    };
+    segmentRoute = inventorySegmentsFor(routedMessage);
+  }
+  const intentRouteModel = input.modelConfig.fallbackModel || input.modelConfig.defaultModel;
+  const llmIntentRouting = await maybeRouteIntentWithLlm({
+    message: routedMessage,
+    sourceClassification: classification,
+    segmentRoute,
+    catalogIndex,
+    unitAliases: input.unitAliases,
+    existingParsedItems: request.existing_items.length > 0 ? request.existing_items : input.existingParsedItems,
+    previousMessages: request.recent_messages ?? input.previousMessages,
+    callLlm: input.callLlm
+      ? (prompt) => input.callLlm!(prompt, intentRouteModel)
+      : undefined,
+  });
+  const llmIntentRoute = llmIntentRouting?.route ?? null;
+  if (llmIntentRouting?.classification) {
+    classification = llmIntentRouting.classification;
+  }
 
-  const stockExtraction = timer.measure('deterministic_parse', (): StockUpdateExtraction =>
-    segmentRoute.stockSegments.length > 0
+  const stockExtraction = timer.measure('deterministic_parse', (): StockUpdateExtraction => {
+    const deterministicStock = inventoryModeStock
+      ? extractStockUpdates({
+          message: routedMessage,
+          source: request.source,
+          catalog: input.catalog,
+          corrections: input.corrections,
+          catalogIndex,
+          unitAliases: input.unitAliases,
+          statusTerms: input.inventoryStatusTerms ?? [],
+          employeeAliases: input.employeeAliases ?? [],
+          locationId: request.location_id,
+          assumeStock: true,
+        })
+      : segmentRoute.stockSegments.length > 0
       ? extractStockUpdates({
           message: segmentRoute.stockSegments.join('\n'),
           source: request.source,
@@ -67,9 +146,33 @@ export async function processQuickOrderMessage(
           corrections: input.corrections,
           catalogIndex,
           unitAliases: input.unitAliases,
+          statusTerms: input.inventoryStatusTerms ?? [],
+          employeeAliases: input.employeeAliases ?? [],
+          locationId: request.location_id,
         })
-      : emptyStockExtraction(request.message)
-  );
+      : emptyStockExtraction(routedMessage);
+    const llmStockUpdates = llmIntentRoute && llmIntentRoute.confidence >= 0.65
+      ? stockUpdatesFromLlmIntentRoute({
+          route: llmIntentRoute,
+          source: request.source,
+          catalog: input.catalog,
+          catalogIndex,
+          originalText: request.message,
+        })
+      : [];
+    return {
+      ...deterministicStock,
+      stockUpdates: mergeStockUpdates(deterministicStock.stockUpdates, llmStockUpdates),
+    };
+  });
+  const inventoryReviewItems = inventoryModeStock
+    ? buildInventoryModeReviewItems({
+        segments: segmentRoute.stockSegments,
+        catalog: orderCatalog,
+        catalogIndex,
+        unitAliases: input.unitAliases,
+      })
+    : [];
 
   const stockSafety = applyStockSafetyLimits({
     stockUpdates: stockExtraction.stockUpdates,
@@ -82,14 +185,19 @@ export async function processQuickOrderMessage(
   });
 
   const shouldRecommend =
+    inventoryModeStock ||
+    classification.classification === 'current_stock_update' ||
     classification.classification === 'recommend_order_request' ||
+    classification.classification === 'mixed_stock_and_order_request' ||
     classification.classification === 'mixed_stock_and_recommendation_request' ||
     segmentRoute.recommendationSegments.length > 0;
   const shouldSkipOrderParse =
+    inventoryModeStock ||
     segmentRoute.orderSegments.length === 0 &&
     (
       classification.classification === 'current_stock_update' ||
       classification.classification === 'recommend_order_request' ||
+      classification.classification === 'mixed_stock_and_order_request' ||
       classification.classification === 'mixed_stock_and_recommendation_request'
     );
   // Product questions must always reach the orchestrator so it can route them
@@ -110,7 +218,16 @@ export async function processQuickOrderMessage(
     config: input.modelConfig,
   });
 
-  const parseResponse = parserText
+  const routeParseResponse = llmIntentRoute
+    ? buildLlmIntentRouteResponse({
+        route: llmIntentRoute,
+        existingCount: request.existing_items.length > 0 ? request.existing_items.length : input.existingParsedItems.length,
+        recentOrders: input.recentOrders,
+        catalogCount: orderCatalog.length,
+      })
+    : null;
+
+  const parseResponse = routeParseResponse ?? (parserText
     ? await timer.measureAsync('llm_fallback', () => parseQuickOrder({
         rawText: parserText,
         locationId: request.location_id,
@@ -127,6 +244,7 @@ export async function processQuickOrderMessage(
         unitAliases: input.unitAliases,
         catalogIndex,
         globalCatalogIndex,
+        employeeAliases: input.employeeAliases,
         classification,
         debugCatalog: input.debugTimings === true,
       }))
@@ -135,7 +253,9 @@ export async function processQuickOrderMessage(
         classification: classification.classification,
         reason: classification.reason,
         message: request.message,
-      });
+        parsedItems: inventoryReviewItems,
+        catalogCount: orderCatalog.length,
+      }));
 
   const safety = timer.measure('safety_validation', () => validateQuickOrderSafety({
     parseResponse,
@@ -162,6 +282,14 @@ export async function processQuickOrderMessage(
         recentOrders: input.recentOrders,
         limits: input.limits,
         allowedUnitRules: input.allowedUnitRules,
+        inventoryReorderRules: input.inventoryReorderRules ?? [],
+        reorderRules: input.reorderRules ?? [],
+        orderProfiles: input.orderProfiles ?? [],
+        statusItems: stockExtraction.statusItems,
+        locationId: request.location_id,
+        mode: request.mode ?? 'order',
+        maxItems: inventoryModeStock ? Math.max(1, stockSafety.accepted.length) : undefined,
+        includeHistoryCandidates: !inventoryModeStock,
       }))
     : { recommendations: [], warnings: [] };
 
@@ -175,14 +303,16 @@ export async function processQuickOrderMessage(
     blockedOperations: allBlocked,
   }));
 
-  const actualModelUsed: QuickOrderModelUsed = safety.response.metrics?.llm_used
-    ? modelRoute.modelUsed
+  const actualModelUsed: QuickOrderModelUsed = llmIntentRoute && llmIntentRouting?.llmFailed === false
+      ? normalizeModelUsed(intentRouteModel)
+    : safety.response.metrics?.llm_used
+      ? modelRoute.modelUsed
     : 'none';
   const processStatus = deriveProcessStatus({
     parseResponse: safety.response,
     stockUpdates: stockSafety.accepted,
     recommendationsCount: recommendationResult.recommendations.length,
-    warningsCount: allWarnings.length,
+    warningsCount: allWarnings.filter((warning) => warning.severity !== 'info').length,
     blockedCount: allBlocked.length,
     stockPersistError,
   });
@@ -238,7 +368,111 @@ export async function processQuickOrderMessage(
       stock_update_count: stockSafety.accepted.length,
       stock_persist_error: stockPersistError,
       recommendation_count: recommendationResult.recommendations.length,
+      llm_intent_classification: llmIntentRoute?.classification,
+      llm_intent_intent: llmIntentRoute?.intent,
+      llm_intent_confidence: llmIntentRoute?.confidence,
+      llm_intent_time_range: llmIntentRoute?.entities?.time_range,
+      llm_intent_repair_needed: llmIntentRouting?.repairNeeded,
+      llm_intent_failed: llmIntentRouting?.llmFailed,
     } as ProcessQuickOrderResponse['diagnostics'],
+    assistantMessage: buildSmartAssistantMessage({
+      displayMessage: stockPersistError ?? messages.displayMessage,
+      recommendations: recommendationResult.recommendations,
+      pendingClarifications,
+      blockedCount: allBlocked.length,
+      warningsCount: allWarnings.length,
+      classification: classification.classification,
+    }),
+    contextPatch: buildContextPatch({
+      stockUpdates: stockSafety.accepted,
+      recommendations: recommendationResult.recommendations,
+      pendingClarifications,
+      classification: classification.classification,
+    }),
+  };
+}
+
+function buildSmartAssistantMessage(input: {
+  displayMessage: string;
+  recommendations: import('./types.ts').Recommendation[];
+  pendingClarifications: import('./types.ts').PendingQuickOrderClarification[];
+  blockedCount: number;
+  warningsCount: number;
+  classification: string;
+}): ProcessQuickOrderResponse['assistantMessage'] {
+  if (input.classification === 'tutorial_request') {
+    return {
+      type: 'tutorial',
+      text: input.displayMessage,
+      actions: [],
+      explanation: {
+        reason: 'Quick Order help request',
+        confidence: 'high',
+        dataSources: ['quick_order_capabilities'],
+      },
+    };
+  }
+  if (input.classification === 'history_request') {
+    return {
+      type: 'history_answer',
+      text: input.displayMessage,
+      actions: [],
+      explanation: {
+        reason: 'Quick Order history request',
+        confidence: 'high',
+        dataSources: ['order_history'],
+      },
+    };
+  }
+  if (input.recommendations.length > 0) {
+    const confidenceValue = Math.max(...input.recommendations.map((entry) => entry.confidence ?? 0));
+    return {
+      type: 'smart_suggestion',
+      text: input.displayMessage,
+      actions: [],
+      explanation: {
+        reason: input.recommendations[0]?.reason ?? 'Suggested from Quick Order context.',
+        confidence: confidenceValue >= 0.85 ? 'high' : confidenceValue >= 0.7 ? 'medium' : 'low',
+        dataSources: [
+          ...new Set(input.recommendations.map((entry) =>
+            entry.recommendation_type === 'stock_reorder_rule'
+              ? 'item_reorder_rules'
+              : entry.recommendation_type === 'history_profile'
+                ? 'item_order_profiles'
+                : 'order_history'
+          )),
+          'current_cart',
+        ],
+      },
+    };
+  }
+  if (input.pendingClarifications.length > 0) {
+    return { type: 'clarification', text: input.displayMessage, actions: [] };
+  }
+  if (input.blockedCount > 0) return { type: 'error', text: input.displayMessage, actions: [] };
+  return { type: 'success', text: input.displayMessage, actions: [] };
+}
+
+function buildContextPatch(input: {
+  stockUpdates: import('./types.ts').StockOperation[];
+  recommendations: import('./types.ts').Recommendation[];
+  pendingClarifications: import('./types.ts').PendingQuickOrderClarification[];
+  classification: string;
+}): ProcessQuickOrderResponse['contextPatch'] {
+  const lastRecommendation = input.recommendations[0];
+  const lastStock = input.stockUpdates[input.stockUpdates.length - 1];
+  const itemId = lastRecommendation?.item_id ?? lastStock?.item_id ?? input.pendingClarifications[0]?.item_id ?? null;
+  const itemName = lastRecommendation?.item_name ?? lastStock?.item_name ?? input.pendingClarifications[0]?.item_name ?? null;
+  return {
+    lastReferencedItemId: itemId,
+    lastReferencedItemName: itemName,
+    lastAction: input.recommendations.length > 0
+      ? 'stock_based_recommendation'
+      : input.stockUpdates.length > 0
+        ? 'current_stock_update'
+        : input.classification,
+    lastSuggestedQuantity: lastRecommendation?.suggested_quantity ?? null,
+    pendingClarificationId: input.pendingClarifications[0]?.id ?? null,
   };
 }
 
@@ -263,10 +497,242 @@ function applyAllowedUnitRulesToCatalog(
   });
 }
 
+function buildInventoryModeReviewItems(input: {
+  segments: string[];
+  catalog: CatalogItem[];
+  catalogIndex: CatalogSearchIndex;
+  unitAliases: UnitAliasMap;
+}): ParsedItem[] {
+  const items: ParsedItem[] = [];
+  for (const segment of input.segments) {
+    const candidates = parseDeterministicOrder(segment, input.unitAliases);
+    for (const candidate of candidates) {
+      if (candidate.quantity != null || !candidate.item_text.trim()) continue;
+      const match = matchCatalogIndex(candidate.item_text, input.catalogIndex);
+      const validated = validateParsedLine({
+        candidate,
+        match,
+        catalog: input.catalog,
+        unitAliases: input.unitAliases,
+        parseSource: 'deterministic',
+      }).item;
+      items.push({
+        ...validated,
+        source: 'remaining_inventory',
+        isSuggested: false,
+        suggestionSource: 'remaining_inventory',
+      });
+    }
+  }
+  return items;
+}
+
+function shouldUseInventoryModeAsStock(input: {
+  request: ProcessQuickOrderMessageRequest;
+  message: string;
+  classification: QuickOrderInputClassificationResult;
+  segmentRoute: QuickOrderSegmentRoute;
+  unitAliases: UnitAliasMap;
+}): boolean {
+  if (input.request.mode !== 'inventory') return false;
+  if (input.request.mode_conflict_resolution === 'keep_inventory') {
+    return isInventoryDraftMessage(input.message, input.unitAliases);
+  }
+  if (input.segmentRoute.recommendationSegments.length > 0) return false;
+  if (
+    !isModeControllableClassification(input.classification.classification) &&
+    !isInventoryDraftMessage(input.message, input.unitAliases)
+  ) {
+    return false;
+  }
+  return isInventoryDraftMessage(input.message, input.unitAliases);
+}
+
+function isModeControllableClassification(classification: string): boolean {
+  return classification === 'order_entry' || classification === 'current_stock_update';
+}
+
+function isShortItemQuantityMessage(message: string, unitAliases: UnitAliasMap): boolean {
+  return isInventoryDraftMessage(message, unitAliases, { requireQuantity: true });
+}
+
+function isInventoryDraftMessage(
+  message: string,
+  unitAliases: UnitAliasMap,
+  options?: { requireQuantity?: boolean },
+): boolean {
+  const trimmed = message.trim();
+  if (!trimmed || /[?]/.test(trimmed) || /^(?:what|when|where|why|how|can|could|should|do|did|is|are)\b/i.test(trimmed)) {
+    return false;
+  }
+  const candidates = parseDeterministicOrder(trimmed, unitAliases);
+  const hasQuantity = candidates.some((candidate) => candidate.quantity != null);
+  if (options?.requireQuantity && !hasQuantity) return false;
+  return candidates.length > 0 && candidates.every((candidate) =>
+    candidate.item_text.trim().length > 0 &&
+    (candidate.quantity != null || candidate.issue === 'missing_quantity')
+  );
+}
+
+function isExplicitOrderPhrase(message: string): boolean {
+  return /^\s*(?:please\s+)?(?:order|add|get|put|buy|i\s+need|we\s+need|need)\b/i.test(message);
+}
+
+function stripExplicitOrderVerb(message: string): string {
+  return message
+    .replace(/^\s*(?:please\s+)?(?:order|add|get|put|buy)\s+/i, '')
+    .replace(/^\s*(?:i|we)\s+need\s+/i, '')
+    .replace(/^\s*need\s+/i, '')
+    .trim();
+}
+
+function inventorySegmentsFor(message: string): QuickOrderSegmentRoute {
+  const stockSegments = message
+    .normalize('NFKC')
+    .replace(/\r\n?/g, '\n')
+    .split(/\n|,|;/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  return {
+    segments: stockSegments.map((text) => ({
+      text,
+      intent: 'stock_update' as const,
+      reason: 'composer_inventory_mode',
+    })),
+    orderSegments: [],
+    stockSegments,
+    recommendationSegments: [],
+    unknownSegments: [],
+  };
+}
+
+async function buildModeConflictResponse(input: {
+  input: ProcessQuickOrderMessageInput;
+  request: ProcessQuickOrderMessageRequest;
+  orderCatalog: CatalogItem[];
+  globalOrderCatalog?: CatalogItem[];
+  catalogIndex: CatalogSearchIndex;
+  globalCatalogIndex?: CatalogSearchIndex;
+}): Promise<ProcessQuickOrderResponse> {
+  const request = input.request;
+  const parseText = stripExplicitOrderVerb(request.message) || request.message;
+  const parseResponse = await parseQuickOrder({
+    rawText: parseText,
+    locationId: request.location_id,
+    userId: request.user_id,
+    catalog: input.orderCatalog,
+    globalCatalog: input.globalOrderCatalog,
+    examples: [],
+    corrections: input.input.corrections,
+    previousMessages: request.recent_messages ?? input.input.previousMessages,
+    existingParsedItems: request.existing_items.length > 0 ? request.existing_items : input.input.existingParsedItems,
+    unitAliases: input.input.unitAliases,
+    catalogIndex: input.catalogIndex,
+    globalCatalogIndex: input.globalCatalogIndex,
+    classification: {
+      ...input.input.classification,
+      classification: 'order_entry',
+      reason: 'composer_mode_conflict_order_phrase',
+    },
+  });
+  const safety = validateQuickOrderSafety({
+    parseResponse,
+    catalog: input.orderCatalog,
+    locationId: request.location_id,
+    source: request.source,
+    limits: input.input.limits,
+    allowedUnitRules: input.input.allowedUnitRules,
+    userRole: input.input.userRole,
+  });
+  const incoming = safety.response.parsed_items[0] ?? parseResponse.parsed_items[0] ?? null;
+  const itemLabel = incoming?.item_name ?? incoming?.display_name ?? incoming?.raw_token ?? 'that item';
+  const qtyLabel = incoming?.quantity != null
+    ? `${incoming.quantity}${incoming.unit ? ` ${incoming.unit}` : ''}`
+    : '';
+  const message = `You’re in Inventory mode, but this sounds like an order. Should I switch to Order mode and add ${itemLabel}${qtyLabel ? ` ${qtyLabel}` : ''}?`;
+  const clarification = {
+    id: `mode_conflict_order_in_inventory:${incoming?.line_id ?? Date.now()}`,
+    type: 'quantity_conflict' as const,
+    item_id: incoming?.item_id ?? null,
+    item_name: itemLabel,
+    incoming_item: incoming
+      ? {
+          ...incoming,
+          raw_text: request.message,
+          raw_token: incoming.raw_token || parseText,
+        }
+      : undefined,
+    message,
+    actions: [
+      {
+        id: 'add' as const,
+        label: 'Switch to Order and Add',
+        preview: itemLabel,
+      },
+      {
+        id: 'cancel' as const,
+        label: 'Keep as Inventory',
+      },
+    ],
+  };
+
+  return {
+    status: 'needs_clarification',
+    legacy_status: 'needs_clarification',
+    assistant_message: message,
+    display_message: message,
+    speech_message: message,
+    reply_text: message,
+    parsed_items: [],
+    flags: [],
+    suggestions: [],
+    pending_actions: [clarification],
+    pending_clarifications: [clarification],
+    clarifications: [clarification],
+    session_state: {
+      total_items: request.existing_items.length,
+      ready_to_submit: false,
+    },
+    operations: [],
+    cart_operations: [],
+    stock_updates: [],
+    recommendations: [],
+    safety_warnings: safety.warnings,
+    blocked_operations: safety.blockedOperations,
+    model_used: 'none',
+    confidence: incoming?.confidence ?? 0.8,
+    timings: { total_ms: 0 },
+    diagnostics: {
+      parser_version: PARSER_VERSION,
+      parse_mode: 'deterministic_only',
+      input_classification: 'order_entry',
+      input_classification_reason: 'composer_mode_conflict_order_phrase',
+      items_received: parseResponse.parsed_items.length,
+      items_accepted: 0,
+      items_rejected: 0,
+      rejected_reasons: ['composer_mode_conflict'],
+      pending_action_count: 1,
+    },
+    assistantMessage: {
+      type: 'clarification',
+      text: message,
+      actions: [],
+    },
+    contextPatch: {
+      lastReferencedItemId: incoming?.item_id ?? null,
+      lastReferencedItemName: itemLabel,
+      lastAction: 'mode_conflict_order_in_inventory',
+      pendingClarificationId: clarification.id,
+    },
+  };
+}
+
 function normalizeRequest(request: ProcessQuickOrderMessageRequest): ProcessQuickOrderMessageRequest {
   return {
     ...request,
     source: request.source === 'voice' ? 'voice' : 'typed',
+    mode: request.mode === 'inventory' ? 'inventory' : 'order',
+    mode_conflict_resolution: request.mode_conflict_resolution === 'keep_inventory' ? 'keep_inventory' : undefined,
     message: request.message.trim(),
     existing_items: Array.isArray(request.existing_items) ? request.existing_items : [],
     recent_messages: Array.isArray(request.recent_messages) ? request.recent_messages : undefined,
@@ -276,6 +742,7 @@ function normalizeRequest(request: ProcessQuickOrderMessageRequest): ProcessQuic
 function emptyStockExtraction(message: string): StockUpdateExtraction {
   return {
     stockUpdates: [],
+    statusItems: [],
     stockSegments: [],
     remainingText: message,
     hasStockSignal: false,
@@ -287,12 +754,16 @@ function emptyParseResponse(input: {
   classification: string;
   reason: string;
   message: string;
+  parsedItems?: ParsedItem[];
+  catalogCount?: number;
 }): ParseResponse {
+  const parsedItems = input.parsedItems ?? [];
+  const reviewCount = parsedItems.filter((item) => item.needs_clarification || item.unresolved).length;
   return {
-    status: 'ok',
-    assistant_message: 'Got it.',
-    reply_text: 'Got it.',
-    parsed_items: [],
+    status: reviewCount > 0 ? 'needs_review' : 'ok',
+    assistant_message: reviewCount > 0 ? 'I found items that need review before adding.' : 'Got it.',
+    reply_text: reviewCount > 0 ? 'I found items that need review before adding.' : 'Got it.',
+    parsed_items: parsedItems,
     flags: [],
     suggestions: [],
     pending_actions: [],
@@ -304,24 +775,24 @@ function emptyParseResponse(input: {
     diagnostics: {
       parser_version: PARSER_VERSION,
       parse_mode: 'deterministic_only',
-      catalog_count: 0,
-      candidate_count: 0,
-      items_received: 0,
-      items_accepted: 0,
+      catalog_count: input.catalogCount ?? 0,
+      candidate_count: parsedItems.length,
+      items_received: parsedItems.length,
+      items_accepted: parsedItems.length - reviewCount,
       items_rejected: 0,
       rejected_reasons: [input.reason],
       pending_action_count: 0,
       raw_input_length: input.message.length,
-      candidate_lines: 0,
+      candidate_lines: parsedItems.length,
       input_classification: input.classification,
       input_classification_reason: input.reason,
     },
     metrics: {
       parse_mode_used: 'deterministic_only',
-      lines_parsed: 0,
+      lines_parsed: parsedItems.length,
       high_confidence_matches: 0,
       fuzzy_matches: 0,
-      unresolved_items: 0,
+      unresolved_items: reviewCount,
       conflicts: 0,
       json_repair_needed: false,
       llm_failed: false,
@@ -368,4 +839,388 @@ function responseConfidence(response: ParseResponse, stockUpdates: StockOperatio
   ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
   if (values.length === 0) return 0.8;
   return Math.max(0, Math.min(1, values.reduce((sum, value) => sum + value, 0) / values.length));
+}
+
+async function maybeRouteIntentWithLlm(input: {
+  message: string;
+  sourceClassification: QuickOrderInputClassificationResult;
+  segmentRoute: QuickOrderSegmentRoute;
+  catalogIndex: CatalogSearchIndex;
+  unitAliases: UnitAliasMap;
+  existingParsedItems: ParsedItem[];
+  previousMessages: QuickOrderMessage[];
+  callLlm?: (prompt: string) => Promise<string>;
+}): Promise<{
+  route: LlmIntentRoute;
+  classification?: QuickOrderInputClassificationResult;
+  repairNeeded: boolean;
+  llmFailed: boolean;
+} | null> {
+  if (!input.callLlm) return null;
+  if (!shouldUseLlmIntentRouter(input)) return null;
+
+  const routed = await routeIntentWithLlm({
+    userMessage: input.message,
+    recentMessages: input.previousMessages,
+    callLlm: input.callLlm,
+  });
+  const route = routed.route;
+
+  if (route.confidence < 0.65 || route.classification === 'unknown_non_order') {
+    return { ...routed };
+  }
+
+  return {
+    ...routed,
+    classification: classificationFromLlmRoute(route, input.sourceClassification),
+  };
+}
+
+function shouldUseLlmIntentRouter(input: {
+  message: string;
+  sourceClassification: QuickOrderInputClassificationResult;
+  segmentRoute: QuickOrderSegmentRoute;
+  catalogIndex: CatalogSearchIndex;
+  unitAliases: UnitAliasMap;
+  existingParsedItems: ParsedItem[];
+}): boolean {
+  const classification = input.sourceClassification.classification;
+
+  if (
+    classification === 'order_command' &&
+    input.sourceClassification.intentResult.intent === 'add' &&
+    /\b(?:usual|normally|based on|what'?s low|what is low)\b/i.test(input.message)
+  ) {
+    return true;
+  }
+
+  if (hasUsefulDeterministicOrderSignal(input)) return false;
+
+  if (
+    classification === 'clear_request' ||
+    classification === 'confirm_request' ||
+    classification === 'duplicate_resolution_action' ||
+    classification === 'identity_question' ||
+    classification === 'suggestion_request' ||
+    classification === 'mixed_stock_and_order_request' ||
+    classification === 'mixed_stock_and_recommendation_request'
+  ) {
+    return false;
+  }
+
+  if (
+    classification === 'order_command' &&
+    input.sourceClassification.intentResult.intent !== 'add' &&
+    input.sourceClassification.intentResult.confidence >= 0.85
+  ) {
+    return false;
+  }
+
+  if (classification === 'tutorial_request') {
+    return false;
+  }
+
+  if (classification === 'history_request' || classification === 'recommend_order_request') {
+    return true;
+  }
+
+  if (classification === 'unknown_non_order' || classification === 'product_question') {
+    return true;
+  }
+
+  if (input.segmentRoute.unknownSegments.length > 0) return true;
+  if (classification === 'current_stock_update' && /\b(?:what should|what do|recommend|order|buy)\b/i.test(input.message)) {
+    return true;
+  }
+
+  return classification === 'order_entry';
+}
+
+function hasUsefulDeterministicOrderSignal(input: {
+  message: string;
+  sourceClassification: QuickOrderInputClassificationResult;
+  catalogIndex: CatalogSearchIndex;
+  unitAliases: UnitAliasMap;
+  existingParsedItems: ParsedItem[];
+}): boolean {
+  const candidates = parseDeterministicOrder(input.message, input.unitAliases);
+  if (candidates.length === 0) return false;
+
+  for (const candidate of candidates) {
+    const itemText = candidate.item_text.trim();
+    if (!itemText) {
+      if (input.existingParsedItems.length > 0 && (candidate.quantity != null || candidate.unit)) return true;
+      continue;
+    }
+    const match = matchCatalogIndex(itemText, input.catalogIndex);
+    if (match.item_id && !match.needs_clarification && (candidate.quantity != null || candidate.unit || input.sourceClassification.classification === 'order_command')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function classificationFromLlmRoute(
+  route: LlmIntentRoute,
+  source: QuickOrderInputClassificationResult,
+): QuickOrderInputClassificationResult {
+  const intentResult = {
+    ...source.intentResult,
+    intent: intentForLlmRoute(route),
+    confidence: route.confidence,
+    strippedText: route.user_message ?? source.intentResult.strippedText,
+    matchedPhrase: null,
+  };
+  return {
+    classification: route.classification,
+    intentResult,
+    normalizedText: (route.user_message ?? source.normalizedText).normalize('NFKC').trim().toLowerCase(),
+    reason: `llm_intent_router:${route.intent}`,
+  };
+}
+
+function intentForLlmRoute(route: LlmIntentRoute): QuickOrderInputClassificationResult['intentResult']['intent'] {
+  switch (route.intent) {
+    case 'add_items':
+      return 'add';
+    case 'remove_items':
+      return 'remove';
+    case 'update_items':
+      return 'update';
+    default:
+      return 'unknown';
+  }
+}
+
+function buildLlmIntentRouteResponse(input: {
+  route: LlmIntentRoute;
+  existingCount: number;
+  recentOrders: RecommendationHistoryOrder[];
+  catalogCount: number;
+}): ParseResponse | null {
+  const route = input.route;
+  if (route.confidence < 0.65) {
+    return buildRouteOnlyParseResponse({
+      status: 'needs_clarification',
+      message: route.clarification_question ?? 'I’m not sure what you want me to do. Do you want to add items, see past orders, get a recommendation, or ask for help?',
+      existingCount: input.existingCount,
+      catalogCount: input.catalogCount,
+      route,
+      pendingClarification: true,
+    });
+  }
+
+  if (route.classification === 'unknown_non_order') {
+    return buildRouteOnlyParseResponse({
+      status: 'ok',
+      message: 'I can help with ordering, current stock suggestions, past orders, and product questions. What would you like to do?',
+      existingCount: input.existingCount,
+      catalogCount: input.catalogCount,
+      route,
+    });
+  }
+
+  if (route.classification === 'tutorial_request' && route.intent === 'ask_help') {
+    return buildRouteOnlyParseResponse({
+      status: 'ok',
+      message: buildQuickOrderTutorialMessage(),
+      existingCount: input.existingCount,
+      catalogCount: input.catalogCount,
+      route,
+    });
+  }
+
+  if (route.classification === 'history_request') {
+    return buildRouteOnlyParseResponse({
+      status: 'ok',
+      message: buildHistoryMessage(route, input.recentOrders),
+      existingCount: input.existingCount,
+      catalogCount: input.catalogCount,
+      route,
+    });
+  }
+
+  if (route.classification === 'recommend_order_request' && route.intent === 'add_items' && route.confidence < 0.85) {
+    return null;
+  }
+
+  if (route.classification === 'order_command' || route.classification === 'order_entry' || route.classification === 'product_question' || route.classification === 'recommend_order_request' || route.classification === 'current_stock_update') {
+    return null;
+  }
+
+  return null;
+}
+
+function buildRouteOnlyParseResponse(input: {
+  status: NonNullable<ParseResponse['status']>;
+  message: string;
+  existingCount: number;
+  catalogCount: number;
+  route: LlmIntentRoute;
+  pendingClarification?: boolean;
+}): ParseResponse {
+  const pendingClarifications = input.pendingClarification
+    ? [{
+        id: 'llm_intent_clarification',
+        type: 'item_not_found' as const,
+        item_id: null,
+        item_name: 'Quick Order',
+        message: input.message,
+        actions: [],
+      }]
+    : [];
+
+  return {
+    status: input.status,
+    assistant_message: input.message,
+    reply_text: input.message,
+    parsed_items: [],
+    flags: [],
+    suggestions: [],
+    pending_actions: pendingClarifications,
+    pending_clarifications: pendingClarifications,
+    session_state: {
+      total_items: input.existingCount,
+      ready_to_submit: false,
+    },
+    diagnostics: {
+      parser_version: PARSER_VERSION,
+      parse_mode: 'llm_intent_router',
+      catalog_count: input.catalogCount,
+      candidate_count: 0,
+      items_received: 0,
+      items_accepted: 0,
+      items_rejected: 0,
+      rejected_reasons: [`llm_intent:${input.route.intent}`],
+      pending_action_count: pendingClarifications.length,
+      input_classification: input.route.classification,
+      input_classification_reason: `llm_intent_router:${input.route.intent}`,
+    },
+    metrics: {
+      parse_mode_used: 'llm_only_fallback',
+      lines_parsed: 0,
+      high_confidence_matches: 0,
+      fuzzy_matches: 0,
+      unresolved_items: 0,
+      conflicts: pendingClarifications.length,
+      json_repair_needed: false,
+      llm_failed: false,
+      llm_used: true,
+    },
+    operations: [],
+  };
+}
+
+function buildQuickOrderTutorialMessage(): string {
+  return [
+    'I’m Tuna Intelligence. I help create Quick Order drafts from typed orders.',
+    [
+      'You can say:',
+      '- "Salmon 3 cases"',
+      '- "Remove salmon"',
+      '- "We have 2 cases avocado left"',
+      '- "Show my recent orders"',
+      '- "Use last week’s order"',
+      '- "What should I buy if I have 2 cases salmon left?"',
+      '- "Undo that"',
+    ].join('\n'),
+    'I’ll ask if something is unclear.',
+  ].join('\n\n');
+}
+
+function buildHistoryMessage(route: LlmIntentRoute, recentOrders: RecommendationHistoryOrder[]): string {
+  const matchingOrders = recentOrders.slice(0, route.entities.time_range === 'recent' || !route.entities.time_range ? 3 : 1);
+  if (matchingOrders.length === 0) {
+    if (route.entities.time_range === 'last_week' || route.intent === 'show_last_week_order') {
+      return 'No matching order from last week was found for this location.';
+    }
+    if (route.entities.time_range === 'last_month') {
+      return 'No matching order from last month was found for this location.';
+    }
+    if (route.entities.time_range === 'usual') {
+      return 'I don’t have enough history to suggest a usual order yet.';
+    }
+    if (route.entities.time_range === 'yesterday') {
+      return 'No matching order from yesterday was found for this location.';
+    }
+    return 'I couldn’t find a recent order for this location yet.';
+  }
+
+  const summaries = matchingOrders.map((order, index) => {
+    const when = route.entities.time_range === 'recent' || !route.entities.time_range
+      ? `Recent order ${index + 1}`
+      : labelForTimeRange(route.entities.time_range);
+    const items = (order.items ?? [])
+      .slice(0, 5)
+      .map((item) => `${item.quantity ?? ''} ${item.unit ?? ''} ${item.item_name ?? 'item'}`.replace(/\s+/g, ' ').trim())
+      .filter(Boolean)
+      .join(', ');
+    return items ? `${when}: ${items}` : when;
+  });
+  return summaries.join('\n');
+}
+
+function labelForTimeRange(timeRange: LlmIntentRoute['entities']['time_range']): string {
+  switch (timeRange) {
+    case 'yesterday':
+      return 'Yesterday';
+    case 'last_week':
+      return 'Last week';
+    case 'last_month':
+      return 'Last month';
+    case 'usual':
+      return 'Usual order';
+    case 'recent':
+    default:
+      return 'Recent order';
+  }
+}
+
+function stockUpdatesFromLlmIntentRoute(input: {
+  route: LlmIntentRoute;
+  source: ProcessQuickOrderMessageRequest['source'];
+  catalog: CatalogItem[];
+  catalogIndex: CatalogSearchIndex;
+  originalText: string;
+}): StockOperation[] {
+  if (
+    input.route.classification !== 'recommend_order_request' &&
+    input.route.classification !== 'current_stock_update'
+  ) {
+    return [];
+  }
+
+  return (input.route.entities.quantities ?? [])
+    .map((quantityEntity): StockOperation | null => {
+      const itemName = quantityEntity.item_name ?? input.route.entities.item_names?.[0];
+      if (!itemName) return null;
+      const match = matchCatalogIndex(itemName, input.catalogIndex);
+      if (!match.item_id || match.needs_clarification) return null;
+      const catalogItem = input.catalog.find((item) => item.id === match.item_id);
+      if (!catalogItem) return null;
+      return {
+        item_id: catalogItem.id,
+        item_name: catalogItem.name,
+        quantity: quantityEntity.quantity,
+        unit: quantityEntity.unit ?? catalogItem.default_unit,
+        source: input.source,
+        confidence: Math.min(input.route.confidence, 0.88),
+        original_text: input.originalText,
+      };
+    })
+    .filter((update): update is StockOperation => Boolean(update));
+}
+
+function mergeStockUpdates(primary: StockOperation[], secondary: StockOperation[]): StockOperation[] {
+  if (secondary.length === 0) return primary;
+  const seen = new Set(primary.map((update) => `${update.item_id}:${update.unit ?? ''}`));
+  const merged = [...primary];
+  for (const update of secondary) {
+    const key = `${update.item_id}:${update.unit ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(update);
+  }
+  return merged;
 }

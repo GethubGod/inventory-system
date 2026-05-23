@@ -19,6 +19,8 @@ export type QuickOrderCartAdd = {
   quantity: number;
   unitType: UnitType;
   note: string | null;
+  wasSuggested: boolean;
+  originalSuggestedQty: number | null;
 };
 
 /**
@@ -47,11 +49,17 @@ export function quickOrderItemsToCartAdds(
     if (quantity == null || !Number.isFinite(quantity) || quantity <= 0) {
       throw new Error('Quick Order item is missing a quantity.');
     }
+    const isSuggestion =
+      item.isSuggested === true ||
+      item.source === 'inventory_recommendation' ||
+      item.source === 'remaining_recommendation';
     return {
       inventoryItemId: item.item_id,
       quantity,
       unitType: resolveQuickOrderUnitType(item, inventoryById.get(item.item_id) ?? null),
       note: item.notes ?? null,
+      wasSuggested: isSuggestion,
+      originalSuggestedQty: isSuggestion ? quantity : null,
     };
   });
 }

@@ -1,4 +1,4 @@
-import { ViewStyle, TextStyle } from 'react-native';
+import { Platform, ViewStyle, TextStyle } from 'react-native';
 import { colors, hairline, spacing } from '@/theme/design';
 
 /**
@@ -21,11 +21,16 @@ export function getTabBarScreenOptions(tabBarBottomInset: number) {
       height: tabBarHeight,
       elevation: 0,
     } satisfies ViewStyle,
-    tabBarLabelStyle: {
-      fontSize: 0, // hide default label — rendered inside TabButton
-      height: 0,
-      margin: 0,
-    } satisfies TextStyle,
+    // Android rejects fontSize: 0 when measuring letterSpacing; labels live in TabButton.
+    ...(Platform.OS === 'android'
+      ? { tabBarShowLabel: false as const }
+      : {
+          tabBarLabelStyle: {
+            fontSize: 0, // hide default label — rendered inside TabButton
+            height: 0,
+            margin: 0,
+          } satisfies TextStyle,
+        }),
     tabBarItemStyle: {
       paddingTop: 8,
     } satisfies ViewStyle,

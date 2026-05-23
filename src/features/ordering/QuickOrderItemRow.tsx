@@ -1,6 +1,9 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import ReanimatedSwipeable, {
+  type SwipeableMethods,
+} from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerSelectionHaptic } from '@/lib/haptics';
 import { colors, glassHairlineWidth } from '@/theme/design';
@@ -15,15 +18,33 @@ import {
 /** Compact row slot used by the bounded Order List FlatList. */
 export const QUICK_ORDER_ROW_MIN_HEIGHT = 44;
 
+type OrderListQuantityLine = {
+  label: string;
+  item: ParsedQuickOrderItem;
+};
+
+export type ResolveQuantityOptions = {
+  /** Edit only the tapped row instead of walking every item missing a quantity. */
+  single?: boolean;
+};
+
 type QuickOrderItemRowProps = {
   item: ParsedQuickOrderItem;
-  quantityLines?: string[];
+  quantityLines?: OrderListQuantityLine[];
   /** Renders a hairline divider above the row (used for every row except the first). */
   showDivider: boolean;
   /** Opens the full edit popup (item picker + quantity + unit) for this item. */
   onEdit: (item: ParsedQuickOrderItem) => void;
   /** Opens the focused quantity/unit dialog for an item that only needs that. */
-  onResolveQuantity: (item: ParsedQuickOrderItem) => void;
+  onResolveQuantity: (
+    item: ParsedQuickOrderItem,
+    options?: ResolveQuantityOptions,
+  ) => void;
+  /**
+   * Removes this row from the order. When provided, the row becomes swipeable
+   * (left or right) to reveal a Delete action. Omit to render a static row.
+   */
+  onRemove?: () => void;
 };
 
 /**
@@ -35,6 +56,9 @@ type QuickOrderItemRowProps = {
  * state. When the item has an issue, the trailing text becomes a tappable
  * orange action: "Add quantity" / "Pick unit" open the focused quantity dialog;
  * "Choose item" / "Needs review" open the full edit modal.
+ *
+ * When `onRemove` is supplied the row is wrapped in a Swipeable so a left- or
+ * right-swipe reveals a Delete action the user can tap.
  */
 export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
   item,
@@ -42,15 +66,23 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
   showDivider,
   onEdit,
   onResolveQuantity,
+  onRemove,
 }: QuickOrderItemRowProps) {
   const ds = useScaledStyles();
+  const swipeableRef = useRef<SwipeableMethods | null>(null);
   const issue = getParsedItemIssue(item);
   const name = getParsedItemDisplayName(item);
   const nameIsPlaceholder = !hasParsedItemName(item) && !item.raw_token?.trim();
   const accent = issue ? colors.statusAmber : colors.statusGreen;
-  const quantityLabels = quantityLines?.length ? quantityLines : [formatParsedItemQuantity(item)];
-  const trailingLabel = issue ? issue.label : quantityLabels[0];
+  const quantityEntries = quantityLines?.length
+    ? quantityLines
+    : [{ label: formatParsedItemQuantity(item), item }];
+  const trailingLabel = issue ? issue.label : quantityEntries[0].label;
   const reviewQuantityLabel = issue ? formatParsedItemQuantity(item) : null;
+  const suggested =
+    item.isSuggested === true ||
+    item.source === 'inventory_recommendation' ||
+    item.source === 'remaining_recommendation';
 
   const handleEditPress = useCallback(() => {
     void triggerSelectionHaptic();
@@ -66,11 +98,46 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
     }
   }, [issue?.kind, item, onEdit, onResolveQuantity]);
 
-  return (
+  const handleQuantityPress = useCallback(
+    (lineItem: ParsedQuickOrderItem) => {
+      void triggerSelectionHaptic();
+      onResolveQuantity(lineItem, { single: true });
+    },
+    [onResolveQuantity],
+  );
+
+  const handleDeletePress = useCallback(() => {
+    swipeableRef.current?.close();
+    void triggerSelectionHaptic();
+    onRemove?.();
+  }, [onRemove]);
+
+  const renderDeleteAction = useCallback(
+    () => (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Remove ${name}`}
+        onPress={handleDeletePress}
+        style={({ pressed }) => [
+          styles.deleteAction,
+          { width: ds.spacing(84), opacity: pressed ? 0.85 : 1 },
+        ]}
+      >
+        <Ionicons name="trash-outline" size={ds.icon(20)} color={colors.white} />
+        <Text style={[styles.deleteActionText, { fontSize: ds.fontSize(12) }]}>
+          Delete
+        </Text>
+      </Pressable>
+    ),
+    [ds, handleDeletePress, name],
+  );
+
+  const rowContent = (
     <View
       style={[
         styles.row,
         {
+          backgroundColor: colors.white,
           minHeight: ds.spacing(QUICK_ORDER_ROW_MIN_HEIGHT),
           paddingVertical: ds.spacing(6),
           borderTopWidth: showDivider ? glassHairlineWidth : 0,
@@ -116,6 +183,15 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
               {reviewQuantityLabel}
             </Text>
           ) : null}
+          {!issue && suggested ? (
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={[styles.suggestedText, { fontSize: ds.fontSize(11), marginTop: ds.spacing(2) }]}
+            >
+              Suggested
+            </Text>
+          ) : null}
         </Pressable>
       </View>
 
@@ -143,29 +219,59 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
         </Pressable>
       ) : (
         <View style={[styles.trailingStack, { marginLeft: ds.spacing(10) }]}>
-          {quantityLabels.map((label, index) => (
-            <Text
-              key={`${label}:${index}`}
-              numberOfLines={1}
-              ellipsizeMode="tail"
-              style={[
-                styles.trailingText,
+          {quantityEntries.map((entry, index) => (
+            <Pressable
+              key={`${entry.label}:${index}`}
+              accessibilityRole="button"
+              accessibilityLabel={`Change quantity for ${name}, currently ${entry.label}`}
+              hitSlop={{ top: 10, right: 6, bottom: 10, left: 10 }}
+              onPress={() => handleQuantityPress(entry.item)}
+              style={({ pressed }) => [
+                styles.trailingQuantityPressable,
                 {
-                  fontSize: ds.fontSize(14),
-                  color: colors.textSecondary,
                   borderTopWidth: index > 0 ? glassHairlineWidth : 0,
                   borderTopColor: colors.divider,
                   paddingTop: index > 0 ? ds.spacing(3) : 0,
                   marginTop: index > 0 ? ds.spacing(3) : 0,
+                  opacity: pressed ? 0.6 : 1,
                 },
               ]}
             >
-              {label}
-            </Text>
+              <Text
+                numberOfLines={1}
+                ellipsizeMode="tail"
+                style={[
+                  styles.trailingText,
+                  {
+                    fontSize: ds.fontSize(14),
+                    color: colors.textSecondary,
+                  },
+                ]}
+              >
+                {entry.label}
+              </Text>
+            </Pressable>
           ))}
         </View>
       )}
     </View>
+  );
+
+  if (!onRemove) return rowContent;
+
+  return (
+    <ReanimatedSwipeable
+      ref={swipeableRef}
+      friction={2}
+      leftThreshold={40}
+      rightThreshold={40}
+      overshootLeft={false}
+      overshootRight={false}
+      renderLeftActions={renderDeleteAction}
+      renderRightActions={renderDeleteAction}
+    >
+      {rowContent}
+    </ReanimatedSwipeable>
   );
 });
 
@@ -197,6 +303,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0,
   },
+  suggestedText: {
+    color: colors.textSecondary,
+    fontWeight: '500',
+    fontStyle: 'italic',
+    letterSpacing: 0,
+  },
   trailingText: {
     minWidth: 76,
     maxWidth: 116,
@@ -210,6 +322,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     alignItems: 'stretch',
   },
+  trailingQuantityPressable: {
+    alignItems: 'flex-end',
+  },
   trailingAction: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -219,5 +334,18 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0,
     textDecorationLine: 'underline',
+  },
+  deleteAction: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.tagRed,
+  },
+  deleteActionText: {
+    color: colors.white,
+    fontWeight: '800',
+    letterSpacing: 0,
+    marginTop: 2,
   },
 });

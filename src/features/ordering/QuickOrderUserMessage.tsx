@@ -4,7 +4,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Ionicons } from '@expo/vector-icons';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerSelectionHaptic } from '@/lib/haptics';
-import { colors } from '@/theme/design';
+import { colors, quickOrderAccent } from '@/theme/design';
 
 /** How long the "Copied" confirmation stays visible after a tap. */
 const COPIED_RESET_MS = 1200;
@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
   bubble: {
     alignSelf: 'flex-end',
     maxWidth: '88%',
-    backgroundColor: colors.primary,
+    backgroundColor: quickOrderAccent,
   },
   bubbleText: {
     color: colors.textOnPrimary,

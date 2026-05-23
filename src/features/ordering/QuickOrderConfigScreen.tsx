@@ -24,6 +24,7 @@ import {
 } from '@/theme/design';
 import { AliasesTab } from './quickOrderConfig/AliasesTab';
 import { ExamplesTab } from './quickOrderConfig/ExamplesTab';
+import { ImportOrderHistoryTab } from './quickOrderConfig/ImportOrderHistoryTab';
 import { WeeklyLearningTab } from './quickOrderConfig/WeeklyLearningTab';
 import {
   type ConfigTab,
@@ -37,6 +38,7 @@ const TAB_LABELS: Record<ConfigTab, string> = {
   aliases: 'Aliases',
   examples: 'Examples',
   learning: 'Weekly Learning',
+  historyImport: 'Import History',
 };
 
 const IGNORE_KEYS_STORAGE_KEY = 'quickOrderConfig.ignoredSuggestionKeys.v1';
@@ -205,7 +207,7 @@ export function QuickOrderConfigScreen() {
               marginBottom: ds.spacing(18),
             }}
           >
-            {(['aliases', 'examples', 'learning'] as ConfigTab[]).map((tab) => {
+            {(['aliases', 'examples', 'learning', 'historyImport'] as ConfigTab[]).map((tab) => {
               const isActive = activeTab === tab;
               return (
                 <Pressable
@@ -250,7 +252,7 @@ export function QuickOrderConfigScreen() {
             <AliasesTab items={items} setItems={setItems} />
           ) : activeTab === 'examples' ? (
             <ExamplesTab examples={examples} items={items} onRefresh={refreshExamples} />
-          ) : (
+          ) : activeTab === 'learning' ? (
             <WeeklyLearningTab
               items={items}
               corrections={corrections}
@@ -258,6 +260,8 @@ export function QuickOrderConfigScreen() {
               setItems={setItems}
               setIgnoreKeys={updateIgnoreKeys}
             />
+          ) : (
+            <ImportOrderHistoryTab items={items} />
           )}
         </ScrollView>
       </ManagerScaleContainer>

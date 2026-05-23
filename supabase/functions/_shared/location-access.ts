@@ -43,5 +43,11 @@ export async function userCanAccessLocation(
     return { allowed: true, status: 200 };
   }
 
+  // If the employee has no default location assigned yet in the DB, allow access.
+  // The client will sync the active location on render.
+  if (!userRow?.default_location_id) {
+    return { allowed: true, status: 200 };
+  }
+
   return { allowed: false, status: 403, error: 'You do not have access to this location' };
 }

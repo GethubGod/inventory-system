@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { triggerSelectionHaptic } from '@/lib/haptics';
+import { colors, quickOrderAccent, quickOrderAccentPale } from '@/theme/design';
 
 type QuantityStepperProps = {
   value: number;
@@ -14,11 +15,7 @@ type QuantityStepperProps = {
 };
 
 const QUICK_INCREMENTS = [1, 5, 10] as const;
-const TEXT_PRIMARY = '#1C1C1E';
-const TEXT_SECONDARY = '#8F8F95';
-const PRIMARY = '#EF4B3D';
 const NEUTRAL_PILL = '#F1EADF';
-const PRIMARY_PILL = '#FBE3DF';
 
 function formatStepperValue(value: number): string {
   if (!Number.isFinite(value)) return '0';
@@ -71,18 +68,18 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
 
   const canDecrement = !disabled && value > min;
 
-  const roundSize = 74;
-  const roundIconSize = 30;
+  const roundSize = 58;
+  const roundIconSize = 24;
 
   return (
     <View
       style={{
         width: '100%',
         alignSelf: 'stretch',
-        backgroundColor: '#FFFFFF',
-        borderRadius: 24,
-        paddingVertical: 28,
-        paddingHorizontal: 24,
+        backgroundColor: colors.white,
+        borderRadius: 20,
+        paddingVertical: 20,
+        paddingHorizontal: 20,
         shadowColor: '#000000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.06,
@@ -96,7 +93,7 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          marginBottom: 28,
+          marginBottom: 18,
         }}
       >
         {/* Minus button */}
@@ -117,7 +114,7 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
             opacity: !canDecrement ? 0.35 : 1,
           }}
         >
-          <Ionicons name="remove" size={roundIconSize} color={TEXT_PRIMARY} />
+          <Ionicons name="remove" size={roundIconSize} color={colors.textPrimary} />
         </Pressable>
 
         {/* Center: number + unit label */}
@@ -132,17 +129,17 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
               keyboardType="decimal-pad"
               returnKeyType="done"
               placeholder="0"
-              placeholderTextColor="#AEAEB2"
+              placeholderTextColor={colors.textMuted}
               allowFontScaling={false}
               style={{
-                fontSize: 60,
+                fontSize: 44,
                 fontWeight: '800',
-                color: TEXT_PRIMARY,
+                color: colors.textPrimary,
                 letterSpacing: 0,
                 textAlign: 'center',
                 padding: 0,
                 width: '100%',
-                maxWidth: 160,
+                maxWidth: 130,
               }}
             />
           ) : (
@@ -152,11 +149,11 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
               adjustsFontSizeToFit
               minimumFontScale={0.55}
               style={{
-                fontSize: 60,
+                fontSize: 44,
                 fontWeight: '800',
-                color: TEXT_PRIMARY,
+                color: colors.textPrimary,
                 letterSpacing: 0,
-                maxWidth: 160,
+                maxWidth: 130,
               }}
             >
               {formatStepperValue(value)}
@@ -166,9 +163,9 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
             numberOfLines={1}
             allowFontScaling={false}
             style={{
-              fontSize: 19,
+              fontSize: 15,
               fontWeight: '500',
-              color: TEXT_SECONDARY,
+              color: colors.textSecondary,
               marginTop: 4,
               letterSpacing: 0,
             }}
@@ -189,18 +186,18 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
             width: roundSize,
             height: roundSize,
             borderRadius: roundSize / 2,
-            backgroundColor: PRIMARY_PILL,
+            backgroundColor: quickOrderAccentPale,
             alignItems: 'center',
             justifyContent: 'center',
             opacity: disabled ? 0.35 : 1,
           }}
         >
-          <Ionicons name="add" size={roundIconSize} color={PRIMARY} />
+          <Ionicons name="add" size={roundIconSize} color={quickOrderAccent} />
         </Pressable>
       </View>
 
       {/* Quick increment pills: +1 / +5 / +10 / Type */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 8 }}>
         {QUICK_INCREMENTS.map((amount) => (
           <Pressable
             key={amount}
@@ -213,9 +210,9 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
               flex: 1,
               minWidth: 0,
               borderRadius: 999,
-              minHeight: 46,
-              paddingVertical: 11,
-              paddingHorizontal: 8,
+              minHeight: 36,
+              paddingVertical: 8,
+              paddingHorizontal: 6,
               alignItems: 'center',
               justifyContent: 'center',
               backgroundColor: NEUTRAL_PILL,
@@ -225,7 +222,7 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
             <Text
               allowFontScaling={false}
               style={{
-                fontSize: 17,
+                fontSize: 14,
                 fontWeight: '800',
                 color: '#5D5D63',
                 letterSpacing: 0,
@@ -254,21 +251,21 @@ export function QuantityStepper({ value, unitLabel, onChange, min = 0, disabled 
             flex: 1,
             minWidth: 0,
             borderRadius: 999,
-            minHeight: 46,
-            paddingVertical: 11,
-            paddingHorizontal: 8,
+            minHeight: 36,
+            paddingVertical: 8,
+            paddingHorizontal: 6,
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: typing ? PRIMARY_PILL : NEUTRAL_PILL,
+            backgroundColor: typing ? quickOrderAccentPale : NEUTRAL_PILL,
             opacity: disabled ? 0.5 : 1,
           }}
         >
           <Text
             allowFontScaling={false}
             style={{
-              fontSize: 17,
+              fontSize: 14,
               fontWeight: '800',
-              color: typing ? PRIMARY : '#5D5D63',
+              color: typing ? quickOrderAccent : '#5D5D63',
               letterSpacing: 0,
             }}
           >
