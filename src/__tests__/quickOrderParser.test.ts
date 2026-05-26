@@ -1990,7 +1990,7 @@ Tuna loin 1 cs`;
       previousMessages: [],
       existingParsedItems: [],
     });
-    expect(result.diagnostics?.parser_version).toBe('quick-order-parser-v3-line-based');
+    expect(result.diagnostics?.parser_version).toBe('quick-order-parser-v4-resilient-routing');
     expect(result.diagnostics?.parse_mode).toBeDefined();
     expect(result.diagnostics?.parse_mode).not.toBeUndefined();
     expect(result.diagnostics?.catalog_count).toBe(extendedCatalog.length);
@@ -3208,6 +3208,30 @@ describe('shared processQuickOrderMessage brain', () => {
       expect(otherEmployee.stock_updates[0]?.item_id).toBe('shrimp-id');
     });
 
+    // Regression: an inventory count whose item cannot be resolved to the
+    // catalog must surface as a no-match review item, never be dropped. When
+    // every count was unresolved the response came back empty with a generic
+    // "Got it." message, which the client rendered as the blanket "I had
+    // trouble reading that order" error even though the parse itself worked.
+    test('inventory counts that do not match the catalog surface for review instead of vanishing', async () => {
+      const allUnknown = await processBrain('Octopus 3\nMackerel 2\nIkura 1', {
+        request: { mode: 'inventory' } as any,
+      });
+      expect(allUnknown.stock_updates).toHaveLength(0);
+      expect(allUnknown.parsed_items.length).toBeGreaterThan(0);
+      expect(allUnknown.parsed_items.every((item) => item.unresolved || item.status === 'no_match')).toBe(true);
+      expect(allUnknown.status).not.toBe('success');
+      expect(allUnknown.assistant_message).not.toBe('Got it.');
+
+      // Mixed: resolved counts still become stock updates (no duplication) and
+      // only the unresolved one is surfaced for review.
+      const mixed = await processBrain('Salmon 3 cs\nOctopus 2', {
+        request: { mode: 'inventory' } as any,
+      });
+      expect(mixed.stock_updates.map((update) => update.item_id)).toEqual(['salmon-id']);
+      expect(mixed.parsed_items.map((item) => item.item_name ?? item.item_text)).toEqual(['Octopus']);
+    });
+
     test('uses employee V2 reorder rules before global fallback and explains no-order decisions', async () => {
       const unitRules: QuickOrderUnitRule[] = [
         {
@@ -4185,6 +4209,36 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(result.parsed_items.length).toBeGreaterThan(0);
     expect(result.parsed_items[0].item_id).toBeTruthy();
     expect(result.model_used).toBe('none');
+  });
+
+  // Regression: a multi-line list of items must bypass the LLM intent router so
+  // a single confusing line never collapses the whole message into the generic
+  // "I understood this might be about ordering, but I need more detail."
+  // clarification. Even when every item is unknown to the catalog, the lines
+  // must be surfaced for review — never silently dropped.
+  test('multi-line item list bypasses the LLM intent router even when items are unknown', async () => {
+    const deadEnd = 'I understood this might be about ordering, but I need more detail. Do you want to add items, see past orders, get a recommendation, or ask for help?';
+    const callLlm = jest.fn(async () => 'not json - maybe an order');
+
+    // Order mode: items unknown to the brain catalog must surface as
+    // item-not-found clarifications, not a blanket clarification dead-end.
+    const orderResult = await processBrain('Escolar 3\nLangostino 2\nJapanese Scallop 5', {
+      callLlm,
+      request: { mode: 'order' } as any,
+    });
+    expect(orderResult.assistant_message).not.toBe(deadEnd);
+    expect(
+      orderResult.parsed_items.length + (orderResult.pending_actions?.length ?? 0),
+    ).toBeGreaterThan(0);
+
+    // Inventory mode: the same list must come back as stock review items.
+    const inventoryResult = await processBrain('Escolar 3\nLangostino 2\nJapanese Scallop 5', {
+      callLlm,
+      request: { mode: 'inventory' } as any,
+    });
+    expect(inventoryResult.assistant_message).not.toBe(deadEnd);
+    expect(inventoryResult.parsed_items.length).toBeGreaterThan(0);
+    expect(inventoryResult.status).not.toBe('success');
   });
 
   test.each([

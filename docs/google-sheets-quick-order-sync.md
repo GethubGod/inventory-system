@@ -88,6 +88,12 @@ This tab syncs now, but the recommendation engine does not read it yet.
 
 Preprocessing strips `ignore` keywords, then applies status terms. Item matching uses employee aliases, global item aliases, exact item name, then fuzzy item name. Unit matching uses employee personal units, keyword unit aliases, then `qo_items.order_unit`. Inventory recommendations use employee item_config thresholds, global reorder rules, item target stock, `item_reorder_rules`, then `item_order_profiles`.
 
+Parser catalog loading still treats linked `qo_items` as the preferred Quick Order source, but it now merges active `inventory_items` as a fallback even when the `qo_items` query itself fails. This prevents an unlinked or partially synced sheet row from making an otherwise valid inventory list unreadable; the sync should still resolve every `qo_items.inventory_item_id`, and unlinked rows are logged for cleanup.
+
+Typed quantities support mixed fractions (`5 1/2` -> `5.5`). Compound inventory counts like `Ikura 1 pack + 3` are either summed when the added amount has a compatible unit, or surfaced as a needs-input warning when the added amount has no unit/conversion.
+
+Order mode honors `app_config.order_mode_missing_unit_strategy = item_default_order_unit`, so a plain line like `Salmon 3` uses the item/default order unit without needing a separate unit-rule row. Inventory mode still marks omitted units as inferred before recommendation rules evaluate them.
+
 ## Migration Notes
 
 Remove old Quick Order tabs from the workbook after the new tabs are populated:

@@ -5,11 +5,13 @@ import { DEFAULT_UNIT_ALIASES, getUnitWords, normalizeUnit, type UnitAliasMap } 
 // Quantity patterns — supports numeric, fractional, and word quantities
 // ---------------------------------------------------------------------------
 
-/** Regex fragment matching a numeric quantity: 2, 0.5, .5 */
-const NUMERIC_QTY = String.raw`(\d+(?:\.\d+)?|\.\d+)`;
-
-/** Fraction patterns: 1/2, 3/4, etc. */
-const FRACTION_QTY = String.raw`(\d+\s*/\s*\d+)`;
+/**
+ * Single quantity token, matched as ONE capture group. Ordered longest-first so
+ * a mixed number ("5 1/2") wins over a bare fraction ("1/2") or integer ("5").
+ * Supports: mixed ("5 1/2"), fraction ("1/2"), decimal ("0.5", ".5"), integer.
+ */
+const QTY_CORE = String.raw`\d+\s+\d+\s*/\s*\d+|\d+\s*/\s*\d+|\d+(?:\.\d+)?|\.\d+`;
+const QTY = `(${QTY_CORE})`;
 
 /** Word-to-number mapping for common quantities. */
 const WORD_QUANTITIES: Record<string, number> = {
@@ -47,18 +49,18 @@ const WORD_QTY_KEYS = Object.keys(WORD_QUANTITIES).sort((a, b) => b.length - a.l
 // Unit patterns
 // ---------------------------------------------------------------------------
 
-const QTY_ONLY = new RegExp(`\\b(?:${NUMERIC_QTY}|${FRACTION_QTY})\\b`, 'i');
+const QTY_ONLY = new RegExp(`\\b(?:${QTY_CORE})`, 'i');
 
 function escapedUnitPattern(unitAliases: UnitAliasMap): string {
   return getUnitWords(unitAliases).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
 }
 
 function qtyUnitRegex(unitAliases: UnitAliasMap): RegExp {
-  return new RegExp(`(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern(unitAliases)})\\b`, 'i');
+  return new RegExp(`${QTY}\\s*(${escapedUnitPattern(unitAliases)})\\b`, 'i');
 }
 
 function qtyUnitOnlyRegex(unitAliases: UnitAliasMap): RegExp {
-  return new RegExp(`^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern(unitAliases)})\\s*$`, 'i');
+  return new RegExp(`^\\s*${QTY}\\s*(${escapedUnitPattern(unitAliases)})\\s*$`, 'i');
 }
 
 function unitOnlyRegex(unitAliases: UnitAliasMap): RegExp {
@@ -71,7 +73,7 @@ function wordQtyUnitOnlyRegex(unitAliases: UnitAliasMap): RegExp {
 
 function qtyUnitOfItemRegex(unitAliases: UnitAliasMap): RegExp {
   return new RegExp(
-    `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern(unitAliases)})\\s+(?:of\\s+)(.+)$`,
+    `^\\s*${QTY}\\s*(${escapedUnitPattern(unitAliases)})\\s+(?:of\\s+)(.+)$`,
     'i',
   );
 }
@@ -92,14 +94,14 @@ function wordQtyUnitItemNoOfRegex(unitAliases: UnitAliasMap): RegExp {
 
 function qtyUnitItemNoOfRegex(unitAliases: UnitAliasMap): RegExp {
   return new RegExp(
-    `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern(unitAliases)})\\s+(.+)$`,
+    `^\\s*${QTY}\\s*(${escapedUnitPattern(unitAliases)})\\s+(.+)$`,
     'i',
   );
 }
 
 function itemQtyUnitRegex(unitAliases: UnitAliasMap): RegExp {
   return new RegExp(
-    `^(.+?)\\s+(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*(${escapedUnitPattern(unitAliases)})\\s*$`,
+    `^(.+?)\\s+${QTY}\\s*(${escapedUnitPattern(unitAliases)})\\s*$`,
     'i',
   );
 }
@@ -122,15 +124,15 @@ const TRAILING_INTENT = /\s+(?:to|instead)$/i;
 const WORD_QTY_REGEX_PARTS = WORD_QTY_KEYS.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 const WORD_QTY_PATTERN = WORD_QTY_REGEX_PARTS.join('|');
 
-// "item qty" — e.g. "salmon 2", "tuna loin 1"
+// "item qty" — e.g. "salmon 2", "tuna loin 1", "chili oil 5 1/2"
 const ITEM_QTY = new RegExp(
-  `^(.+?)\\s+(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*$`,
+  `^(.+?)\\s+${QTY}\\s*$`,
   'i',
 );
 
-// "qty item" — e.g. "2 salmon", "6 shrimp ebi"
+// "qty item" — e.g. "2 salmon", "6 shrimp ebi", "5 1/2 chili oil"
 const QTY_ITEM = new RegExp(
-  `^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s+(.+)$`,
+  `^\\s*${QTY}\\s+(.+)$`,
   'i',
 );
 
@@ -181,11 +183,24 @@ function cleanItemText(value: string): string {
 
 /**
  * Converts a raw quantity string to a number.
- * Supports: "2", "0.5", ".5", "1/2", "3/4"
+ * Supports: "2", "0.5", ".5", "1/2", "3/4", and mixed numbers like "5 1/2" → 5.5.
  */
 function toQuantity(value: string | undefined): number | null {
   if (!value) return null;
-  const trimmed = value.trim();
+  const trimmed = value.trim().replace(/\s+/g, ' ');
+
+  // Mixed number: "5 1/2", "1 1/2" → whole + fraction
+  const mixedMatch = trimmed.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)$/);
+  if (mixedMatch) {
+    const whole = Number(mixedMatch[1]);
+    const numerator = Number(mixedMatch[2]);
+    const denominator = Number(mixedMatch[3]);
+    if (denominator > 0) {
+      const result = whole + numerator / denominator;
+      return Number.isFinite(result) && result > 0 ? result : null;
+    }
+    return null;
+  }
 
   // Fraction: "1/2", "3/4"
   const fractionMatch = trimmed.match(/^(\d+)\s*\/\s*(\d+)$/);
@@ -237,8 +252,8 @@ function parseLine(rawLine: string, index: number, unitAliases: UnitAliasMap): C
 
   const numQtyUnitOnly = compactRaw.match(qtyUnitOnlyRegex(unitAliases));
   if (numQtyUnitOnly) {
-    quantity = toQuantity(numQtyUnitOnly[1] ?? numQtyUnitOnly[2]);
-    unitRaw = numQtyUnitOnly[3];
+    quantity = toQuantity(numQtyUnitOnly[1]);
+    unitRaw = numQtyUnitOnly[2];
     unit = normalizeUnit(unitRaw, unitAliases) ?? unitRaw.toLowerCase();
     itemText = '';
     confidence = 0.92;
@@ -269,9 +284,9 @@ function parseLine(rawLine: string, index: number, unitAliases: UnitAliasMap): C
   }
 
   if (quantity == null && unit == null) {
-    const quantityOnly = compactRaw.match(new RegExp(`^\\s*(?:${NUMERIC_QTY}|${FRACTION_QTY})\\s*$`, 'i'));
+    const quantityOnly = compactRaw.match(new RegExp(`^\\s*${QTY}\\s*$`, 'i'));
     if (quantityOnly) {
-      quantity = toQuantity(quantityOnly[1] ?? quantityOnly[2]);
+      quantity = toQuantity(quantityOnly[1]);
       itemText = '';
       confidence = 0.82;
     }
@@ -301,10 +316,10 @@ function parseLine(rawLine: string, index: number, unitAliases: UnitAliasMap): C
   if (quantity == null) {
     const numQtyUnitOf = compactRaw.match(qtyUnitOfItemRegex(unitAliases));
     if (numQtyUnitOf) {
-      quantity = toQuantity(numQtyUnitOf[1] ?? numQtyUnitOf[2]);
-      unitRaw = numQtyUnitOf[3];
+      quantity = toQuantity(numQtyUnitOf[1]);
+      unitRaw = numQtyUnitOf[2];
       unit = normalizeUnit(unitRaw, unitAliases) ?? unitRaw.toLowerCase();
-      itemText = numQtyUnitOf[4];
+      itemText = numQtyUnitOf[3];
       confidence = 0.92;
     }
   }
@@ -312,10 +327,10 @@ function parseLine(rawLine: string, index: number, unitAliases: UnitAliasMap): C
   if (quantity == null) {
     const qtyUnitItem = compactRaw.match(qtyUnitItemNoOfRegex(unitAliases));
     if (qtyUnitItem) {
-      quantity = toQuantity(qtyUnitItem[1] ?? qtyUnitItem[2]);
-      unitRaw = qtyUnitItem[3];
+      quantity = toQuantity(qtyUnitItem[1]);
+      unitRaw = qtyUnitItem[2];
       unit = normalizeUnit(unitRaw, unitAliases) ?? unitRaw.toLowerCase();
-      itemText = qtyUnitItem[4];
+      itemText = qtyUnitItem[3];
       confidence = 0.92;
     }
   }
@@ -338,8 +353,8 @@ function parseLine(rawLine: string, index: number, unitAliases: UnitAliasMap): C
     const itemQtyUnit = compactRaw.match(itemQtyUnitRegex(unitAliases));
     if (itemQtyUnit) {
       itemText = itemQtyUnit[1];
-      quantity = toQuantity(itemQtyUnit[2] ?? itemQtyUnit[3]);
-      unitRaw = itemQtyUnit[4];
+      quantity = toQuantity(itemQtyUnit[2]);
+      unitRaw = itemQtyUnit[3];
       unit = normalizeUnit(unitRaw, unitAliases) ?? unitRaw.toLowerCase();
       confidence = 0.92;
     }
@@ -362,8 +377,8 @@ function parseLine(rawLine: string, index: number, unitAliases: UnitAliasMap): C
   if (quantity == null) {
     const qtyItem = compactRaw.match(QTY_ITEM);
     if (qtyItem) {
-      quantity = toQuantity(qtyItem[1] ?? qtyItem[2]);
-      itemText = qtyItem[3];
+      quantity = toQuantity(qtyItem[1]);
+      itemText = qtyItem[2];
       confidence = 0.78;
     }
   }
@@ -372,13 +387,13 @@ function parseLine(rawLine: string, index: number, unitAliases: UnitAliasMap): C
     const itemQty = compactRaw.match(ITEM_QTY);
     if (itemQty) {
       itemText = itemQty[1];
-      quantity = toQuantity(itemQty[2] ?? itemQty[3]);
+      quantity = toQuantity(itemQty[2]);
       confidence = 0.74;
     }
   }
 
   if (quantity == null) {
-    const itemQtyUnknownUnit = compactRaw.match(/^(.+?)\s+(\d+(?:\.\d+)?|\.\d+|\d+\s*\/\s*\d+)\s+([\p{L}][\p{L}\p{N}'-]*)\s*$/iu);
+    const itemQtyUnknownUnit = compactRaw.match(/^(.+?)\s+(\d+\s+\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?|\.\d+)\s+([\p{L}][\p{L}\p{N}'-]*)\s*$/iu);
     if (itemQtyUnknownUnit) {
       itemText = itemQtyUnknownUnit[1];
       quantity = toQuantity(itemQtyUnknownUnit[2]);
@@ -400,7 +415,7 @@ function parseLine(rawLine: string, index: number, unitAliases: UnitAliasMap): C
   if (!unit && quantity != null) {
     const unitSuffix = compactRaw.match(qtyUnitRegex(unitAliases));
     if (unitSuffix) {
-      unitRaw = unitSuffix[3] ?? unitSuffix[2];
+      unitRaw = unitSuffix[2];
       unit = normalizeUnit(unitRaw, unitAliases) ?? unitRaw.toLowerCase();
     }
   }
@@ -433,7 +448,7 @@ function parseLine(rawLine: string, index: number, unitAliases: UnitAliasMap): C
 function normalizeAdditiveQuantityText(value: string): string {
   return value
     .replace(
-      /^(\d+(?:\.\d+)?|\.\d+|\d+\s*\/\s*\d+)\s+more\s+/i,
+      /^(\d+\s+\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?|\.\d+)\s+more\s+/i,
       '$1 ',
     )
     .replace(

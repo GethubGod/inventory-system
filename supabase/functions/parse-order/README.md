@@ -71,6 +71,15 @@ Content-Type: application/json
 }
 ```
 
+## Inventory Parsing Notes
+
+- The parser prefers linked `qo_items` rows for Quick Order names, aliases, target stock, and order units.
+- Active `inventory_items` rows are merged in as a defensive fallback when `qo_items` rows are missing, unlinked, or temporarily fail to load, so a bad sheet sync cannot make an entire inventory list unreadable. If the full `inventory_items` fallback query is rejected because an optional column is unavailable, the function retries with a minimal column set.
+- Mixed numeric quantities are supported in typed inventory and order text: `5 1/2` parses as `5.5`, and `1 1/2 pack` parses as `1.5 pack`.
+- Compound stock counts such as `Ikura 1 pack + 3` are never silently dropped. If the trailing amount has the same unit, it is summed; if it lacks a unit or conversion, the item is returned as a needs-input warning explaining what unit/conversion is needed.
+- When an inventory count omits a unit, the unit is marked inferred. Reorder-rule comparison may use the rule unit for inferred counts, while explicitly typed mismatched units still require a conversion.
+- In order mode, `app_config.order_mode_missing_unit_strategy = "item_default_order_unit"` makes rows like `Salmon 3` use the item's default order unit even when no explicit `quick_order_unit_rules` row exists.
+
 ## Error Codes
 
 | Code | HTTP Status | Meaning |

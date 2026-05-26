@@ -40,7 +40,7 @@ where item_key is null;
 
 create unique index if not exists inventory_items_item_key_unique_idx
   on public.inventory_items(item_key)
-  where item_key is not null;
+  where item_key is not null and active = true;
 
 create table if not exists public.quick_order_alias_rules (
   id uuid primary key default gen_random_uuid(),

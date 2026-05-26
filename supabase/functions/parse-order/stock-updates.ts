@@ -1,7 +1,7 @@
 import { matchCatalogItem } from './catalog-matcher.ts';
 import { parseDeterministicOrder } from './deterministic-parser.ts';
 import { resolveItemCandidate, resolveMissingUnit, resolveStatusTerm, resolveUnit } from './rule-resolver.ts';
-import { DEFAULT_UNIT_ALIASES, getUnitWords, normalizeUnitForComparison, type UnitAliasMap } from './units.ts';
+import { DEFAULT_UNIT_ALIASES, formatQuantityWithUnit, getUnitWords, normalizeUnitForComparison, type UnitAliasMap } from './units.ts';
 import type {
   CatalogItem,
   EmployeeQuickOrderAlias,
@@ -152,6 +152,14 @@ export function extractStockUpdates(input: {
       continue;
     }
 
+    const compound = parseCompoundStockSegment(segment, input);
+    if (compound) {
+      if (compound.stockUpdate) stockUpdates.push(compound.stockUpdate);
+      if (compound.statusItem) statusItems.push(compound.statusItem);
+      stockSegments.push(segment);
+      continue;
+    }
+
     const parsed = parseStockSegment(segment, input);
     if (!parsed) {
       if (!looksLikeStockHeader(segment)) nonStockSegments.push(segment);
@@ -248,6 +256,125 @@ function parseStockSegment(
     confidence: candidate.parse_confidence,
     approximateModifier: detectApproximateModifier(trimmed),
   });
+}
+
+/**
+ * Handles compound counts like "Ikura 1 pack + 3" or "Ikura 1 pack + 3 pieces".
+ *
+ * The primary "<item> <qty> <unit>" part is parsed normally; the trailing "+ N"
+ * is added on. When the secondary number carries no unit, or its unit cannot be
+ * converted to the primary unit, the item is still surfaced as a needs-input
+ * status (never silently dropped) so the employee can clarify.
+ *
+ * Returns null when the segment is not a compound count, so the caller falls
+ * through to the normal single-count parser.
+ */
+function parseCompoundStockSegment(
+  segment: string,
+  input: Parameters<typeof parseStockSegment>[1] & {
+    employeeNameKeys?: string[];
+    employeeUserId?: string | null;
+  },
+): { stockUpdate?: StockOperation; statusItem?: InventoryStatusItem } | null {
+  const trimmed = segment.trim();
+  // Split on a "+" that joins a primary part (containing a digit) with a
+  // trailing number. Item names do not contain "+", so this is unambiguous.
+  const match = trimmed.match(/^(.*\d.*?)\s*\+\s*(\d[\d\s./]*?)\s*([\p{L}][\p{L}\s']*)?$/u);
+  if (!match) return null;
+  const primaryPart = match[1].trim();
+  const secondaryQty = parseSimpleQuantity(match[2]);
+  const secondaryUnitRaw = match[3] ? match[3].trim() : null;
+  if (secondaryQty == null) return null;
+
+  const primaryOp = parseStockSegment(primaryPart, input);
+  // Could not resolve the item or the primary count — let the normal flow treat
+  // the whole segment as leftover text rather than guess.
+  if (!primaryOp || primaryOp.quantity == null) return null;
+
+  const unitAliases = input.unitAliases ?? DEFAULT_UNIT_ALIASES;
+  const primaryUnit = normalizeUnitForComparison(primaryOp.unit, unitAliases) ?? primaryOp.unit;
+  const item = input.catalog.find((entry) => entry.id === primaryOp.item_id) ?? null;
+
+  // Try to express the secondary count in the primary unit so we can combine.
+  let combinedQty: number | null = null;
+  if (secondaryUnitRaw) {
+    const secondaryUnit = normalizeUnitForComparison(secondaryUnitRaw, unitAliases) ?? secondaryUnitRaw.toLowerCase();
+    if (secondaryUnit === primaryUnit) {
+      combinedQty = primaryOp.quantity + secondaryQty;
+    } else if (item && input.unitRules?.length) {
+      const resolution = resolveUnit({
+        item,
+        typedUnit: secondaryUnit,
+        unitRules: input.unitRules,
+        unitAliases,
+        context: {
+          mode: 'inventory',
+          employeeNameKeys: input.employeeNameKeys ?? [],
+          employeeUserId: input.employeeUserId ?? null,
+          locationId: input.locationId ?? null,
+          settings: input.parserSettings ?? {},
+        },
+      });
+      const resolvedUnit = normalizeUnitForComparison(resolution.unit, unitAliases) ?? resolution.unit;
+      if (resolvedUnit === primaryUnit) {
+        combinedQty = primaryOp.quantity + secondaryQty * resolution.multiplier;
+      }
+    }
+  }
+
+  if (combinedQty != null) {
+    return {
+      stockUpdate: {
+        ...primaryOp,
+        quantity: combinedQty,
+        original_text: trimmed,
+      },
+    };
+  }
+
+  // Cannot combine confidently — surface the item as needs-input instead of
+  // dropping it. The note explains exactly what to add.
+  const primaryLabel = formatQuantityWithUnit(primaryOp.quantity, primaryUnit);
+  const note = secondaryUnitRaw
+    ? `I read "${trimmed}" as ${primaryLabel} plus ${secondaryQty} ${secondaryUnitRaw}, but I need a conversion between ${secondaryUnitRaw} and ${primaryUnit ?? 'that unit'} before I can combine them.`
+    : `I read "${trimmed}" as ${primaryLabel} plus ${secondaryQty} more, but I don't know what unit the "${secondaryQty}" is in. Add a unit (e.g. ${secondaryQty} ${primaryUnit ?? 'pieces'}) so I can combine them.`;
+  return {
+    statusItem: {
+      item_id: primaryOp.item_id,
+      item_name: primaryOp.item_name,
+      item_text: primaryPart,
+      phrase: '',
+      phrase_key: '',
+      status: 'unknown',
+      recommendation_action: 'ask_quantity',
+      remaining_qty: null,
+      remaining_unit: primaryUnit,
+      original_text: trimmed,
+      confidence: primaryOp.confidence,
+      issue: 'compound_count_needs_unit',
+      reason_codes: ['compound_count_needs_unit'],
+      user_visible_note: note,
+    },
+  };
+}
+
+/** Parses a bare quantity token: "3", "0.5", "1/2", "5 1/2". */
+function parseSimpleQuantity(value: string): number | null {
+  const text = value.trim().replace(/\s+/g, ' ');
+  const mixed = text.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)$/);
+  if (mixed) {
+    const result = Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]);
+    return Number.isFinite(result) && result > 0 ? result : null;
+  }
+  const fraction = text.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (fraction) {
+    const denom = Number(fraction[2]);
+    if (denom <= 0) return null;
+    const result = Number(fraction[1]) / denom;
+    return Number.isFinite(result) && result > 0 ? result : null;
+  }
+  const num = Number(text);
+  return Number.isFinite(num) && num > 0 ? num : null;
 }
 
 function inferStockFromRecommendationQuestion(value: string): string | null {
@@ -694,9 +821,12 @@ function looksLikeStockHeader(value: string): boolean {
 }
 
 function dedupeStockUpdates(updates: StockOperation[]): StockOperation[] {
+  // Custom counting units (tracking_unit set) must coexist with default-unit
+  // counts for the same item, so include tracking_unit in the dedupe key.
   const byItemUnit = new Map<string, StockOperation>();
   for (const update of updates) {
-    byItemUnit.set(`${update.item_id}:${update.unit ?? ''}`, update);
+    const key = `${update.item_id}:${update.unit ?? ''}:${update.tracking_unit ?? ''}`;
+    byItemUnit.set(key, update);
   }
   return [...byItemUnit.values()];
 }

@@ -48,6 +48,13 @@ Migration date used in SQL comments: 2026-05-26.
    - Added this changelog.
    - Added `docs/qo-restructure-validation-checklist.md`.
 
+9. Parser regression hotfix
+   - Added a pure catalog builder module and changed `parse-order` catalog loading to merge active `inventory_items` as a fallback even when `qo_items` fails to load.
+   - Added a minimal `inventory_items` fallback query so optional catalog columns cannot empty the parser catalog.
+   - Fixed order-mode missing-unit defaults so `order_mode_missing_unit_strategy=item_default_order_unit` works without requiring a separate default unit-rule row.
+   - Updated the mobile response guard so inventory-mode stock updates, recommendations, warnings, blocked operations, and assistant actions count as structured output even when the backend also returns a transient raw error.
+   - Added regression coverage for the exact sushi list containing mixed fractions and `Ikura 1 pack + 3` in both order and inventory modes.
+
 ## Tables Created Or Altered
 
 - Created: `qo_items`
@@ -95,6 +102,7 @@ Migration date used in SQL comments: 2026-05-26.
 
 - `npm run typecheck` passed.
 - `npm run lint` exited 0 with warnings only.
+- `npx jest src/__tests__/quickOrderRestructureFixups.test.ts --runInBand` passed, including the exact sushi list in both order and inventory modes.
 - `npx jest src/__tests__/quickOrderRestructure.test.ts --runInBand --watchman=false` passed: 20 tests.
 - `npx jest src/__tests__/quickOrderParser.test.ts --runInBand --watchman=false` passed.
 - `npm test -- --runInBand --watchman=false` passed: 27 suites passed, 1 suite skipped, 645 tests passed, 14 skipped.

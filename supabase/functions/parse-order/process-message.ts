@@ -144,6 +144,21 @@ export async function processQuickOrderMessage(
   if (llmIntentRouting?.classification) {
     classification = llmIntentRouting.classification;
   }
+  // Routing trace (surfaced in diagnostics + logged) so a dead-end can be
+  // diagnosed from a single response instead of guesswork.
+  const multiItemListDetected = looksLikeMultiItemList(routedMessage, input.unitAliases);
+  const routingTrace = {
+    multi_item_list_detected: multiItemListDetected,
+    llm_intent_router_invoked: llmIntentRouting !== null,
+    routed_message_line_count: routedMessage.normalize('NFKC').split(/\r?\n|,|;/).map((l) => l.trim()).filter(Boolean).length,
+    inventory_mode_stock: inventoryModeStock,
+  };
+  console.log('[parse-order] routing_trace', JSON.stringify({
+    ...routingTrace,
+    classification: classification.classification,
+    classification_reason: classification.reason,
+    mode: request.mode,
+  }));
 
   const stockExtraction = timer.measure('deterministic_parse', (): StockUpdateExtraction => {
     const deterministicStock = inventoryModeStock
@@ -313,10 +328,19 @@ export async function processQuickOrderMessage(
   }));
 
   let stockPersistError: string | null = null;
+  let stockPersistErrorRaw: string | null = null;
   if (stockSafety.accepted.length > 0 && input.persistStockUpdates) {
     const persistResult = await timer.measureAsync('db_write', () => input.persistStockUpdates!(stockSafety.accepted));
     if (!persistResult.ok) {
-      stockPersistError = persistResult.error ?? 'Failed to save stock counts.';
+      // Keep the raw DB/PostgREST error for logs + diagnostics only — never show
+      // it to the employee. Surface a short, plain-language message instead.
+      stockPersistErrorRaw = persistResult.error ?? 'unknown_error';
+      stockPersistError = "I couldn't save those counts just now. Your items are listed below — please try again in a moment.";
+      console.warn('[parse-order] stock_persist_failed', JSON.stringify({
+        raw_error: stockPersistErrorRaw,
+        accepted_count: stockSafety.accepted.length,
+        location_id: request.location_id,
+      }));
     }
   }
 
@@ -417,7 +441,7 @@ export async function processQuickOrderMessage(
       model_route: modelRoute.reason,
       model_used: actualModelUsed,
       stock_update_count: stockSafety.accepted.length,
-      stock_persist_error: stockPersistError,
+      stock_persist_error: stockPersistErrorRaw,
       recommendation_count: recommendationResult.recommendations.length,
       llm_intent_classification: llmIntentRoute?.classification,
       llm_intent_intent: llmIntentRoute?.intent,
@@ -425,6 +449,7 @@ export async function processQuickOrderMessage(
       llm_intent_time_range: llmIntentRoute?.entities?.time_range,
       llm_intent_repair_needed: llmIntentRouting?.repairNeeded,
       llm_intent_failed: llmIntentRouting?.llmFailed,
+      ...routingTrace,
     } as ProcessQuickOrderResponse['diagnostics'],
     assistantMessage: buildSmartAssistantMessage({
       displayMessage: stockPersistError ?? messages.displayMessage,
@@ -702,7 +727,7 @@ function buildInventoryModeReviewItems(input: {
     if (statusSegments.has(segment.trim().toLowerCase())) continue;
     const candidates = parseDeterministicOrder(segment, input.unitAliases);
     for (const candidate of candidates) {
-      if (candidate.quantity != null || !candidate.item_text.trim()) continue;
+      if (!candidate.item_text.trim()) continue;
       const match = matchCatalogIndex(candidate.item_text, input.catalogIndex);
       const validated = validateParsedLine({
         candidate,
@@ -711,6 +736,17 @@ function buildInventoryModeReviewItems(input: {
         unitAliases: input.unitAliases,
         parseSource: 'deterministic',
       }).item;
+      // A count that carries a quantity normally becomes a stock update via the
+      // stock-update path. Surface it here ONLY when it could not be resolved to
+      // a catalog item at all — otherwise the stock-update path owns it and we
+      // must not duplicate it. Counts that resolve to nothing used to be dropped
+      // silently (buildStockOperation returns null), which made a whole
+      // inventory entry come back empty and look "unreadable". Keeping the
+      // unresolved count as a no-match review item lets the employee re-match or
+      // add it manually instead of seeing a blanket error.
+      if (candidate.quantity != null && (validated.item_id || !validated.unresolved)) {
+        continue;
+      }
       items.push({
         ...validated,
         source: 'remaining_inventory',
@@ -1104,6 +1140,13 @@ async function maybeRouteIntentWithLlm(input: {
   const route = routed.route;
 
   if (route.confidence < 0.65 || route.classification === 'unknown_non_order') {
+    // The LLM was unsure. Never let that uncertainty discard a pasted multi-line
+    // item list — fall through (return null) so the deterministic + stock path
+    // surfaces every line instead of returning a generic "I'm not sure what you
+    // want" clarification. (Defense in depth: shouldUseLlmIntentRouter already
+    // skips multi-item lists, and the orchestrator reclassifies them, but this
+    // closes the path where an applied give-up route short-circuits both.)
+    if (looksLikeMultiItemList(input.message, input.unitAliases)) return null;
     return { ...routed };
   }
 
@@ -1130,6 +1173,16 @@ function shouldUseLlmIntentRouter(input: {
   ) {
     return true;
   }
+
+  // A multi-line list of item-like lines (e.g. a whole order or inventory count
+  // pasted in) is unambiguously an order/inventory entry — never a history,
+  // recommendation, or tutorial request. Always let the deterministic + stock
+  // path handle it so each line is surfaced (added or flagged for review)
+  // instead of the LLM router collapsing the entire list into one generic
+  // "I'm not sure what you mean" clarification when individual lines don't
+  // cleanly match the catalog. This is the safety net that keeps a confusing
+  // line from wiping out the whole message.
+  if (looksLikeMultiItemList(input.message, input.unitAliases)) return false;
 
   if (hasUsefulDeterministicOrderSignal(input)) return false;
 
@@ -1171,6 +1224,33 @@ function shouldUseLlmIntentRouter(input: {
   }
 
   return classification === 'order_entry';
+}
+
+/**
+ * True when the message reads as a multi-line list of item entries — two or
+ * more lines where a majority parse to a non-empty item name. Such a list is an
+ * order or inventory dump, not a single intent like "show recent orders", so it
+ * must bypass the LLM intent router and flow through the deterministic + stock
+ * path where every line is individually surfaced.
+ */
+function looksLikeMultiItemList(message: string, unitAliases: UnitAliasMap): boolean {
+  const lines = message
+    .normalize('NFKC')
+    .split(/\r?\n|,|;/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return false;
+
+  let itemLike = 0;
+  for (const line of lines) {
+    // A question is never an item line; its presence argues against a list.
+    if (/[?]/.test(line)) continue;
+    const candidates = parseDeterministicOrder(line, unitAliases);
+    if (candidates.some((candidate) => candidate.item_text.trim().length > 0)) {
+      itemLike += 1;
+    }
+  }
+  return itemLike >= 2 && itemLike >= Math.ceil(lines.length / 2);
 }
 
 function hasUsefulDeterministicOrderSignal(input: {

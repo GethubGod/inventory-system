@@ -84,7 +84,7 @@ const COMMAND_ONLY_TERMS = new Set([
 const MIN_PLAUSIBLE_REVIEW_CONFIDENCE = 0.75;
 
 /** Hardcoded version string — appears in every response for deployment verification. */
-export const PARSER_VERSION = 'quick-order-parser-v3-line-based';
+export const PARSER_VERSION = 'quick-order-parser-v4-resilient-routing';
 
 function matchCatalogWithEmployeeAliases(
   itemText: string,
@@ -270,11 +270,37 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
   // ----------------------------------------------------------------
   // 1. Detect intent BEFORE parsing items.
   // ----------------------------------------------------------------
-  const classification = input.classification ?? classifyQuickOrderInput(input.rawText, {
+  let classification = input.classification ?? classifyQuickOrderInput(input.rawText, {
     hasPendingDuplicateAction: input.previousMessages.some((message) =>
       (message.pending_clarifications ?? []).some((entry) => entry.type === 'quantity_conflict' || entry.type === 'unit_conflict')
     ),
   });
+
+  // ----------------------------------------------------------------
+  // UNIVERSAL SAFETY NET: a message that parses into a list of item-like lines
+  // is an order — never a "non-order"/ambiguous request. The deterministic
+  // classifier and the LLM intent router both occasionally mislabel a pasted
+  // multi-line order (especially when lines use words like "a lot" or unusual
+  // phrasing) as `unknown_non_order` or `product_question`, which would discard
+  // the entire message behind a generic "I'm not sure what you want" reply.
+  // Forcing order parsing here guarantees every line is surfaced — added when it
+  // resolves, or flagged for review when it doesn't — rather than the whole
+  // cart being thrown away. This is the single chokepoint every parse flows
+  // through, so it closes the dead-end no matter which upstream path mislabeled
+  // the input.
+  if (
+    (classification.classification === 'unknown_non_order' ||
+      classification.classification === 'product_question') &&
+    textLooksLikeMultiItemOrder(input.rawText, unitAliases)
+  ) {
+    classification = {
+      ...classification,
+      classification: 'order_entry',
+      intentResult: { ...classification.intentResult, intent: 'add' },
+      reason: `${classification.reason}|reclassified_multi_item_list`,
+    };
+  }
+
   const intentResult = classification.intentResult;
   const textToParse = intentResult.strippedText || input.rawText;
 
@@ -1150,6 +1176,32 @@ function hasExactCatalogNameStructuralSegmentMatch(
 }
 
 type ItemDiagnostic = NonNullable<NonNullable<ParseResponse['diagnostics']>['item_diagnostics']>[number];
+
+/**
+ * True when the raw text reads as a list of item lines — i.e. two or more lines
+ * where a majority parse to a non-empty item name. Used as the universal guard
+ * that keeps a pasted multi-line order from being discarded by a non-order
+ * classification. Deliberately lenient: it only needs item *names*, not
+ * quantities, because an order line can be just "Salmon".
+ */
+function textLooksLikeMultiItemOrder(rawText: string, unitAliases: UnitAliasMap): boolean {
+  const lines = rawText
+    .normalize('NFKC')
+    .split(/\r?\n|,|;/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) return false;
+
+  let itemLike = 0;
+  for (const line of lines) {
+    if (/[?]/.test(line)) continue;
+    const candidates = parseDeterministicOrder(line, unitAliases);
+    if (candidates.some((candidate) => candidate.item_text.trim().length > 0)) {
+      itemLike += 1;
+    }
+  }
+  return itemLike >= 2 && itemLike >= Math.ceil(lines.length / 2);
+}
 
 function buildPreParseResponse(
   input: OrchestratorInput,

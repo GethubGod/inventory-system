@@ -992,7 +992,7 @@ function syncQoItems(ss, config) {
     var activeResult = normalizeOptionalBoolean(row.active);
     var locationResult = resolveOptionalLocationName(row.location_scope, refs.locations);
     var supplier = supplierName ? resolveSupplierName(supplierName, refs.suppliers) : null;
-    var inventoryItem = name ? resolveQoInventoryItem(name, refs.inventoryItems) : null;
+    var inventoryResult = name ? resolveQoInventoryItem(name, refs.inventoryItems) : { ok: false, reason: 'not_found' };
     var error = null;
     if (!name) error = 'name is required';
     else if (!supplierName) error = 'supplier is required';
@@ -1001,6 +1001,7 @@ function syncQoItems(ss, config) {
     else if (targetStock.invalid) error = 'target_stock must be numeric';
     else if (activeResult.invalid) error = 'active must be TRUE or FALSE';
     else if (!locationResult.ok) error = 'Could not resolve location_scope "' + normalizeTextCell(row.location_scope) + '"';
+    else if (!inventoryResult.ok) error = formatQoCatalogResolutionError(name, inventoryResult);
     return {
       duplicateKey: normalizeCatalogLookupText(name) + '|' + (locationResult.location ? locationResult.location.id : normalizeEmployeeAliasKey(row.location_scope) || 'global'),
       error: error,
@@ -1018,7 +1019,7 @@ function syncQoItems(ss, config) {
         notes: normalizeTextCell(row.notes) || null,
         sync_status: 'Synced',
         sync_error: null,
-        inventory_item_id: inventoryItem ? inventoryItem.id : null,
+        inventory_item_id: inventoryResult.ok ? inventoryResult.item.id : null,
       },
     };
   });
@@ -1031,10 +1032,10 @@ function syncQoReorderRules(ss, config) {
     var orderQty = normalizeOptionalNumber(row.order_qty);
     var activeResult = normalizeOptionalBoolean(row.active);
     var locationResult = resolveOptionalLocationName(row.location_scope, refs.locations);
-    var item = itemName ? resolveQoItem(itemName, refs.qoItems) : null;
+    var itemResult = itemName ? resolveQoItem(itemName, refs.qoItems) : { ok: false, reason: 'not_found' };
     var error = null;
     if (!itemName) error = 'item_name is required';
-    else if (!item) error = 'Could not resolve item_name "' + itemName + '"';
+    else if (!itemResult.ok) error = formatQoCatalogResolutionError(itemName, itemResult);
     else if (trigger.invalid || trigger.value === null) error = 'trigger_at_or_below must be numeric';
     else if (!normalizeTextCell(row.trigger_unit)) error = 'trigger_unit is required';
     else if (orderQty.invalid || orderQty.value === null) error = 'order_qty must be numeric';
@@ -1044,8 +1045,8 @@ function syncQoReorderRules(ss, config) {
       duplicateKey: [normalizeCatalogLookupText(itemName), locationResult.location ? locationResult.location.id : 'global', normalizeEmployeeAliasKey(row.trigger_unit), trigger.value].join('|'),
       error: error,
       payload: error ? null : {
-        item_name: item.name,
-        qo_item_id: item.id,
+        item_name: itemResult.item.name,
+        qo_item_id: itemResult.item.id,
         trigger_at_or_below: trigger.value,
         trigger_unit: normalizeTextCell(row.trigger_unit),
         order_qty: orderQty.value,
@@ -1066,7 +1067,7 @@ function syncQoPersonalization(ss, config) {
     var employeeName = normalizeTextCell(row.employee_name);
     var ruleType = normalizeTextCell(row.rule_type).toLowerCase();
     var itemName = normalizeTextCell(row.item_name);
-    var item = itemName ? resolveQoItem(itemName, refs.qoItems) : null;
+    var itemResult = itemName ? resolveQoItem(itemName, refs.qoItems) : { ok: false, reason: 'not_found' };
     var activeResult = normalizeOptionalBoolean(row.active);
     var trigger = normalizeOptionalNumber(row.trigger_at_or_below);
     var orderQty = normalizeOptionalNumber(row.order_qty);
@@ -1076,7 +1077,7 @@ function syncQoPersonalization(ss, config) {
     if (!employeeName) error = 'employee_name is required';
     else if (ruleType !== 'alias' && ruleType !== 'item_config') error = 'rule_type must be alias or item_config';
     else if (!itemName) error = 'item_name is required';
-    else if (!item) error = 'Could not resolve item_name "' + itemName + '"';
+    else if (!itemResult.ok) error = formatQoCatalogResolutionError(itemName, itemResult);
     else if (ruleType === 'alias' && !normalizeTextCell(row.phrase)) error = 'phrase is required for alias rows';
     else if (ruleType === 'alias' && hasItemConfig) error = 'alias rows cannot populate item_config fields';
     else if (ruleType === 'item_config' && trigger.invalid) error = 'trigger_at_or_below must be numeric';
@@ -1084,14 +1085,14 @@ function syncQoPersonalization(ss, config) {
     else if (activeResult.invalid) error = 'active must be TRUE or FALSE';
     else if (!locationResult.ok) error = 'Could not resolve location_scope "' + normalizeTextCell(row.location_scope) + '"';
     return {
-      duplicateKey: [normalizeEmployeeAliasKey(employeeName), ruleType, normalizeEmployeeAliasKey(row.phrase) || 'none', item ? item.id : itemName, normalizeEmployeeAliasKey(row.personal_unit) || 'none', locationResult.location ? locationResult.location.id : 'global'].join('|'),
+      duplicateKey: [normalizeEmployeeAliasKey(employeeName), ruleType, normalizeEmployeeAliasKey(row.phrase) || 'none', itemResult.ok ? itemResult.item.id : itemName, normalizeEmployeeAliasKey(row.personal_unit) || 'none', locationResult.location ? locationResult.location.id : 'global'].join('|'),
       error: error,
       payload: error ? null : {
         employee_name: employeeName,
         rule_type: ruleType,
         phrase: normalizeTextCell(row.phrase) || null,
-        item_name: item.name,
-        qo_item_id: item.id,
+        item_name: itemResult.item.name,
+        qo_item_id: itemResult.item.id,
         personal_unit: normalizeTextCell(row.personal_unit) || null,
         personal_unit_equals: normalizeTextCell(row.personal_unit_equals) || null,
         trigger_at_or_below: trigger.value,
@@ -1200,7 +1201,7 @@ function loadQoReferenceData() {
   return {
     inventoryItems: supabaseSelectFields('inventory_items', 'id,name,aliases,active', false)
       .filter(function(item) { return item.active !== false; }),
-    qoItems: supabaseSelectFields('qo_items', 'id,name,inventory_item_id,active', true)
+    qoItems: supabaseSelectFields('qo_items', 'id,name,aliases,inventory_item_id,active', true)
       .filter(function(item) { return item.active !== false; }),
     locations: supabaseSelectFields('locations', 'id,name,short_code,active', false)
       .filter(function(location) { return location.active !== false; }),
@@ -1209,20 +1210,83 @@ function loadQoReferenceData() {
   };
 }
 
+function splitQoItemAliases(aliases) {
+  if (aliases === null || aliases === undefined) return [];
+  var text = normalizeTextCell(aliases);
+  if (!text) return [];
+  return text.split(',').map(function(alias) { return alias.trim(); }).filter(Boolean);
+}
+
 function resolveQoInventoryItem(name, items) {
   var key = normalizeCatalogLookupText(name);
+  if (!key) return { ok: false, reason: 'not_found' };
+
   for (var i = 0; i < items.length; i++) {
-    if (normalizeCatalogLookupText(items[i].name) === key) return items[i];
+    if (normalizeCatalogLookupText(items[i].name) === key) {
+      return { ok: true, item: items[i], via_alias: false };
+    }
   }
-  return null;
+
+  var aliasMatches = [];
+  for (var j = 0; j < items.length; j++) {
+    var aliases = Array.isArray(items[j].aliases) ? items[j].aliases : [];
+    for (var aliasIndex = 0; aliasIndex < aliases.length; aliasIndex++) {
+      if (!aliases[aliasIndex]) continue;
+      if (normalizeCatalogLookupText(aliases[aliasIndex]) === key) {
+        aliasMatches.push(items[j]);
+        break;
+      }
+    }
+  }
+
+  if (aliasMatches.length === 1) return { ok: true, item: aliasMatches[0], via_alias: true };
+  if (aliasMatches.length > 1) {
+    return {
+      ok: false,
+      reason: 'ambiguous_alias',
+      candidates: aliasMatches.map(function(match) { return match.name; }),
+    };
+  }
+  return { ok: false, reason: 'not_found' };
 }
 
 function resolveQoItem(name, items) {
   var key = normalizeCatalogLookupText(name);
+  if (!key) return { ok: false, reason: 'not_found' };
+
   for (var i = 0; i < items.length; i++) {
-    if (normalizeCatalogLookupText(items[i].name) === key) return items[i];
+    if (normalizeCatalogLookupText(items[i].name) === key) {
+      return { ok: true, item: items[i], via_alias: false };
+    }
   }
-  return null;
+
+  var aliasMatches = [];
+  for (var j = 0; j < items.length; j++) {
+    var aliases = splitQoItemAliases(items[j].aliases);
+    for (var aliasIndex = 0; aliasIndex < aliases.length; aliasIndex++) {
+      if (normalizeCatalogLookupText(aliases[aliasIndex]) === key) {
+        aliasMatches.push(items[j]);
+        break;
+      }
+    }
+  }
+
+  if (aliasMatches.length === 1) return { ok: true, item: aliasMatches[0], via_alias: true };
+  if (aliasMatches.length > 1) {
+    return {
+      ok: false,
+      reason: 'ambiguous_alias',
+      candidates: aliasMatches.map(function(match) { return match.name; }),
+    };
+  }
+  return { ok: false, reason: 'not_found' };
+}
+
+function formatQoCatalogResolutionError(inputName, result) {
+  if (result.reason === 'ambiguous_alias') {
+    return 'Alias "' + inputName + '" matches multiple items: ' + result.candidates.join(', ') + '. Disambiguate on the sheet.';
+  }
+  return 'Could not resolve "' + inputName + '" to any item or alias.';
 }
 
 function syncQuickOrderAliasRules(ss, config) {
@@ -2460,5 +2524,8 @@ if (typeof module !== 'undefined') {
     resolveEmployeeAliasItem: resolveEmployeeAliasItem,
     resolveEmployeeAliasLocation: resolveEmployeeAliasLocation,
     resolveSupplierName: resolveSupplierName,
+    resolveQoItem: resolveQoItem,
+    resolveQoInventoryItem: resolveQoInventoryItem,
+    formatQoCatalogResolutionError: formatQoCatalogResolutionError,
   };
 }

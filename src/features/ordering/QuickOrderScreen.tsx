@@ -125,6 +125,7 @@ import {
   buildQuickOrderAssistantMessage,
   hasQuickOrderStateChange,
   normalizeQuickOrderParseResponse,
+  shouldDiscardQuickOrderResponseAsError,
   type QuickOrderAssistantAction,
   type QuickOrderBlockedOperation,
   type QuickOrderMessageSource,
@@ -4195,14 +4196,11 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           });
         }
 
-        // Only short-circuit to error path if there are truly no items AND no actions AND no operations.
-        // If the backend returned an error field but also returned parsed items or operations,
-        // process them instead of discarding.
+        // Only short-circuit to error path if there is truly no structured
+        // result. Inventory-mode responses usually have no cart items, so
+        // stock updates/recommendations/warnings must count as useful output.
         if (
-          response.rawError &&
-          response.parsedItems.length === 0 &&
-          response.pendingActions.length === 0 &&
-          response.operations.length === 0
+          shouldDiscardQuickOrderResponseAsError(response)
         ) {
           console.warn(
             `[QuickOrder] parse-order returned an error with no items: ${response.rawError}`,

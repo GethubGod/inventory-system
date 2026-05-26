@@ -319,6 +319,20 @@ export function normalizeQuickOrderParseResponse(
   };
 }
 
+export function shouldDiscardQuickOrderResponseAsError(
+  response: NormalizedQuickOrderParseResponse,
+): boolean {
+  return Boolean(response.rawError) &&
+    response.parsedItems.length === 0 &&
+    response.pendingActions.length === 0 &&
+    response.operations.length === 0 &&
+    response.stockUpdates.length === 0 &&
+    response.recommendations.length === 0 &&
+    response.safetyWarnings.length === 0 &&
+    response.blockedOperations.length === 0 &&
+    response.actions.length === 0;
+}
+
 export function buildQuickOrderAssistantMessage(input: {
   normalized: NormalizedQuickOrderParseResponse;
   mergeResult: QuickOrderMergeResult;
