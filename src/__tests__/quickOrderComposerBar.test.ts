@@ -18,6 +18,7 @@ jest.mock('react-native', () => {
     Text: createComponent('Text'),
     TextInput: createComponent('TextInput'),
     Pressable: createComponent('Pressable'),
+    ActivityIndicator: createComponent('ActivityIndicator'),
     Keyboard: {
       addListener: jest.fn(() => ({ remove: jest.fn() })),
       dismiss: jest.fn(),
@@ -68,6 +69,18 @@ jest.mock('react-native-reanimated', () => {
   };
 });
 
+jest.mock('react-native-svg', () => {
+  const ReactActual = jest.requireActual('react');
+  const createComponent = (name: string) => {
+    const Component = ({ children, ...props }: { children?: unknown }) =>
+      ReactActual.createElement(name, props, children);
+    Component.displayName = name;
+    return Component;
+  };
+  const Svg = createComponent('Svg');
+  return { __esModule: true, default: Svg, Svg, Rect: createComponent('Rect') };
+});
+
 jest.mock('@expo/vector-icons', () => {
   const React = require('react');
   const Ionicons = (props: Record<string, unknown>) => React.createElement('Ionicons', props);
@@ -96,6 +109,7 @@ jest.mock('@/theme/design', () => ({
     textPrimary: '#1F2937',
     white: '#FFFFFF',
     statusAmber: '#F59E0B',
+    statusGreen: '#22C55E',
   },
   grayScale: {
     100: '#F3F4F6',
@@ -229,5 +243,182 @@ describe('QuickOrderComposerBar mode selector', () => {
     });
 
     expect(onComposerModeChange).not.toHaveBeenCalled();
+  });
+
+  it('renders voice controls and retry state', () => {
+    const onStartVoice = jest.fn();
+    const onRetryVoice = jest.fn();
+    const component = renderComposer({
+      voiceEnabled: true,
+      voiceStatus: 'failed',
+      voiceError: "Couldn't understand. Try again.",
+      onStartVoice,
+      onRetryVoice,
+    });
+
+    const pressables = collectByType(component.toJSON(), 'Pressable');
+    const mic = pressables.find(
+      (node) => node.props?.accessibilityLabel === 'Start voice input',
+    );
+    const retry = pressables.find(
+      (node) => node.props?.accessibilityLabel === 'Retry voice order',
+    );
+    const discard = pressables.find(
+      (node) => node.props?.accessibilityLabel === 'Discard voice order',
+    );
+
+    expect(mic).toBeDefined();
+    expect(retry).toBeDefined();
+    expect(discard).toBeDefined();
+
+    renderer.act(() => {
+      (retry!.props.onPress as () => void)();
+    });
+    expect(onRetryVoice).toHaveBeenCalled();
+  });
+
+  it('stops and submits from both the square stop and the send button while recording', () => {
+    const onSubmitVoice = jest.fn();
+    const component = renderComposer({
+      voiceEnabled: true,
+      voiceStatus: 'recording',
+      onSubmitVoice,
+    });
+
+    const pressables = collectByType(component.toJSON(), 'Pressable');
+    const stop = pressables.find(
+      (node) => node.props?.accessibilityLabel === 'Stop voice input',
+    );
+    const send = pressables.find(
+      (node) => node.props?.accessibilityLabel === 'Send',
+    );
+
+    expect(stop).toBeDefined();
+    expect(send).toBeDefined();
+    // Send is active (tappable) during recording, not disabled.
+    expect(send!.props.accessibilityState?.disabled).toBe(false);
+
+    renderer.act(() => {
+      (stop!.props.onPress as () => void)();
+    });
+    renderer.act(() => {
+      (send!.props.onPress as () => void)();
+    });
+    expect(onSubmitVoice).toHaveBeenCalledTimes(2);
+
+    // Unmount so the waveform's metering interval is cleared (no leaked timer).
+    renderer.act(() => {
+      component.unmount();
+    });
+  });
+});
+
+describe('QuickOrderComposerBar suggestion pills', () => {
+  beforeAll(() => {
+    Object.assign(globalThis, {
+      requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(callback, 0),
+      cancelAnimationFrame: (id: ReturnType<typeof setTimeout>) => clearTimeout(id),
+    });
+  });
+
+  const PILLS = [
+    { id: 'usual', label: 'Usual', icon: 'sparkles' as const, accent: true },
+    { id: 'recent', label: 'Recent', icon: 'time-outline' as const },
+    { id: 'last_week', label: 'Last week', icon: 'calendar-outline' as const },
+  ];
+  const PILL_LABELS = ['Usual', 'Recent', 'Last week'];
+
+  function findPills(component: renderer.ReactTestRenderer): ReactTestRendererJSON[] {
+    return collectByType(component.toJSON(), 'Pressable').filter((node) =>
+      PILL_LABELS.includes(node.props?.accessibilityLabel as string),
+    );
+  }
+
+  function findInput(component: renderer.ReactTestRenderer): ReactTestRendererJSON | undefined {
+    return collectByType(component.toJSON(), 'TextInput').find(
+      (node) => node.props?.accessibilityLabel === 'Order message',
+    );
+  }
+
+  function baseProps(
+    overrides: Partial<React.ComponentProps<typeof QuickOrderComposerBar>> = {},
+  ): React.ComponentProps<typeof QuickOrderComposerBar> {
+    return {
+      onSubmit: jest.fn(),
+      isSending: false,
+      bottomInset: 0,
+      tabBarHeight: 60,
+      onComposerModeChange: jest.fn(),
+      suggestionPills: PILLS,
+      onSuggestionPillPress: jest.fn(),
+      ...overrides,
+    };
+  }
+
+  function rerender(
+    component: renderer.ReactTestRenderer,
+    props: React.ComponentProps<typeof QuickOrderComposerBar>,
+  ) {
+    renderer.act(() => {
+      component.update(React.createElement(QuickOrderComposerBar, props));
+    });
+  }
+
+  it('shows pills when offered and the composer is empty', () => {
+    const component = renderComposer(baseProps());
+    expect(findPills(component)).toHaveLength(3);
+  });
+
+  it('hides pills while typing and re-shows them once the field is cleared', () => {
+    const component = renderComposer(baseProps());
+    const input = findInput(component);
+
+    renderer.act(() => {
+      (input!.props.onChangeText as (next: string) => void)('salmon 2 cases');
+    });
+    expect(findPills(component)).toHaveLength(0);
+
+    renderer.act(() => {
+      (findInput(component)!.props.onChangeText as (next: string) => void)('');
+    });
+    expect(findPills(component)).toHaveLength(3);
+  });
+
+  it('hides pills after a tap and does not flash them back before the prefill lands', () => {
+    const onSuggestionPillPress = jest.fn();
+    const props = baseProps({ onSuggestionPillPress });
+    const component = renderComposer(props);
+
+    const usual = findPills(component).find(
+      (node) => node.props?.accessibilityLabel === 'Usual',
+    );
+    renderer.act(() => {
+      (usual!.props.onPress as () => void)();
+    });
+    expect(onSuggestionPillPress).toHaveBeenCalledWith('usual');
+    // Composer is still empty (prefill not yet arrived) but pills must stay hidden.
+    expect(findPills(component)).toHaveLength(0);
+
+    // Prefill arrives: text becomes non-empty, pills remain hidden.
+    rerender(component, { ...props, prefillText: 'Salmon\nTuna Loin', prefillNonce: 1 });
+    expect(findPills(component)).toHaveLength(0);
+  });
+
+  it('re-shows pills after a no-result tap once sending completes with an empty composer', () => {
+    const props = baseProps({ isSending: false });
+    const component = renderComposer(props);
+
+    const recent = findPills(component).find(
+      (node) => node.props?.accessibilityLabel === 'Recent',
+    );
+    renderer.act(() => {
+      (recent!.props.onPress as () => void)();
+    });
+    expect(findPills(component)).toHaveLength(0);
+
+    // Send in flight, then completes — no prefill ever arrived (empty history).
+    rerender(component, { ...props, isSending: true });
+    rerender(component, { ...props, isSending: false });
+    expect(findPills(component)).toHaveLength(3);
   });
 });

@@ -1,3 +1,4 @@
+export { useAmplitudeBuffer } from './useAmplitudeBuffer';
 export { useEmployeeCartActions } from './useEmployeeCartActions';
 export { useHaptics } from './useHaptics';
 export { useInventorySubscription } from './useInventorySubscription';

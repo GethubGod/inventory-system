@@ -16,7 +16,7 @@ import {
 } from './quickOrderItems';
 
 /** Compact row slot used by the bounded Order List FlatList. */
-export const QUICK_ORDER_ROW_MIN_HEIGHT = 44;
+export const QUICK_ORDER_ROW_MIN_HEIGHT = 39;
 
 type OrderListQuantityLine = {
   label: string;
@@ -83,6 +83,7 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
     item.isSuggested === true ||
     item.source === 'inventory_recommendation' ||
     item.source === 'remaining_recommendation';
+  const voiceSuggested = item.source === 'voice';
 
   const handleEditPress = useCallback(() => {
     void triggerSelectionHaptic();
@@ -118,15 +119,18 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
         accessibilityRole="button"
         accessibilityLabel={`Remove ${name}`}
         onPress={handleDeletePress}
-        style={({ pressed }) => [
-          styles.deleteAction,
-          { width: ds.spacing(84), opacity: pressed ? 0.85 : 1 },
-        ]}
+        style={({ pressed }) => ({
+          width: ds.spacing(84),
+          alignSelf: 'stretch',
+          opacity: pressed ? 0.85 : 1,
+        })}
       >
-        <Ionicons name="trash-outline" size={ds.icon(20)} color={colors.white} />
-        <Text style={[styles.deleteActionText, { fontSize: ds.fontSize(12) }]}>
-          Delete
-        </Text>
+        <View style={styles.deleteAction}>
+          <Ionicons name="trash-outline" size={ds.icon(20)} color={colors.white} />
+          <Text style={[styles.deleteActionText, { fontSize: ds.fontSize(12) }]}>
+            Delete
+          </Text>
+        </View>
       </Pressable>
     ),
     [ds, handleDeletePress, name],
@@ -139,7 +143,7 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
         {
           backgroundColor: colors.white,
           minHeight: ds.spacing(QUICK_ORDER_ROW_MIN_HEIGHT),
-          paddingVertical: ds.spacing(6),
+          paddingVertical: ds.spacing(4),
           borderTopWidth: showDivider ? glassHairlineWidth : 0,
           borderTopColor: colors.divider,
         },
@@ -159,7 +163,7 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
           accessibilityLabel={`Adjust details for ${name}`}
           hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
           onPress={handleEditPress}
-          style={({ pressed }) => [styles.namePressable, { opacity: pressed ? 0.65 : 1 }]}
+          style={({ pressed }) => ({ flexShrink: 1, minWidth: 0, opacity: pressed ? 0.65 : 1 })}
         >
           <Text
             numberOfLines={1}
@@ -183,13 +187,13 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
               {reviewQuantityLabel}
             </Text>
           ) : null}
-          {!issue && suggested ? (
+          {!issue && (suggested || voiceSuggested) ? (
             <Text
               numberOfLines={1}
               ellipsizeMode="tail"
               style={[styles.suggestedText, { fontSize: ds.fontSize(11), marginTop: ds.spacing(2) }]}
             >
-              Suggested
+              {voiceSuggested ? 'Suggested from voice' : 'Suggested'}
             </Text>
           ) : null}
         </Pressable>
@@ -201,21 +205,27 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
           accessibilityLabel={`${issue.label} for ${name}`}
           hitSlop={{ top: 10, right: 6, bottom: 10, left: 10 }}
           onPress={handleIssuePress}
-          style={({ pressed }) => [styles.trailingAction, { marginLeft: ds.spacing(10), opacity: pressed ? 0.6 : 1 }]}
+          style={({ pressed }) => ({
+            marginLeft: ds.spacing(10),
+            flexShrink: 1,
+            opacity: pressed ? 0.6 : 1,
+          })}
         >
-          <Text
-            numberOfLines={1}
-            ellipsizeMode="tail"
-            style={[styles.trailingActionText, { fontSize: ds.fontSize(14), color: colors.statusAmber }]}
-          >
-            {trailingLabel}
-          </Text>
-          <Ionicons
-            name="chevron-forward"
-            size={ds.icon(13)}
-            color={colors.statusAmber}
-            style={{ marginLeft: ds.spacing(2) }}
-          />
+          <View style={styles.trailingActionInner}>
+            <Text
+              numberOfLines={1}
+              ellipsizeMode="tail"
+              style={[styles.trailingActionText, { fontSize: ds.fontSize(14), color: colors.statusAmber }]}
+            >
+              {trailingLabel}
+            </Text>
+            <Ionicons
+              name="chevron-forward"
+              size={ds.icon(13)}
+              color={colors.statusAmber}
+              style={{ marginLeft: ds.spacing(2), flexShrink: 0 }}
+            />
+          </View>
         </Pressable>
       ) : (
         <View style={[styles.trailingStack, { marginLeft: ds.spacing(10) }]}>
@@ -226,16 +236,14 @@ export const QuickOrderItemRow = React.memo(function QuickOrderItemRow({
               accessibilityLabel={`Change quantity for ${name}, currently ${entry.label}`}
               hitSlop={{ top: 10, right: 6, bottom: 10, left: 10 }}
               onPress={() => handleQuantityPress(entry.item)}
-              style={({ pressed }) => [
-                styles.trailingQuantityPressable,
-                {
-                  borderTopWidth: index > 0 ? glassHairlineWidth : 0,
-                  borderTopColor: colors.divider,
-                  paddingTop: index > 0 ? ds.spacing(3) : 0,
-                  marginTop: index > 0 ? ds.spacing(3) : 0,
-                  opacity: pressed ? 0.6 : 1,
-                },
-              ]}
+              style={({ pressed }) => ({
+                alignItems: 'flex-end',
+                borderTopWidth: index > 0 ? glassHairlineWidth : 0,
+                borderTopColor: colors.divider,
+                paddingTop: index > 0 ? ds.spacing(3) : 0,
+                marginTop: index > 0 ? ds.spacing(3) : 0,
+                opacity: pressed ? 0.6 : 1,
+              })}
             >
               <Text
                 numberOfLines={1}
@@ -290,10 +298,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  namePressable: {
-    flexShrink: 1,
-    minWidth: 0,
-  },
   name: {
     fontWeight: '700',
     letterSpacing: 0,
@@ -322,15 +326,14 @@ const styles = StyleSheet.create({
     flexShrink: 1,
     alignItems: 'stretch',
   },
-  trailingQuantityPressable: {
-    alignItems: 'flex-end',
-  },
-  trailingAction: {
+  trailingActionInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexShrink: 0,
+    flexWrap: 'nowrap',
+    maxWidth: 140,
   },
   trailingActionText: {
+    flexShrink: 1,
     fontWeight: '800',
     letterSpacing: 0,
     textDecorationLine: 'underline',

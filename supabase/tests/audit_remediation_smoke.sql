@@ -35,6 +35,20 @@ begin
     raise exception 'submit_order_rpc still blocks globally available items by location';
   end if;
 
+  if position(
+    'v_entry_method := ''quick_order'';'
+    in pg_get_functiondef('public.submit_order_rpc(uuid,uuid,uuid,uuid,text,jsonb,text,uuid)'::regprocedure)
+  ) > 0 then
+    raise exception 'submit_order_rpc still forces every quick session to quick_order';
+  end if;
+
+  if position(
+    '''voice_order'''
+    in pg_get_functiondef('public.submit_order_rpc(uuid,uuid,uuid,uuid,text,jsonb,text,uuid)'::regprocedure)
+  ) = 0 then
+    raise exception 'submit_order_rpc does not preserve voice_order entry metadata';
+  end if;
+
   if not exists (
     select 1
     from pg_trigger

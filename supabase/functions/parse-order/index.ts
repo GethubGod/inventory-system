@@ -21,16 +21,17 @@ import { buildUnitAliases, normalizeUnitForComparison, type UnitAliasMap } from 
 import type {
   CatalogItem,
   EmployeeQuickOrderAlias,
-  InventoryReorderRule,
   InventoryStatusTerm,
   ItemAllowedUnitRule,
-  ItemOrderLimit,
   ParsedItem,
   ParserCorrection,
   ParseFlag,
   ParseResponse,
   ParseSuggestion,
+  QuickOrderAliasRule,
   QuickOrderMessage,
+  QuickOrderReorderRule,
+  QuickOrderUnitRule,
 } from './types.ts';
 
 declare const Deno: {
@@ -234,11 +235,26 @@ async function getAuthenticatedUser(req: Request) {
     .maybeSingle();
 
   const metadata = isRecord(user.user_metadata) ? user.user_metadata : {};
-  const employeeName =
-    asNullableString(profile?.full_name) ??
-    asNullableString(legacyUser?.name) ??
-    asNullableString(metadata.full_name) ??
-    asNullableString(metadata.name);
+  // Collect every place the human's name might live. Quick Order aliases are
+  // linked purely by name (see fetchEmployeeQuickOrderAliases), so we must match
+  // against ALL known variants — `profiles.full_name` and `users.name` can differ
+  // (e.g. `users.name` defaults to the literal 'User' while `full_name` is null),
+  // and the alias sheet could be keyed to either one.
+  const rawNames = [
+    asNullableString(profile?.full_name),
+    asNullableString(legacyUser?.name),
+    asNullableString(metadata.full_name),
+    asNullableString(metadata.name),
+  ].filter((name): name is string => Boolean(name));
+  const employeeNames: string[] = [];
+  for (const name of rawNames) {
+    employeeNames.push(name);
+    const firstWord = name.trim().split(/\s+/)[0];
+    if (firstWord && !employeeNames.includes(firstWord)) {
+      employeeNames.push(firstWord);
+    }
+  }
+  const employeeName = rawNames[0] ?? null;
 
   return {
     error: null,
@@ -246,19 +262,44 @@ async function getAuthenticatedUser(req: Request) {
     user,
     role: typeof profile?.role === 'string' ? profile.role : null,
     employeeName,
+    employeeNames,
   };
 }
 
-async function fetchGlobalCatalog(): Promise<CatalogItem[]> {
-  const cacheKey = 'global-active-inventory';
+async function fetchGlobalCatalog(locationId?: string | null): Promise<CatalogItem[]> {
+  const cacheKey = `qo-items:${locationId ?? 'all'}`;
   const cached = globalCatalogCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.items;
 
-  const { data, error } = await supabaseAdmin
-    .from('inventory_items')
-    .select('id, name, aliases, base_unit, pack_unit, allowed_units, supplier_id, active, hard_cap, soft_cap, safety_stock, target_stock, default_order_unit')
+  let query = supabaseAdmin
+    .from('qo_items')
+    .select(`
+      id,
+      inventory_item_id,
+      name,
+      aliases,
+      order_unit,
+      target_stock,
+      supplier_id,
+      location_id,
+      active,
+      inventory_items (
+        id,
+        base_unit,
+        pack_unit,
+        allowed_units,
+        supplier_id,
+        default_order_unit
+      )
+    `)
     .eq('active', true)
     .limit(5000);
+
+  if (locationId) {
+    query = query.or(`location_id.is.null,location_id.eq.${locationId}`);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.warn('parse-order active inventory catalog fetch failed', error);
@@ -267,27 +308,31 @@ async function fetchGlobalCatalog(): Promise<CatalogItem[]> {
 
   const items = ((data ?? []) as Record<string, unknown>[])
     .map((row): CatalogItem | null => {
-      const id = asTrimmedString(row.id);
+      const inventoryRow = isRecord(row.inventory_items) ? row.inventory_items : {};
+      const id = asTrimmedString(row.inventory_item_id) ?? asTrimmedString(inventoryRow.id);
       const name = asTrimmedString(row.name);
       if (!id || !name) return null;
       return {
         id,
+        qo_item_id: asTrimmedString(row.id),
         name,
-        aliases: Array.isArray(row.aliases)
-          ? row.aliases.filter((alias): alias is string => typeof alias === 'string')
+        aliases: typeof row.aliases === 'string'
+          ? row.aliases.split(',').map((alias) => alias.trim()).filter(Boolean)
           : [],
-        default_unit: getDefaultInventoryUnit(row),
-        base_unit: asNullableString(row.base_unit),
-        pack_unit: asNullableString(row.pack_unit),
-        supplier_id: asNullableString(row.supplier_id),
-        allowed_units: Array.isArray(row.allowed_units)
-          ? row.allowed_units.filter((unit): unit is string => typeof unit === 'string')
+        default_unit: asNullableString(row.order_unit) ?? getDefaultInventoryUnit(inventoryRow),
+        order_unit: asNullableString(row.order_unit),
+        base_unit: asNullableString(inventoryRow.base_unit),
+        pack_unit: asNullableString(inventoryRow.pack_unit),
+        supplier_id: asNullableString(row.supplier_id) ?? asNullableString(inventoryRow.supplier_id),
+        location_id: asNullableString(row.location_id),
+        allowed_units: Array.isArray(inventoryRow.allowed_units)
+          ? inventoryRow.allowed_units.filter((unit): unit is string => typeof unit === 'string')
           : null,
-        hard_cap: row.hard_cap != null ? Number(row.hard_cap) : null,
-        soft_cap: row.soft_cap != null ? Number(row.soft_cap) : null,
-        safety_stock: row.safety_stock != null ? Number(row.safety_stock) : null,
+        hard_cap: null,
+        soft_cap: null,
+        safety_stock: null,
         target_stock: row.target_stock != null ? Number(row.target_stock) : null,
-        default_order_unit: asNullableString(row.default_order_unit),
+        default_order_unit: asNullableString(row.order_unit) ?? asNullableString(inventoryRow.default_order_unit),
       };
     })
     .filter((item): item is CatalogItem => Boolean(item))
@@ -345,81 +390,246 @@ async function fetchCorrections(userId: string, locationId: string): Promise<Par
   return (data ?? []) as ParserCorrection[];
 }
 
-async function fetchEmployeeQuickOrderAliases(input: {
+async function fetchQoPersonalization(input: {
   userId: string;
   locationId: string;
-  employeeNameKey: string | null;
-}): Promise<EmployeeQuickOrderAlias[]> {
-  const byId = new Map<string, EmployeeQuickOrderAlias>();
-
-  async function fetchBy(column: 'employee_user_id' | 'employee_name_key', value: string): Promise<void> {
-    const { data, error } = await supabaseAdmin
-      .from('employee_quick_order_aliases')
-      .select(`
-        id,
-        employee_name,
-        employee_name_key,
-        employee_user_id,
-        alias_text,
-        alias_key,
-        inventory_item_id,
-        location_id,
-        active,
-        notes,
-        source
-      `)
-      .eq('active', true)
-      .eq(column, value)
-      .or(`location_id.is.null,location_id.eq.${input.locationId}`);
-
-    if (error) {
-      console.warn('parse-order employee_quick_order_aliases unavailable', error);
-      return;
-    }
-
-    for (const row of (data ?? []) as EmployeeQuickOrderAlias[]) {
-      if (row.id) byId.set(row.id, row);
-    }
-  }
-
-  await fetchBy('employee_user_id', input.userId);
-  if (input.employeeNameKey) {
-    await fetchBy('employee_name_key', input.employeeNameKey);
-  }
-
-  return [...byId.values()];
-}
-
-async function fetchItemOrderLimits(locationId: string): Promise<ItemOrderLimit[]> {
+  employeeNameKeys: string[];
+}): Promise<{
+  aliasRules: QuickOrderAliasRule[];
+  unitRules: QuickOrderUnitRule[];
+  reorderRules: QuickOrderReorderRule[];
+}> {
+  const keys = [...new Set(input.employeeNameKeys.filter(Boolean))];
+  if (keys.length === 0) return { aliasRules: [], unitRules: [], reorderRules: [] };
   const { data, error } = await supabaseAdmin
-    .from('item_order_limits')
+    .from('qo_personalization')
     .select(`
       id,
-      item_id,
+      employee_name,
+      employee_name_key,
+      employee_user_id,
+      rule_type,
+      phrase,
+      item_name,
+      qo_item_id,
+      personal_unit,
+      personal_unit_equals,
+      trigger_at_or_below,
+      order_qty,
+      order_unit,
       location_id,
-      supplier_id,
-      default_order_unit,
-      typical_min_quantity,
-      typical_max_quantity,
-      soft_max_quantity,
-      hard_max_quantity,
-      manager_approval_quantity,
-      allow_employee_override,
-      allow_manager_override,
-      max_single_order_quantity,
-      max_daily_quantity,
-      max_weekly_quantity,
-      historical_median_quantity,
-      historical_p95_quantity,
-      historical_max_quantity
+      active,
+      notes,
+      qo_items (inventory_item_id)
     `)
-    .or(`location_id.is.null,location_id.eq.${locationId}`);
+    .eq('active', true)
+    .in('employee_name_key', keys)
+    .or(`location_id.is.null,location_id.eq.${input.locationId}`);
 
   if (error) {
-    console.warn('parse-order item_order_limits unavailable', error);
+    console.warn('parse-order qo_personalization unavailable', error);
+    return { aliasRules: [], unitRules: [], reorderRules: [] };
+  }
+
+  const aliasRules: QuickOrderAliasRule[] = [];
+  const unitRules: QuickOrderUnitRule[] = [];
+  const reorderRules: QuickOrderReorderRule[] = [];
+  for (const row of ((data ?? []) as Record<string, unknown>[])) {
+    const qoItem = isRecord(row.qo_items) ? row.qo_items : {};
+    const itemId = asTrimmedString(qoItem.inventory_item_id);
+    if (!itemId) continue;
+    const employeeName = asNullableString(row.employee_name);
+    const employeeNameKey = asNullableString(row.employee_name_key) ?? normalizeEmployeeNameKey(employeeName);
+    const employeeUserId = asNullableString(row.employee_user_id);
+    const location_id = asNullableString(row.location_id);
+    if (row.rule_type === 'alias') {
+      const phrase = asNullableString(row.phrase);
+      if (!phrase) continue;
+      aliasRules.push({
+        id: asNullableString(row.id) ?? undefined,
+        alias_text: phrase,
+        alias_key: normalizeEmployeeNameKey(phrase),
+        item_id: itemId,
+        scope_type: 'employee',
+        employee_name: employeeName,
+        employee_name_key: employeeNameKey,
+        employee_user_id: employeeUserId,
+        mode_scope: 'both',
+        location_id,
+        active: true,
+        notes: asNullableString(row.notes),
+        source: 'qo_personalization',
+      });
+      continue;
+    }
+
+    const personalUnit = asNullableString(row.personal_unit);
+    const equalsUnit = asNullableString(row.personal_unit_equals);
+    if (personalUnit) {
+      unitRules.push({
+        id: asNullableString(row.id) ?? undefined,
+        item_id: itemId,
+        from_unit: personalUnit,
+        to_unit: equalsUnit ?? personalUnit,
+        multiplier: 1,
+        scope_type: 'employee',
+        employee_name: employeeName,
+        employee_name_key: employeeNameKey,
+        employee_user_id: employeeUserId,
+        mode_scope: 'both',
+        location_id,
+        is_default_when_missing: false,
+        active: true,
+        notes: asNullableString(row.notes),
+        source: 'qo_personalization',
+        is_custom_counting_unit: equalsUnit == null,
+        tracking_unit: equalsUnit == null ? personalUnit : null,
+      });
+      unitRules.push({
+        id: `${asNullableString(row.id) ?? personalUnit}:missing`,
+        item_id: itemId,
+        from_unit: null,
+        to_unit: equalsUnit ?? personalUnit,
+        multiplier: 1,
+        scope_type: 'employee',
+        employee_name: employeeName,
+        employee_name_key: employeeNameKey,
+        employee_user_id: employeeUserId,
+        mode_scope: 'inventory',
+        location_id,
+        is_default_when_missing: true,
+        active: true,
+        notes: asNullableString(row.notes),
+        source: 'qo_personalization',
+        is_custom_counting_unit: equalsUnit == null,
+        tracking_unit: equalsUnit == null ? personalUnit : null,
+      });
+    }
+    const trigger = asNumber(row.trigger_at_or_below);
+    const orderQty = asNumber(row.order_qty);
+    const orderUnit = asNullableString(row.order_unit);
+    if (trigger != null && orderQty != null && orderUnit) {
+      reorderRules.push({
+        id: asNullableString(row.id) ?? undefined,
+        item_id: itemId,
+        scope_type: 'employee',
+        employee_name: employeeName,
+        employee_name_key: employeeNameKey,
+        employee_user_id: employeeUserId,
+        mode_scope: 'inventory',
+        location_id,
+        counted_unit: equalsUnit ?? personalUnit ?? null,
+        trigger_type: 'at_or_below',
+        trigger_qty_min: trigger,
+        trigger_qty_max: null,
+        action_type: 'fixed_order_qty',
+        order_qty: orderQty,
+        order_unit: orderUnit,
+        active: true,
+        notes: asNullableString(row.notes),
+        source: 'qo_personalization',
+      });
+    }
+  }
+  return { aliasRules, unitRules, reorderRules };
+}
+
+async function fetchQoReorderRules(locationId: string): Promise<QuickOrderReorderRule[]> {
+  const { data, error } = await supabaseAdmin
+    .from('qo_reorder_rules')
+    .select('id,item_name,qo_item_id,location_id,trigger_at_or_below,trigger_unit,order_qty,order_unit,active,notes,qo_items(inventory_item_id)')
+    .eq('active', true)
+    .or(`location_id.is.null,location_id.eq.${locationId}`);
+  if (error) {
+    console.warn('parse-order qo_reorder_rules unavailable', error);
     return [];
   }
-  return (data ?? []) as ItemOrderLimit[];
+  return ((data ?? []) as Record<string, unknown>[])
+    .map((row): QuickOrderReorderRule | null => {
+      const qoItem = isRecord(row.qo_items) ? row.qo_items : {};
+      const itemId = asTrimmedString(qoItem.inventory_item_id);
+      const trigger = asNumber(row.trigger_at_or_below);
+      const orderQty = asNumber(row.order_qty);
+      if (!itemId || trigger == null || orderQty == null) return null;
+      return {
+        id: asNullableString(row.id) ?? undefined,
+        item_id: itemId,
+        scope_type: 'global',
+        mode_scope: 'inventory',
+        location_id: asNullableString(row.location_id),
+        counted_unit: asNullableString(row.trigger_unit),
+        trigger_type: 'at_or_below',
+        trigger_qty_min: trigger,
+        trigger_qty_max: null,
+        action_type: 'fixed_order_qty',
+        order_qty: orderQty,
+        order_unit: asNullableString(row.order_unit) ?? asNullableString(row.trigger_unit),
+        active: true,
+        notes: asNullableString(row.notes),
+        source: 'qo_reorder_rules',
+      };
+    })
+    .filter((row): row is QuickOrderReorderRule => Boolean(row));
+}
+
+async function fetchQoKeywords(): Promise<{
+  statusTerms: InventoryStatusTerm[];
+  unitSynonyms: { from_unit: string; to_unit: string }[];
+  ignorePhrases: string[];
+}> {
+  const { data, error } = await supabaseAdmin
+    .from('qo_keywords')
+    .select('phrase,phrase_key,meaning_type,equals_unit,status,remaining_qty,action,active,notes')
+    .eq('active', true);
+  if (error) {
+    console.warn('parse-order qo_keywords unavailable', error);
+    return { statusTerms: [], unitSynonyms: [], ignorePhrases: [] };
+  }
+  const statusTerms: InventoryStatusTerm[] = [];
+  const unitSynonyms: { from_unit: string; to_unit: string }[] = [];
+  const ignorePhrases: string[] = [];
+  for (const row of ((data ?? []) as Record<string, unknown>[])) {
+    const phrase = asNullableString(row.phrase);
+    if (!phrase) continue;
+    if (row.meaning_type === 'unit_alias') {
+      const toUnit = asNullableString(row.equals_unit);
+      if (toUnit) unitSynonyms.push({ from_unit: phrase, to_unit: toUnit });
+      continue;
+    }
+    if (row.meaning_type === 'ignore') {
+      ignorePhrases.push(phrase);
+      continue;
+    }
+    if (row.meaning_type === 'status_term') {
+      const status = asNullableString(row.status) as InventoryStatusTerm['status'] | null;
+      const action = asNullableString(row.action) as InventoryStatusTerm['recommendation_action'] | null;
+      if (!status || !action) continue;
+      statusTerms.push({
+        phrase,
+        phrase_key: asNullableString(row.phrase_key) ?? normalizeEmployeeNameKey(phrase) ?? phrase.toLowerCase(),
+        status,
+        remaining_qty: asNumber(row.remaining_qty),
+        remaining_unit_behavior: row.remaining_qty == null ? 'none' : 'item_default_unit',
+        recommendation_action: action === 'strip_and_continue' ? 'check_reorder_rule' : action,
+        active: true,
+        notes: asNullableString(row.notes),
+        source: 'qo_keywords',
+      });
+    }
+  }
+  return { statusTerms, unitSynonyms, ignorePhrases };
+}
+
+async function fetchQoHolidayOverrides(): Promise<Record<string, unknown>[]> {
+  const { data, error } = await supabaseAdmin
+    .from('qo_holiday_overrides')
+    .select('*')
+    .eq('active', true);
+  if (error) {
+    console.warn('parse-order qo_holiday_overrides unavailable', error);
+    return [];
+  }
+  return (data ?? []) as Record<string, unknown>[];
 }
 
 async function fetchItemReorderRules(locationId: string): Promise<import('./types.ts').ItemReorderRule[]> {
@@ -452,63 +662,6 @@ async function fetchItemReorderRules(locationId: string): Promise<import('./type
     return [];
   }
   return (data ?? []) as import('./types.ts').ItemReorderRule[];
-}
-
-async function fetchInventoryReorderRules(locationId: string): Promise<InventoryReorderRule[]> {
-  const { data, error } = await supabaseAdmin
-    .from('inventory_reorder_rules')
-    .select(`
-      id,
-      active,
-      location_id,
-      location_key,
-      inventory_item_id,
-      applies_to_mode,
-      trigger_type,
-      trigger_qty,
-      trigger_qty_max,
-      trigger_unit,
-      order_strategy,
-      order_qty,
-      order_unit,
-      priority,
-      notes,
-      source
-    `)
-    .eq('active', true)
-    .or(`location_id.is.null,location_id.eq.${locationId}`);
-
-  if (error) {
-    console.warn('parse-order inventory_reorder_rules unavailable', error);
-    return [];
-  }
-  return (data ?? []) as InventoryReorderRule[];
-}
-
-async function fetchInventoryStatusTerms(): Promise<InventoryStatusTerm[]> {
-  const { data, error } = await supabaseAdmin
-    .from('inventory_status_terms')
-    .select(`
-      id,
-      active,
-      phrase,
-      phrase_key,
-      status,
-      remaining_qty,
-      remaining_unit_behavior,
-      recommendation_action,
-      priority,
-      notes,
-      source
-    `)
-    .eq('active', true)
-    .order('priority', { ascending: true });
-
-  if (error) {
-    console.warn('parse-order inventory_status_terms unavailable', error);
-    return [];
-  }
-  return (data ?? []) as InventoryStatusTerm[];
 }
 
 async function fetchItemOrderProfiles(locationId: string): Promise<import('./types.ts').ItemOrderProfile[]> {
@@ -545,24 +698,6 @@ async function fetchItemOrderProfiles(locationId: string): Promise<import('./typ
   return (data ?? []) as import('./types.ts').ItemOrderProfile[];
 }
 
-async function fetchItemAllowedUnitRules(catalogItemIds: string[]): Promise<ItemAllowedUnitRule[]> {
-  let query = supabaseAdmin
-    .from('item_allowed_units')
-    .select('id,item_id,unit,is_default,conversion_to_base_unit,min_quantity,soft_max_quantity,hard_max_quantity');
-
-  if (catalogItemIds.length > 0) {
-    query = query.in('item_id', catalogItemIds.slice(0, 500));
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.warn('parse-order item_allowed_units unavailable', error);
-    return [];
-  }
-  return (data ?? []) as ItemAllowedUnitRule[];
-}
-
 async function persistCurrentStockSnapshots(input: {
   locationId: string;
   userId: string;
@@ -571,6 +706,7 @@ async function persistCurrentStockSnapshots(input: {
     item_id: string;
     quantity: number;
     unit: string | null;
+    tracking_unit?: string | null;
     source: 'typed' | 'voice';
     confidence: number;
     original_text: string;
@@ -583,6 +719,7 @@ async function persistCurrentStockSnapshots(input: {
       item_id: update.item_id,
       quantity: update.quantity,
       unit: update.unit,
+      tracking_unit: update.tracking_unit ?? null,
       source_message: update.original_text,
       source: update.source,
       entered_by_user_id: input.userId,
@@ -1059,6 +1196,37 @@ async function fetchRecentOrders(input: { locationId: string; userId: string; li
   return parseJsonRows(data).map(normalizeHistoryOrder).filter((row): row is HistoryOrder => Boolean(row));
 }
 
+// Items the employee counted in their most recent inventory session. Unlike
+// order history, inventory counts can legitimately be 0, so we keep every row.
+async function fetchLastInventorySessionItems(input: {
+  locationId: string;
+  userId: string;
+}): Promise<HistoryOrderItem[]> {
+  const { data, error } = await supabaseAdmin.rpc('get_last_inventory_session_items', {
+    p_location_id: input.locationId,
+    p_user_id: input.userId,
+  });
+  if (error) {
+    console.warn('parse-order get_last_inventory_session_items failed', error);
+    return [];
+  }
+  return parseJsonRows(data)
+    .map((entry): HistoryOrderItem | null => {
+      if (!isRecord(entry)) return null;
+      const itemId = asNullableString(entry.item_id);
+      const itemName = asNullableString(entry.item_name);
+      if (!itemId || !itemName) return null;
+      return {
+        item_id: itemId,
+        item_name: itemName,
+        quantity: asNumber(entry.quantity) ?? 0,
+        unit_type: null,
+        unit: asNullableString(entry.unit),
+      };
+    })
+    .filter((entry): entry is HistoryOrderItem => Boolean(entry));
+}
+
 async function fetchMissingItemHistoryOrders(input: {
   locationId: string;
   userId: string;
@@ -1246,6 +1414,20 @@ type HistoryImportDatePreview = {
 function normalizeEmployeeNameKey(value: string | null): string | null {
   if (!value?.trim()) return null;
   return value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function stripIgnoredQuickOrderPhrases(message: string, phrases: string[]): string {
+  let result = message;
+  for (const phrase of phrases) {
+    const trimmed = phrase.trim();
+    if (!trimmed) continue;
+    result = result.replace(new RegExp(`\\b${escapeRegExp(trimmed)}\\b`, 'gi'), ' ');
+  }
+  return result.replace(/\s+/g, ' ').trim();
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function buildHistoryImportDatePreview(value: unknown, now = new Date()): HistoryImportDatePreview {
@@ -1504,7 +1686,7 @@ async function importHistoricalOrder(input: {
 
 async function refreshImportedProfiles(locationId: string): Promise<void> {
   const history = await fetchMissingItemHistoryOrders({ locationId, userId: '', limit: 80 });
-  const catalog = await fetchGlobalCatalog();
+  const catalog = await fetchGlobalCatalog(locationId);
   const catalogById = new Map(catalog.map((item) => [item.id, item]));
   const stats = new Map<string, {
     itemId: string;
@@ -1618,6 +1800,7 @@ async function buildIntentSuggestions(input: {
   locationId: string;
   userId: string;
   parsedItems: ParsedItem[];
+  mode: 'order' | 'inventory';
 }): Promise<{ suggestions: ParseSuggestion[]; message: string | null; historyResult?: string }> {
   const normalized = input.rawText.normalize('NFKC').trim().toLowerCase();
   const wantsLastWeek = /\blast week\b/.test(normalized);
@@ -1625,6 +1808,47 @@ async function buildIntentSuggestions(input: {
   const wantsCompareLastWeek = /\bcompare\b.+\blast week\b/.test(normalized);
   const wantsRecent = /\breorder recent\b|\blast order\b|\brecent order\b/.test(normalized);
   const wantsUsual = /\busual\b|usually order/.test(normalized);
+
+  // Inventory mode: the Usual / Recent / Last week pills all re-load the full
+  // list of items from the most recent inventory count so the employee can
+  // re-count them. The client renders names only (quantities are discarded).
+  if (
+    input.mode === 'inventory' &&
+    (input.classification === 'history_request' || wantsLastWeek || wantsRecent || wantsUsual)
+  ) {
+    const items = await fetchLastInventorySessionItems({
+      locationId: input.locationId,
+      userId: input.userId,
+    });
+    if (items.length === 0) {
+      return {
+        suggestions: [],
+        message: 'I don’t have a previous inventory count to load yet. Start counting and I’ll remember it next time.',
+        historyResult: 'not_found',
+      };
+    }
+    return {
+      suggestions: [
+        {
+          type: 'reorder_recent',
+          title: 'Re-count last inventory',
+          message: 'Your last inventory list is in the composer.',
+          items: items.map((item) => ({
+            item_id: item.item_id,
+            item_name: item.item_name,
+            quantity: item.quantity,
+            unit: item.unit,
+            unit_type: item.unit_type,
+          })),
+          confidence: 0.95,
+          action: 'preview',
+          reason: 'last_inventory_session',
+        },
+      ],
+      message: 'Got it — your last inventory list is in the composer.',
+      historyResult: 'found',
+    };
+  }
 
   if (input.classification === 'history_request' || wantsLastWeek || wantsLastMonth || wantsCompareLastWeek || wantsRecent || wantsUsual) {
     const orders = await fetchRecentOrders({
@@ -1891,7 +2115,7 @@ Deno.serve(async (req) => {
     }
 
     const payload = (await req.json().catch(() => ({}))) as ParseRequest;
-    const rawText = asTrimmedString(payload.message) ?? asTrimmedString(payload.raw_text);
+    let rawText = asTrimmedString(payload.message) ?? asTrimmedString(payload.raw_text);
     const operation = asNullableString(payload.operation) ?? asNullableString(payload.action) ?? 'parse';
     const source = normalizeSource(payload.source);
     const composerMode = normalizeComposerMode(payload.mode);
@@ -1982,6 +2206,12 @@ Deno.serve(async (req) => {
         'quick_order_unit_synonyms',
         'quick_order_voice_enabled',
         'quick_order_advanced_model_routing_enabled',
+        'order_mode_missing_unit_strategy',
+        'order_mode_employee_personalization',
+        'inventory_mode_employee_personalization',
+        'global_aliases_enabled',
+        'fuzzy_match_requires_confirmation',
+        'status_terms_enabled',
       ]);
 
     const config: Record<string, unknown> = {};
@@ -2035,7 +2265,6 @@ Deno.serve(async (req) => {
     const parserMode = typeof config.quick_order_parser_mode === 'string'
       ? config.quick_order_parser_mode
       : 'auto';
-    const unitAliases = buildUnitAliases(isRecord(config.quick_order_unit_synonyms) ? config.quick_order_unit_synonyms : null);
     const hasApiKey = Boolean(geminiApiKey || anthropicApiKey);
     const llmEnabled = parserMode === 'live' || (parserMode === 'auto' && hasApiKey);
 
@@ -2066,47 +2295,92 @@ Deno.serve(async (req) => {
       }
     }
 
-    const catalog = await fetchGlobalCatalog();
+    const catalog = await fetchGlobalCatalog(locationId);
     const globalCatalog = catalog;
-    const catalogItemIds = [...new Set(catalog.map((item) => item.id).filter(Boolean))];
-    const employeeNameKey = normalizeEmployeeNameKey(authResult.employeeName ?? null);
+    const payloadEmployeeName = asNullableString(payload.employee_name) ??
+      asNullableString(payload.employeeName) ??
+      asNullableString(payload.employee_name_text) ??
+      asNullableString(payload.employeeNameText);
+    const allEmployeeNames = [...(authResult.employeeNames ?? [])];
+    if (payloadEmployeeName && !allEmployeeNames.includes(payloadEmployeeName)) {
+      allEmployeeNames.push(payloadEmployeeName);
+      const firstWord = payloadEmployeeName.trim().split(/\s+/)[0];
+      if (firstWord && !allEmployeeNames.includes(firstWord)) {
+        allEmployeeNames.push(firstWord);
+      }
+    }
+
+    const employeeNameKeys = [...new Set(
+      allEmployeeNames
+        .map((name) => normalizeEmployeeNameKey(name))
+        .filter((key): key is string => Boolean(key)),
+    )];
+
 
     const [
       sessionContext,
       corrections,
-      limits,
-      allowedUnitRules,
       reorderRules,
       orderProfiles,
-      inventoryReorderRules,
-      inventoryStatusTerms,
+      quickOrderReorderRules,
+      qoPersonalization,
+      qoKeywords,
+      qoHolidayOverrides,
       recentOrders,
-      employeeAliases,
     ] = await Promise.all([
       fetchSessionContext(sessionId, authenticatedUserId, locationId),
       fetchCorrections(authenticatedUserId, locationId),
-      fetchItemOrderLimits(locationId),
-      fetchItemAllowedUnitRules(catalogItemIds),
       fetchItemReorderRules(locationId),
       fetchItemOrderProfiles(locationId),
-      fetchInventoryReorderRules(locationId),
-      fetchInventoryStatusTerms(),
+      fetchQoReorderRules(locationId),
+      fetchQoPersonalization({ userId: authenticatedUserId, locationId, employeeNameKeys }),
+      fetchQoKeywords(),
+      fetchQoHolidayOverrides(),
       fetchRecentOrders({ locationId, userId: authenticatedUserId, limit: HISTORY_ORDER_LIMIT }),
-      fetchEmployeeQuickOrderAliases({ userId: authenticatedUserId, locationId, employeeNameKey }),
     ]);
+
+    rawText = stripIgnoredQuickOrderPhrases(rawText, qoKeywords.ignorePhrases);
+    const quickOrderAliasRules = qoPersonalization.aliasRules;
+    const quickOrderUnitRules = qoPersonalization.unitRules;
+    const combinedQuickOrderReorderRules = [
+      ...qoPersonalization.reorderRules,
+      ...quickOrderReorderRules,
+    ];
+    const employeeAliases: EmployeeQuickOrderAlias[] = [];
+    const inventoryStatusTerms = qoKeywords.statusTerms;
+    const unitSynonyms = qoKeywords.unitSynonyms;
+
+    const extraAliases: Record<string, string> = {};
+    if (isRecord(config.quick_order_unit_synonyms)) {
+      for (const [k, v] of Object.entries(config.quick_order_unit_synonyms)) {
+        if (typeof v === 'string') extraAliases[k] = v;
+      }
+    }
+    if (unitSynonyms && unitSynonyms.length > 0) {
+      for (const synonym of unitSynonyms) {
+        if (synonym.from_unit && synonym.to_unit) {
+          extraAliases[synonym.from_unit] = synonym.to_unit;
+        }
+      }
+    }
+    const unitAliases = buildUnitAliases(extraAliases);
 
     devLog('catalog_loaded', {
       catalog_count: catalog.length,
       global_catalog_count: globalCatalog.length,
       first_5_names: catalog.slice(0, 5).map((item) => item.name),
       corrections_count: corrections.length,
-      limits_count: limits.length,
-      allowed_unit_rules_count: allowedUnitRules.length,
+      limits_count: 0,
+      allowed_unit_rules_count: 0,
       reorder_rules_count: reorderRules.length,
       order_profiles_count: orderProfiles.length,
-      inventory_reorder_rules_count: inventoryReorderRules.length,
+      qo_holiday_overrides_count: qoHolidayOverrides.length,
       inventory_status_terms_count: inventoryStatusTerms.length,
+      quick_order_alias_rules_count: quickOrderAliasRules.length,
+      quick_order_unit_rules_count: quickOrderUnitRules.length,
+      quick_order_reorder_rules_count: combinedQuickOrderReorderRules.length,
       employee_aliases_count: employeeAliases.length,
+      employee_name_keys: employeeNameKeys,
       session_messages_count: sessionContext.messages.length,
       session_parsed_items_count: sessionContext.parsedItems.length,
     });
@@ -2181,7 +2455,7 @@ Deno.serve(async (req) => {
         catalog,
         corrections,
         unitAliases,
-        allowedUnitRules,
+        allowedUnitRules: [],
       });
       return jsonResponse({
         status: 'success',
@@ -2323,16 +2597,24 @@ Deno.serve(async (req) => {
       corrections,
       previousMessages,
       existingParsedItems: requestExistingItems.length > 0 ? requestExistingItems : sessionExistingItems,
-      limits,
-      allowedUnitRules,
+      limits: [],
+      allowedUnitRules: [],
+      globalAllowedUnitRules: [],
       employeeAliases,
-      inventoryReorderRules,
+      employeeNameKeys,
+      aliasRules: quickOrderAliasRules,
+      unitRules: quickOrderUnitRules,
+      quickOrderReorderRules: combinedQuickOrderReorderRules,
+      quickOrderStatusTerms: [],
+      parserSettings: config,
+      inventoryReorderRules: [],
       inventoryStatusTerms,
       reorderRules,
       orderProfiles,
       recentOrders,
       userRole: authResult.role,
       unitAliases,
+      unitSynonyms,
       classification,
       modelConfig: {
         ...modelConfig,
@@ -2396,6 +2678,7 @@ Deno.serve(async (req) => {
       locationId,
       userId: authenticatedUserId,
       parsedItems: [...sessionContext.parsedItems, ...result.parsed_items],
+      mode: composerMode,
     });
     const shouldUseIntentSuggestionMessage = result.recommendations.length === 0 && result.stock_updates.length === 0;
     const suggestions = result.recommendations.length > 0 || result.stock_updates.length > 0

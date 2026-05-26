@@ -24,8 +24,6 @@
       },
       "infoPlist": {
         "NSCameraUsageDescription": "Camera access is required to scan QR codes.",
-        "NSMicrophoneUsageDescription": "Microphone access is needed for voice ordering.",
-        "NSSpeechRecognitionUsageDescription": "Speech recognition is needed for voice ordering.",
         "NSPhotoLibraryUsageDescription": "Photo library access is needed to update your profile photo."
       }
     },
@@ -36,9 +34,11 @@
       },
       "package": "com.babytuna.systems",
       "versionCode": 11,
-      "permissions": [
-        "android.permission.CAMERA",
+      "blockedPermissions": [
         "android.permission.RECORD_AUDIO"
+      ],
+      "permissions": [
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -64,14 +64,8 @@
           "cameraPermission": "Camera access is required to scan QR codes."
         }
       ],
-      [
-        "expo-speech-recognition",
-        {
-          "microphonePermission": "Microphone access is needed for voice ordering.",
-          "speechRecognitionPermission": "Speech recognition is needed for voice ordering."
-        }
-      ],
-      "expo-font"
+      "expo-font",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": true

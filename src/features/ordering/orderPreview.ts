@@ -48,3 +48,23 @@ export function buildComposerOrderText(items: PreviewItem[]): string {
     })
     .join('\n');
 }
+
+/**
+ * Renders suggestion items as a names-only list, one per line, dropping all
+ * quantities and units. Used by Inventory mode's re-count pills so the employee
+ * sees just the item names and fills in current counts from scratch. Names are
+ * trimmed and de-duplicated case-insensitively; blank names are skipped.
+ */
+export function buildComposerItemNameList(items: PreviewItem[]): string {
+  const seen = new Set<string>();
+  return items
+    .map((item) => item.item_name?.trim())
+    .filter((name): name is string => {
+      if (!name) return false;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join('\n');
+}

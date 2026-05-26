@@ -31,6 +31,7 @@ import {
   type QuickOrderInventoryItem,
 } from "./quickOrderItems";
 import type { PreviousQuantitySuggestion } from "./quickOrderHistorySuggestions";
+import type { ComposerMode } from "./quickOrderComposer";
 import {
   findUnitOption,
   formatAddQuantityCta,
@@ -66,6 +67,8 @@ type QuickOrderQuantitySheetProps = {
    */
   queue: (QuickOrderQuantitySheetItem | null)[];
   index: number;
+  /** Drives copy that differs between ordering and inventory counting. */
+  composerMode: ComposerMode;
   isSaving: boolean;
   onClose: () => void;
   /** Apply the picked quantity/unit to the current item, then advance. */
@@ -109,6 +112,7 @@ type SheetBodyProps = QuickOrderQuantitySheetProps & {
 function SheetBody({
   queue,
   index,
+  composerMode,
   isSaving,
   onClose,
   onApply,
@@ -143,7 +147,9 @@ function SheetBody({
   const issue = getParsedItemIssue(item);
   const issueLabel = issue
     ? issue.kind === "pick-quantity"
-      ? "Quantity needed"
+      ? composerMode === "inventory"
+        ? "Current quantity"
+        : "Quantity needed"
       : issue.kind === "pick-unit"
         ? "Unit needed"
         : issue.label
@@ -387,38 +393,43 @@ function SheetBody({
           ]}
         >
           <View style={styles.headerTextCluster}>
-            <View style={[styles.titleRow, { gap: ds.spacing(10) }]}>
-              <Text
-                style={styles.title}
-                numberOfLines={2}
-                allowFontScaling={false}
-                adjustsFontSizeToFit
-                minimumFontScale={0.82}
-              >
-                {name}
-              </Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${name} from order`}
-                disabled={isSaving}
-                hitSlop={8}
-                onPress={handleRemovePress}
-                style={({ pressed }) => [
-                  styles.removeButton,
-                  {
-                    borderRadius: ds.radius(999),
-                    paddingHorizontal: ds.spacing(12),
-                    paddingVertical: ds.spacing(8),
-                    opacity: isSaving ? 0.5 : pressed ? 0.82 : 1,
-                  },
-                ]}
-              >
-                <Ionicons name="trash-outline" size={15} color={colors.statusRed} />
-                <Text style={styles.removeButtonText} allowFontScaling={false}>
+            <Text
+              style={styles.title}
+              numberOfLines={2}
+              allowFontScaling={false}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+            >
+              {name}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${name} from order`}
+              disabled={isSaving}
+              hitSlop={8}
+              onPress={handleRemovePress}
+              style={({ pressed }) => ({
+                marginTop: ds.spacing(8),
+                alignSelf: "flex-start",
+                opacity: isSaving ? 0.5 : pressed ? 0.82 : 1,
+              })}
+            >
+              <View style={styles.removeButtonInner}>
+                <Ionicons
+                  name="trash-outline"
+                  size={15}
+                  color={colors.statusRed}
+                  style={{ flexShrink: 0 }}
+                />
+                <Text
+                  style={styles.removeButtonText}
+                  numberOfLines={1}
+                  allowFontScaling={false}
+                >
                   Remove
                 </Text>
-              </Pressable>
-            </View>
+              </View>
+            </Pressable>
             {issueLabel ? (
               <View
                 style={[
@@ -487,12 +498,14 @@ function SheetBody({
               disabled={isSaving}
             />
 
-            <UnitSegmentedControl
-              options={availableOptions}
-              value={unit}
-              onChange={setUnit}
-              disabled={isSaving}
-            />
+            {availableOptions.length > 1 ? (
+              <UnitSegmentedControl
+                options={availableOptions}
+                value={unit}
+                onChange={setUnit}
+                disabled={isSaving}
+              />
+            ) : null}
 
             {error ? (
               <Text style={styles.errorText} allowFontScaling={false}>
@@ -624,16 +637,11 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
   },
   headerTextCluster: {
     flex: 1,
     minWidth: 0,
-  },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
   },
   progressLabel: {
     color: colors.textSecondary,
@@ -652,11 +660,14 @@ const styles = StyleSheet.create({
     height: 6,
     backgroundColor: quickOrderAccent,
   },
-  removeButton: {
+  removeButtonInner: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
-    flexShrink: 0,
+    flexWrap: "nowrap",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
     backgroundColor: colors.white,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.glassBorder,

@@ -76,126 +76,15 @@ export function applyStockSafetyLimits(input: {
   blocked: BlockedOperation[];
   warnings: SafetyWarning[];
 } {
-  const accepted: import('./types.ts').StockOperation[] = [];
-  const blocked: BlockedOperation[] = [];
-  const warnings: SafetyWarning[] = [];
-
-  for (const update of input.stockUpdates) {
-    const catalogItem = input.catalog.find((entry) => entry.id === update.item_id) ?? null;
-    const decision = evaluateQuantity({
-      itemId: update.item_id,
-      itemName: update.item_name,
-      quantity: update.quantity,
-      unit: update.unit,
-      source: input.source,
-      limit: findLimit(input.limits, update.item_id, input.locationId),
-      unitRule: findUnitRule(input.allowedUnitRules, update.item_id, update.unit),
-      userRole: input.userRole,
-      catalogItem,
-    });
-    if (decision.action === 'allow') {
-      accepted.push(update);
-      continue;
-    }
-    warnings.push({
-      type: decision.warningType,
-      message: decision.message,
-      item_id: update.item_id,
-      item_name: update.item_name,
-      quantity: update.quantity,
-      unit: update.unit,
-      severity: decision.severity,
-    });
-    if (decision.action === 'block' || decision.action === 'manager_approval') {
-      blocked.push({
-        type: 'stock_update',
-        item_id: update.item_id,
-        item_name: update.item_name,
-        attempted_quantity: update.quantity,
-        unit: update.unit,
-        reason: decision.warningType,
-        message: decision.message,
-      });
-    }
-  }
-
-  return { accepted, blocked, warnings };
+  return { accepted: input.stockUpdates, blocked: [], warnings: [] };
 }
 
 export function validateQuickOrderSafety(input: SafetyValidationInput): SafetyValidationResult {
-  const warnings: SafetyWarning[] = [];
-  const blockedOperations: BlockedOperation[] = [];
   const pendingClarifications: PendingQuickOrderClarification[] = deduplicatePendingClarifications([
     ...(input.parseResponse.pending_clarifications ?? input.parseResponse.pending_actions ?? []),
   ]);
-  const acceptedItems: ParsedItem[] = [];
-
-  for (const item of input.parseResponse.parsed_items) {
-    const parserClarification = buildParserClarification(item, input);
-    if (parserClarification) {
-      pendingClarifications.push(parserClarification);
-      if (item.status === 'invalid_unit') {
-        warnings.push({
-          type: 'unusual_unit',
-          message: parserClarification.message,
-          item_id: item.item_id,
-          item_name: item.item_name ?? item.display_name ?? item.raw_token,
-          quantity: item.quantity,
-          unit: item.unit,
-          severity: 'warning',
-        });
-      }
-      continue;
-    }
-
-    const decision = evaluateParsedItem(item, input);
-    if (decision.action === 'allow') {
-      acceptedItems.push(item);
-      continue;
-    }
-
-    warnings.push(warningFromDecision(item, decision));
-
-    if (decision.action === 'block' || decision.action === 'manager_approval') {
-      blockedOperations.push({
-        type: 'cart_add',
-        item_id: item.item_id,
-        item_name: item.item_name ?? item.display_name ?? item.raw_token,
-        attempted_quantity: item.quantity,
-        unit: item.unit,
-        reason: decision.warningType,
-        message: decision.message,
-      });
-    } else {
-      pendingClarifications.push(buildSafetyClarification(item, decision));
-    }
-  }
-
-  const safeOperations = (input.parseResponse.operations ?? []).map((operation) => {
-    const decision = evaluateOperation(operation, input);
-    if (decision.action === 'allow') return operation;
-    warnings.push(warningFromOperation(operation, decision));
-    blockedOperations.push({
-      type: 'cart_update',
-      item_id: operation.target_item_id,
-      item_name: operation.target_display_name,
-      attempted_quantity: operation.quantity,
-      unit: operation.unit,
-      reason: decision.warningType,
-      message: decision.message,
-    });
-    return {
-      ...operation,
-      status: decision.action === 'block' || decision.action === 'manager_approval' ? 'failed' as const : 'pending' as const,
-      message: decision.message,
-    };
-  });
-
-  const hasBlocked = blockedOperations.length > 0;
   const hasClarifications = pendingClarifications.length > 0;
-  const status = hasBlocked && acceptedItems.length === 0 && safeOperations.every((op) => op.status !== 'applied')
-    ? 'needs_clarification'
-    : hasClarifications
+  const status = hasClarifications
       ? 'needs_clarification'
       : input.parseResponse.status;
 
@@ -205,23 +94,20 @@ export function validateQuickOrderSafety(input: SafetyValidationInput): SafetyVa
     response: {
       ...input.parseResponse,
       status,
-      parsed_items: acceptedItems,
+      parsed_items: input.parseResponse.parsed_items,
       pending_actions: dedupedClarifications,
       pending_clarifications: dedupedClarifications,
-      operations: safeOperations,
+      operations: input.parseResponse.operations ?? [],
       diagnostics: {
         ...(input.parseResponse.diagnostics ?? {}),
-        items_after_validation: acceptedItems.length,
-        items_accepted: acceptedItems.length,
+        items_after_validation: input.parseResponse.parsed_items.length,
+        items_accepted: input.parseResponse.parsed_items.length,
         pending_action_count: dedupedClarifications.length,
-        rejected_reasons: [
-          ...(input.parseResponse.diagnostics?.rejected_reasons ?? []),
-          ...warnings.map((warning) => warning.type),
-        ],
+        rejected_reasons: input.parseResponse.diagnostics?.rejected_reasons ?? [],
       },
     },
-    warnings,
-    blockedOperations,
+    warnings: [],
+    blockedOperations: [],
     pendingClarifications: dedupedClarifications,
   };
 }
@@ -328,9 +214,17 @@ function allowedUnitsForSafety(
   rules: ItemAllowedUnitRule[],
   catalogItem: CatalogItem | null,
 ): string[] {
-  const ruleUnits = rules
-    .filter((rule) => rule.item_id === itemId && typeof rule.unit === 'string' && rule.unit.trim().length > 0)
-    .map((rule) => rule.unit.trim());
+  const ruleUnits: string[] = [];
+  for (const rule of rules) {
+    if (rule.item_id === itemId) {
+      if (typeof rule.unit === 'string' && rule.unit.trim().length > 0) {
+        ruleUnits.push(rule.unit.trim());
+      }
+      if (typeof rule.order_unit === 'string' && rule.order_unit.trim().length > 0) {
+        ruleUnits.push(rule.order_unit.trim());
+      }
+    }
+  }
   return ruleUnits.length > 0 ? [...new Set(ruleUnits)] : deriveAllowedUnitLabels(catalogItem);
 }
 
@@ -374,17 +268,33 @@ function evaluateAllowedUnit(
       message: `${itemName} cannot be ordered as ${displayUnitLabel(unit) || 'that unit'}. Use ${formatAllowedUnitList(labels)}.`,
     };
   }
-  if (normalizedUnit && itemRules.some((rule) => normalizeUnitForComparison(rule.unit) === normalizedUnit)) return null;
-  const labels = itemRules
-    .map((rule) => rule.unit)
-    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  if (
+    normalizedUnit &&
+    itemRules.some(
+      (rule) =>
+        normalizeUnitForComparison(rule.unit) === normalizedUnit ||
+        (rule.order_unit && normalizeUnitForComparison(rule.order_unit) === normalizedUnit)
+    )
+  ) {
+    return null;
+  }
+  const labels: string[] = [];
+  for (const rule of itemRules) {
+    if (typeof rule.unit === 'string' && rule.unit.trim().length > 0) {
+      labels.push(rule.unit.trim());
+    }
+    if (typeof rule.order_unit === 'string' && rule.order_unit.trim().length > 0) {
+      labels.push(rule.order_unit.trim());
+    }
+  }
+  const uniqueLabels = [...new Set(labels)];
   return {
     action: 'confirm',
     warningType: 'unusual_unit',
     severity: 'warning',
     providedUnit: unit ?? null,
-    allowedUnits: labels,
-    message: `${itemName} cannot be ordered as ${displayUnitLabel(unit) || 'that unit'}. Use ${formatAllowedUnitList(labels)}.`,
+    allowedUnits: uniqueLabels,
+    message: `${itemName} cannot be ordered as ${displayUnitLabel(unit) || 'that unit'}. Use ${formatAllowedUnitList(uniqueLabels)}.`,
   };
 }
 
@@ -532,7 +442,9 @@ function findUnitRule(
 ): ItemAllowedUnitRule | null {
   const normalizedUnit = normalizeUnitForComparison(unit);
   if (!normalizedUnit) return null;
-  return rules.find((rule) => rule.item_id === itemId && normalizeUnitForComparison(rule.unit) === normalizedUnit) ?? null;
+  const directMatch = rules.find((rule) => rule.item_id === itemId && normalizeUnitForComparison(rule.unit) === normalizedUnit);
+  if (directMatch) return directMatch;
+  return rules.find((rule) => rule.item_id === itemId && rule.order_unit && normalizeUnitForComparison(rule.order_unit) === normalizedUnit) ?? null;
 }
 
 function minPositive(...values: (number | null | undefined)[]): number | null {

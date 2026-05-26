@@ -46,14 +46,25 @@ export type ParsedQuickOrderItem = {
   parse_source?: 'deterministic' | 'fuzzy' | 'llm' | 'manual' | 'correction';
   status?: 'valid' | 'no_match' | 'missing_quantity' | 'missing_unit' | 'missing_quantity_and_unit' | 'ambiguous' | 'invalid_unit' | 'duplicate_needs_decision';
   match_type?: string;
+  /** Phrase from the employee's personal alias that resolved this item, if any. */
+  matched_alias?: string | null;
   pending_conflict_id?: string;
   merge_behavior?: 'add_to_existing' | 'replace_existing' | 'keep_separate';
   merge_delta_quantity?: number | null;
   existing_item_key?: string;
-  source?: 'manual' | 'inventory_recommendation' | 'remaining_recommendation' | 'remaining_inventory' | 'history_reorder' | 'missing_item';
+  source?: 'manual' | 'voice' | 'inventory_recommendation' | 'remaining_recommendation' | 'remaining_inventory' | 'history_reorder' | 'missing_item';
+  voiceSessionId?: string | null;
+  rawTranscript?: string | null;
+  normalizedText?: string | null;
+  modelUsed?: string | null;
+  voiceConfidence?: number | null;
   isSuggested?: boolean;
   suggestionReason?: string;
   suggestionSource?: 'remaining_inventory' | 'missing_item' | 'history';
+  resolution?: Record<string, unknown> | null;
+  reason_codes?: string[];
+  resolution_trace?: string[];
+  user_visible_note?: string | null;
 };
 
 export type QuickOrderMergeResult = {
@@ -239,10 +250,14 @@ export function normalizeQuickOrderItemForDisplay(item: ParsedQuickOrderItem): P
   const quantity = item.quantity != null && Number.isFinite(item.quantity) && item.quantity > 0
     ? item.quantity
     : null;
-  const unit = normalizeQuickOrderUnit(item.unit);
-  let status = item.status;
   const validUnitKeys = new Set((item.valid_units ?? []).map(normalizeQuickOrderUnit).filter(Boolean));
   const hasKnownValidUnits = validUnitKeys.size > 0;
+  // When the item can only be ordered in one unit there is nothing to choose,
+  // so fill it in instead of leaving the item in a "Choose unit" state.
+  const unit = item.item_id && !normalizeQuickOrderUnit(item.unit) && validUnitKeys.size === 1
+    ? [...validUnitKeys][0]
+    : normalizeQuickOrderUnit(item.unit);
+  let status = item.status;
   const staleInvalidUnit = status === 'invalid_unit' && Boolean(unit && validUnitKeys.has(unit));
 
   if (!item.item_id) {

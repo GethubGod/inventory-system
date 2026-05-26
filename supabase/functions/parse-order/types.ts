@@ -80,6 +80,7 @@ export type CatalogItem = {
   pack_unit?: string | null;
   order_unit?: string | null;
   supplier_id?: string | null;
+  location_id?: string | null;
   allowed_units?: string[] | null;
   unit_options?: string[] | null;
   hard_cap?: number | null;
@@ -87,6 +88,8 @@ export type CatalogItem = {
   safety_stock?: number | null;
   target_stock?: number | null;
   default_order_unit?: string | null;
+  qo_item_id?: string | null;
+  tracking_unit?: string | null;
 };
 
 export type ItemOrderLimit = {
@@ -119,6 +122,10 @@ export type ItemAllowedUnitRule = {
   min_quantity?: number | null;
   soft_max_quantity?: number | null;
   hard_max_quantity?: number | null;
+  employee_names?: string | null;
+  max_quantity?: number | null;
+  order_quantity?: number | null;
+  order_unit?: string | null;
 };
 
 export type EmployeeQuickOrderAlias = {
@@ -130,6 +137,92 @@ export type EmployeeQuickOrderAlias = {
   alias_key: string;
   inventory_item_id: string;
   location_id?: string | null;
+  active?: boolean | null;
+  notes?: string | null;
+  source?: string | null;
+};
+
+export type QuickOrderRuleScope = 'global' | 'employee';
+export type QuickOrderRuleModeScope = 'order' | 'inventory' | 'both';
+
+export type QuickOrderResolutionMetadata = {
+  reason_codes?: string[];
+  resolution_trace?: string[];
+  alias_source?: 'employee' | 'global' | 'exact' | 'fuzzy' | null;
+  unit_source?: 'employee_rule' | 'global_rule' | 'item_default' | 'typed' | null;
+  reorder_rule_source?: 'employee_rule' | 'global_rule' | 'target_stock' | 'none' | null;
+  status_term_applied?: string | null;
+  confidence?: number;
+  user_visible_note?: string | null;
+};
+
+export type QuickOrderAliasRule = {
+  id?: string;
+  alias_text: string;
+  alias_key?: string | null;
+  item_id: string;
+  scope_type: QuickOrderRuleScope;
+  employee_name?: string | null;
+  employee_name_key?: string | null;
+  employee_user_id?: string | null;
+  mode_scope: QuickOrderRuleModeScope;
+  location_id?: string | null;
+  active?: boolean | null;
+  notes?: string | null;
+  source?: string | null;
+};
+
+export type QuickOrderUnitRule = {
+  id?: string;
+  item_id?: string | null;
+  from_unit?: string | null;
+  from_unit_key?: string | null;
+  to_unit: string;
+  multiplier: number;
+  scope_type: QuickOrderRuleScope;
+  employee_name?: string | null;
+  employee_name_key?: string | null;
+  employee_user_id?: string | null;
+  mode_scope: QuickOrderRuleModeScope;
+  location_id?: string | null;
+  is_default_when_missing?: boolean | null;
+  active?: boolean | null;
+  notes?: string | null;
+  source?: string | null;
+  is_custom_counting_unit?: boolean | null;
+  tracking_unit?: string | null;
+};
+
+export type QuickOrderReorderRule = {
+  id?: string;
+  item_id: string;
+  scope_type: QuickOrderRuleScope;
+  employee_name?: string | null;
+  employee_name_key?: string | null;
+  employee_user_id?: string | null;
+  mode_scope: QuickOrderRuleModeScope;
+  location_id?: string | null;
+  counted_unit?: string | null;
+  trigger_type: 'below' | 'at_or_below' | 'between' | 'equal' | 'status';
+  trigger_qty_min?: number | null;
+  trigger_qty_max?: number | null;
+  action_type: 'fixed_order_qty' | 'top_up_to_target' | 'no_order' | 'ask';
+  order_qty?: number | null;
+  order_unit?: string | null;
+  target_qty?: number | null;
+  target_unit?: string | null;
+  priority?: number | null;
+  active?: boolean | null;
+  notes?: string | null;
+  source?: string | null;
+};
+
+export type QuickOrderStatusTerm = {
+  id?: string;
+  phrase: string;
+  phrase_key?: string | null;
+  status: 'enough' | 'out' | 'low' | 'unknown';
+  recommendation_action: 'no_order' | 'order_needed' | 'calculate_order' | 'ask';
   active?: boolean | null;
   notes?: string | null;
   source?: string | null;
@@ -158,6 +251,17 @@ export type QuickOrderMessage = {
   raw_text?: string;
   reply_text?: string;
   parsed_items?: ParsedItem[];
+  stock_updates?: StockOperation[];
+  inventory_updates?: {
+    item_id?: string | null;
+    item_name?: string | null;
+    current_quantity?: number | null;
+    current_unit?: string | null;
+    new_quantity?: number | null;
+    new_unit?: string | null;
+    no_order_reason?: string | null;
+  }[];
+  safety_warnings?: SafetyWarning[];
   pending_clarifications?: PendingQuickOrderClarification[];
 };
 
@@ -243,12 +347,18 @@ export type ParsedItem = {
   parse_source?: ParseSource;
   status?: ParsedItemStatus;
   match_type?: MatchType;
+  /** Phrase from the employee's personal alias that resolved this item, if any. */
+  matched_alias?: string | null;
   diagnostics?: Record<string, unknown>;
+  resolution?: QuickOrderResolutionMetadata;
+  reason_codes?: string[];
+  resolution_trace?: string[];
+  user_visible_note?: string | null;
   pending_conflict_id?: string;
   merge_behavior?: 'add_to_existing' | 'replace_existing' | 'keep_separate';
   merge_delta_quantity?: number | null;
   existing_item_key?: string;
-  source?: 'manual' | 'inventory_recommendation' | 'remaining_recommendation' | 'remaining_inventory' | 'history_reorder' | 'missing_item';
+  source?: 'manual' | 'voice' | 'inventory_recommendation' | 'remaining_recommendation' | 'remaining_inventory' | 'history_reorder' | 'missing_item';
   isSuggested?: boolean;
   suggestionReason?: string;
   suggestionSource?: 'remaining_inventory' | 'missing_item' | 'history';
@@ -279,10 +389,27 @@ export type StockOperation = {
   item_name: string;
   quantity: number;
   unit: string | null;
+  tracking_unit?: string | null;
+  /**
+   * True when the employee typed a quantity with no unit. The unit was filled
+   * in from the item itself, so it should be treated as the item's only/implied
+   * unit rather than a distinct unit that needs conversion.
+   */
+  unit_inferred?: boolean;
   approximate_modifier?: 'about' | 'almost' | 'around' | 'only' | 'low' | null;
   source: QuickOrderSource;
   confidence: number;
   original_text: string;
+  /**
+   * When set, this item was resolved from the employee's personal Quick Order
+   * alias — the phrase they typed (e.g. "shrimp"). Surfaced so the UI can show
+   * that personalization, not a generic match, linked the term to the item.
+   */
+  personal_alias?: string | null;
+  resolution?: QuickOrderResolutionMetadata;
+  reason_codes?: string[];
+  resolution_trace?: string[];
+  user_visible_note?: string | null;
 };
 
 export type InventoryStatusTermStatus = 'enough' | 'zero' | 'partial' | 'low' | 'unknown';
@@ -320,6 +447,10 @@ export type InventoryStatusItem = {
   original_text: string;
   confidence: number;
   issue?: string | null;
+  resolution?: QuickOrderResolutionMetadata | null;
+  reason_codes?: string[];
+  resolution_trace?: string[];
+  user_visible_note?: string | null;
 };
 
 export type SafetyWarningType =
@@ -340,6 +471,10 @@ export type SafetyWarning = {
   quantity?: number | null;
   unit?: string | null;
   severity: 'info' | 'warning' | 'blocked';
+  resolution?: QuickOrderResolutionMetadata;
+  reason_codes?: string[];
+  resolution_trace?: string[];
+  user_visible_note?: string | null;
 };
 
 export type BlockedOperation = {
@@ -370,6 +505,10 @@ export type Recommendation = {
   safety_status: 'normal' | 'confirm' | 'manager_approval' | 'blocked';
   recommendation_type?: 'stock_reorder_rule' | 'history_profile' | 'recent_history';
   auto_apply_eligible?: boolean;
+  resolution?: QuickOrderResolutionMetadata;
+  reason_codes?: string[];
+  resolution_trace?: string[];
+  user_visible_note?: string | null;
 };
 
 export type ReorderRoundingPolicy =

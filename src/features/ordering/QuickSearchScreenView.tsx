@@ -250,9 +250,10 @@ export function QuickSearchScreenView({ mode }: QuickSearchScreenViewProps) {
     if (!debouncedQuery.trim()) return [];
     const query = debouncedQuery.toLowerCase();
     return items
+      .filter((item) => !item.location_id || item.location_id === selectedLocation?.id)
       .filter((item) => item.name.toLowerCase().includes(query))
       .slice(0, 6);
-  }, [items, debouncedQuery]);
+  }, [debouncedQuery, items, selectedLocation?.id]);
 
   // Get autocomplete suggestion (first match)
   const autocompleteSuggestion = useMemo(() => {

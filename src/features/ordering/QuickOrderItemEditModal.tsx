@@ -242,9 +242,11 @@ function EditModalBody({
             accessibilityLabel="Close editor"
             hitSlop={8}
             onPress={onClose}
-            style={({ pressed }) => [styles.closeButton, { opacity: pressed ? 0.6 : 1 }]}
+            style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
           >
-            <Ionicons name="close" size={ds.icon(22)} color={colors.textPrimary} />
+            <View style={styles.closeButton}>
+              <Ionicons name="close" size={ds.icon(22)} color={colors.textPrimary} />
+            </View>
           </Pressable>
         </View>
 

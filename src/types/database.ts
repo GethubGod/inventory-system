@@ -216,6 +216,7 @@ export interface InventoryItem {
   category: ItemCategory;
   supplier_category: SupplierCategory;
   supplier_id?: string | null;
+  location_id?: string | null;
   base_unit: string;
   pack_unit: string;
   pack_size: number;

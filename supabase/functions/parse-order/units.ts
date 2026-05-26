@@ -1,4 +1,4 @@
-import type { CatalogItem } from './types.ts';
+import type { CatalogItem, ItemAllowedUnitRule } from './types.ts';
 
 export const DEFAULT_UNIT_ALIASES: Record<string, string> = {
   cs: 'cs',
@@ -87,6 +87,16 @@ export function deriveAllowedUnits(item: CatalogItem | null | undefined): string
     if (unit) normalized.add(unit);
   }
   return [...normalized];
+}
+
+/**
+ * The single unit an item can be ordered in, or null when it has zero or more
+ * than one. When there is exactly one choice there is nothing for the employee
+ * to pick, so callers fill it in automatically instead of prompting.
+ */
+export function singleAllowedUnit(item: CatalogItem | null | undefined): string | null {
+  const units = deriveAllowedUnits(item);
+  return units.length === 1 ? units[0] : null;
 }
 
 export function deriveAllowedUnitLabels(item: CatalogItem | null | undefined): string[] {
@@ -192,3 +202,48 @@ const UNIT_PLURALS: Record<string, string> = {
   bag: 'bags',
   tray: 'trays',
 };
+
+export function filterAllowedUnitRulesForEmployee(rules: ItemAllowedUnitRule[], employeeNames: string[]): ItemAllowedUnitRule[] {
+  if (employeeNames.length === 0) {
+    return rules.filter(r => !r.employee_names || !r.employee_names.trim());
+  }
+  
+  const normalizedEmployeeNames = employeeNames
+    .map(name => name.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' '))
+    .filter((name): name is string => Boolean(name));
+    
+  // Step 1: Identify all rules that explicitly match this employee.
+  const employeeMatchedRules = rules.filter(rule => {
+    const rawNames = rule.employee_names;
+    if (!rawNames || !rawNames.trim()) return false;
+    
+    const allowedNames = rawNames
+      .split(',')
+      .map(name => name.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' '))
+      .filter((name): name is string => Boolean(name));
+      
+    return normalizedEmployeeNames.some(empName => {
+      const empFirst = empName.split(' ')[0];
+      return allowedNames.some(allowedName => {
+        const allowedFirst = allowedName.split(' ')[0];
+        return empFirst === allowedFirst;
+      });
+    });
+  });
+  
+  // Get the set of item IDs that have at least one employee-specific rule matching this employee.
+  const itemsWithEmployeeRules = new Set(employeeMatchedRules.map(r => r.item_id));
+  
+  // Step 2: Keep only employee-specific rules for those items, and global rules for everything else.
+  const finalRules: ItemAllowedUnitRule[] = [...employeeMatchedRules];
+  
+  for (const rule of rules) {
+    const rawNames = rule.employee_names;
+    const isGlobal = !rawNames || !rawNames.trim();
+    if (isGlobal && !itemsWithEmployeeRules.has(rule.item_id)) {
+      finalRules.push(rule);
+    }
+  }
+  
+  return finalRules;
+}

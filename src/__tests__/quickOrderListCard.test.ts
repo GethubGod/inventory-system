@@ -31,6 +31,29 @@ jest.mock('@expo/vector-icons', () => {
   };
 });
 
+jest.mock('react-native-reanimated', () => {
+  const React = require('react');
+  const createComponent = (name: string) => {
+    const Component = React.forwardRef(
+      ({ children, ...props }: { children?: React.ReactNode }, ref: React.Ref<unknown>) =>
+        React.createElement(name, { ...props, ref }, children),
+    );
+    Component.displayName = name;
+    return Component;
+  };
+
+  const View = createComponent('Animated.View');
+  return {
+    __esModule: true,
+    default: { View, createAnimatedComponent: (Component: React.ComponentType) => Component },
+    View,
+    Easing: { bezier: jest.fn(() => jest.fn()) },
+    useAnimatedStyle: jest.fn((factory) => factory()),
+    useSharedValue: jest.fn((value) => ({ value })),
+    withTiming: jest.fn((value) => value),
+  };
+});
+
 jest.mock('@/hooks/useScaledStyles', () => ({
   useScaledStyles: () => ({
     spacing: (value: number) => value,
@@ -93,7 +116,7 @@ describe('QuickOrderListCard', () => {
 
     const rendered = JSON.stringify(component.toJSON());
     expect(rendered).toContain('Order list');
-    expect(rendered).toContain('2 items');
+    expect(rendered).toContain('2 · all set');
     expect(rendered).toContain('Salmon');
     expect(rendered).toContain('2 cases');
     expect(rendered).toContain('Masago');
@@ -137,7 +160,7 @@ describe('QuickOrderListCard', () => {
     });
 
     const rendered = JSON.stringify(component.toJSON());
-    expect(rendered).toContain('1 item');
+    expect(rendered).toContain('1 · all set');
     expect(rendered).toContain('Tako (Octopus)');
     expect(rendered).toContain('3 pieces');
     expect(rendered).toContain('1 pack');

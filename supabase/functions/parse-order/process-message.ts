@@ -8,7 +8,7 @@ import { buildQuickOrderRecommendations, type RecommendationHistoryOrder } from 
 import { buildProcessMessages } from './response-formatter.ts';
 import { routeQuickOrderSegments, type QuickOrderSegmentRoute } from './segment-router.ts';
 import { applyStockSafetyLimits, deduplicatePendingClarifications, validateQuickOrderSafety } from './safety-engine.ts';
-import { extractStockUpdates, type StockUpdateExtraction } from './stock-updates.ts';
+import { applyStockUnitSynonyms, extractStockUpdates, type StockUpdateExtraction } from './stock-updates.ts';
 import { QuickOrderTimer } from './timing.ts';
 import { validateParsedLine } from './validator.ts';
 import type { CatalogSearchIndex } from './catalog-search-index.ts';
@@ -26,6 +26,10 @@ import type {
   ParsedItem,
   ProcessQuickOrderMessageRequest,
   ProcessQuickOrderResponse,
+  QuickOrderAliasRule,
+  QuickOrderReorderRule,
+  QuickOrderStatusTerm,
+  QuickOrderUnitRule,
   QuickOrderMessage,
   QuickOrderModelUsed,
   StockOperation,
@@ -41,7 +45,14 @@ export type ProcessQuickOrderMessageInput = {
   existingParsedItems: ParsedItem[];
   limits: ItemOrderLimit[];
   allowedUnitRules: ItemAllowedUnitRule[];
+  globalAllowedUnitRules?: ItemAllowedUnitRule[];
   employeeAliases?: EmployeeQuickOrderAlias[];
+  employeeNameKeys?: string[];
+  aliasRules?: QuickOrderAliasRule[];
+  unitRules?: QuickOrderUnitRule[];
+  quickOrderReorderRules?: QuickOrderReorderRule[];
+  quickOrderStatusTerms?: QuickOrderStatusTerm[];
+  parserSettings?: Record<string, unknown>;
   inventoryReorderRules?: InventoryReorderRule[];
   inventoryStatusTerms?: InventoryStatusTerm[];
   reorderRules?: ItemReorderRule[];
@@ -51,6 +62,7 @@ export type ProcessQuickOrderMessageInput = {
   modelConfig: QuickOrderModelConfig;
   unitAliases: UnitAliasMap;
   classification: QuickOrderInputClassificationResult;
+  unitSynonyms?: { from_unit: string; to_unit: string }[];
   callLlm?: (prompt: string, model: string | null) => Promise<string>;
   persistStockUpdates?: (updates: StockOperation[]) => Promise<{ ok: boolean; error?: string }>;
   debugTimings?: boolean;
@@ -61,10 +73,8 @@ export async function processQuickOrderMessage(
 ): Promise<ProcessQuickOrderResponse> {
   const timer = new QuickOrderTimer();
   const request = normalizeRequest(input.request);
-  const orderCatalog = applyAllowedUnitRulesToCatalog(input.catalog, input.allowedUnitRules);
-  const globalOrderCatalog = input.globalCatalog
-    ? applyAllowedUnitRulesToCatalog(input.globalCatalog, input.allowedUnitRules)
-    : undefined;
+  const orderCatalog = input.catalog;
+  const globalOrderCatalog = input.globalCatalog;
   const catalogIndex = buildCatalogSearchIndex(orderCatalog, input.corrections);
   const globalCatalogIndex = globalOrderCatalog
     ? buildCatalogSearchIndex(globalOrderCatalog, input.corrections)
@@ -80,6 +90,8 @@ export async function processQuickOrderMessage(
     classification,
     segmentRoute,
     unitAliases: input.unitAliases,
+    inventoryStatusTerms: input.inventoryStatusTerms ?? [],
+    quickOrderStatusTerms: input.quickOrderStatusTerms ?? [],
   });
   if (
     request.mode === 'inventory' &&
@@ -106,6 +118,15 @@ export async function processQuickOrderMessage(
     };
     segmentRoute = inventorySegmentsFor(routedMessage);
   }
+  const zeroOrderExplanation = buildZeroOrderExplanationResponse({
+    message: request.message,
+    previousMessages: request.recent_messages ?? input.previousMessages,
+    existingCount: request.existing_items.length > 0 ? request.existing_items.length : input.existingParsedItems.length,
+    classification,
+    timings: timer.snapshot(),
+  });
+  if (zeroOrderExplanation) return zeroOrderExplanation;
+
   const intentRouteModel = input.modelConfig.fallbackModel || input.modelConfig.defaultModel;
   const llmIntentRouting = await maybeRouteIntentWithLlm({
     message: routedMessage,
@@ -135,8 +156,15 @@ export async function processQuickOrderMessage(
           unitAliases: input.unitAliases,
           statusTerms: input.inventoryStatusTerms ?? [],
           employeeAliases: input.employeeAliases ?? [],
+          employeeNameKeys: input.employeeNameKeys ?? [],
+          aliasRules: input.aliasRules ?? [],
+          unitRules: input.unitRules ?? [],
+          statusTermRules: input.quickOrderStatusTerms ?? [],
+          parserSettings: input.parserSettings ?? {},
           locationId: request.location_id,
+          employeeUserId: request.user_id,
           assumeStock: true,
+          unitSynonyms: input.unitSynonyms,
         })
       : segmentRoute.stockSegments.length > 0
       ? extractStockUpdates({
@@ -148,7 +176,14 @@ export async function processQuickOrderMessage(
           unitAliases: input.unitAliases,
           statusTerms: input.inventoryStatusTerms ?? [],
           employeeAliases: input.employeeAliases ?? [],
+          employeeNameKeys: input.employeeNameKeys ?? [],
+          aliasRules: input.aliasRules ?? [],
+          unitRules: input.unitRules ?? [],
+          statusTermRules: input.quickOrderStatusTerms ?? [],
+          parserSettings: input.parserSettings ?? {},
           locationId: request.location_id,
+          employeeUserId: request.user_id,
+          unitSynonyms: input.unitSynonyms,
         })
       : emptyStockExtraction(routedMessage);
     const llmStockUpdates = llmIntentRoute && llmIntentRoute.confidence >= 0.65
@@ -162,12 +197,18 @@ export async function processQuickOrderMessage(
       : [];
     return {
       ...deterministicStock,
-      stockUpdates: mergeStockUpdates(deterministicStock.stockUpdates, llmStockUpdates),
+      // Normalize every count's unit (e.g. box → case) regardless of which path
+      // produced it, so the synonym is universal across inventory.
+      stockUpdates: applyStockUnitSynonyms(
+        mergeStockUpdates(deterministicStock.stockUpdates, llmStockUpdates),
+        input.unitSynonyms,
+      ),
     };
   });
   const inventoryReviewItems = inventoryModeStock
     ? buildInventoryModeReviewItems({
         segments: segmentRoute.stockSegments,
+        statusSegments: stockExtraction.statusItems.map((item) => item.original_text),
         catalog: orderCatalog,
         catalogIndex,
         unitAliases: input.unitAliases,
@@ -180,7 +221,7 @@ export async function processQuickOrderMessage(
     locationId: request.location_id,
     source: request.source,
     limits: input.limits,
-    allowedUnitRules: input.allowedUnitRules,
+    allowedUnitRules: [],
     userRole: input.userRole,
   });
 
@@ -245,6 +286,11 @@ export async function processQuickOrderMessage(
         catalogIndex,
         globalCatalogIndex,
         employeeAliases: input.employeeAliases,
+        employeeNameKeys: input.employeeNameKeys,
+        aliasRules: input.aliasRules,
+        unitRules: input.unitRules,
+        parserSettings: input.parserSettings,
+        mode: request.mode,
         classification,
         debugCatalog: input.debugTimings === true,
       }))
@@ -256,14 +302,13 @@ export async function processQuickOrderMessage(
         parsedItems: inventoryReviewItems,
         catalogCount: orderCatalog.length,
       }));
-
   const safety = timer.measure('safety_validation', () => validateQuickOrderSafety({
     parseResponse,
     catalog: orderCatalog,
     locationId: request.location_id,
     source: request.source,
     limits: input.limits,
-    allowedUnitRules: input.allowedUnitRules,
+    allowedUnitRules: [],
     userRole: input.userRole,
   }));
 
@@ -280,9 +325,15 @@ export async function processQuickOrderMessage(
         catalog: orderCatalog,
         stockUpdates: stockSafety.accepted,
         recentOrders: input.recentOrders,
-        limits: input.limits,
-        allowedUnitRules: input.allowedUnitRules,
+        limits: [],
+        allowedUnitRules: [],
+        globalAllowedUnitRules: [],
         inventoryReorderRules: input.inventoryReorderRules ?? [],
+        quickOrderReorderRules: input.quickOrderReorderRules ?? [],
+        quickOrderUnitRules: input.unitRules ?? [],
+        employeeNameKeys: input.employeeNameKeys ?? [],
+        employeeUserId: request.user_id,
+        parserSettings: input.parserSettings ?? {},
         reorderRules: input.reorderRules ?? [],
         orderProfiles: input.orderProfiles ?? [],
         statusItems: stockExtraction.statusItems,
@@ -392,6 +443,144 @@ export async function processQuickOrderMessage(
   };
 }
 
+const ZERO_ORDER_EXPLANATION = "I didn't order this because it met the stock requirements.";
+
+function buildZeroOrderExplanationResponse(input: {
+  message: string;
+  previousMessages: QuickOrderMessage[];
+  existingCount: number;
+  classification: QuickOrderInputClassificationResult;
+  timings: ProcessQuickOrderResponse['timings'];
+}): ProcessQuickOrderResponse | null {
+  if (!isZeroOrderExplanationQuestion(input.message)) return null;
+  if (!hasRecentZeroOrderContext(input.previousMessages, input.message)) return null;
+
+  return {
+    status: 'qa_answer',
+    legacy_status: 'qa_answer',
+    assistant_message: ZERO_ORDER_EXPLANATION,
+    reply_text: ZERO_ORDER_EXPLANATION,
+    display_message: ZERO_ORDER_EXPLANATION,
+    speech_message: ZERO_ORDER_EXPLANATION,
+    parsed_items: [],
+    cart_operations: [],
+    operations: [],
+    stock_updates: [],
+    recommendations: [],
+    clarifications: [],
+    pending_actions: [],
+    pending_clarifications: [],
+    flags: [],
+    suggestions: [],
+    safety_warnings: [],
+    blocked_operations: [],
+    model_used: 'none',
+    confidence: 0.95,
+    timings: input.timings,
+    diagnostics: {
+      parser_version: PARSER_VERSION,
+      parse_mode: 'zero_order_explanation',
+      input_classification: input.classification.classification,
+      input_classification_reason: input.classification.reason,
+    } as ProcessQuickOrderResponse['diagnostics'],
+    session_state: {
+      total_items: input.existingCount,
+      ready_to_submit: false,
+    },
+    assistantMessage: {
+      type: 'history_answer',
+      text: ZERO_ORDER_EXPLANATION,
+      actions: [],
+      explanation: {
+        reason: 'Answered from the previous no-order inventory result.',
+        confidence: 'high',
+        dataSources: ['recent_quick_order_context'],
+      },
+    },
+  };
+}
+
+function isZeroOrderExplanationQuestion(message: string): boolean {
+  const normalized = message.normalize('NFKC').trim().toLowerCase();
+  if (!/\bwhy\b/.test(normalized)) return false;
+  if (!/\border(?:ed|ing)?\b/.test(normalized)) return false;
+  return (
+    /\b(?:0|zero)\b/.test(normalized) ||
+    /\b(?:didn['’]?t|did not)\b.*\border\b/.test(normalized) ||
+    /\bno\s+order\b/.test(normalized) ||
+    /\bnot\s+order(?:ed|ing)?\b/.test(normalized)
+  );
+}
+
+function hasRecentZeroOrderContext(messages: QuickOrderMessage[], question: string): boolean {
+  const questionKey = normalizeExplanationLookupText(question);
+  for (const message of messages.slice(-8).reverse()) {
+    const warnings = Array.isArray(message.safety_warnings) ? message.safety_warnings : [];
+    for (const warning of warnings) {
+      if (warning?.type !== 'no_order_needed') continue;
+      if (matchesQuestionItem(questionKey, warning.item_name)) return true;
+      if (!mentionsAnyCatalogLikeTerm(questionKey)) return true;
+    }
+
+    const inventoryUpdates = Array.isArray(message.inventory_updates) ? message.inventory_updates : [];
+    for (const update of inventoryUpdates) {
+      if (!update || typeof update !== 'object') continue;
+      const quantity = typeof update.new_quantity === 'number' ? update.new_quantity : null;
+      const noOrderRow = quantity === null || quantity === 0 || Boolean(update.no_order_reason);
+      if (!noOrderRow) continue;
+      if (matchesQuestionItem(questionKey, update.item_name)) return true;
+      if (!mentionsAnyCatalogLikeTerm(questionKey)) return true;
+    }
+  }
+  return false;
+}
+
+function normalizeExplanationLookupText(value: string): string {
+  return value
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function matchesQuestionItem(questionKey: string, itemName: string | null | undefined): boolean {
+  const itemKey = normalizeExplanationLookupText(itemName ?? '');
+  if (!itemKey) return false;
+  if (questionKey.includes(itemKey)) return true;
+  return itemKey
+    .split(' ')
+    .filter((token) => token.length >= 4)
+    .some((token) => questionKey.includes(token));
+}
+
+function mentionsAnyCatalogLikeTerm(questionKey: string): boolean {
+  const ignored = new Set([
+    'why',
+    'did',
+    'didn',
+    'didnt',
+    'you',
+    'order',
+    'ordered',
+    'ordering',
+    'zero',
+    'case',
+    'cases',
+    'pack',
+    'packs',
+    'piece',
+    'pieces',
+    'pound',
+    'pounds',
+    'this',
+    'that',
+    'because',
+    'not',
+  ]);
+  return questionKey.split(' ').some((token) => token.length >= 4 && !ignored.has(token));
+}
+
 function buildSmartAssistantMessage(input: {
   displayMessage: string;
   recommendations: import('./types.ts').Recommendation[];
@@ -486,6 +675,9 @@ function applyAllowedUnitRulesToCatalog(
     if (!rule.item_id || typeof rule.unit !== 'string' || !rule.unit.trim()) continue;
     const current = unitsByItem.get(rule.item_id) ?? [];
     current.push(rule.unit.trim());
+    if (rule.order_unit && rule.order_unit.trim()) {
+      current.push(rule.order_unit.trim());
+    }
     unitsByItem.set(rule.item_id, current);
   }
   if (unitsByItem.size === 0) return catalog;
@@ -499,12 +691,15 @@ function applyAllowedUnitRulesToCatalog(
 
 function buildInventoryModeReviewItems(input: {
   segments: string[];
+  statusSegments?: string[];
   catalog: CatalogItem[];
   catalogIndex: CatalogSearchIndex;
   unitAliases: UnitAliasMap;
 }): ParsedItem[] {
   const items: ParsedItem[] = [];
+  const statusSegments = new Set((input.statusSegments ?? []).map((segment) => segment.trim().toLowerCase()));
   for (const segment of input.segments) {
+    if (statusSegments.has(segment.trim().toLowerCase())) continue;
     const candidates = parseDeterministicOrder(segment, input.unitAliases);
     for (const candidate of candidates) {
       if (candidate.quantity != null || !candidate.item_text.trim()) continue;
@@ -533,19 +728,55 @@ function shouldUseInventoryModeAsStock(input: {
   classification: QuickOrderInputClassificationResult;
   segmentRoute: QuickOrderSegmentRoute;
   unitAliases: UnitAliasMap;
+  inventoryStatusTerms?: InventoryStatusTerm[];
+  quickOrderStatusTerms?: QuickOrderStatusTerm[];
 }): boolean {
   if (input.request.mode !== 'inventory') return false;
+  if (isExplicitOrderPhrase(input.message)) return false;
   if (input.request.mode_conflict_resolution === 'keep_inventory') {
-    return isInventoryDraftMessage(input.message, input.unitAliases);
+    return isInventoryDraftMessage(input.message, input.unitAliases) || hasInventoryStatusDraftSignal(input);
   }
   if (input.segmentRoute.recommendationSegments.length > 0) return false;
   if (
     !isModeControllableClassification(input.classification.classification) &&
-    !isInventoryDraftMessage(input.message, input.unitAliases)
+    !isInventoryDraftMessage(input.message, input.unitAliases) &&
+    !hasInventoryStatusDraftSignal(input)
   ) {
     return false;
   }
-  return isInventoryDraftMessage(input.message, input.unitAliases);
+  return isInventoryDraftMessage(input.message, input.unitAliases) || hasInventoryStatusDraftSignal(input);
+}
+
+function hasInventoryStatusDraftSignal(input: {
+  message: string;
+  inventoryStatusTerms?: InventoryStatusTerm[];
+  quickOrderStatusTerms?: QuickOrderStatusTerm[];
+}): boolean {
+  const normalized = normalizeInventoryStatusText(input.message);
+  if (!normalized) return false;
+  if (/\b(?:a\s+lot|lots|no\s+more)\b/i.test(input.message)) return true;
+
+  const keys = [
+    ...(input.inventoryStatusTerms ?? []).map((term) => term.phrase_key || term.phrase),
+    ...(input.quickOrderStatusTerms ?? []).map((term) => term.phrase_key || term.phrase),
+  ]
+    .map(normalizeInventoryStatusText)
+    .filter(Boolean);
+
+  return keys.some((key) =>
+    normalized === key ||
+    normalized.startsWith(`${key} `) ||
+    normalized.endsWith(` ${key}`)
+  );
+}
+
+function normalizeInventoryStatusText(value: string | null | undefined): string {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
+    .replace(/\s+/g, ' ');
 }
 
 function isModeControllableClassification(classification: string): boolean {
@@ -629,6 +860,12 @@ async function buildModeConflictResponse(input: {
     unitAliases: input.input.unitAliases,
     catalogIndex: input.catalogIndex,
     globalCatalogIndex: input.globalCatalogIndex,
+    employeeAliases: input.input.employeeAliases,
+    employeeNameKeys: input.input.employeeNameKeys,
+    aliasRules: input.input.aliasRules,
+    unitRules: input.input.unitRules,
+    parserSettings: input.input.parserSettings,
+    mode: 'order',
     classification: {
       ...input.input.classification,
       classification: 'order_entry',
@@ -640,8 +877,8 @@ async function buildModeConflictResponse(input: {
     catalog: input.orderCatalog,
     locationId: request.location_id,
     source: request.source,
-    limits: input.input.limits,
-    allowedUnitRules: input.input.allowedUnitRules,
+    limits: [],
+    allowedUnitRules: [],
     userRole: input.input.userRole,
   });
   const incoming = safety.response.parsed_items[0] ?? parseResponse.parsed_items[0] ?? null;
@@ -953,7 +1190,24 @@ function hasUsefulDeterministicOrderSignal(input: {
       continue;
     }
     const match = matchCatalogIndex(itemText, input.catalogIndex);
-    if (match.item_id && !match.needs_clarification && (candidate.quantity != null || candidate.unit || input.sourceClassification.classification === 'order_command')) {
+    // A clean catalog match is a useful order signal on its own. A bare item
+    // name with no quantity/unit (e.g. "Japanese scallop") should resolve the
+    // item and prompt for quantity via the normal parser instead of being sent
+    // to the LLM intent router, which treats a verbless product name as
+    // ambiguous and returns a generic clarification. order_entry is the default
+    // classification for a typed item name in Order mode, so accept it here the
+    // same way order_command is — this mirrors how Inventory mode resolves a
+    // bare item name as a missing-quantity draft.
+    if (
+      match.item_id &&
+      !match.needs_clarification &&
+      (
+        candidate.quantity != null ||
+        candidate.unit ||
+        input.sourceClassification.classification === 'order_command' ||
+        input.sourceClassification.classification === 'order_entry'
+      )
+    ) {
       return true;
     }
   }
