@@ -197,7 +197,7 @@ function toQuantity(value: string | undefined): number | null {
     const denominator = Number(mixedMatch[3]);
     if (denominator > 0) {
       const result = whole + numerator / denominator;
-      return Number.isFinite(result) && result > 0 ? result : null;
+      return Number.isFinite(result) && result >= 0 ? result : null;
     }
     return null;
   }
@@ -209,13 +209,13 @@ function toQuantity(value: string | undefined): number | null {
     const denominator = Number(fractionMatch[2]);
     if (denominator > 0) {
       const result = numerator / denominator;
-      return Number.isFinite(result) && result > 0 ? result : null;
+      return Number.isFinite(result) && result >= 0 ? result : null;
     }
     return null;
   }
 
   const parsed = Number(trimmed);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
 /**

@@ -3,7 +3,9 @@ import {
   getParsedItemDisplayName,
   getParsedItemIssue,
   formatQuickOrderQuantity,
+  formatQuickOrderUnitName,
   normalizeQuickOrderItemForDisplay,
+  normalizeQuickOrderUnit,
   type PendingQuickOrderClarification,
   type ParsedQuickOrderItem,
   type QuickOrderMergeResult,
@@ -30,6 +32,7 @@ export type QuickOrderParseStatus =
   | 'ok'
   | 'needs_review'
   | 'needs_clarification'
+  | 'unit_unrecognized'
   | 'partial_success'
   | 'blocked'
   | 'qa_answer'
@@ -63,6 +66,7 @@ export type QuickOrderSafetyWarning = {
   item_name?: string | null;
   quantity?: number | null;
   unit?: string | null;
+  original_text?: string | null;
   severity?: 'info' | 'warning' | 'blocked';
   resolution?: Record<string, unknown> | null;
   reason_codes?: string[];
@@ -171,6 +175,11 @@ export type RawQuickOrderParseResponse = {
   error?: unknown;
   detail?: unknown;
   code?: unknown;
+  item?: unknown;
+  quantity?: unknown;
+  unit_typed?: unknown;
+  message?: unknown;
+  suggested_units?: unknown;
   actions?: unknown;
   assistant_actions?: unknown;
   assistantActions?: unknown;
@@ -598,25 +607,53 @@ function normalizePendingActions(value: unknown): PendingQuickOrderClarification
   if (!Array.isArray(value)) return [];
   return value
     .filter(isRecord)
-    .map((entry) => ({
-      id: stringValue(entry.id) ?? `pending:${stringValue(entry.message) ?? Math.random().toString(36).slice(2)}`,
-      type: normalizePendingType(entry.type),
-      item_id: stringValue(entry.item_id),
-      item_name: stringValue(entry.item_name) ?? 'Item',
-      existing_item_key: stringValue(entry.existing_item_key) ?? undefined,
-      existing_item_keys: arrayOfStrings(entry.existing_item_keys),
-      incoming_item: normalizeParsedItem(entry.incoming_item) ?? undefined,
-      message: stringValue(entry.message) ?? 'Review this item.',
-      actions: Array.isArray(entry.actions)
-        ? entry.actions.filter(isRecord).map((action) => ({
-          id: normalizeActionId(action.id),
-          label: stringValue(action.label) ?? 'Review',
-          preview: stringValue(action.preview) ?? undefined,
-          existing_item_key: stringValue(action.existing_item_key) ?? undefined,
-          unit: stringValue(action.unit) ?? undefined,
-        }))
-        : [],
-    }));
+    .map((entry) => {
+      const actions = Array.isArray(entry.actions)
+        ? entry.actions.filter(isRecord).map((action) => normalizePendingAction(action))
+        : [];
+      return {
+        id: stringValue(entry.id) ?? `pending:${stringValue(entry.message) ?? Math.random().toString(36).slice(2)}`,
+        type: normalizePendingType(entry.type),
+        item_id: stringValue(entry.item_id),
+        item_name: stringValue(entry.item_name) ?? 'Item',
+        existing_item_key: stringValue(entry.existing_item_key) ?? undefined,
+        existing_item_keys: arrayOfStrings(entry.existing_item_keys),
+        incoming_item: normalizeParsedItem(entry.incoming_item) ?? undefined,
+        message: stringValue(entry.message) ?? 'Review this item.',
+        actions: dedupePendingActions(actions),
+      };
+    });
+}
+
+function normalizePendingAction(action: Record<string, unknown>): PendingQuickOrderClarification['actions'][number] {
+  const id = normalizeActionId(action.id);
+  const rawUnit = stringValue(action.unit) ?? (id === 'use_unit' ? stringValue(action.label) : null);
+  const normalizedUnit = rawUnit ? normalizeQuickOrderUnit(rawUnit) ?? rawUnit.trim().toLowerCase() : null;
+  const displayUnit = normalizedUnit ? formatQuickOrderUnitName(normalizedUnit, 1) || normalizedUnit : null;
+
+  return {
+    id,
+    label: stringValue(action.label) ?? 'Review',
+    preview: stringValue(action.preview) ?? undefined,
+    existing_item_key: stringValue(action.existing_item_key) ?? undefined,
+    unit: id === 'use_unit' ? displayUnit ?? undefined : stringValue(action.unit) ?? undefined,
+  };
+}
+
+function dedupePendingActions(
+  actions: PendingQuickOrderClarification['actions'],
+): PendingQuickOrderClarification['actions'] {
+  const seen = new Set<string>();
+  const deduped: PendingQuickOrderClarification['actions'] = [];
+  for (const action of actions) {
+    const key = action.id === 'use_unit'
+      ? `${action.id}:${normalizeQuickOrderUnit(action.unit ?? action.label) ?? (action.unit ?? action.label).trim().toLowerCase()}`
+      : `${action.id}:${action.label}:${action.existing_item_key ?? ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(action);
+  }
+  return deduped;
 }
 
 function normalizePendingType(value: unknown): PendingQuickOrderClarification['type'] {
@@ -631,6 +668,7 @@ function normalizePendingType(value: unknown): PendingQuickOrderClarification['t
     value === 'quantity_safety' ||
     value === 'manager_approval_required' ||
     value === 'low_confidence_match' ||
+    value === 'unit_unrecognized' ||
     value === 'remove_ambiguous'
     ? value
     : 'quantity_conflict';
@@ -723,6 +761,7 @@ function normalizeSafetyWarnings(value: unknown): QuickOrderSafetyWarning[] {
     item_name: stringValue(entry.item_name),
     quantity: numberValue(entry.quantity),
     unit: stringValue(entry.unit),
+    original_text: stringValue(entry.original_text),
     severity: entry.severity === 'blocked' || entry.severity === 'info' ? entry.severity : 'warning',
     resolution: isRecord(entry.resolution) ? entry.resolution : null,
     reason_codes: arrayOfStrings(entry.reason_codes),
@@ -828,6 +867,7 @@ function normalizeStatus(
     value === 'ok' ||
     value === 'needs_review' ||
     value === 'needs_clarification' ||
+    value === 'unit_unrecognized' ||
     value === 'partial_success' ||
     value === 'blocked' ||
     value === 'qa_answer' ||

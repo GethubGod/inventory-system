@@ -135,6 +135,7 @@ export function buildQuickOrderRecommendations(input: {
         message: `I understood "${statusItem.phrase}" as an inventory status, but I could not match ${statusItem.item_text || 'the item'}.`,
         item_id: null,
         item_name: statusItem.item_name ?? statusItem.item_text,
+        original_text: statusItem.original_text,
         severity: 'info',
       });
       continue;
@@ -148,6 +149,7 @@ export function buildQuickOrderRecommendations(input: {
         item_name: statusItem.item_name ?? statusItem.item_text,
         quantity: statusItem.remaining_qty,
         unit: statusItem.remaining_unit,
+        original_text: statusItem.original_text,
         severity: 'info',
         resolution: statusItem.resolution ?? undefined,
         reason_codes: statusItem.reason_codes,
@@ -163,6 +165,7 @@ export function buildQuickOrderRecommendations(input: {
           ?? `${statusItem.item_name ?? statusItem.item_text} needs a remaining quantity before I can recommend an order.`,
         item_id: statusItem.item_id,
         item_name: statusItem.item_name ?? statusItem.item_text,
+        original_text: statusItem.original_text,
         severity: 'info',
         reason_codes: statusItem.reason_codes,
         resolution_trace: statusItem.resolution_trace,
@@ -195,13 +198,18 @@ export function buildQuickOrderRecommendations(input: {
     const catalogItem = input.catalog.find((item) => item.id === itemId);
     if (!catalogItem) continue;
     const statusOnlyCheck = statusOnlyReorderChecks.get(itemId);
+    const latestItemStock = latestStockForItem(input.stockUpdates, itemId);
+    const zeroQuantityFallback = latestItemStock?.quantity === 0;
+    const forceGlobalOrdering = zeroQuantityFallback || stockUsesGlobalOrdering(latestItemStock);
     const stock = pickStockForReorderEvaluation({
       stockUpdates: input.stockUpdates,
       itemId,
       quickOrderReorderRules: input.quickOrderReorderRules ?? [],
       quickOrderUnitRules: input.quickOrderUnitRules ?? [],
       context: resolverContext,
-    });
+      ruleScope: forceGlobalOrdering ? 'global' : undefined,
+      zeroQuantityFallback,
+    }) ?? (zeroQuantityFallback ? latestItemStock : null);
     if (statusOnlyCheck && !stock) {
       if (inventoryMode && (input.quickOrderReorderRules?.length ?? 0) > 0) {
         const v2RuleResult = resolveReorderRecommendation({
@@ -213,6 +221,8 @@ export function buildQuickOrderRecommendations(input: {
           rules: input.quickOrderReorderRules ?? [],
           unitRules: input.quickOrderUnitRules ?? [],
           context: resolverContext,
+          ruleScope: forceGlobalOrdering ? 'global' : undefined,
+          zeroQuantityFallback,
         });
         if (v2RuleResult.status === 'recommend') {
           const limit = findLimit(input.limits, itemId);
@@ -249,6 +259,7 @@ export function buildQuickOrderRecommendations(input: {
             message: v2RuleResult.reason,
             item_id: catalogItem.id,
             item_name: catalogItem.name,
+            original_text: statusOnlyCheck.original_text,
             severity: 'info',
             resolution: v2RuleResult.metadata,
             reason_codes: v2RuleResult.metadata.reason_codes,
@@ -263,6 +274,7 @@ export function buildQuickOrderRecommendations(input: {
         message: `${catalogItem.name} — low quantity reported but no reorder rule on file — please give a quantity`,
         item_id: catalogItem.id,
         item_name: catalogItem.name,
+        original_text: statusOnlyCheck.original_text,
         severity: 'info',
         reason_codes: ['clarification_needed'],
         user_visible_note: `I understood "${statusOnlyCheck.phrase}" as low stock for ${catalogItem.name}, but I need a quantity or reorder rule before I can suggest an order.`,
@@ -280,6 +292,8 @@ export function buildQuickOrderRecommendations(input: {
           rules: input.quickOrderReorderRules ?? [],
           unitRules: input.quickOrderUnitRules ?? [],
           context: resolverContext,
+          ruleScope: forceGlobalOrdering ? 'global' : undefined,
+          zeroQuantityFallback,
         });
         if (v2RuleResult.status === 'recommend') {
           const limit = findLimit(input.limits, itemId);
@@ -318,6 +332,7 @@ export function buildQuickOrderRecommendations(input: {
             item_name: catalogItem.name,
             quantity: stock.quantity,
             unit: stock.unit,
+            original_text: stock.original_text,
             severity: 'info',
             resolution: v2RuleResult.metadata,
             reason_codes: v2RuleResult.metadata.reason_codes,
@@ -334,6 +349,7 @@ export function buildQuickOrderRecommendations(input: {
             item_name: catalogItem.name,
             quantity: stock.quantity,
             unit: stock.unit,
+            original_text: stock.original_text,
             severity: 'info',
             resolution: v2RuleResult.metadata,
             reason_codes: v2RuleResult.metadata.reason_codes,
@@ -386,6 +402,7 @@ export function buildQuickOrderRecommendations(input: {
           item_name: catalogItem.name,
           quantity: stock.quantity,
           unit: stock.unit,
+          original_text: stock.original_text,
           severity: 'info',
         });
         continue;
@@ -398,6 +415,7 @@ export function buildQuickOrderRecommendations(input: {
           item_name: catalogItem.name,
           quantity: stock.quantity,
           unit: stock.unit,
+          original_text: stock.original_text,
           severity: 'info',
         });
         continue;
@@ -410,12 +428,15 @@ export function buildQuickOrderRecommendations(input: {
           item_name: catalogItem.name,
           quantity: stock.quantity,
           unit: stock.unit,
+          original_text: stock.original_text,
           severity: 'info',
         });
         continue;
       }
     }
-    const targetStock = stockForTrackingUnit(input.stockUpdates, itemId, null);
+    const targetStock = zeroQuantityFallback
+      ? latestItemStock
+      : stockForTrackingUnit(input.stockUpdates, itemId, null);
     if (targetStock && catalogItem.target_stock != null) {
       const target = positiveNumber(catalogItem.target_stock);
       if (target != null && targetStock.quantity < target) {
@@ -459,6 +480,7 @@ export function buildQuickOrderRecommendations(input: {
           item_name: catalogItem.name,
           quantity: targetStock.quantity,
           unit: targetStock.unit,
+          original_text: targetStock.original_text,
           severity: 'info',
           reason_codes: ['target_stock_no_order'],
           user_visible_note: `Used ${catalogItem.name}'s target stock from qo_items.`,
@@ -488,7 +510,7 @@ export function buildQuickOrderRecommendations(input: {
     // When the employee typed no unit, the count is implied to be in the item's
     // only unit, so we treat it as already being in the order unit rather than
     // warning about a missing conversion.
-    if (stock && !stock.unit_inferred && currentStockInOrderUnit == null && stock.unit && unit && normalizeUnitForComparison(stock.unit) !== normalizeUnitForComparison(unit)) {
+    if (stock && stock.quantity !== 0 && !stock.unit_inferred && currentStockInOrderUnit == null && stock.unit && unit && normalizeUnitForComparison(stock.unit) !== normalizeUnitForComparison(unit)) {
       warnings.push({
         type: 'unusual_unit',
         message: `${catalogItem.name} stock was counted as ${stock.unit}, but I do not have a conversion to ${unit}.`,
@@ -496,6 +518,7 @@ export function buildQuickOrderRecommendations(input: {
         item_name: catalogItem.name,
         quantity: stock.quantity,
         unit: stock.unit,
+        original_text: stock.original_text,
         severity: 'warning',
       });
       continue;
@@ -560,6 +583,7 @@ export function buildQuickOrderRecommendations(input: {
         item_name: catalogItem.name,
         quantity: stock.quantity,
         unit: stock.unit,
+        original_text: stock.original_text,
         severity: 'info',
       });
       continue;
@@ -1200,9 +1224,15 @@ function pickStockForReorderEvaluation(input: {
     locationId?: string | null;
     settings?: Record<string, unknown>;
   };
+  ruleScope?: 'employee' | 'global';
+  zeroQuantityFallback?: boolean;
 }): StockOperation | null {
   const itemStocks = input.stockUpdates.filter((update) => update.item_id === input.itemId);
   if (itemStocks.length === 0) return null;
+  if (input.zeroQuantityFallback) {
+    const zeroStock = latestZeroStockForItem(input.stockUpdates, input.itemId);
+    if (zeroStock) return zeroStock;
+  }
 
   const applicableRules = input.quickOrderReorderRules
     .filter((rule) =>
@@ -1213,6 +1243,20 @@ function pickStockForReorderEvaluation(input: {
       (rule.scope_type === 'global' || employeeScopeMatches(rule, input.context))
     )
     .sort((a, b) => reorderRulePriorityScore(b, input.itemId, input.context) - reorderRulePriorityScore(a, input.itemId, input.context));
+
+  if (input.ruleScope === 'global') {
+    const matched = stockForTrackingUnit(input.stockUpdates, input.itemId, null);
+    return matched ?? latestStockForItem(input.stockUpdates, input.itemId);
+  }
+  if (input.ruleScope === 'employee') {
+    const employeeRules = applicableRules.filter((rule) => rule.scope_type === 'employee');
+    const expectedTracking = employeeRules.length > 0
+      ? expectedTrackingUnitForRule(employeeRules[0], input.quickOrderUnitRules, input.context)
+      : null;
+    return expectedTracking
+      ? stockForTrackingUnit(input.stockUpdates, input.itemId, expectedTracking)
+      : latestStockForItem(input.stockUpdates, input.itemId);
+  }
 
   const hasEmployeeRule = applicableRules.some((rule) => rule.scope_type === 'employee');
   const scopedRules = hasEmployeeRule
@@ -1258,6 +1302,20 @@ function latestStockForItem(updates: StockOperation[], itemId: string): StockOpe
     if (updates[index].item_id === itemId) return updates[index];
   }
   return null;
+}
+
+function latestZeroStockForItem(updates: StockOperation[], itemId: string): StockOperation | null {
+  for (let index = updates.length - 1; index >= 0; index -= 1) {
+    const update = updates[index];
+    if (update.item_id === itemId && update.quantity === 0) return update;
+  }
+  return null;
+}
+
+function stockUsesGlobalOrdering(stock: StockOperation | null): boolean {
+  if (!stock) return false;
+  const codes = stock.reason_codes ?? stock.resolution?.reason_codes ?? [];
+  return codes.includes('personalization_unit_mismatch_global_fallback');
 }
 
 function averageRecentQuantity(

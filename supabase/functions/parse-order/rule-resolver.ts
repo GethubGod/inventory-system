@@ -122,6 +122,7 @@ export function resolveUnit(input: {
         reason_codes: ['typed_unit_used'],
         resolution_trace: [`Used typed unit ${normalizedTyped}.`],
         unit_source: 'typed',
+        unit_resolution_scope: 'global',
         confidence: 0.9,
         user_visible_note: null,
       },
@@ -144,6 +145,7 @@ export function resolveUnit(input: {
       reason_codes: [employee ? 'employee_unit_rule' : 'global_unit_rule'],
       resolution_trace: [`${normalizedTyped} -> ${unit} x${matchingRule.multiplier ?? 1}`],
       unit_source: employee ? 'employee_rule' : 'global_rule',
+      unit_resolution_scope: employee ? 'employee' : 'global',
       confidence: 0.96,
       user_visible_note: note,
     },
@@ -175,6 +177,7 @@ export function resolveMissingUnit(input: {
         reason_codes: [employee ? 'employee_missing_unit_default' : 'global_missing_unit_default'],
         resolution_trace: [`Missing unit default -> ${unit}`],
         unit_source: employee ? 'employee_rule' : 'global_rule',
+        unit_resolution_scope: employee ? 'employee' : 'global',
         confidence: 0.95,
         user_visible_note: `Used ${unit} because ${input.item.name}'s default order unit is ${unit}.`,
       },
@@ -183,7 +186,7 @@ export function resolveMissingUnit(input: {
 
   const fallback = input.context.mode === 'order'
     ? input.item.default_order_unit ?? input.item.order_unit ?? input.item.default_unit ?? input.item.pack_unit ?? input.item.base_unit ?? null
-    : input.item.default_unit ?? input.item.base_unit ?? input.item.pack_unit ?? input.item.default_order_unit ?? null;
+    : input.item.order_unit ?? input.item.default_order_unit ?? input.item.default_unit ?? input.item.base_unit ?? input.item.pack_unit ?? null;
   const unit = normalizeUnitForComparison(fallback, input.unitAliases) ?? fallback;
   return {
     unit,
@@ -194,6 +197,7 @@ export function resolveMissingUnit(input: {
       reason_codes: unit ? ['item_default_unit'] : ['missing_unit_unresolved'],
       resolution_trace: unit ? [`Item default -> ${unit}`] : ['No item default unit found.'],
       unit_source: 'item_default',
+      unit_resolution_scope: 'item_default',
       confidence: unit ? 0.86 : 0.2,
       user_visible_note: unit ? `Used ${unit} because ${input.item.name}'s default order unit is ${unit}.` : null,
     },
@@ -273,6 +277,8 @@ export function resolveReorderRecommendation(input: {
   remainingUnitInferred?: boolean;
   remainingTrackingUnit?: string | null;
   fromStatusPhrase?: boolean;
+  zeroQuantityFallback?: boolean;
+  ruleScope?: 'employee' | 'global';
   rules?: QuickOrderReorderRule[];
   unitRules?: QuickOrderUnitRule[];
   unitAliases?: UnitAliasMap;
@@ -286,7 +292,7 @@ export function resolveReorderRecommendation(input: {
     };
   }
 
-  const candidates = scopedRules(input.rules ?? [], input.item.id, input.context);
+  const candidates = scopedRules(input.rules ?? [], input.item.id, input.context, input.ruleScope);
   if (candidates.length === 0) {
     return {
       status: 'no_matching_rule',
@@ -495,6 +501,7 @@ function scopedRules(
   rules: QuickOrderReorderRule[],
   itemId: string,
   context: RuleResolverContext,
+  ruleScope?: 'employee' | 'global',
 ): QuickOrderReorderRule[] {
   const matches = rules
     .filter((rule) =>
@@ -510,6 +517,8 @@ function scopedRules(
       return (a.priority ?? 100) - (b.priority ?? 100);
     });
 
+  if (ruleScope === 'employee') return matches.filter((rule) => rule.scope_type === 'employee');
+  if (ruleScope === 'global') return matches.filter((rule) => rule.scope_type === 'global');
   const hasEmployee = matches.some((rule) => rule.scope_type === 'employee');
   return hasEmployee ? matches.filter((rule) => rule.scope_type === 'employee') : matches.filter((rule) => rule.scope_type === 'global');
 }
@@ -522,6 +531,7 @@ function compareRule(
     remainingUnitInferred?: boolean;
     remainingTrackingUnit?: string | null;
     fromStatusPhrase?: boolean;
+    zeroQuantityFallback?: boolean;
     unitRules?: QuickOrderUnitRule[];
     unitAliases?: UnitAliasMap;
     context: RuleResolverContext;
@@ -529,7 +539,7 @@ function compareRule(
 ): { status: 'ok'; matches: boolean; remainingQty: number | null; reason: string } | { status: 'cannot_evaluate' | 'tracking_unit_mismatch'; reason: string } {
   const expectedTracking = expectedTrackingUnitForRule(rule, input.unitRules ?? [], input.context);
   const actualTracking = normalizeTrackingUnitKey(input.remainingTrackingUnit);
-  if (expectedTracking !== actualTracking) {
+  if (expectedTracking !== actualTracking && !(input.zeroQuantityFallback && input.remainingQty === 0)) {
     const space = expectedTracking ?? 'default unit';
     const snapshotSpace = actualTracking ?? 'default unit';
     return {
@@ -561,6 +571,8 @@ function compareRule(
     });
     if (conversion && normalizeRuleKey(conversion.to_unit) === targetUnit) {
       remainingQty = remainingQty * Number(conversion.multiplier ?? 1);
+    } else if (input.zeroQuantityFallback && input.remainingQty === 0) {
+      remainingQty = 0;
     } else if (input.remainingUnitInferred) {
       // The employee never typed a unit — the parser guessed `remainingUnit`.
       // A configured reorder rule's unit is the stronger signal of how this item

@@ -1,3 +1,10 @@
+import javax.xml.XMLConstants
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.transform.OutputKeys
+import javax.xml.transform.TransformerFactory
+import javax.xml.transform.dom.DOMSource
+import javax.xml.transform.stream.StreamResult
+
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
@@ -92,8 +99,8 @@ android {
         applicationId 'com.babytuna.systems'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 11
-        versionName "2.0"
+        versionCode 20
+        versionName "2.2"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -129,6 +136,58 @@ android {
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
+    }
+}
+
+def stripMicrophoneDeclarationsFromManifest = { File manifestFile ->
+    if (!manifestFile?.isFile()) return
+
+    def androidNamespace = "http://schemas.android.com/apk/res/android"
+    def blockedPermissions = [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.FOREGROUND_SERVICE_MICROPHONE"
+    ] as Set
+    def blockedServices = [
+        "expo.modules.audio.service.AudioRecordingService"
+    ] as Set
+
+    def factory = DocumentBuilderFactory.newInstance()
+    factory.setNamespaceAware(true)
+    factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
+    factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+    factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
+    factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+    factory.setXIncludeAware(false)
+    factory.setExpandEntityReferences(false)
+
+    def document = factory.newDocumentBuilder().parse(manifestFile)
+    def removeByAndroidName = { String tagName, Set blockedNames ->
+        def nodes = document.getElementsByTagName(tagName)
+        for (int index = nodes.length - 1; index >= 0; index--) {
+            def node = nodes.item(index)
+            def androidName = node.getAttributeNS(androidNamespace, "name")
+            if (blockedNames.contains(androidName)) {
+                node.parentNode.removeChild(node)
+            }
+        }
+    }
+
+    removeByAndroidName("uses-permission", blockedPermissions)
+    removeByAndroidName("service", blockedServices)
+
+    def transformer = TransformerFactory.newInstance().newTransformer()
+    transformer.setOutputProperty(OutputKeys.ENCODING, "utf-8")
+    transformer.setOutputProperty(OutputKeys.INDENT, "yes")
+    transformer.transform(new DOMSource(document), new StreamResult(manifestFile))
+}
+
+tasks.configureEach { task ->
+    if (task.name.startsWith("process") && task.name.contains("Manifest")) {
+        task.doLast {
+            fileTree(layout.buildDirectory.dir("intermediates")).matching {
+                include "**/AndroidManifest.xml"
+            }.files.each { stripMicrophoneDeclarationsFromManifest(it) }
+        }
     }
 }
 

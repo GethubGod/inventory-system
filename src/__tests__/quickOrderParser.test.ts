@@ -28,6 +28,7 @@ import {
 import {
   applyQuickOrderClarificationAction,
   applyQuickOrderOperations,
+  buildQuickOrderUnitCorrectionText,
   countUnresolvedItems,
   detectRepeatedOrderList,
   getParsedItemDisplayName,
@@ -605,7 +606,7 @@ describe('frontend quick order merge and clarification helpers', () => {
     expect(result[0]).toMatchObject({ item_id: 'salmon-id', unit: 'pc' });
   });
 
-  test('detailed merge rejects null-item-id review rows instead of adding cart junk', () => {
+  test('detailed merge keeps null-item-id review rows visible for fixing', () => {
     const review: ParsedQuickOrderItem = {
       item_id: null,
       item_name: 'tai',
@@ -619,9 +620,10 @@ describe('frontend quick order merge and clarification helpers', () => {
       status: 'ambiguous',
     };
     const result = mergeQuickOrderParsedItemsDetailed([], [review]);
-    expect(result.items).toHaveLength(0);
-    expect(result.reviewCount).toBe(0);
-    expect(result.rejectedReasons).toContain('non_cart_item_issue');
+    expect(result.items).toHaveLength(1);
+    expect(result.reviewCount).toBe(1);
+    expect(getParsedItemIssue(result.items[0])).toMatchObject({ label: 'Choose item' });
+    expect(result.rejectedReasons).toEqual([]);
   });
 
   test('repeated full list with one new item detects unchanged and adds only new item', () => {
@@ -726,6 +728,94 @@ describe('frontend quick order merge and clarification helpers', () => {
     expect(applyQuickOrderClarificationAction([existing], clarification, { id: 'replace', label: 'Replace' })[0].quantity).toBe(2);
     expect(applyQuickOrderClarificationAction([existing], clarification, { id: 'keep_separate', label: 'Keep both' })).toHaveLength(2);
     expect(applyQuickOrderClarificationAction([existing], clarification, { id: 'cancel', label: 'Cancel' })).toEqual([existing]);
+  });
+
+  test('unit clarification actions collapse equivalent abbreviations to one plain unit', () => {
+    const normalized = normalizeQuickOrderParseResponse({
+      status: 'unit_unrecognized',
+      pending_clarifications: [{
+        id: 'unit-red-clam',
+        type: 'unit_unrecognized',
+        item_id: 'red-clam-id',
+        item_name: 'Canadian Clam',
+        message: 'Choose a unit.',
+        actions: [
+          { id: 'use_unit', label: 'order', unit: 'order' },
+          { id: 'use_unit', label: 'pack', unit: 'pack' },
+          { id: 'use_unit', label: 'pk', unit: 'pk' },
+          { id: 'use_unit', label: 'packs', unit: 'packs' },
+        ],
+      }],
+    });
+
+    expect(normalized.pendingActions[0].actions.map((action) => action.label)).toEqual(['order', 'pack']);
+    expect(normalized.pendingActions[0].actions.map((action) => action.unit)).toEqual(['order', 'pack']);
+  });
+
+  test('unit correction retry updates the original pasted inventory list', () => {
+    const clarification = {
+      id: 'unit-red-clam',
+      type: 'unit_unrecognized' as const,
+      item_id: 'red-clam-id',
+      item_name: 'Canadian Clam',
+      incoming_item: {
+        item_id: 'red-clam-id',
+        item_name: 'Canadian Clam',
+        raw_text: 'Red Clam 1 1/2 bags',
+        raw_token: 'Red Clam 1 1/2 bags',
+        quantity: 1.5,
+        unit: 'bags',
+        status: 'invalid_unit' as const,
+      },
+      message: 'Choose a unit.',
+      actions: [],
+    };
+
+    const retryText = buildQuickOrderUnitCorrectionText(
+      clarification,
+      { id: 'use_unit', label: 'pack', unit: 'pack' },
+      {
+        sourceText: [
+          'Salmon 3',
+          'Yellowtail 3',
+          'Red Clam 1 1/2 bags',
+          'Sriracha 1 1/2 box',
+        ].join('\n'),
+      },
+    );
+
+    expect(retryText).toBe([
+      'Salmon 3',
+      'Yellowtail 3',
+      'Red Clam 1 1/2 pack',
+      'Sriracha 1 1/2 box',
+    ].join('\n'));
+  });
+
+  test('unit correction retry appends a missing compound-count unit', () => {
+    const clarification = {
+      id: 'inventory_missing_unit:ikura-id',
+      type: 'missing_unit' as const,
+      item_id: 'ikura-id',
+      item_name: 'Ikura (Salmon Roe)',
+      incoming_item: {
+        item_id: 'ikura-id',
+        item_name: 'Ikura (Salmon Roe)',
+        raw_text: 'Ikura 1 pack + 3',
+        raw_token: 'Ikura 1 pack + 3',
+        quantity: 3,
+        unit: null,
+        status: 'missing_unit' as const,
+        source: 'remaining_inventory' as const,
+      },
+      message: 'Choose a unit.',
+      actions: [],
+    };
+
+    expect(buildQuickOrderUnitCorrectionText(
+      clarification,
+      { id: 'use_unit', label: 'pack', unit: 'pack' },
+    )).toBe('Ikura 1 pack + 3 pack');
   });
 
   test('review row action is based on specific status', () => {
@@ -1053,9 +1143,10 @@ describe('frontend response normalization', () => {
 
     const mergeResult = mergeQuickOrderParsedItemsDetailed([], normalized.parsedItems);
     expect(normalized.status).toBe('partial_success');
-    expect(mergeResult.items).toHaveLength(2);
+    expect(mergeResult.items).toHaveLength(3);
     expect(mergeResult.addedItems.filter((item) => getParsedItemIssue(item) == null)).toHaveLength(2);
-    expect(mergeResult.rejectedReasons).toContain('invalid_unit_not_added');
+    expect(mergeResult.addedItems.filter((item) => getParsedItemIssue(item) != null)).toHaveLength(1);
+    expect(mergeResult.rejectedReasons).toEqual([]);
     expect(normalized.safetyWarnings).toHaveLength(1);
     expect(normalized.blockedOperations).toHaveLength(1);
   });
@@ -3800,8 +3891,8 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(result.display_message).toBe("I didn't order this because it met the stock requirements.");
   });
 
-  test('composer inventory mode treats quantity-first remaining input as stock, not an order', async () => {
-    const result = await processBrain('4cs of tuna loin', {
+	  test('composer inventory mode treats quantity-first remaining input as stock, not an order', async () => {
+	    const result = await processBrain('4cs of tuna loin', {
       request: {
         source: 'typed',
         mode: 'inventory',
@@ -3826,11 +3917,101 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(result.parsed_items).toHaveLength(0);
     expect(result.stock_updates).toMatchObject([{ item_id: 'tuna-loin-id', quantity: 4, unit: 'cs' }]);
     expect(result.recommendations).toMatchObject([{ item_id: 'tuna-loin-id', suggested_quantity: 1, unit: 'cs' }]);
-    expect(result.assistant_message).toContain('You have 4 cases of Tuna Loin remaining');
-    expect(result.assistant_message).toContain('I suggest ordering 1 case');
+	    expect(result.assistant_message).toContain('You have 4 cases of Tuna Loin remaining');
+	    expect(result.assistant_message).toContain('I suggest ordering 1 case');
+	  });
+
+  test('compound inventory counts expose unit choices and accept a bare unit follow-up', async () => {
+    const first = await processBrain('Masago 1 pack + 3', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: 'Masago 1 pack + 3',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+
+    expect(first.status).toBe('needs_clarification');
+    expect(first.pending_clarifications?.[0]).toMatchObject({
+      type: 'missing_unit',
+      item_id: 'masago-id',
+      incoming_item: expect.objectContaining({
+        raw_text: 'Masago 1 pack + 3',
+        quantity: 3,
+        source: 'remaining_inventory',
+      }),
+      actions: expect.arrayContaining([
+        expect.objectContaining({ id: 'use_unit', unit: 'pack' }),
+      ]),
+    });
+
+    const recentMessages = [{
+      role: 'assistant',
+      reply_text: first.display_message,
+      pending_clarifications: first.pending_clarifications,
+      safety_warnings: first.safety_warnings,
+    }];
+    const followUp = await processBrain('3 pack', {
+      previousMessages: recentMessages as any,
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: '3 pack',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+
+    expect(followUp.stock_updates).toMatchObject([
+      { item_id: 'masago-id', quantity: 4, unit: 'pack' },
+    ]);
+    expect(followUp.pending_clarifications).toHaveLength(0);
   });
 
-  test('composer inventory mode handles multi-line counts with one missing quantity and returns all calculable suggestions', async () => {
+  test('bare inventory unit follow-up asks for the item when several pending counts match', async () => {
+    const first = await processBrain('Masago 1 pack + 3\nSquid 1 pack + 3', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: 'Masago 1 pack + 3\nSquid 1 pack + 3',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+
+    expect(first.pending_clarifications?.length).toBe(2);
+
+    const followUp = await processBrain('3 pack', {
+      previousMessages: [{
+        role: 'assistant',
+        reply_text: first.display_message,
+        pending_clarifications: first.pending_clarifications,
+        safety_warnings: first.safety_warnings,
+      }] as any,
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: '3 pack',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+
+    expect(followUp.status).toBe('needs_clarification');
+    expect(followUp.display_message).toContain('Which item is 3 packs for?');
+    expect(followUp.stock_updates).toHaveLength(0);
+  });
+	
+	  test('composer inventory mode handles multi-line counts with one missing quantity and returns all calculable suggestions', async () => {
     const inventoryCatalog: CatalogItem[] = [
       { id: 'tamago-id', name: 'Tamago', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },
       { id: 'masago-id', name: 'Masago', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack'] },

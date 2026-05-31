@@ -637,7 +637,7 @@ function syncSheetUpsertOnly(ss, config) {
 
       if (Object.prototype.hasOwnProperty.call(row, 'default_supplier')) {
         if (!inventoryItemSuppliers) {
-          inventoryItemSuppliers = supabaseSelectFields('suppliers', 'id,name,supplier_key,supplier_type,active', false)
+          inventoryItemSuppliers = supabaseSelectFields('suppliers', 'id,name,supplier_key,supplier_category,active', false)
             .filter(function(supplier) { return supplier.active !== false; });
         }
         var primarySupplier = normalizeTextCell(row.default_supplier)
@@ -653,7 +653,7 @@ function syncSheetUpsertOnly(ss, config) {
 
       if (Object.prototype.hasOwnProperty.call(row, 'secondary_supplier')) {
         if (!inventoryItemSuppliers) {
-          inventoryItemSuppliers = supabaseSelectFields('suppliers', 'id,name,supplier_key,supplier_type,active', false)
+          inventoryItemSuppliers = supabaseSelectFields('suppliers', 'id,name,supplier_key,supplier_category,active', false)
             .filter(function(supplier) { return supplier.active !== false; });
         }
         var secondarySupplier = normalizeTextCell(row.secondary_supplier)
@@ -739,8 +739,7 @@ function syncSheetUpsertOnly(ss, config) {
 
     if (config.table === 'suppliers') {
       if (Object.prototype.hasOwnProperty.call(row, 'supplier_category')) {
-        row.supplier_type = normalizeTextCell(row.supplier_category) || null;
-        delete row.supplier_category;
+        row.supplier_category = normalizeTextCell(row.supplier_category) || null;
       }
       if (Object.prototype.hasOwnProperty.call(row, 'supplier_key')) {
         row.supplier_key = normalizeTextCell(row.supplier_key) || normalizeCatalogLookupText(row.name);
@@ -1205,7 +1204,7 @@ function loadQoReferenceData() {
       .filter(function(item) { return item.active !== false; }),
     locations: supabaseSelectFields('locations', 'id,name,short_code,active', false)
       .filter(function(location) { return location.active !== false; }),
-    suppliers: supabaseSelectFields('suppliers', 'id,name,supplier_key,supplier_type,active', false)
+    suppliers: supabaseSelectFields('suppliers', 'id,name,supplier_key,supplier_category,active', false)
       .filter(function(supplier) { return supplier.active !== false; }),
   };
 }
@@ -1931,7 +1930,7 @@ function loadCleanItemReferenceData() {
   return {
     locations: supabaseSelectFields('locations', 'id,name,short_code,active', false)
       .filter(function(location) { return location.active !== false; }),
-    suppliers: supabaseSelectFields('suppliers', 'id,name,supplier_key,supplier_type,active', false)
+    suppliers: supabaseSelectFields('suppliers', 'id,name,supplier_key,supplier_category,active', false)
       .filter(function(supplier) { return supplier.active !== false; }),
   };
 }
@@ -1947,7 +1946,7 @@ function resolveSupplierName(value, suppliers) {
   for (var n = 0; n < suppliers.length; n++) {
     if (normalizeCatalogLookupText(suppliers[n].name) === key) return suppliers[n];
     if (normalizeCatalogLookupText(suppliers[n].supplier_key) === key) return suppliers[n];
-    if (normalizeCatalogLookupText(suppliers[n].supplier_type) === key) return suppliers[n];
+    if (normalizeCatalogLookupText(suppliers[n].supplier_category) === key) return suppliers[n];
   }
   return null;
 }

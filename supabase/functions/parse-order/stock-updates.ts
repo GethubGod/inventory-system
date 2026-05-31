@@ -1,7 +1,7 @@
 import { matchCatalogItem } from './catalog-matcher.ts';
 import { parseDeterministicOrder } from './deterministic-parser.ts';
-import { resolveItemCandidate, resolveMissingUnit, resolveStatusTerm, resolveUnit } from './rule-resolver.ts';
-import { DEFAULT_UNIT_ALIASES, formatQuantityWithUnit, getUnitWords, normalizeUnitForComparison, type UnitAliasMap } from './units.ts';
+import { normalizeRuleKey, resolveItemCandidate, resolveMissingUnit, resolveStatusTerm, resolveUnit } from './rule-resolver.ts';
+import { DEFAULT_UNIT_ALIASES, deriveAllowedUnitLabels, displayUnitLabel, formatQuantityWithUnit, getUnitWords, isKnownUnit, normalizeUnit, normalizeUnitForComparison, type UnitAliasMap } from './units.ts';
 import type {
   CatalogItem,
   EmployeeQuickOrderAlias,
@@ -12,6 +12,7 @@ import type {
   ParserCorrection,
   QuickOrderSource,
   StockOperation,
+  UnitUnrecognizedError,
   ItemAllowedUnitRule,
   QuickOrderUnitRule,
   QuickOrderResolutionMetadata,
@@ -20,6 +21,7 @@ import type {
 export type StockUpdateExtraction = {
   stockUpdates: StockOperation[];
   statusItems: InventoryStatusItem[];
+  unitErrors: UnitUnrecognizedError[];
   stockSegments: string[];
   remainingText: string;
   hasStockSignal: boolean;
@@ -121,12 +123,13 @@ export function extractStockUpdates(input: {
 }): StockUpdateExtraction {
   const hasStockSignal = input.assumeStock === true || STOCK_SIGNAL.test(input.message);
   if (!hasStockSignal) {
-    return { stockUpdates: [], statusItems: [], stockSegments: [], remainingText: input.message, hasStockSignal: false };
+    return { stockUpdates: [], statusItems: [], unitErrors: [], stockSegments: [], remainingText: input.message, hasStockSignal: false };
   }
 
   const segments = splitStockSegments(input.message);
   const stockUpdates: StockOperation[] = [];
   const statusItems: InventoryStatusItem[] = [];
+  const unitErrors: UnitUnrecognizedError[] = [];
   const stockSegments: string[] = [];
   const nonStockSegments: string[] = [];
 
@@ -134,6 +137,7 @@ export function extractStockUpdates(input: {
     const statusParsed = parseStatusSegment(segment, input);
     if (statusParsed) {
       statusItems.push(statusParsed.statusItem);
+      if (statusParsed.unitError) unitErrors.push(statusParsed.unitError);
       if (statusParsed.stockUpdate) stockUpdates.push(statusParsed.stockUpdate);
       stockSegments.push(segment);
       continue;
@@ -154,6 +158,7 @@ export function extractStockUpdates(input: {
 
     const compound = parseCompoundStockSegment(segment, input);
     if (compound) {
+      if (compound.unitError) unitErrors.push(compound.unitError);
       if (compound.stockUpdate) stockUpdates.push(compound.stockUpdate);
       if (compound.statusItem) statusItems.push(compound.statusItem);
       stockSegments.push(segment);
@@ -165,13 +170,18 @@ export function extractStockUpdates(input: {
       if (!looksLikeStockHeader(segment)) nonStockSegments.push(segment);
       continue;
     }
-    stockUpdates.push(parsed);
+    if (isUnitUnrecognizedError(parsed)) {
+      unitErrors.push(parsed);
+    } else {
+      stockUpdates.push(parsed);
+    }
     stockSegments.push(segment);
   }
 
   return {
     stockUpdates: dedupeStockUpdates(stockUpdates),
     statusItems: dedupeStatusItems(statusItems),
+    unitErrors,
     stockSegments,
     remainingText: nonStockSegments.join(', ').trim(),
     hasStockSignal,
@@ -196,7 +206,7 @@ function parseStockSegment(
     allowedUnitRules?: ItemAllowedUnitRule[];
     unitSynonyms?: { from_unit: string; to_unit: string }[];
   },
-): StockOperation | null {
+): StockOperation | UnitUnrecognizedError | null {
   const trimmed = segment.trim();
   if (!trimmed) return null;
 
@@ -243,6 +253,27 @@ function parseStockSegment(
     .replace(/\bhalf\b/gi, '0.5');
 
   const unitAliases = input.unitAliases ?? DEFAULT_UNIT_ALIASES;
+  const leadingPersonalUnit = parseLeadingPersonalUnitStock(normalized, {
+    unitRules: input.unitRules ?? [],
+    unitAliases,
+    employeeNameKeys: input.employeeNameKeys ?? [],
+    employeeUserId: input.employeeUserId ?? null,
+    locationId: input.locationId ?? null,
+    parserSettings: input.parserSettings ?? {},
+  });
+  if (leadingPersonalUnit) {
+    return buildStockOperation({
+      itemText: leadingPersonalUnit.itemText,
+      quantity: leadingPersonalUnit.quantity,
+      unit: leadingPersonalUnit.unit,
+      unitRaw: leadingPersonalUnit.unit,
+      originalText: trimmed,
+      input,
+      confidence: 0.9,
+      approximateModifier: detectApproximateModifier(trimmed),
+    });
+  }
+
   const candidates = parseDeterministicOrder(normalized, unitAliases);
   const candidate = candidates[0];
   if (!candidate || candidate.quantity == null) return null;
@@ -251,11 +282,119 @@ function parseStockSegment(
     itemText: candidate.item_text,
     quantity: candidate.quantity,
     unit: candidate.unit,
+    unitRaw: candidate.unit_raw ?? candidate.unit,
     originalText: trimmed,
     input,
     confidence: candidate.parse_confidence,
     approximateModifier: detectApproximateModifier(trimmed),
   });
+}
+
+function parseLeadingPersonalUnitStock(
+  value: string,
+  input: {
+    unitRules: QuickOrderUnitRule[];
+    unitAliases: UnitAliasMap;
+    employeeNameKeys?: string[];
+    employeeUserId?: string | null;
+    locationId?: string | null;
+    parserSettings?: Record<string, unknown>;
+  },
+): { itemText: string; quantity: number; unit: string } | null {
+  const candidates = leadingPersonalUnitCandidates(input);
+  if (candidates.length === 0) return null;
+
+  const qtyPattern = String.raw`(\d+\s+\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?|\.\d+)`;
+  for (const candidate of candidates) {
+    const match = value.match(new RegExp(`^${escapeRegExp(candidate.lexeme)}\\s+(.+?)\\s*$`, 'i'));
+    if (match) {
+      const rest = match[1].trim();
+      const itemQty = rest.match(new RegExp(`^(.+?)\\s+${qtyPattern}\\s*$`, 'i'));
+      if (itemQty) {
+        const itemText = itemQty[1].trim();
+        const quantity = parseSimpleQuantityAllowZero(itemQty[2]);
+        if (itemText && quantity != null) {
+          return { itemText, quantity, unit: candidate.unit };
+        }
+      }
+    }
+
+    const qtyFirst = value.match(new RegExp(`^${qtyPattern}\\s+${escapeRegExp(candidate.lexeme)}\\s+(.+?)\\s*$`, 'i'));
+    if (qtyFirst) {
+      const quantity = parseSimpleQuantityAllowZero(qtyFirst[1]);
+      const itemText = qtyFirst[2].trim();
+      if (itemText && quantity != null) {
+        return { itemText, quantity, unit: candidate.unit };
+      }
+    }
+  }
+
+  return null;
+}
+
+function leadingPersonalUnitCandidates(input: {
+  unitRules: QuickOrderUnitRule[];
+  unitAliases: UnitAliasMap;
+  employeeNameKeys?: string[];
+  employeeUserId?: string | null;
+  locationId?: string | null;
+  parserSettings?: Record<string, unknown>;
+}): { lexeme: string; unit: string }[] {
+  const seen = new Set<string>();
+  const result: { lexeme: string; unit: string }[] = [];
+  const add = (lexeme: string | null | undefined, unit: string | null | undefined) => {
+    const rawLexeme = lexeme?.trim();
+    const canonicalUnit = unit?.trim();
+    if (!rawLexeme || !canonicalUnit) return;
+    const key = normalizeRuleKey(rawLexeme);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    result.push({ lexeme: rawLexeme, unit: canonicalUnit });
+  };
+
+  for (const rule of input.unitRules) {
+    if (
+      rule.active === false ||
+      rule.scope_type !== 'employee' ||
+      !(rule.mode_scope === 'both' || rule.mode_scope === 'inventory') ||
+      !locationMatches(rule.location_id, input.locationId) ||
+      !employeeMatches(rule, input)
+    ) {
+      continue;
+    }
+
+    const personalUnit = rule.from_unit ?? rule.tracking_unit ?? rule.to_unit;
+    const canonicalUnit = rule.from_unit ?? rule.tracking_unit ?? rule.to_unit;
+    add(personalUnit, canonicalUnit);
+    add(rule.tracking_unit, canonicalUnit);
+    if (rule.is_custom_counting_unit !== true) add(rule.to_unit, canonicalUnit);
+
+    for (const unit of [personalUnit, rule.tracking_unit, rule.is_custom_counting_unit !== true ? rule.to_unit : null]) {
+      const text = unit?.trim();
+      if (!text || /s$/i.test(text)) continue;
+      add(`${text}s`, canonicalUnit);
+    }
+  }
+
+  return result.sort((a, b) => b.lexeme.length - a.lexeme.length);
+}
+
+function parseSimpleQuantityAllowZero(value: string): number | null {
+  const text = value.trim().replace(/\s+/g, ' ');
+  const mixed = text.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)$/);
+  if (mixed) {
+    const result = Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]);
+    return Number.isFinite(result) && result >= 0 ? result : null;
+  }
+  const fraction = text.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (fraction) {
+    const denom = Number(fraction[2]);
+    if (denom <= 0) return null;
+    const result = Number(fraction[1]) / denom;
+    return Number.isFinite(result) && result >= 0 ? result : null;
+  }
+  const num = Number(text);
+  return Number.isFinite(num) && num >= 0 ? num : null;
 }
 
 /**
@@ -275,7 +414,7 @@ function parseCompoundStockSegment(
     employeeNameKeys?: string[];
     employeeUserId?: string | null;
   },
-): { stockUpdate?: StockOperation; statusItem?: InventoryStatusItem } | null {
+): { stockUpdate?: StockOperation; statusItem?: InventoryStatusItem; unitError?: UnitUnrecognizedError } | null {
   const trimmed = segment.trim();
   // Split on a "+" that joins a primary part (containing a digit) with a
   // trailing number. Item names do not contain "+", so this is unambiguous.
@@ -289,6 +428,7 @@ function parseCompoundStockSegment(
   const primaryOp = parseStockSegment(primaryPart, input);
   // Could not resolve the item or the primary count — let the normal flow treat
   // the whole segment as leftover text rather than guess.
+  if (isUnitUnrecognizedError(primaryOp)) return { unitError: primaryOp };
   if (!primaryOp || primaryOp.quantity == null) return null;
 
   const unitAliases = input.unitAliases ?? DEFAULT_UNIT_ALIASES;
@@ -335,6 +475,7 @@ function parseCompoundStockSegment(
   // Cannot combine confidently — surface the item as needs-input instead of
   // dropping it. The note explains exactly what to add.
   const primaryLabel = formatQuantityWithUnit(primaryOp.quantity, primaryUnit);
+  const suggestedUnits = item ? deriveCompoundUnitChoices(item, primaryUnit) : [];
   const note = secondaryUnitRaw
     ? `I read "${trimmed}" as ${primaryLabel} plus ${secondaryQty} ${secondaryUnitRaw}, but I need a conversion between ${secondaryUnitRaw} and ${primaryUnit ?? 'that unit'} before I can combine them.`
     : `I read "${trimmed}" as ${primaryLabel} plus ${secondaryQty} more, but I don't know what unit the "${secondaryQty}" is in. Add a unit (e.g. ${secondaryQty} ${primaryUnit ?? 'pieces'}) so I can combine them.`;
@@ -352,10 +493,29 @@ function parseCompoundStockSegment(
       original_text: trimmed,
       confidence: primaryOp.confidence,
       issue: 'compound_count_needs_unit',
+      missing_quantity: secondaryQty,
+      suggested_units: suggestedUnits,
       reason_codes: ['compound_count_needs_unit'],
       user_visible_note: note,
     },
   };
+}
+
+function deriveCompoundUnitChoices(item: CatalogItem, primaryUnit: string | null): string[] {
+  const seen = new Set<string>();
+  const choices: string[] = [];
+  const add = (unit: string | null | undefined) => {
+    const label = displayUnitLabel(unit);
+    if (!label) return;
+    const key = normalizeUnitForComparison(label) ?? label.trim().toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    choices.push(label);
+  };
+
+  for (const unit of deriveAllowedUnitLabels(item)) add(unit);
+  add(primaryUnit);
+  return choices;
 }
 
 /** Parses a bare quantity token: "3", "0.5", "1/2", "5 1/2". */
@@ -387,6 +547,7 @@ function buildStockOperation(input: {
   itemText: string;
   quantity: number;
   unit: string | null;
+  unitRaw?: string | null;
   originalText: string;
   confidence: number;
   approximateModifier?: StockOperation['approximate_modifier'];
@@ -406,14 +567,10 @@ function buildStockOperation(input: {
     allowedUnitRules?: ItemAllowedUnitRule[];
     unitSynonyms?: { from_unit: string; to_unit: string }[];
   };
-}): StockOperation | null {
+}): StockOperation | UnitUnrecognizedError | null {
   const resolved = resolveStockCatalogItem(input.itemText, input.input);
   if (!resolved) return null;
   const unitAliases = input.input.unitAliases ?? DEFAULT_UNIT_ALIASES;
-  const typedUnit = applyStockUnitSynonym(normalizeUnitForComparison(input.unit, unitAliases), input.input.unitSynonyms);
-  // No unit typed: the count is implied to be the item's own unit (the only
-  // unit it can be counted in), so fill it in and mark it as inferred.
-  const unitInferred = typedUnit == null;
   const resolverContext = {
     mode: 'inventory' as const,
     employeeNameKeys: input.input.employeeNameKeys ?? [],
@@ -421,15 +578,22 @@ function buildStockOperation(input: {
     locationId: input.input.locationId ?? null,
     settings: input.input.parserSettings ?? {},
   };
-  const unitResolution = input.input.unitRules?.length
-    ? (unitInferred
-        ? resolveMissingUnit({ item: resolved.item, unitRules: input.input.unitRules, unitAliases, context: resolverContext })
-        : resolveUnit({ item: resolved.item, typedUnit, unitRules: input.input.unitRules, unitAliases, context: resolverContext }))
-    : null;
-  let unit = unitResolution?.unit ?? typedUnit;
-  const trackingUnit = unitResolution?.rule?.is_custom_counting_unit
-    ? unitResolution.rule.tracking_unit ?? unitResolution.rule.from_unit ?? input.unit
-    : null;
+  const unitDecision = resolveStockUnitForInventory({
+    item: resolved.item,
+    quantity: input.quantity,
+    typedUnit: input.unit,
+    typedUnitRaw: input.unitRaw,
+    unitRules: input.input.unitRules ?? [],
+    unitAliases,
+    context: resolverContext,
+    unitSynonyms: input.input.unitSynonyms,
+    originalText: input.originalText,
+  });
+  if (isUnitUnrecognizedError(unitDecision)) return unitDecision;
+  const unitResolution = unitDecision.resolution;
+  let unit = unitDecision.unit;
+  const trackingUnit = unitDecision.trackingUnit;
+  const unitInferred = unitDecision.unitInferred;
   let quantity = input.quantity;
   if (unitResolution) quantity *= unitResolution.multiplier;
   if (unitInferred && !unit) {
@@ -461,6 +625,360 @@ function buildStockOperation(input: {
   };
 }
 
+type StockUnitDecision = {
+  unit: string | null;
+  trackingUnit: string | null;
+  unitInferred: boolean;
+  resolution: ReturnType<typeof resolveUnit> | null;
+};
+
+export function isUnitUnrecognizedError(value: unknown): value is UnitUnrecognizedError {
+  return Boolean(value && typeof value === 'object' && (value as { status?: unknown }).status === 'unit_unrecognized');
+}
+
+function resolveStockUnitForInventory(input: {
+  item: CatalogItem;
+  quantity: number;
+  typedUnit: string | null;
+  typedUnitRaw?: string | null;
+  unitRules: QuickOrderUnitRule[];
+  unitAliases: UnitAliasMap;
+  context: {
+    mode: 'inventory';
+    employeeNameKeys?: string[];
+    employeeUserId?: string | null;
+    locationId?: string | null;
+    settings?: Record<string, unknown>;
+  };
+  unitSynonyms?: { from_unit: string; to_unit: string }[];
+  originalText: string;
+}): StockUnitDecision | UnitUnrecognizedError {
+  const typedRaw = (input.typedUnitRaw ?? input.typedUnit)?.trim() || null;
+  const typedUnit = typedRaw
+    ? normalizeUnitForComparison(typedRaw, input.unitAliases) ?? normalizeRuleKey(typedRaw)
+    : null;
+  const employeeRules = applicableEmployeeUnitRules(input.unitRules, input.item.id, input.context);
+
+  if (!typedRaw) {
+    const resolution = input.unitRules.length
+      ? resolveMissingUnit({
+          item: input.item,
+          unitRules: input.unitRules,
+          unitAliases: input.unitAliases,
+          context: input.context,
+        })
+      : null;
+    const unit = resolution?.unit
+      ?? input.item.order_unit
+      ?? input.item.default_order_unit
+      ?? input.item.default_unit
+      ?? input.item.base_unit
+      ?? input.item.pack_unit
+      ?? null;
+    return {
+      unit,
+      trackingUnit: resolution?.rule?.is_custom_counting_unit
+        ? resolution.rule.tracking_unit ?? resolution.rule.from_unit ?? unit
+        : null,
+      unitInferred: true,
+      resolution,
+    };
+  }
+
+  const employeeMatch = employeeRules.find((rule) => unitMatchesPersonalRule(typedUnit, typedRaw, rule, input.unitAliases));
+  if (employeeMatch) {
+    const resolution = resolvePersonalUnitRule({
+      item: input.item,
+      rule: employeeMatch,
+      typedUnit: typedUnit ?? typedRaw,
+      unitAliases: input.unitAliases,
+    });
+    return {
+      unit: resolution.unit,
+      trackingUnit: resolution.rule?.is_custom_counting_unit
+        ? resolution.rule.tracking_unit ?? resolution.rule.from_unit ?? typedRaw
+        : null,
+      unitInferred: false,
+      resolution,
+    };
+  }
+
+  const globalUnit = resolveGlobalUnit({
+    item: input.item,
+    typedUnit,
+    typedRaw,
+    unitAliases: input.unitAliases,
+    unitSynonyms: input.unitSynonyms,
+  });
+  if (globalUnit) {
+    const hadPersonalization = employeeRules.length > 0;
+    return {
+      unit: globalUnit.unit,
+      trackingUnit: null,
+      unitInferred: false,
+      resolution: {
+        unit: globalUnit.unit,
+        multiplier: 1,
+        source: 'typed',
+        rule: null,
+        metadata: {
+          reason_codes: [hadPersonalization ? 'personalization_unit_mismatch_global_fallback' : 'global_unit_used'],
+          resolution_trace: hadPersonalization
+            ? [`Typed unit ${typedRaw} did not match employee personalization; used global unit ${globalUnit.displayUnit}.`]
+            : [`Typed unit ${typedRaw} matched global unit ${globalUnit.displayUnit}.`],
+          unit_source: 'typed',
+          unit_resolution_scope: 'global',
+          confidence: 0.9,
+          user_visible_note: hadPersonalization
+            ? `Used ${input.item.name}'s global unit because "${typedRaw}" does not match this employee's personal unit.`
+            : null,
+        },
+      },
+    };
+  }
+
+  const knownInventoryUnit = employeeRules.length === 0
+    ? resolveKnownInventoryUnit({
+        typedRaw,
+        unitAliases: input.unitAliases,
+        unitSynonyms: input.unitSynonyms,
+      })
+    : null;
+  if (knownInventoryUnit) {
+    return {
+      unit: knownInventoryUnit,
+      trackingUnit: null,
+      unitInferred: false,
+      resolution: {
+        unit: knownInventoryUnit,
+        multiplier: 1,
+        source: 'typed',
+        rule: null,
+        metadata: {
+          reason_codes: ['global_known_unit_used'],
+          resolution_trace: [`Typed unit ${typedRaw} is a known inventory unit.`],
+          unit_source: 'typed',
+          unit_resolution_scope: 'global',
+          confidence: 0.86,
+          user_visible_note: null,
+        },
+      },
+    };
+  }
+
+  return buildUnitUnrecognizedError({
+    item: input.item,
+    quantity: input.quantity,
+    typedRaw,
+    employeeRules,
+    unitSynonyms: input.unitSynonyms,
+    originalText: input.originalText,
+  });
+}
+
+function applicableEmployeeUnitRules(
+  rules: QuickOrderUnitRule[],
+  itemId: string,
+  context: {
+    employeeNameKeys?: string[];
+    employeeUserId?: string | null;
+    locationId?: string | null;
+    settings?: Record<string, unknown>;
+  },
+): QuickOrderUnitRule[] {
+  return rules.filter((rule) =>
+    rule.active !== false &&
+    rule.scope_type === 'employee' &&
+    rule.item_id === itemId &&
+    (rule.mode_scope === 'both' || rule.mode_scope === 'inventory') &&
+    locationMatches(rule.location_id, context.locationId) &&
+    employeeMatches(rule, context)
+  );
+}
+
+function unitMatchesPersonalRule(
+  typedUnit: string | null,
+  typedRaw: string,
+  rule: QuickOrderUnitRule,
+  unitAliases: UnitAliasMap,
+): boolean {
+  const typedKeys = new Set([
+    normalizeRuleKey(typedRaw),
+    typedUnit ? normalizeRuleKey(typedUnit) : null,
+  ].filter((entry): entry is string => Boolean(entry)));
+  const ruleKeys = [
+    rule.from_unit,
+    rule.from_unit_key,
+    rule.tracking_unit,
+    rule.is_custom_counting_unit ? null : rule.to_unit,
+  ]
+    .map((value) => normalizeUnitForComparison(value, unitAliases) ?? normalizeRuleKey(value))
+    .filter((entry): entry is string => Boolean(entry))
+    .map(normalizeRuleKey);
+  return ruleKeys.some((key) => typedKeys.has(key));
+}
+
+function resolveKnownInventoryUnit(input: {
+  typedRaw: string;
+  unitAliases: UnitAliasMap;
+  unitSynonyms?: { from_unit: string; to_unit: string }[];
+}): string | null {
+  const synonym = applyStockUnitSynonym(input.typedRaw, input.unitSynonyms);
+  if (isKnownUnit(synonym, input.unitAliases)) {
+    return normalizeUnit(synonym, input.unitAliases);
+  }
+  if (isKnownUnit(input.typedRaw, input.unitAliases)) {
+    return normalizeUnit(input.typedRaw, input.unitAliases);
+  }
+  return null;
+}
+
+function resolvePersonalUnitRule(input: {
+  item: CatalogItem;
+  rule: QuickOrderUnitRule;
+  typedUnit: string;
+  unitAliases: UnitAliasMap;
+}): ReturnType<typeof resolveUnit> {
+  const unit = normalizeUnitForComparison(input.rule.to_unit, input.unitAliases) ?? normalizeRuleKey(input.rule.to_unit);
+  const note = input.rule.is_custom_counting_unit
+    ? `Counted ${input.item.name} in ${input.rule.tracking_unit ?? input.rule.from_unit ?? unit}.`
+    : null;
+  return {
+    unit,
+    multiplier: Number(input.rule.multiplier ?? 1),
+    source: 'employee_rule',
+    rule: input.rule,
+    metadata: {
+      reason_codes: ['employee_unit_rule'],
+      resolution_trace: [`${input.typedUnit} -> ${unit} x${input.rule.multiplier ?? 1}`],
+      unit_source: 'employee_rule',
+      unit_resolution_scope: 'employee',
+      confidence: 0.96,
+      user_visible_note: note,
+    },
+  };
+}
+
+function resolveGlobalUnit(input: {
+  item: CatalogItem;
+  typedUnit: string | null;
+  typedRaw: string;
+  unitAliases: UnitAliasMap;
+  unitSynonyms?: { from_unit: string; to_unit: string }[];
+}): { unit: string; displayUnit: string } | null {
+  const globalUnits = globalUnitsForItem(input.item);
+  const typedCandidates = new Set([
+    input.typedUnit,
+    normalizeRuleKey(input.typedRaw),
+    normalizeUnitForComparison(applyStockUnitSynonym(input.typedRaw, input.unitSynonyms), input.unitAliases),
+  ].filter((entry): entry is string => Boolean(entry)).map((entry) => normalizeUnitForComparison(entry, input.unitAliases) ?? normalizeRuleKey(entry)));
+  for (const globalUnit of globalUnits) {
+    const normalizedGlobal = normalizeUnitForComparison(globalUnit, input.unitAliases) ?? normalizeRuleKey(globalUnit);
+    if (normalizedGlobal && typedCandidates.has(normalizedGlobal)) {
+      return { unit: input.typedUnit ?? normalizedGlobal, displayUnit: globalUnit };
+    }
+  }
+  return null;
+}
+
+function globalUnitsForItem(item: CatalogItem): string[] {
+  return [
+    item.order_unit,
+    item.default_order_unit,
+    item.default_unit,
+    item.base_unit,
+    item.pack_unit,
+    ...(Array.isArray(item.allowed_units) ? item.allowed_units : []),
+    ...(Array.isArray(item.unit_options) ? item.unit_options : []),
+  ].filter((unit): unit is string => typeof unit === 'string' && unit.trim().length > 0);
+}
+
+function buildUnitUnrecognizedError(input: {
+  item: CatalogItem;
+  quantity: number | null;
+  typedRaw: string;
+  employeeRules: QuickOrderUnitRule[];
+  unitSynonyms?: { from_unit: string; to_unit: string }[];
+  originalText: string;
+}): UnitUnrecognizedError {
+  const suggestedUnits = suggestedUnitsForError(input.item, input.employeeRules, input.unitSynonyms);
+  const suggestionLabel = formatQuotedUnitList(suggestedUnits);
+  const message = `I don't recognize '${input.typedRaw}' as a unit for ${input.item.name}. Did you mean ${suggestionLabel}?`;
+  return {
+    status: 'unit_unrecognized',
+    item: input.item.name,
+    item_id: input.item.id,
+    quantity: input.quantity,
+    unit_typed: input.typedRaw,
+    message,
+    suggested_units: suggestedUnits,
+    original_text: input.originalText,
+    resolution: {
+      reason_codes: ['unit_unrecognized'],
+      resolution_trace: [`Unrecognized unit "${input.typedRaw}" for ${input.item.name}.`],
+      unit_source: null,
+      unit_resolution_scope: 'unrecognized',
+      confidence: 1,
+      user_visible_note: message,
+    },
+    reason_codes: ['unit_unrecognized'],
+    resolution_trace: [`Unrecognized unit "${input.typedRaw}" for ${input.item.name}.`],
+    user_visible_note: message,
+  };
+}
+
+function suggestedUnitsForError(
+  item: CatalogItem,
+  employeeRules: QuickOrderUnitRule[],
+  unitSynonyms?: { from_unit: string; to_unit: string }[],
+): string[] {
+  const suggestions: string[] = [];
+  const seen = new Set<string>();
+  const add = (value: string | null | undefined) => {
+    const unit = value?.trim();
+    if (!unit) return;
+    const key = normalizeUnitForComparison(unit) ?? normalizeRuleKey(unit);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    suggestions.push(displayUnitLabel(unit) || unit);
+  };
+
+  const personal = employeeRules.find((rule) => rule.from_unit?.trim() || rule.tracking_unit?.trim() || rule.to_unit?.trim());
+  add(personal?.from_unit ?? personal?.tracking_unit ?? personal?.to_unit);
+  const globalUnit = item.order_unit ?? item.default_order_unit ?? item.default_unit ?? item.pack_unit ?? item.base_unit ?? null;
+  add(globalUnit);
+
+  const targetKeys = new Set(suggestions.map((unit) => normalizeUnitForComparison(unit) ?? normalizeRuleKey(unit)));
+  for (const synonym of unitSynonyms ?? []) {
+    const toKey = normalizeUnitForComparison(synonym.to_unit) ?? normalizeRuleKey(synonym.to_unit);
+    if (toKey && targetKeys.has(toKey)) add(synonym.from_unit);
+    if (suggestions.length >= 4) break;
+  }
+
+  return suggestions.slice(0, 4);
+}
+
+function formatQuotedUnitList(units: string[]): string {
+  const quoted = units.map((unit) => `'${unit}'`);
+  if (quoted.length === 0) return 'a valid unit';
+  if (quoted.length === 1) return quoted[0];
+  if (quoted.length === 2) return `${quoted[0]} or ${quoted[1]}`;
+  return `${quoted.slice(0, -1).join(', ')}, or ${quoted[quoted.length - 1]}`;
+}
+
+function locationMatches(ruleLocationId: string | null | undefined, locationId: string | null | undefined): boolean {
+  return ruleLocationId == null || (locationId != null && ruleLocationId === locationId);
+}
+
+function employeeMatches(
+  rule: { employee_name_key?: string | null; employee_user_id?: string | null },
+  context: { employeeNameKeys?: string[]; employeeUserId?: string | null },
+): boolean {
+  if (context.employeeUserId && rule.employee_user_id === context.employeeUserId) return true;
+  const keys = new Set((context.employeeNameKeys ?? []).map(normalizeRuleKey).filter(Boolean));
+  return Boolean(rule.employee_name_key && keys.has(normalizeRuleKey(rule.employee_name_key)));
+}
+
 function parseStatusSegment(
   segment: string,
   input: {
@@ -481,7 +999,7 @@ function parseStatusSegment(
     allowedUnitRules?: ItemAllowedUnitRule[];
     unitSynonyms?: { from_unit: string; to_unit: string }[];
   },
-): { statusItem: InventoryStatusItem; stockUpdate: StockOperation | null } | null {
+): { statusItem: InventoryStatusItem; stockUpdate: StockOperation | null; unitError?: UnitUnrecognizedError } | null {
   const v2Term = resolveStatusTerm({
     inputText: segment,
     statusTerms: input.statusTermRules ?? [],
@@ -563,19 +1081,22 @@ function parseStatusSegment(
       term.term.recommendation_action === 'use_existing_recommendation_engine'
     );
 
+  const stockResult = shouldCreateStock
+    ? buildStockOperation({
+        itemText,
+        quantity: remainingQty,
+        unit,
+        originalText: segment.trim(),
+        input,
+        confidence: statusItem.confidence,
+        approximateModifier: term.term.status === 'low' ? 'low' : null,
+      })
+    : null;
+
   return {
     statusItem,
-    stockUpdate: shouldCreateStock
-      ? buildStockOperation({
-          itemText,
-          quantity: remainingQty,
-          unit,
-          originalText: segment.trim(),
-          input,
-          confidence: statusItem.confidence,
-          approximateModifier: term.term.status === 'low' ? 'low' : null,
-        })
-      : null,
+    stockUpdate: isUnitUnrecognizedError(stockResult) ? null : stockResult,
+    unitError: isUnitUnrecognizedError(stockResult) ? stockResult : undefined,
   };
 }
 

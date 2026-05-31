@@ -59,5 +59,20 @@ target 'Babytuna' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    # Expo Updates generates a bash -c script phase that breaks when the
+    # project path contains spaces. Execute the script file directly instead.
+    installer.pods_project.targets.each do |target|
+      next unless target.name == 'EXUpdates'
+
+      target.shell_script_build_phases.each do |phase|
+        next unless phase.name == '[CP-User] Generate updates resources for expo-updates'
+
+        phase.shell_script = phase.shell_script.gsub(
+          'bash -l -c "$PODS_TARGET_SRCROOT/../scripts/create-updates-resources-ios.sh"',
+          'bash -l "$PODS_TARGET_SRCROOT/../scripts/create-updates-resources-ios.sh"',
+        )
+      end
+    end
   end
 end

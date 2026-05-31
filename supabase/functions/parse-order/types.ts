@@ -1,4 +1,4 @@
-export type ParseStatus = 'ok' | 'needs_review' | 'needs_clarification' | 'qa_answer' | 'error';
+export type ParseStatus = 'ok' | 'needs_review' | 'needs_clarification' | 'unit_unrecognized' | 'qa_answer' | 'error';
 
 export type QuickOrderSource = 'typed' | 'voice';
 
@@ -7,6 +7,7 @@ export type ComposerMode = 'order' | 'inventory';
 export type ProcessQuickOrderStatus =
   | 'success'
   | 'needs_clarification'
+  | 'unit_unrecognized'
   | 'blocked'
   | 'partial_success'
   | 'qa_answer'
@@ -150,6 +151,7 @@ export type QuickOrderResolutionMetadata = {
   resolution_trace?: string[];
   alias_source?: 'employee' | 'global' | 'exact' | 'fuzzy' | null;
   unit_source?: 'employee_rule' | 'global_rule' | 'item_default' | 'typed' | null;
+  unit_resolution_scope?: 'employee' | 'global' | 'item_default' | 'unrecognized' | null;
   reorder_rule_source?: 'employee_rule' | 'global_rule' | 'target_stock' | 'none' | null;
   status_term_applied?: string | null;
   confidence?: number;
@@ -412,6 +414,21 @@ export type StockOperation = {
   user_visible_note?: string | null;
 };
 
+export type UnitUnrecognizedError = {
+  status: 'unit_unrecognized';
+  item: string;
+  item_id?: string | null;
+  quantity: number | null;
+  unit_typed: string;
+  message: string;
+  suggested_units: string[];
+  original_text?: string | null;
+  resolution?: QuickOrderResolutionMetadata | null;
+  reason_codes?: string[];
+  resolution_trace?: string[];
+  user_visible_note?: string | null;
+};
+
 export type InventoryStatusTermStatus = 'enough' | 'zero' | 'partial' | 'low' | 'unknown';
 export type InventoryStatusRemainingUnitBehavior = 'none' | 'detected_unit' | 'item_default_unit';
 export type InventoryStatusRecommendationAction =
@@ -447,6 +464,8 @@ export type InventoryStatusItem = {
   original_text: string;
   confidence: number;
   issue?: string | null;
+  missing_quantity?: number | null;
+  suggested_units?: string[];
   resolution?: QuickOrderResolutionMetadata | null;
   reason_codes?: string[];
   resolution_trace?: string[];
@@ -470,6 +489,7 @@ export type SafetyWarning = {
   item_name?: string | null;
   quantity?: number | null;
   unit?: string | null;
+  original_text?: string | null;
   severity: 'info' | 'warning' | 'blocked';
   resolution?: QuickOrderResolutionMetadata;
   reason_codes?: string[];
@@ -693,6 +713,7 @@ export type ParseFlag = {
     | 'unresolved_item'
     | 'ambiguous_item'
     | 'invalid_unit'
+    | 'unit_unrecognized'
     | 'unsupported_unit'
     | 'invalid_json'
     | 'quantity_conflict';
@@ -749,6 +770,7 @@ export type PendingQuickOrderClarification = {
     | 'quantity_safety'
     | 'manager_approval_required'
     | 'low_confidence_match'
+    | 'unit_unrecognized'
     | 'invalid_unit';
   item_id: string | null;
   item_name: string;
@@ -879,6 +901,11 @@ export type ParseDiagnostics = {
 
 export type ParseResponse = {
   status?: ParseStatus;
+  item?: string;
+  quantity?: number | null;
+  unit_typed?: string;
+  message?: string;
+  suggested_units?: string[];
   assistant_message?: string;
   reply_text: string;
   parsed_items: ParsedItem[];

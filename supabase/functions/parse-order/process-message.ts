@@ -6,25 +6,30 @@ import { normalizeModelUsed, routeQuickOrderModel, type QuickOrderModelConfig } 
 import { parseQuickOrder, PARSER_VERSION } from './orchestrator.ts';
 import { buildQuickOrderRecommendations, type RecommendationHistoryOrder } from './recommendation-engine.ts';
 import { buildProcessMessages } from './response-formatter.ts';
+import { normalizeRuleKey } from './rule-resolver.ts';
 import { routeQuickOrderSegments, type QuickOrderSegmentRoute } from './segment-router.ts';
 import { applyStockSafetyLimits, deduplicatePendingClarifications, validateQuickOrderSafety } from './safety-engine.ts';
 import { applyStockUnitSynonyms, extractStockUpdates, type StockUpdateExtraction } from './stock-updates.ts';
 import { QuickOrderTimer } from './timing.ts';
 import { validateParsedLine } from './validator.ts';
 import type { CatalogSearchIndex } from './catalog-search-index.ts';
+import { deriveAllowedUnitLabels, displayUnitLabel, formatQuantityWithUnit } from './units.ts';
 import type {
-  CatalogItem,
-  EmployeeQuickOrderAlias,
-  InventoryReorderRule,
-  InventoryStatusTerm,
+	  CatalogItem,
+	  ComposerMode,
+	  EmployeeQuickOrderAlias,
+	  InventoryReorderRule,
+	  InventoryStatusItem,
+	  InventoryStatusTerm,
   ItemAllowedUnitRule,
   ItemOrderProfile,
   ItemOrderLimit,
   ItemReorderRule,
-  ParserCorrection,
-  ParseResponse,
-  ParsedItem,
-  ProcessQuickOrderMessageRequest,
+	  ParserCorrection,
+	  ParseResponse,
+	  ParsedItem,
+	  PendingQuickOrderClarification,
+	  ProcessQuickOrderMessageRequest,
   ProcessQuickOrderResponse,
   QuickOrderAliasRule,
   QuickOrderReorderRule,
@@ -32,7 +37,8 @@ import type {
   QuickOrderUnitRule,
   QuickOrderMessage,
   QuickOrderModelUsed,
-  StockOperation,
+	  StockOperation,
+	  UnitUnrecognizedError,
 } from './types.ts';
 import type { UnitAliasMap } from './units.ts';
 
@@ -72,9 +78,22 @@ export async function processQuickOrderMessage(
   input: ProcessQuickOrderMessageInput,
 ): Promise<ProcessQuickOrderResponse> {
   const timer = new QuickOrderTimer();
-  const request = normalizeRequest(input.request);
+  const normalizedRequest = normalizeRequest(input.request);
   const orderCatalog = input.catalog;
   const globalOrderCatalog = input.globalCatalog;
+  const inventoryFollowUp = resolvePendingInventoryUnitFollowUp({
+    message: normalizedRequest.message,
+    mode: normalizedRequest.mode,
+    previousMessages: normalizedRequest.recent_messages ?? input.previousMessages,
+    catalog: orderCatalog,
+    unitAliases: input.unitAliases,
+    existingCount: normalizedRequest.existing_items.length > 0 ? normalizedRequest.existing_items.length : input.existingParsedItems.length,
+    timings: timer.snapshot(),
+  });
+  if (inventoryFollowUp?.kind === 'ambiguous') return inventoryFollowUp.response;
+  const request = inventoryFollowUp?.kind === 'resolved'
+    ? { ...normalizedRequest, message: inventoryFollowUp.message }
+    : normalizedRequest;
   const catalogIndex = buildCatalogSearchIndex(orderCatalog, input.corrections);
   const globalCatalogIndex = globalOrderCatalog
     ? buildCatalogSearchIndex(globalOrderCatalog, input.corrections)
@@ -92,11 +111,21 @@ export async function processQuickOrderMessage(
     unitAliases: input.unitAliases,
     inventoryStatusTerms: input.inventoryStatusTerms ?? [],
     quickOrderStatusTerms: input.quickOrderStatusTerms ?? [],
+    unitRules: input.unitRules ?? [],
+    employeeNameKeys: input.employeeNameKeys ?? [],
+    employeeUserId: request.user_id,
+    locationId: request.location_id,
   });
   if (
     request.mode === 'inventory' &&
     request.mode_conflict_resolution !== 'keep_inventory' &&
     isExplicitOrderPhrase(request.message) &&
+    !isLeadingEmployeeInventoryUnitDraft(request.message, {
+      unitRules: input.unitRules ?? [],
+      employeeNameKeys: input.employeeNameKeys ?? [],
+      employeeUserId: request.user_id,
+      locationId: request.location_id,
+    }) &&
     isInventoryDraftMessage(stripExplicitOrderVerb(request.message), input.unitAliases)
   ) {
     return buildModeConflictResponse({
@@ -220,10 +249,21 @@ export async function processQuickOrderMessage(
       ),
     };
   });
+  if (stockExtraction.unitErrors.length > 0) {
+    return buildUnitUnrecognizedProcessResponse({
+      error: stockExtraction.unitErrors[0],
+      request,
+      existingCount: request.existing_items.length > 0 ? request.existing_items.length : input.existingParsedItems.length,
+      catalogCount: orderCatalog.length,
+      classification,
+      timings: timer.snapshot(),
+    });
+  }
   const inventoryReviewItems = inventoryModeStock
     ? buildInventoryModeReviewItems({
         segments: segmentRoute.stockSegments,
         statusSegments: stockExtraction.statusItems.map((item) => item.original_text),
+        acceptedStockSegments: stockExtraction.stockUpdates.map((update) => update.original_text),
         catalog: orderCatalog,
         catalogIndex,
         unitAliases: input.unitAliases,
@@ -344,8 +384,8 @@ export async function processQuickOrderMessage(
     }
   }
 
-  const recommendationResult = shouldRecommend
-    ? timer.measure('recommendation_engine', () => buildQuickOrderRecommendations({
+	  const recommendationResult = shouldRecommend
+	    ? timer.measure('recommendation_engine', () => buildQuickOrderRecommendations({
         catalog: orderCatalog,
         stockUpdates: stockSafety.accepted,
         recentOrders: input.recentOrders,
@@ -366,30 +406,50 @@ export async function processQuickOrderMessage(
         maxItems: inventoryModeStock ? Math.max(1, stockSafety.accepted.length) : undefined,
         includeHistoryCandidates: !inventoryModeStock,
       }))
-    : { recommendations: [], warnings: [] };
-
-  const allWarnings = [...safety.warnings, ...recommendationResult.warnings, ...stockSafety.warnings];
-  const allBlocked = [...safety.blockedOperations, ...stockSafety.blocked];
-  const messages = timer.measure('response_build', () => buildProcessMessages({
-    parseResponse: safety.response,
-    stockUpdates: stockSafety.accepted,
-    recommendations: recommendationResult.recommendations,
-    safetyWarnings: allWarnings,
-    blockedOperations: allBlocked,
-  }));
+	    : { recommendations: [], warnings: [] };
+	
+	  const allWarnings = [...safety.warnings, ...recommendationResult.warnings, ...stockSafety.warnings];
+	  const allBlocked = [...safety.blockedOperations, ...stockSafety.blocked];
+	  const inventoryPendingClarifications = buildInventoryStatusClarifications({
+	    statusItems: stockExtraction.statusItems,
+	    catalog: orderCatalog,
+	  });
+	  const pendingClarifications = deduplicatePendingClarifications([
+	    ...safety.pendingClarifications,
+	    ...inventoryPendingClarifications,
+	  ]);
+	  const responseWithClarifications: ParseResponse = {
+	    ...safety.response,
+	    status: pendingClarifications.length > 0 && safety.response.status === 'ok'
+	      ? 'needs_clarification'
+	      : safety.response.status,
+	    pending_actions: pendingClarifications,
+	    pending_clarifications: pendingClarifications,
+	    diagnostics: {
+	      ...(safety.response.diagnostics ?? {}),
+	      pending_action_count: pendingClarifications.length,
+	    },
+	  };
+	  const messages = timer.measure('response_build', () => buildProcessMessages({
+	    parseResponse: responseWithClarifications,
+	    stockUpdates: stockSafety.accepted,
+	    recommendations: recommendationResult.recommendations,
+	    safetyWarnings: allWarnings,
+	    blockedOperations: allBlocked,
+	  }));
 
   const actualModelUsed: QuickOrderModelUsed = llmIntentRoute && llmIntentRouting?.llmFailed === false
       ? normalizeModelUsed(intentRouteModel)
     : safety.response.metrics?.llm_used
       ? modelRoute.modelUsed
     : 'none';
-  const processStatus = deriveProcessStatus({
-    parseResponse: safety.response,
-    stockUpdates: stockSafety.accepted,
-    recommendationsCount: recommendationResult.recommendations.length,
-    warningsCount: allWarnings.filter((warning) => warning.severity !== 'info').length,
-    blockedCount: allBlocked.length,
-    stockPersistError,
+	  const processStatus = deriveProcessStatus({
+	    parseResponse: responseWithClarifications,
+	    stockUpdates: stockSafety.accepted,
+	    recommendationsCount: recommendationResult.recommendations.length,
+	    warningsCount: allWarnings.filter((warning) => warning.severity !== 'info').length,
+	    blockedCount: allBlocked.length,
+	    stockPersistError,
   });
   const timings = timer.snapshot();
 
@@ -401,19 +461,17 @@ export async function processQuickOrderMessage(
     }));
   }
 
-  const pendingClarifications = deduplicatePendingClarifications(safety.pendingClarifications);
-
-  return {
-    ...safety.response,
-    status: processStatus,
-    legacy_status: safety.response.status ?? 'ok',
-    display_message: stockPersistError ?? messages.displayMessage,
-    speech_message: stockPersistError ?? messages.speechMessage,
-    assistant_message: stockPersistError ?? messages.displayMessage,
-    reply_text: stockPersistError ?? messages.displayMessage,
-    parsed_items: safety.response.parsed_items,
-    cart_operations: safety.response.operations ?? [],
-    operations: safety.response.operations ?? [],
+	  return {
+	    ...responseWithClarifications,
+	    status: processStatus,
+	    legacy_status: responseWithClarifications.status ?? 'ok',
+	    display_message: stockPersistError ?? messages.displayMessage,
+	    speech_message: stockPersistError ?? messages.speechMessage,
+	    assistant_message: stockPersistError ?? messages.displayMessage,
+	    reply_text: stockPersistError ?? messages.displayMessage,
+	    parsed_items: responseWithClarifications.parsed_items,
+	    cart_operations: responseWithClarifications.operations ?? [],
+	    operations: responseWithClarifications.operations ?? [],
     stock_updates: stockSafety.accepted,
     recommendations: recommendationResult.recommendations,
     clarifications: pendingClarifications,
@@ -422,11 +480,11 @@ export async function processQuickOrderMessage(
     safety_warnings: allWarnings,
     blocked_operations: allBlocked,
     model_used: actualModelUsed,
-    confidence: responseConfidence(safety.response, stockSafety.accepted),
-    timings,
-    diagnostics: {
-      ...(safety.response.diagnostics ?? {}),
-      input_classification: classification.classification,
+	    confidence: responseConfidence(responseWithClarifications, stockSafety.accepted),
+	    timings,
+	    diagnostics: {
+	      ...(responseWithClarifications.diagnostics ?? {}),
+	      input_classification: classification.classification,
       input_classification_reason: classification.reason,
       segment_count: segmentRoute.segments.length,
       order_segment_count: segmentRoute.orderSegments.length,
@@ -469,6 +527,559 @@ export async function processQuickOrderMessage(
 }
 
 const ZERO_ORDER_EXPLANATION = "I didn't order this because it met the stock requirements.";
+
+function buildUnitUnrecognizedProcessResponse(input: {
+  error: UnitUnrecognizedError;
+  request: ProcessQuickOrderMessageRequest;
+  existingCount: number;
+  catalogCount: number;
+  classification: QuickOrderInputClassificationResult;
+  timings: ProcessQuickOrderResponse['timings'];
+}): ProcessQuickOrderResponse {
+  const error = input.error;
+  const clarification = {
+    id: `unit_unrecognized:${error.item_id ?? error.item}:${error.unit_typed}`,
+    type: 'unit_unrecognized' as const,
+    item_id: error.item_id ?? null,
+    item_name: error.item,
+    incoming_item: {
+      item_id: error.item_id ?? null,
+      item_name: error.item,
+      display_name: error.item,
+      name: error.item,
+      item_text: error.item,
+      raw_token: error.original_text ?? error.item,
+      raw_text: error.original_text ?? error.item,
+      quantity: error.quantity,
+      unit: error.unit_typed,
+      unit_raw: error.unit_typed,
+      valid_units: error.suggested_units,
+      confidence: 1,
+      needs_clarification: true,
+      unresolved: false,
+      notes: null,
+      issue: error.message,
+      issue_code: 'invalid_unit' as const,
+      action: 'Fix unit' as const,
+      parse_source: 'deterministic' as const,
+      status: 'invalid_unit' as const,
+      reason_codes: error.reason_codes,
+      resolution_trace: error.resolution_trace,
+      user_visible_note: error.user_visible_note,
+      resolution: error.resolution ?? undefined,
+      source: 'remaining_inventory' as const,
+    },
+    message: error.message,
+    actions: error.suggested_units.slice(0, 4).map((unit) => ({
+      id: 'use_unit' as const,
+      label: unit,
+      unit,
+      preview: error.quantity != null ? `${error.quantity} ${unit}` : unit,
+    })),
+  };
+
+  return {
+    status: 'unit_unrecognized',
+    legacy_status: 'unit_unrecognized',
+    item: error.item,
+    quantity: error.quantity,
+    unit_typed: error.unit_typed,
+    message: error.message,
+    suggested_units: error.suggested_units,
+    assistant_message: error.message,
+    reply_text: error.message,
+    display_message: error.message,
+    speech_message: error.message,
+    parsed_items: [],
+    cart_operations: [],
+    operations: [],
+    stock_updates: [],
+    recommendations: [],
+    clarifications: [clarification],
+    pending_actions: [clarification],
+    pending_clarifications: [clarification],
+    flags: [{
+      type: 'unit_unrecognized',
+      message: error.message,
+      raw_token: error.original_text ?? undefined,
+      item_id: error.item_id ?? undefined,
+      reason: 'unit_unrecognized',
+    }],
+    suggestions: [],
+    safety_warnings: [],
+    blocked_operations: [],
+    model_used: 'none',
+    confidence: 1,
+    timings: input.timings,
+    diagnostics: {
+      parser_version: PARSER_VERSION,
+      parse_mode: 'deterministic_only',
+      catalog_count: input.catalogCount,
+      candidate_count: 1,
+      items_received: 1,
+      items_accepted: 0,
+      items_rejected: 1,
+      rejected_reasons: ['unit_unrecognized'],
+      pending_action_count: 1,
+      raw_input_length: input.request.message.length,
+      candidate_lines: 1,
+      input_classification: input.classification.classification,
+      input_classification_reason: input.classification.reason,
+      error_code: 'unit_unrecognized',
+    },
+    session_state: {
+      total_items: input.existingCount,
+      ready_to_submit: false,
+    },
+    assistantMessage: {
+      type: 'clarification',
+      text: error.message,
+      actions: [],
+    },
+    contextPatch: {
+      lastReferencedItemId: error.item_id ?? null,
+      lastReferencedItemName: error.item,
+      lastAction: 'unit_unrecognized',
+      pendingClarificationId: clarification.id,
+    },
+  };
+}
+
+type PendingInventoryUnitContext = {
+  itemId: string | null;
+  itemName: string;
+  sourceText: string | null;
+  message: string | null;
+  missingQuantity: number | null;
+  suggestedUnits: string[];
+};
+
+type BareUnitFollowUp = {
+  quantity: number | null;
+  unit: string;
+};
+
+function buildInventoryStatusClarifications(input: {
+  statusItems: InventoryStatusItem[];
+  catalog: CatalogItem[];
+}): PendingQuickOrderClarification[] {
+  const catalogById = new Map(input.catalog.map((item) => [item.id, item] as const));
+  return input.statusItems
+    .filter((item) => item.recommendation_action === 'ask_quantity' && item.issue === 'compound_count_needs_unit')
+    .map((statusItem): PendingQuickOrderClarification | null => {
+      const itemId = statusItem.item_id;
+      const itemName = statusItem.item_name ?? statusItem.item_text;
+      if (!itemId || !itemName) return null;
+      const catalogItem = catalogById.get(itemId) ?? null;
+      const suggestedUnits = normalizeSuggestedUnitChoices(
+        statusItem.suggested_units && statusItem.suggested_units.length > 0
+          ? statusItem.suggested_units
+          : deriveAllowedUnitLabels(catalogItem),
+      );
+      if (suggestedUnits.length === 0) return null;
+      const missingQuantity = statusItem.missing_quantity ?? extractCompoundMissingQuantity(statusItem.original_text);
+      const incoming: ParsedItem = {
+        item_id: itemId,
+        item_name: itemName,
+        display_name: itemName,
+        name: itemName,
+        item_text: statusItem.item_text || itemName,
+        raw_token: statusItem.original_text,
+        raw_text: statusItem.original_text,
+        quantity: missingQuantity,
+        unit: null,
+        valid_units: suggestedUnits,
+        confidence: statusItem.confidence,
+        needs_clarification: true,
+        unresolved: false,
+        notes: null,
+        issue: statusItem.user_visible_note ?? statusItem.issue ?? 'Choose a unit.',
+        issue_code: 'unit_missing',
+        action: 'Choose unit',
+        parse_source: 'deterministic',
+        status: 'missing_unit',
+        source: 'remaining_inventory',
+        reason_codes: statusItem.reason_codes,
+        resolution_trace: statusItem.resolution_trace,
+        user_visible_note: statusItem.user_visible_note,
+        resolution: statusItem.resolution ?? undefined,
+      };
+      return {
+        id: buildStableClarificationId('inventory_missing_unit', itemId, statusItem.original_text),
+        type: 'missing_unit',
+        item_id: itemId,
+        item_name: itemName,
+        incoming_item: incoming,
+        message: statusItem.user_visible_note ?? `${itemName} needs a unit before I can combine the counts.`,
+        actions: suggestedUnits.slice(0, 4).map((unit) => ({
+          id: 'use_unit' as const,
+          label: displayUnitLabel(unit) || unit,
+          unit,
+          preview: missingQuantity != null ? formatQuantityWithUnit(missingQuantity, unit) : unit,
+        })),
+      };
+    })
+    .filter((entry): entry is PendingQuickOrderClarification => entry != null);
+}
+
+function resolvePendingInventoryUnitFollowUp(input: {
+  message: string;
+  mode?: ComposerMode;
+  previousMessages: QuickOrderMessage[];
+  catalog: CatalogItem[];
+  unitAliases: UnitAliasMap;
+  existingCount: number;
+  timings: ProcessQuickOrderResponse['timings'];
+}): { kind: 'resolved'; message: string } | { kind: 'ambiguous'; response: ProcessQuickOrderResponse } | null {
+  if (input.mode !== 'inventory') return null;
+  const followUp = parseBareUnitFollowUp(input.message, input.unitAliases);
+  if (!followUp) return null;
+  const contexts = latestPendingInventoryUnitContexts(input.previousMessages, input.catalog);
+  if (contexts.length === 0) return null;
+
+  const quantityMatched = followUp.quantity == null
+    ? []
+    : contexts.filter((context) =>
+        context.missingQuantity != null && Math.abs(context.missingQuantity - followUp.quantity!) < 0.0001
+      );
+  const candidates = quantityMatched.length > 0 ? quantityMatched : contexts;
+  const uniqueCandidates = dedupeInventoryUnitContexts(candidates);
+  if (uniqueCandidates.length === 1) {
+    const corrected = buildInventoryUnitFollowUpText(uniqueCandidates[0], followUp);
+    return corrected ? { kind: 'resolved', message: corrected } : null;
+  }
+
+  return {
+    kind: 'ambiguous',
+    response: buildInventoryFollowUpAmbiguityResponse({
+      followUp,
+      contexts: uniqueCandidates,
+      existingCount: input.existingCount,
+      timings: input.timings,
+      rawMessage: input.message,
+    }),
+  };
+}
+
+function parseBareUnitFollowUp(message: string, unitAliases: UnitAliasMap): BareUnitFollowUp | null {
+  const candidates = parseDeterministicOrder(message, unitAliases);
+  if (candidates.length !== 1) return null;
+  const candidate = candidates[0];
+  if (candidate.item_text.trim()) return null;
+  if (!candidate.unit) return null;
+  return {
+    quantity: candidate.quantity,
+    unit: candidate.unit,
+  };
+}
+
+function latestPendingInventoryUnitContexts(
+  messages: QuickOrderMessage[],
+  catalog: CatalogItem[],
+): PendingInventoryUnitContext[] {
+  const catalogById = new Map(catalog.map((item) => [item.id, item] as const));
+  for (const message of [...messages].reverse()) {
+    const contexts = dedupeInventoryUnitContexts([
+      ...pendingContextsFromClarifications(readArrayField(message, 'pending_clarifications'), catalogById),
+      ...pendingContextsFromClarifications(readArrayField(message, 'pendingClarifications'), catalogById),
+      ...pendingContextsFromSafetyWarnings(readArrayField(message, 'safety_warnings'), catalogById),
+      ...pendingContextsFromSafetyWarnings(readArrayField(message, 'safetyWarnings'), catalogById),
+      ...pendingContextsFromInventoryUpdates(readArrayField(message, 'inventory_updates'), catalogById),
+      ...pendingContextsFromInventoryUpdates(readArrayField(message, 'inventoryUpdates'), catalogById),
+    ]);
+    if (contexts.length > 0) return contexts;
+  }
+  return [];
+}
+
+function pendingContextsFromClarifications(
+  values: unknown[],
+  catalogById: Map<string, CatalogItem>,
+): PendingInventoryUnitContext[] {
+  const contexts: PendingInventoryUnitContext[] = [];
+  for (const value of values) {
+    const clarification = asRecord(value);
+    if (!clarification) continue;
+    const actions = readArrayField(clarification, 'actions');
+    const unitActions = actions
+      .map(asRecord)
+      .filter((action): action is Record<string, unknown> => action != null && readStringField(action, 'id') === 'use_unit');
+    if (unitActions.length === 0) continue;
+    const incoming = asRecord(clarification.incoming_item) ?? asRecord(clarification.incomingItem);
+    const sourceText =
+      readStringField(incoming, 'raw_text') ??
+      readStringField(incoming, 'raw_token') ??
+      readStringField(clarification, 'source_text');
+    const itemId = readStringField(clarification, 'item_id') ?? readStringField(incoming, 'item_id');
+    const itemName =
+      readStringField(clarification, 'item_name') ??
+      readStringField(incoming, 'item_name') ??
+      readStringField(incoming, 'display_name');
+    if (!itemName) continue;
+    const suggestedUnits = normalizeSuggestedUnitChoices(
+      unitActions
+        .map((action) => readStringField(action, 'unit') ?? readStringField(action, 'label'))
+        .filter((unit): unit is string => Boolean(unit)),
+    );
+    contexts.push({
+      itemId,
+      itemName,
+      sourceText,
+      message: readStringField(clarification, 'message'),
+      missingQuantity:
+        readNumberField(incoming, 'quantity') ??
+        extractCompoundMissingQuantity(sourceText) ??
+        extractCompoundMissingQuantity(readStringField(clarification, 'message')),
+      suggestedUnits,
+    });
+  }
+  return contexts.map((context) => hydrateContextUnits(context, catalogById));
+}
+
+function pendingContextsFromSafetyWarnings(
+  values: unknown[],
+  catalogById: Map<string, CatalogItem>,
+): PendingInventoryUnitContext[] {
+  const contexts: PendingInventoryUnitContext[] = [];
+  for (const value of values) {
+    const warning = asRecord(value);
+    if (!warning) continue;
+    const type = readStringField(warning, 'type');
+    const reasonCodes = readArrayField(warning, 'reason_codes').map((entry) => typeof entry === 'string' ? entry : '');
+    const likelyMissingCompoundUnit =
+      reasonCodes.includes('compound_count_needs_unit') ||
+      /unit.+\b\d+(?:\.\d+)?\b|what unit/i.test(readStringField(warning, 'message') ?? '');
+    if (type !== 'recommendation_unavailable' || !likelyMissingCompoundUnit) continue;
+    const itemName = readStringField(warning, 'item_name');
+    if (!itemName) continue;
+    const sourceText = readStringField(warning, 'original_text');
+    contexts.push(hydrateContextUnits({
+      itemId: readStringField(warning, 'item_id'),
+      itemName,
+      sourceText,
+      message: readStringField(warning, 'message'),
+      missingQuantity:
+        extractCompoundMissingQuantity(sourceText) ??
+        extractCompoundMissingQuantity(readStringField(warning, 'message')),
+      suggestedUnits: [],
+    }, catalogById));
+  }
+  return contexts;
+}
+
+function pendingContextsFromInventoryUpdates(
+  values: unknown[],
+  catalogById: Map<string, CatalogItem>,
+): PendingInventoryUnitContext[] {
+  const contexts: PendingInventoryUnitContext[] = [];
+  for (const value of values) {
+    const row = asRecord(value);
+    if (!row) continue;
+    const status = readStringField(row, 'status');
+    const issueMessage = readStringField(row, 'issue_message');
+    if (status !== 'needs_input' && !issueMessage) continue;
+    const itemName = readStringField(row, 'item_name');
+    if (!itemName) continue;
+    const sourceText = readStringField(row, 'source_text') ?? readStringField(row, 'composer_prefill');
+    contexts.push(hydrateContextUnits({
+      itemId: readStringField(row, 'item_id'),
+      itemName,
+      sourceText,
+      message: issueMessage,
+      missingQuantity:
+        extractCompoundMissingQuantity(sourceText) ??
+        extractCompoundMissingQuantity(issueMessage),
+      suggestedUnits: [],
+    }, catalogById));
+  }
+  return contexts;
+}
+
+function hydrateContextUnits(
+  context: PendingInventoryUnitContext,
+  catalogById: Map<string, CatalogItem>,
+): PendingInventoryUnitContext {
+  if (context.suggestedUnits.length > 0) return context;
+  const catalogItem = context.itemId ? catalogById.get(context.itemId) ?? null : null;
+  return {
+    ...context,
+    suggestedUnits: normalizeSuggestedUnitChoices(deriveAllowedUnitLabels(catalogItem)),
+  };
+}
+
+function buildInventoryUnitFollowUpText(
+  context: PendingInventoryUnitContext,
+  followUp: BareUnitFollowUp,
+): string | null {
+  const sourceText = context.sourceText?.trim();
+  const quantity = followUp.quantity ?? context.missingQuantity;
+  if (quantity == null || !Number.isFinite(quantity)) return null;
+  const unit = displayUnitLabel(followUp.unit) || followUp.unit;
+
+  if (sourceText) {
+    const compound = replaceCompoundMissingUnit(sourceText, quantity, unit);
+    if (compound) return compound;
+  }
+
+  return `${context.itemName} ${quantity} ${unit}`;
+}
+
+function replaceCompoundMissingUnit(sourceText: string, quantity: number, unit: string): string | null {
+  const escapedQuantity = String(quantity).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const exact = new RegExp(`(\\+\\s*)${escapedQuantity}(\\s*)$`, 'i');
+  if (exact.test(sourceText)) return sourceText.replace(exact, `$1${quantity} ${unit}$2`);
+  const trailingQuantity = /(\+\s*)(\d+\s+\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?|\.\d+)(\s*)$/i;
+  if (trailingQuantity.test(sourceText)) return sourceText.replace(trailingQuantity, `$1${quantity} ${unit}$3`);
+  return null;
+}
+
+function buildInventoryFollowUpAmbiguityResponse(input: {
+  followUp: BareUnitFollowUp;
+  contexts: PendingInventoryUnitContext[];
+  existingCount: number;
+  timings: ProcessQuickOrderResponse['timings'];
+  rawMessage: string;
+}): ProcessQuickOrderResponse {
+  const quantityLabel = formatQuantityWithUnit(input.followUp.quantity, input.followUp.unit);
+  const itemList = input.contexts
+    .map((context) => context.itemName)
+    .filter(Boolean)
+    .slice(0, 4)
+    .join(', ');
+  const message = itemList
+    ? `Which item is ${quantityLabel} for? Include the item name, such as "${input.contexts[0].itemName} ${quantityLabel}".`
+    : `Which item is ${quantityLabel} for? Include the item name.`;
+  return {
+    status: 'needs_clarification',
+    legacy_status: 'needs_clarification',
+    assistant_message: message,
+    reply_text: message,
+    display_message: message,
+    speech_message: message,
+    parsed_items: [],
+    cart_operations: [],
+    operations: [],
+    stock_updates: [],
+    recommendations: [],
+    clarifications: [],
+    pending_actions: [],
+    pending_clarifications: [],
+    flags: [],
+    suggestions: [],
+    safety_warnings: [],
+    blocked_operations: [],
+    model_used: 'none',
+    confidence: 0.9,
+    timings: input.timings,
+    diagnostics: {
+      parser_version: PARSER_VERSION,
+      parse_mode: 'inventory_followup_ambiguous',
+      raw_input_length: input.rawMessage.length,
+      input_classification: 'current_stock_update',
+      input_classification_reason: 'pending_inventory_unit_followup_ambiguous',
+      pending_action_count: input.contexts.length,
+    },
+    session_state: {
+      total_items: input.existingCount,
+      ready_to_submit: false,
+    },
+    assistantMessage: {
+      type: 'clarification',
+      text: message,
+      actions: [],
+    },
+    contextPatch: {
+      lastAction: 'pending_inventory_unit_followup_ambiguous',
+    },
+  };
+}
+
+function dedupeInventoryUnitContexts(contexts: PendingInventoryUnitContext[]): PendingInventoryUnitContext[] {
+  const byKey = new Map<string, PendingInventoryUnitContext>();
+  for (const context of contexts) {
+    const key = `${context.itemId ?? ''}:${normalizeContextText(context.sourceText) || normalizeContextText(context.itemName)}`;
+    if (!byKey.has(key)) byKey.set(key, context);
+  }
+  return [...byKey.values()];
+}
+
+function normalizeSuggestedUnitChoices(units: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const unit of units) {
+    const label = displayUnitLabel(unit);
+    if (!label) continue;
+    const key = normalizeRuleKey(label);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(label);
+  }
+  return result;
+}
+
+function extractCompoundMissingQuantity(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const fromPlus = value.match(/\+\s*(\d+\s+\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?|\.\d+)\s*(?:more)?(?:[.?!])?\s*$/i);
+  if (fromPlus) return parseFollowUpQuantity(fromPlus[1]);
+  const fromMessage = value.match(/\bplus\s+(\d+\s+\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?|\.\d+)\s+(?:more|[a-z]+)?/i);
+  return fromMessage ? parseFollowUpQuantity(fromMessage[1]) : null;
+}
+
+function parseFollowUpQuantity(value: string): number | null {
+  const text = value.trim().replace(/\s+/g, ' ');
+  const mixed = text.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)$/);
+  if (mixed) {
+    const denominator = Number(mixed[3]);
+    if (denominator <= 0) return null;
+    const result = Number(mixed[1]) + Number(mixed[2]) / denominator;
+    return Number.isFinite(result) ? result : null;
+  }
+  const fraction = text.match(/^(\d+)\s*\/\s*(\d+)$/);
+  if (fraction) {
+    const denominator = Number(fraction[2]);
+    if (denominator <= 0) return null;
+    const result = Number(fraction[1]) / denominator;
+    return Number.isFinite(result) ? result : null;
+  }
+  const result = Number(text);
+  return Number.isFinite(result) ? result : null;
+}
+
+function buildStableClarificationId(prefix: string, itemId: string, sourceText: string): string {
+  return `${prefix}:${itemId}:${normalizeContextText(sourceText).slice(0, 48)}`;
+}
+
+function normalizeContextText(value: string | null | undefined): string {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function readArrayField(value: unknown, key: string): unknown[] {
+  const record = asRecord(value);
+  const field = record?.[key];
+  return Array.isArray(field) ? field : [];
+}
+
+function readStringField(value: unknown, key: string): string | null {
+  const record = asRecord(value);
+  const field = record?.[key];
+  return typeof field === 'string' && field.trim() ? field.trim() : null;
+}
+
+function readNumberField(value: unknown, key: string): number | null {
+  const record = asRecord(value);
+  const field = record?.[key];
+  return typeof field === 'number' && Number.isFinite(field) ? field : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
 
 function buildZeroOrderExplanationResponse(input: {
   message: string;
@@ -717,14 +1328,17 @@ function applyAllowedUnitRulesToCatalog(
 function buildInventoryModeReviewItems(input: {
   segments: string[];
   statusSegments?: string[];
+  acceptedStockSegments?: string[];
   catalog: CatalogItem[];
   catalogIndex: CatalogSearchIndex;
   unitAliases: UnitAliasMap;
 }): ParsedItem[] {
   const items: ParsedItem[] = [];
   const statusSegments = new Set((input.statusSegments ?? []).map((segment) => segment.trim().toLowerCase()));
+  const acceptedStockSegments = new Set((input.acceptedStockSegments ?? []).map((segment) => segment.trim().toLowerCase()));
   for (const segment of input.segments) {
-    if (statusSegments.has(segment.trim().toLowerCase())) continue;
+    const segmentKey = segment.trim().toLowerCase();
+    if (statusSegments.has(segmentKey) || acceptedStockSegments.has(segmentKey)) continue;
     const candidates = parseDeterministicOrder(segment, input.unitAliases);
     for (const candidate of candidates) {
       if (!candidate.item_text.trim()) continue;
@@ -766,21 +1380,32 @@ function shouldUseInventoryModeAsStock(input: {
   unitAliases: UnitAliasMap;
   inventoryStatusTerms?: InventoryStatusTerm[];
   quickOrderStatusTerms?: QuickOrderStatusTerm[];
+  unitRules?: QuickOrderUnitRule[];
+  employeeNameKeys?: string[];
+  employeeUserId?: string | null;
+  locationId?: string | null;
 }): boolean {
   if (input.request.mode !== 'inventory') return false;
-  if (isExplicitOrderPhrase(input.message)) return false;
+  const leadingEmployeeUnitDraft = isLeadingEmployeeInventoryUnitDraft(input.message, {
+    unitRules: input.unitRules ?? [],
+    employeeNameKeys: input.employeeNameKeys ?? [],
+    employeeUserId: input.employeeUserId ?? null,
+    locationId: input.locationId ?? null,
+  });
+  if (isExplicitOrderPhrase(input.message) && !leadingEmployeeUnitDraft) return false;
   if (input.request.mode_conflict_resolution === 'keep_inventory') {
-    return isInventoryDraftMessage(input.message, input.unitAliases) || hasInventoryStatusDraftSignal(input);
+    return leadingEmployeeUnitDraft || isInventoryDraftMessage(input.message, input.unitAliases) || hasInventoryStatusDraftSignal(input);
   }
   if (input.segmentRoute.recommendationSegments.length > 0) return false;
   if (
     !isModeControllableClassification(input.classification.classification) &&
+    !leadingEmployeeUnitDraft &&
     !isInventoryDraftMessage(input.message, input.unitAliases) &&
     !hasInventoryStatusDraftSignal(input)
   ) {
     return false;
   }
-  return isInventoryDraftMessage(input.message, input.unitAliases) || hasInventoryStatusDraftSignal(input);
+  return leadingEmployeeUnitDraft || isInventoryDraftMessage(input.message, input.unitAliases) || hasInventoryStatusDraftSignal(input);
 }
 
 function hasInventoryStatusDraftSignal(input: {
@@ -851,6 +1476,76 @@ function stripExplicitOrderVerb(message: string): string {
     .replace(/^\s*(?:i|we)\s+need\s+/i, '')
     .replace(/^\s*need\s+/i, '')
     .trim();
+}
+
+function isLeadingEmployeeInventoryUnitDraft(
+  message: string,
+  input: {
+    unitRules: QuickOrderUnitRule[];
+    employeeNameKeys?: string[];
+    employeeUserId?: string | null;
+    locationId?: string | null;
+  },
+): boolean {
+  const normalized = message.normalize('NFKC').trim().replace(/[ \t]+/g, ' ');
+  if (!normalized || /[?]/.test(normalized)) return false;
+  const employeeUnits = leadingEmployeeInventoryUnits(input);
+  if (employeeUnits.length === 0) return false;
+  return employeeUnits.some((unit) =>
+    new RegExp(`^(?:please\\s+)?${escapeRegex(unit)}\\s+.+\\s+\\d`, 'i').test(normalized)
+  );
+}
+
+function leadingEmployeeInventoryUnits(input: {
+  unitRules: QuickOrderUnitRule[];
+  employeeNameKeys?: string[];
+  employeeUserId?: string | null;
+  locationId?: string | null;
+}): string[] {
+  const keys = new Set((input.employeeNameKeys ?? []).map(normalizeRuleKey).filter(Boolean));
+  const seen = new Set<string>();
+  const units: string[] = [];
+  const add = (value: string | null | undefined) => {
+    const unit = value?.trim();
+    if (!unit) return;
+    const key = normalizeRuleKey(unit);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    units.push(unit);
+    if (!/s$/i.test(unit)) {
+      const plural = `${unit}s`;
+      const pluralKey = normalizeRuleKey(plural);
+      if (!seen.has(pluralKey)) {
+        seen.add(pluralKey);
+        units.push(plural);
+      }
+    }
+  };
+
+  for (const rule of input.unitRules) {
+    const employeeMatch =
+      (input.employeeUserId && rule.employee_user_id === input.employeeUserId) ||
+      (rule.employee_name_key && keys.has(normalizeRuleKey(rule.employee_name_key)));
+    const locationMatch = rule.location_id == null || (input.locationId != null && rule.location_id === input.locationId);
+    if (
+      rule.active === false ||
+      rule.scope_type !== 'employee' ||
+      !(rule.mode_scope === 'both' || rule.mode_scope === 'inventory') ||
+      !employeeMatch ||
+      !locationMatch
+    ) {
+      continue;
+    }
+    add(rule.from_unit);
+    add(rule.tracking_unit);
+    add(rule.to_unit);
+  }
+
+  return units.sort((a, b) => b.length - a.length);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function inventorySegmentsFor(message: string): QuickOrderSegmentRoute {
@@ -1016,6 +1711,7 @@ function emptyStockExtraction(message: string): StockUpdateExtraction {
   return {
     stockUpdates: [],
     statusItems: [],
+    unitErrors: [],
     stockSegments: [],
     remainingText: message,
     hasStockSignal: false,
@@ -1086,6 +1782,7 @@ function deriveProcessStatus(input: {
   if (input.stockPersistError && input.stockUpdates.length === 0 && input.parseResponse.parsed_items.length === 0) {
     return 'error';
   }
+  if (input.parseResponse.status === 'unit_unrecognized') return 'unit_unrecognized';
   if (input.parseResponse.status === 'error') return 'error';
   if (input.parseResponse.status === 'qa_answer') return 'qa_answer';
   const hasSuccess =

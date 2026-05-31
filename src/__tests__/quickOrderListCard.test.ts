@@ -271,4 +271,39 @@ describe('QuickOrderListCard', () => {
     expect(rendered.indexOf('Edamame')).toBeLessThan(rendered.indexOf('Shrimp (Frozen)'));
     expect(rendered.indexOf('Shrimp (Frozen)')).toBeLessThan(rendered.indexOf('Albacore'));
   });
+
+  test('renders unresolved review rows instead of hiding them', () => {
+    let component!: renderer.ReactTestRenderer;
+    renderer.act(() => {
+      component = renderer.create(
+        React.createElement(QuickOrderListCard, {
+          items: [
+            {
+              item_id: null,
+              item_name: 'Mystery Fish',
+              raw_token: 'mystery fish 3 packs',
+              quantity: 3,
+              unit: 'pack',
+              status: 'no_match',
+              needs_clarification: true,
+              unresolved: true,
+            },
+          ],
+          issueCount: 1,
+          isSubmitting: false,
+          onEditItem: jest.fn(),
+          onResolveQuantity: jest.fn(),
+          onRemoveItems: jest.fn(),
+          onConfirm: jest.fn(),
+          onHeightChange: jest.fn(),
+        }),
+      );
+    });
+
+    const rendered = JSON.stringify(component.toJSON());
+    expect(rendered).toContain('Mystery Fish');
+    expect(rendered).toContain('3 packs');
+    expect(rendered).toContain('Choose item');
+    expect(rendered).toContain('1 · 1 to fix');
+  });
 });
