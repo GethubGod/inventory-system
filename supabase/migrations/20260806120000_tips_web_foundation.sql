@@ -22,7 +22,9 @@ create extension if not exists "pgcrypto";
 create table if not exists public.tip_employees (
   id uuid primary key default gen_random_uuid(),
   name text not null check (length(btrim(name)) between 1 and 60),
-  location_id uuid references public.locations(id) on delete set null,
+  -- Cascade, not set-null: null means "works at BOTH locations", so a deleted
+  -- location must not silently promote its staff to everywhere.
+  location_id uuid references public.locations(id) on delete cascade,
   active boolean not null default true,
   sort_order integer not null default 0,
   created_at timestamp with time zone not null default now(),
@@ -98,14 +100,25 @@ create table if not exists public.tip_entry_sessions (
   revoked boolean not null default false
 );
 
--- Rate limiting ledger for token/PIN validation attempts.
+-- Rate limiting ledger for token/PIN validation and voice-parse attempts.
 create table if not exists public.tip_auth_attempts (
   id bigint generated always as identity primary key,
   identifier_hash text not null,
-  scope text not null default 'token' check (scope in ('token', 'pin')),
+  scope text not null default 'token' check (scope in ('token', 'pin', 'voice')),
   location_id uuid,
   success boolean not null default false,
   attempted_at timestamp with time zone not null default now()
+);
+
+-- Single-use short-lived tickets exchanged for the live-transcript WebSocket
+-- (browsers cannot send headers on WS connects; a 60s one-shot ticket keeps
+-- the long-lived session token out of connection URLs and proxy logs).
+create table if not exists public.tip_ws_tickets (
+  token_hash text primary key,
+  session_id uuid not null references public.tip_entry_sessions(id) on delete cascade,
+  created_at timestamp with time zone not null default now(),
+  expires_at timestamp with time zone not null default now() + interval '60 seconds',
+  used boolean not null default false
 );
 
 create index if not exists tip_auth_attempts_ident_idx
@@ -211,6 +224,14 @@ declare
   identifier_failures integer;
   location_failures integer;
 begin
+  -- Serialize concurrent attempts for this identifier (and location) so a
+  -- burst of parallel requests cannot all read a below-limit count before
+  -- any failure is recorded (transaction-scoped advisory locks).
+  perform pg_advisory_xact_lock(hashtext('tip_auth:' || p_scope || ':' || p_identifier_hash));
+  if p_location_id is not null then
+    perform pg_advisory_xact_lock(hashtext('tip_auth_loc:' || p_scope || ':' || p_location_id::text));
+  end if;
+
   -- Opportunistic cleanup keeps the ledger small.
   delete from public.tip_auth_attempts where attempted_at < now() - interval '2 days';
 
@@ -380,6 +401,7 @@ set search_path = public, extensions
 as $$
 declare
   v_pin text;
+  v_rand bytea;
 begin
   if not public.current_user_is_manager() then
     raise exception 'Only managers can rotate entry PINs';
@@ -394,7 +416,11 @@ begin
     end if;
     v_pin := p_pin;
   else
-    v_pin := lpad(floor(random() * 10000)::int::text, 4, '0');
+    -- Cryptographic randomness (random() is a predictable PRNG).
+    v_rand := extensions.gen_random_bytes(3);
+    v_pin := lpad((
+      (get_byte(v_rand, 0) * 65536 + get_byte(v_rand, 1) * 256 + get_byte(v_rand, 2)) % 10000
+    )::text, 4, '0');
   end if;
 
   insert into public.tip_location_access (location_id, pin_hash, pin_rotated_at, updated_by)
@@ -408,7 +434,101 @@ begin
 end;
 $$;
 
+-- ---------------------------------------------------------------------------
+-- Transactional save: upsert the slot row and replace its people atomically.
+-- Called only by the tip-entries edge function (service role) after it has
+-- validated the session, roster membership, and anomaly confirmation.
+-- Locking the slot via the unique-key upsert serializes concurrent saves so
+-- people rows can never interleave into a mixed roster.
+-- A/B note: when a voice entry is later re-saved as typed, the original
+-- voice_variant and corrections_count are preserved (the A/B readout keys on
+-- voice_variant, so later manual edits don't erase the observation).
+-- ---------------------------------------------------------------------------
+create or replace function public.tip_save_entry(
+  p_business_date date,
+  p_location_id uuid,
+  p_meal_period text,
+  p_cash numeric,
+  p_card numeric,
+  p_people uuid[],
+  p_entry_method text,
+  p_voice_variant text,
+  p_corrections integer,
+  p_entered_by uuid,
+  p_flagged boolean,
+  p_anomaly_reason text
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_entry_id uuid;
+begin
+  if array_length(p_people, 1) is null or array_length(p_people, 1) < 1 then
+    raise exception 'At least one person must split the entry';
+  end if;
+
+  insert into public.tip_entries (
+    business_date, location_id, meal_period, cash_amount, card_amount,
+    split_count, entry_method, voice_variant, corrections_count,
+    entered_by, flagged_anomaly, anomaly_reason
+  ) values (
+    p_business_date, p_location_id, p_meal_period, p_cash, p_card,
+    array_length(p_people, 1), p_entry_method,
+    case when p_entry_method = 'voice' then p_voice_variant else null end,
+    p_corrections, p_entered_by, p_flagged, p_anomaly_reason
+  )
+  on conflict (business_date, location_id, meal_period) do update
+    set cash_amount = excluded.cash_amount,
+        card_amount = excluded.card_amount,
+        split_count = excluded.split_count,
+        entry_method = excluded.entry_method,
+        voice_variant = coalesce(excluded.voice_variant, public.tip_entries.voice_variant),
+        corrections_count = case
+          when excluded.entry_method = 'voice' then excluded.corrections_count
+          else public.tip_entries.corrections_count
+        end,
+        entered_by = excluded.entered_by,
+        flagged_anomaly = excluded.flagged_anomaly,
+        anomaly_reason = excluded.anomaly_reason
+  returning id into v_entry_id;
+
+  delete from public.tip_entry_people where tip_entry_id = v_entry_id;
+  insert into public.tip_entry_people (tip_entry_id, tip_employee_id)
+  select v_entry_id, unnest(p_people);
+
+  return v_entry_id;
+end;
+$$;
+
+-- Manager kill-switch for lost/compromised devices: rotating a token stops
+-- NEW sign-ins; this ends the already-minted device sessions too.
+create or replace function public.tip_revoke_location_sessions(p_location_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_count integer;
+begin
+  if not public.current_user_is_manager() then
+    raise exception 'Only managers can sign out devices';
+  end if;
+  update public.tip_entry_sessions
+  set revoked = true
+  where location_id = p_location_id
+    and revoked = false;
+  get diagnostics v_count = row_count;
+  return v_count;
+end;
+$$;
+
 revoke all on function public.tip_auth_attempt_allowed(text, text, uuid, integer, integer) from public, anon, authenticated;
+revoke all on function public.tip_save_entry(date, uuid, text, numeric, numeric, uuid[], text, text, integer, uuid, boolean, text) from public, anon, authenticated;
+revoke all on function public.tip_revoke_location_sessions(uuid) from public, anon;
 revoke all on function public.tip_validate_entry_token(text, text) from public, anon, authenticated;
 revoke all on function public.tip_validate_entry_pin(uuid, text, text) from public, anon, authenticated;
 revoke all on function public.tip_rotate_entry_token(uuid) from public, anon;
@@ -416,5 +536,7 @@ revoke all on function public.tip_rotate_entry_pin(uuid, text) from public, anon
 
 grant execute on function public.tip_validate_entry_token(text, text) to service_role;
 grant execute on function public.tip_validate_entry_pin(uuid, text, text) to service_role;
+grant execute on function public.tip_save_entry(date, uuid, text, numeric, numeric, uuid[], text, text, integer, uuid, boolean, text) to service_role;
 grant execute on function public.tip_rotate_entry_token(uuid) to authenticated, service_role;
 grant execute on function public.tip_rotate_entry_pin(uuid, text) to authenticated, service_role;
+grant execute on function public.tip_revoke_location_sessions(uuid) to authenticated, service_role;

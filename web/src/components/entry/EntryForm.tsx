@@ -109,6 +109,12 @@ export function EntryForm() {
   const [card, setCard] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editingExisting, setEditingExisting] = useState(false);
+  // Fields the user actually edited this visit (vs. values merely pre-filled
+  // from a saved slot). VoiceSheet only locks user-edited fields against
+  // voice overwrites; prefilled ones stay re-speakable. Reset on slot load.
+  const [touchedFields, setTouchedFields] = useState<
+    Set<"cash" | "card" | "people">
+  >(() => new Set());
 
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -142,6 +148,7 @@ export function EntryForm() {
       setSelectedIds([]);
       setEditingExisting(false);
     }
+    setTouchedFields(new Set());
     setPickPersonWarning(false);
   }, []);
 
@@ -330,14 +337,40 @@ export function EntryForm() {
     [doSave],
   );
 
-  const togglePerson = useCallback((id: string) => {
-    setPickPersonWarning(false);
-    setSelectedIds((prev) =>
-      prev.includes(id)
-        ? prev.filter((existing) => existing !== id)
-        : [...prev, id],
+  const markTouched = useCallback((field: "cash" | "card" | "people") => {
+    setTouchedFields((prev) =>
+      prev.has(field) ? prev : new Set(prev).add(field),
     );
   }, []);
+
+  const handleCashChange = useCallback(
+    (value: string) => {
+      setCash(value);
+      markTouched("cash");
+    },
+    [markTouched],
+  );
+
+  const handleCardChange = useCallback(
+    (value: string) => {
+      setCard(value);
+      markTouched("card");
+    },
+    [markTouched],
+  );
+
+  const togglePerson = useCallback(
+    (id: string) => {
+      setPickPersonWarning(false);
+      markTouched("people");
+      setSelectedIds((prev) =>
+        prev.includes(id)
+          ? prev.filter((existing) => existing !== id)
+          : [...prev, id],
+      );
+    },
+    [markTouched],
+  );
 
   if (loading) {
     return (
@@ -422,8 +455,8 @@ export function EntryForm() {
         {/* Amounts */}
         <div className="bg-card rounded-card p-4">
           <div className="grid grid-cols-2 gap-3">
-            <AmountWell label="Cash" value={cash} onChange={setCash} />
-            <AmountWell label="Card" value={card} onChange={setCard} />
+            <AmountWell label="Cash" value={cash} onChange={handleCashChange} />
+            <AmountWell label="Card" value={card} onChange={handleCardChange} />
           </div>
         </div>
 
@@ -552,6 +585,11 @@ export function EntryForm() {
           initialCash={cash}
           initialCard={card}
           initialPeopleIds={selectedIds}
+          userTouched={{
+            cash: touchedFields.has("cash"),
+            card: touchedFields.has("card"),
+            people: touchedFields.has("people"),
+          }}
           onCancel={() => setShowVoice(false)}
           onApply={handleVoiceApply}
         />

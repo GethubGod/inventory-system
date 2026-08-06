@@ -193,6 +193,22 @@ Deno.serve(async (req) => {
       return json(req, { ok: true, ...payload });
     }
 
+    if (action === 'voice_ticket') {
+      // Single-use 60s ticket for the live-transcript WebSocket, so the
+      // long-lived session token never appears in a connection URL.
+      const ticket = randomToken(24);
+      await supabaseAdmin
+        .from('tip_ws_tickets')
+        .delete()
+        .lt('expires_at', new Date().toISOString());
+      const { error } = await supabaseAdmin.from('tip_ws_tickets').insert({
+        token_hash: await sha256Hex(ticket),
+        session_id: session.id,
+      });
+      if (error) throw error;
+      return json(req, { ok: true, ticket });
+    }
+
     if (action === 'set_closer') {
       const closerId = typeof body.closerId === 'string' ? body.closerId.trim() : '';
       if (!UUID_PATTERN.test(closerId)) {

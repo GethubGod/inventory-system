@@ -138,6 +138,10 @@ export interface Database {
         Args: { p_location_id: string; p_pin?: string | null };
         Returns: string;
       };
+      tip_revoke_location_sessions: {
+        Args: { p_location_id: string };
+        Returns: number;
+      };
       current_user_is_manager: {
         Args: Record<string, never>;
         Returns: boolean;

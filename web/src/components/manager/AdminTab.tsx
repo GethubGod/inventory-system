@@ -35,10 +35,12 @@ interface AdminData {
 }
 
 type RotateKind = "token" | "pin";
+/** Inline-confirmed per-location actions: rotations plus session revoke. */
+type ActionKind = RotateKind | "revoke";
 
 interface PendingConfirm {
   locationId: string;
-  kind: RotateKind;
+  kind: ActionKind;
 }
 
 interface RotationResult {
@@ -106,6 +108,10 @@ export default function AdminTab() {
   const [pinChoice, setPinChoice] = useState("");
   const [rotating, setRotating] = useState(false);
   const [result, setResult] = useState<RotationResult | null>(null);
+  const [revoked, setRevoked] = useState<{
+    locationId: string;
+    count: number;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -180,10 +186,11 @@ export default function AdminTab() {
     setAdding(false);
   }
 
-  function startConfirm(locationId: string, kind: RotateKind) {
+  function startConfirm(locationId: string, kind: ActionKind) {
     setConfirming({ locationId, kind });
     setPinChoice("");
     setResult(null);
+    setRevoked(null);
     setActionError(null);
   }
 
@@ -207,6 +214,22 @@ export default function AdminTab() {
       setResult({ locationId: location.id, kind, value: response.data });
       setConfirming(null);
       await refreshAccess();
+    }
+    setRotating(false);
+  }
+
+  async function runRevoke(location: LocationRow) {
+    if (rotating) return;
+    setRotating(true);
+    setActionError(null);
+    const response = await getSupabase().rpc("tip_revoke_location_sessions", {
+      p_location_id: location.id,
+    });
+    if (response.error || typeof response.data !== "number") {
+      setActionError(response.error?.message ?? "Sign-out failed.");
+    } else {
+      setRevoked({ locationId: location.id, count: response.data });
+      setConfirming(null);
     }
     setRotating(false);
   }
@@ -332,6 +355,8 @@ export default function AdminTab() {
           confirming && confirming.locationId === loc.id ? confirming : null;
         const resultHere =
           result && result.locationId === loc.id ? result : null;
+        const revokedHere =
+          revoked && revoked.locationId === loc.id ? revoked : null;
         return (
           <div key={loc.id} className="bg-card rounded-card p-5">
             <p className="section-label mb-3">{loc.name} access</p>
@@ -353,7 +378,9 @@ export default function AdminTab() {
                 <p className="text-sm text-ink mb-2">
                   {confirmingHere.kind === "token"
                     ? "This kills the current QR/NFC sticker. Rotate?"
-                    : "This replaces the current PIN. Rotate?"}
+                    : confirmingHere.kind === "pin"
+                      ? "This replaces the current PIN. Rotate?"
+                      : `Every phone signed into ${loc.name} will need to scan or enter the PIN again.`}
                 </p>
                 {confirmingHere.kind === "pin" ? (
                   <input
@@ -372,10 +399,20 @@ export default function AdminTab() {
                   <button
                     type="button"
                     disabled={rotating}
-                    onClick={() => void runRotation(loc, confirmingHere.kind)}
+                    onClick={() =>
+                      confirmingHere.kind === "revoke"
+                        ? void runRevoke(loc)
+                        : void runRotation(loc, confirmingHere.kind)
+                    }
                     className={rotating ? `${redPill} bg-disabled` : redPill}
                   >
-                    {rotating ? "Rotating…" : "Rotate"}
+                    {confirmingHere.kind === "revoke"
+                      ? rotating
+                        ? "Signing out…"
+                        : "Sign out"
+                      : rotating
+                        ? "Rotating…"
+                        : "Rotate"}
                   </button>
                   <button
                     type="button"
@@ -403,8 +440,21 @@ export default function AdminTab() {
                 >
                   Rotate PIN
                 </button>
+                <button
+                  type="button"
+                  onClick={() => startConfirm(loc.id, "revoke")}
+                  className={whitePill}
+                >
+                  Sign out all devices
+                </button>
               </div>
             )}
+
+            {revokedHere ? (
+              <p className="text-sm text-ink2 mt-3">
+                {revokedHere.count} device(s) signed out.
+              </p>
+            ) : null}
 
             {resultHere?.kind === "token" ? (
               <div className="bg-well rounded-well p-3 mt-3">
@@ -418,10 +468,12 @@ export default function AdminTab() {
                 <button
                   type="button"
                   onClick={() =>
+                    // Token travels in the fragment — fragments never reach
+                    // servers or request logs.
                     router.push(
                       `/manager/qr?location=${loc.id}&name=${encodeURIComponent(
                         loc.name,
-                      )}&token=${encodeURIComponent(resultHere.value)}`,
+                      )}#t=${encodeURIComponent(resultHere.value)}`,
                     )
                   }
                   className={`${redPill} mt-3`}

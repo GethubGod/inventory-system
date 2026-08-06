@@ -1,9 +1,13 @@
 "use client";
 
 // A/B test tab: compares the two voice-entry variants across all time.
+// Counts every entry with a voice_variant — the save path preserves
+// voice_variant/corrections_count when a voice entry is later re-saved as
+// typed, so edited-after-voice entries still count toward their variant.
 
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
+import { fetchAll } from "@/components/manager/fetchAll";
 import type { VoiceVariant } from "@/types/database";
 
 interface VariantStats {
@@ -26,17 +30,25 @@ const VARIANT_LABELS: Record<VoiceVariant, string> = {
 
 async function fetchAbStats(): Promise<AbResult> {
   try {
-    const { data, error } = await getSupabase()
-      .from("tip_entries")
-      .select("voice_variant, corrections_count")
-      .eq("entry_method", "voice");
-    if (error) throw new Error(error.message);
+    // Paged past the 1000-row PostgREST cap; ordered by id so page
+    // boundaries are deterministic.
+    const rows = await fetchAll<{
+      voice_variant: VoiceVariant | null;
+      corrections_count: number;
+    }>((from, to) =>
+      getSupabase()
+        .from("tip_entries")
+        .select("voice_variant, corrections_count")
+        .not("voice_variant", "is", null)
+        .order("id")
+        .range(from, to),
+    );
 
     const buckets = new Map<
       VoiceVariant,
       { count: number; corrections: number; zero: number }
     >();
-    for (const row of data ?? []) {
+    for (const row of rows) {
       const variant = row.voice_variant;
       if (variant !== "waveform" && variant !== "live_transcript") continue;
       const bucket = buckets.get(variant) ?? {

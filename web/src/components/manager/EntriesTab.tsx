@@ -15,6 +15,7 @@ import {
   methodLabel,
   type ExportEntry,
 } from "@/components/manager/exportXlsx";
+import { fetchAll } from "@/components/manager/fetchAll";
 
 interface LocationRow {
   id: string;
@@ -60,29 +61,38 @@ async function fetchEntries(
 ): Promise<EntriesResult> {
   const supabase = getSupabase();
   try {
-    let query = supabase
-      .from("tip_entries")
-      .select(
-        "id, business_date, location_id, meal_period, cash_amount, card_amount, split_count, entry_method, voice_variant, corrections_count, entered_by, flagged_anomaly, anomaly_reason, created_at, locations(name), tip_entry_people(tip_employees(name))",
-      )
-      .gte("business_date", startDate)
-      .lte("business_date", endDate)
-      .order("business_date", { ascending: false })
-      .order("created_at", { ascending: false });
-    if (locationId !== "all") {
-      query = query.eq("location_id", locationId);
-    }
-    const [entriesRes, employeesRes] = await Promise.all([
-      query,
-      supabase.from("tip_employees").select("id, name"),
+    // Paged past the 1000-row PostgREST cap; the trailing .order("id")
+    // tiebreaker keeps page boundaries deterministic.
+    const buildEntriesPage = (from: number, to: number) => {
+      let query = supabase
+        .from("tip_entries")
+        .select(
+          "id, business_date, location_id, meal_period, cash_amount, card_amount, split_count, entry_method, voice_variant, corrections_count, entered_by, flagged_anomaly, anomaly_reason, created_at, locations(name), tip_entry_people(tip_employees(name))",
+        )
+        .gte("business_date", startDate)
+        .lte("business_date", endDate)
+        .order("business_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .order("id");
+      if (locationId !== "all") {
+        query = query.eq("location_id", locationId);
+      }
+      return query.range(from, to);
+    };
+    const [raw, employeeRows] = await Promise.all([
+      fetchAll<RawEntryRow>(buildEntriesPage),
+      fetchAll<{ id: string; name: string }>((from, to) =>
+        supabase
+          .from("tip_employees")
+          .select("id, name")
+          .order("id")
+          .range(from, to),
+      ),
     ]);
-    if (entriesRes.error) throw new Error(entriesRes.error.message);
-    if (employeesRes.error) throw new Error(employeesRes.error.message);
 
     const employeeName = new Map<string, string>(
-      (employeesRes.data ?? []).map((e) => [e.id, e.name]),
+      employeeRows.map((e) => [e.id, e.name]),
     );
-    const raw = (entriesRes.data ?? []) as unknown as RawEntryRow[];
     const entries: ExportEntry[] = raw.map((row) => ({
       id: row.id,
       business_date: row.business_date,

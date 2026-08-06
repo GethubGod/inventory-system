@@ -43,6 +43,10 @@ function TokenLanding() {
     validateToken(token)
       .then((fresh) => {
         if (cancelled) return;
+        // Drop ?t=<token> from the address bar/history now that it's used.
+        if (typeof window !== "undefined") {
+          window.history.replaceState(null, "", "/e");
+        }
         saveSession({
           token: fresh.sessionToken,
           locationId: fresh.location.id,

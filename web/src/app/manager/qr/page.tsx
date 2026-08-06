@@ -2,18 +2,43 @@
 
 // Printable QR page for a freshly rotated entry token. Tokens are stored
 // hashed, so this page only works with the plaintext token passed in the
-// query right after rotation.
+// URL fragment ("#t=...") right after rotation — fragments never reach
+// servers or request logs, and the hash is scrubbed once read.
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import { getSupabase } from "@/lib/supabase";
 
+/** Parse "#t=<token>" from the current location, browser only. */
+function readTokenFromHash(): string | null {
+  if (typeof window === "undefined") return null;
+  const hash = window.location.hash;
+  if (!hash.startsWith("#t=")) return null;
+  try {
+    return decodeURIComponent(hash.slice(3)) || null;
+  } catch {
+    return null;
+  }
+}
+
 function QrPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const locationName = searchParams.get("name") ?? "Babytuna";
-  const token = searchParams.get("token");
+  // Token lives in component state; the fragment is cleared right after the
+  // first read so it doesn't linger in the address bar or history.
+  const [token] = useState<string | null>(readTokenFromHash);
+
+  useEffect(() => {
+    if (token && typeof window !== "undefined" && window.location.hash) {
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search,
+      );
+    }
+  }, [token]);
 
   const [authState, setAuthState] = useState<"loading" | "none" | "ok">(
     "loading",

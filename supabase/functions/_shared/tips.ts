@@ -77,6 +77,29 @@ export async function validateTipSession(
   };
 }
 
+/** Session lookup by id (used by the WS ticket exchange). */
+export async function getTipSessionById(
+  admin: any,
+  sessionId: string,
+): Promise<TipSession | null> {
+  const { data, error } = await admin
+    .from('tip_entry_sessions')
+    .select('id, location_id, closer_id, revoked, expires_at, locations(name)')
+    .eq('id', sessionId)
+    .maybeSingle();
+  if (error || !data) return null;
+  if (data.revoked) return null;
+  if (data.expires_at && new Date(data.expires_at).getTime() < Date.now()) return null;
+  const locationName =
+    (Array.isArray(data.locations) ? data.locations[0]?.name : data.locations?.name) ?? '';
+  return {
+    id: data.id,
+    location_id: data.location_id,
+    closer_id: data.closer_id ?? null,
+    location_name: String(locationName),
+  };
+}
+
 interface LaClock {
   year: number;
   month: number;

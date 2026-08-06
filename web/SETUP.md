@@ -96,6 +96,9 @@ same account as the mobile app, `profiles.role = 'manager'`).
 - **Roster**: add tip-eligible staff (name + location scope Both/Sushi/Poki)
   in Admin → Roster. The "Who's closing?" screen and splitting chips read
   from this roster. Deactivate, don't delete, when someone leaves.
+- **Sign out all devices** (Admin, per location): revokes every already-minted
+  entry session for that location — use after a lost phone. Rotating the
+  token/PIN alone only stops *new* sign-ins.
 
 ### Printing the QR stickers
 
@@ -124,6 +127,12 @@ new URL.
   parameters.
 - "Who's closing?" is **attribution, not authentication** (anyone can tap any
   name); it fills `entered_by`.
+- Saves are **atomic** (a SQL RPC upserts the entry and replaces its people in
+  one transaction), voice parsing has a per-session quota (40 chunks / 5 min),
+  and the live-transcript WebSocket authenticates with a **single-use 60s
+  ticket** so the long-lived session token never appears in a URL. The QR
+  token is stripped from browser history right after landing, and the manager
+  QR page receives the freshly rotated token via the URL fragment only.
 - Manager dashboard = real Supabase auth + `current_user_is_manager()` RLS.
   Entry tokens/PINs never grant dashboard access.
 
@@ -152,7 +161,10 @@ new URL.
 - **A/B test**: each device is randomly, persistently assigned `waveform` or
   `live_transcript`; every voice entry records the variant plus
   `corrections_count` (fields edited/re-recorded in review). Dashboard → A/B
-  test shows entries + avg corrections per variant.
+  test shows entries + avg corrections per variant. If a voice entry is later
+  re-saved as typed, the original variant + corrections are preserved on the
+  row (the readout keys on `voice_variant`), so edits don't erase
+  observations.
 
 Mirrored logic note: `businessDate`/`anomaly` live canonically in
 `web/src/lib/tips/` (unit tested) and are mirrored in

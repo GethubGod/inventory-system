@@ -109,7 +109,8 @@ Rules:
 
 Location: ${input.locationName}
 Staff list: ${input.rosterNames.join(', ') || '(empty)'}
-Already captured (context only — do not repeat into your output unless corrected): ${known}${target}
+Already captured: ${known}
+For meal/cash/card, "Already captured" is context only — return null for anything not spoken in THIS recording unless the speaker corrected it. The people list is the one exception: whenever anyone is named, return the complete final list as described above (already-captured people included).${target}
 Return strict JSON only.`;
 }
 
@@ -223,6 +224,12 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Cheap pre-parse guard: refuse oversized bodies before buffering them.
+    const contentLength = Number(req.headers.get('content-length') ?? NaN);
+    if (Number.isFinite(contentLength) && contentLength > MAX_AUDIO_BYTES + 64 * 1024) {
+      return json(req, { ok: false, code: 'too_large', error: 'That recording is too long.' }, 413);
+    }
+
     const form = await req.formData();
     const session = await validateTipSession(supabaseAdmin, asString(form.get('session_token')));
     if (!session) {
@@ -231,6 +238,22 @@ Deno.serve(async (req) => {
     if (!geminiApiKey) {
       return json(req, { ok: false, code: 'api_key_missing', error: 'Voice entry is temporarily unavailable. Type it in instead.' }, 503);
     }
+
+    // Soft per-session quota so a leaked session token can't run up the
+    // Gemini bill: max 40 parses per 5 minutes.
+    const quotaWindowStart = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { count: recentParses } = await supabaseAdmin
+      .from('tip_auth_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('identifier_hash', session.id)
+      .eq('scope', 'voice')
+      .gte('attempted_at', quotaWindowStart);
+    if ((recentParses ?? 0) >= 40) {
+      return json(req, { ok: false, code: 'rate_limited', error: 'Voice is cooling down — type the rest in.' }, 429);
+    }
+    await supabaseAdmin
+      .from('tip_auth_attempts')
+      .insert({ identifier_hash: session.id, scope: 'voice', location_id: session.location_id });
 
     const audio = form.get('audio');
     if (!(audio instanceof File) || audio.size <= 0) {

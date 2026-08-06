@@ -11,7 +11,7 @@
 
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
-import { validateTipSession } from '../_shared/tips.ts';
+import { getTipSessionById, sha256Hex } from '../_shared/tips.ts';
 
 declare const Deno: {
   env: { get(key: string): string | undefined };
@@ -22,7 +22,7 @@ declare const Deno: {
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const geminiApiKey = Deno.env.get('GEMINI_API_KEY') ?? Deno.env.get('GOOGLE_API_KEY');
-const liveModel = Deno.env.get('GEMINI_LIVE_MODEL') ?? 'gemini-live-2.5-flash-preview';
+const liveModel = Deno.env.get('GEMINI_LIVE_MODEL') ?? 'gemini-2.5-flash-native-audio-preview-12-2025';
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
@@ -60,8 +60,27 @@ Deno.serve(async (req) => {
     return new Response('Expected WebSocket upgrade.', { status: 400 });
   }
 
+  // Auth: single-use short-lived ticket minted by tip-entry-auth
+  // (action "voice_ticket"), so the long-lived session token never rides in
+  // a URL that proxies might log.
   const url = new URL(req.url);
-  const session = await validateTipSession(supabaseAdmin, url.searchParams.get('session_token'));
+  const ticket = url.searchParams.get('ticket')?.trim() ?? '';
+  if (ticket.length < 16 || ticket.length > 128) {
+    return new Response('Invalid ticket.', { status: 401 });
+  }
+  const ticketHash = await sha256Hex(ticket);
+  const { data: ticketRow } = await supabaseAdmin
+    .from('tip_ws_tickets')
+    .update({ used: true })
+    .eq('token_hash', ticketHash)
+    .eq('used', false)
+    .gt('expires_at', new Date().toISOString())
+    .select('session_id')
+    .maybeSingle();
+  if (!ticketRow?.session_id) {
+    return new Response('Ticket expired.', { status: 401 });
+  }
+  const session = await getTipSessionById(supabaseAdmin, ticketRow.session_id);
   if (!session) {
     return new Response('Session expired.', { status: 401 });
   }
@@ -71,6 +90,18 @@ Deno.serve(async (req) => {
 
   const { socket, response } = Deno.upgradeWebSocket(req);
   let upstream: WebSocket | null = null;
+
+  // Hard caps: a listening session is a couple of minutes at most.
+  const MAX_STREAM_MS = 4 * 60 * 1000;
+  const MAX_FRAME_BYTES = 256 * 1024;
+  const killTimer = setTimeout(() => {
+    try {
+      socket.close();
+      upstream?.close();
+    } catch {
+      // Already closed.
+    }
+  }, MAX_STREAM_MS);
 
   socket.onopen = () => {
     upstream = new WebSocket(
@@ -116,6 +147,7 @@ Deno.serve(async (req) => {
   socket.onmessage = (event) => {
     if (!upstream || upstream.readyState !== WebSocket.OPEN) return;
     if (typeof event.data !== 'string') return;
+    if (event.data.length > MAX_FRAME_BYTES) return;
     if (event.data === '__finish__') {
       upstream.send(JSON.stringify({ realtimeInput: { audioStreamEnd: true } }));
       return;
@@ -129,6 +161,7 @@ Deno.serve(async (req) => {
   };
 
   socket.onclose = () => {
+    clearTimeout(killTimer);
     try {
       upstream?.close();
     } catch {

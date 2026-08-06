@@ -206,10 +206,17 @@ export async function parseVoiceChunk(input: {
   return parsed;
 }
 
-/** wss:// URL for the live-transcript stream (Variant B). */
-export function voiceStreamUrl(sessionToken: string): string {
+/**
+ * wss:// URL for the live-transcript stream (Variant B). Exchanges the
+ * session token for a single-use 60s ticket so the long-lived token never
+ * appears in a WebSocket URL.
+ */
+export async function requestVoiceStreamUrl(sessionToken: string): Promise<string> {
+  const json = await callFunction("tip-entry-auth", { action: "voice_ticket", sessionToken });
+  const ticket = typeof json.ticket === "string" ? json.ticket : "";
+  if (!ticket) throw new TipApiError("Live transcript unavailable.", "no_ticket", 500);
   const base = getFunctionsBaseUrl().replace(/^http/, "ws");
-  return `${base}/tip-voice-stream?session_token=${encodeURIComponent(sessionToken)}`;
+  return `${base}/tip-voice-stream?ticket=${encodeURIComponent(ticket)}`;
 }
 
 export function isSessionInvalid(error: unknown): boolean {

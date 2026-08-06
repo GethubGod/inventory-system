@@ -5,6 +5,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
+import { fetchAll } from "@/components/manager/fetchAll";
 import { businessDateFor, formatBusinessDate } from "@/lib/tips/businessDate";
 import { formatMoney } from "@/lib/tips/format";
 import type { MealPeriod } from "@/types/database";
@@ -86,31 +87,37 @@ async function fetchDiscrepancies(
         ? allLocations
         : allLocations.filter((l) => l.id === locationId);
 
-    let entryQuery = supabase
-      .from("tip_entries")
-      .select(
-        "id, business_date, location_id, meal_period, cash_amount, card_amount, flagged_anomaly, anomaly_reason",
-      )
-      .gte("business_date", startDate)
-      .lte("business_date", endDate);
-    if (locationId !== "all") {
-      entryQuery = entryQuery.eq("location_id", locationId);
-    }
+    // Paged past the 1000-row PostgREST cap; the .order("id") tiebreaker
+    // keeps page boundaries deterministic.
+    const buildEntriesPage = (from: number, to: number) => {
+      let entryQuery = supabase
+        .from("tip_entries")
+        .select(
+          "id, business_date, location_id, meal_period, cash_amount, card_amount, flagged_anomaly, anomaly_reason",
+        )
+        .gte("business_date", startDate)
+        .lte("business_date", endDate)
+        .order("business_date", { ascending: false })
+        .order("id");
+      if (locationId !== "all") {
+        entryQuery = entryQuery.eq("location_id", locationId);
+      }
+      return entryQuery.range(from, to);
+    };
 
-    const [entriesRes, ...firstEntryResults] = await Promise.all([
-      entryQuery,
-      ...activeLocations.map((loc) =>
-        supabase
-          .from("tip_entries")
-          .select("business_date")
-          .eq("location_id", loc.id)
-          .order("business_date", { ascending: true })
-          .limit(1),
+    const [rangeEntries, firstEntryResults] = await Promise.all([
+      fetchAll<RawRangeEntry>(buildEntriesPage),
+      Promise.all(
+        activeLocations.map((loc) =>
+          supabase
+            .from("tip_entries")
+            .select("business_date")
+            .eq("location_id", loc.id)
+            .order("business_date", { ascending: true })
+            .limit(1),
+        ),
       ),
     ]);
-    if (entriesRes.error) throw new Error(entriesRes.error.message);
-
-    const rangeEntries = (entriesRes.data ?? []) as unknown as RawRangeEntry[];
 
     const flagged = rangeEntries
       .filter((e) => e.flagged_anomaly)

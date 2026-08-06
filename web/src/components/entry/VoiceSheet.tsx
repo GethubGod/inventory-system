@@ -19,7 +19,7 @@ import {
 } from "react";
 import {
   parseVoiceChunk,
-  voiceStreamUrl,
+  requestVoiceStreamUrl,
   type RosterPerson,
 } from "@/lib/tips/api";
 import { formatMoney } from "@/lib/tips/format";
@@ -131,6 +131,7 @@ export function VoiceSheet({
   initialCash,
   initialCard,
   initialPeopleIds,
+  userTouched,
   onCancel,
   onApply,
 }: {
@@ -141,6 +142,9 @@ export function VoiceSheet({
   initialCash: string;
   initialCard: string;
   initialPeopleIds: string[];
+  /** Fields the user edited by hand this visit — locked against voice.
+   *  Merely prefilled values (loaded from a saved slot) stay overwritable. */
+  userTouched: { cash: boolean; card: boolean; people: boolean };
   onCancel: () => void;
   onApply: (result: VoiceApplyResult) => void;
 }) {
@@ -152,11 +156,23 @@ export function VoiceSheet({
       ...fields,
       meal: { value: initialMeal, confidence: 0.6, source: null },
     };
+    // User-edited values seed as typed (voice can't overwrite); prefilled
+    // values seed captured but unlocked so re-speaking them still works.
     if (isValidAmount(initialCash)) {
-      fields = setTyped(fields, "cash", Number(initialCash));
+      fields = userTouched.cash
+        ? setTyped(fields, "cash", Number(initialCash))
+        : {
+            ...fields,
+            cash: { value: Number(initialCash), confidence: 0.9, source: null },
+          };
     }
     if (isValidAmount(initialCard)) {
-      fields = setTyped(fields, "card", Number(initialCard));
+      fields = userTouched.card
+        ? setTyped(fields, "card", Number(initialCard))
+        : {
+            ...fields,
+            card: { value: Number(initialCard), confidence: 0.9, source: null },
+          };
     }
     if (initialPeopleIds.length > 0) {
       const names: Record<string, string> = {};
@@ -164,10 +180,21 @@ export function VoiceSheet({
         const person = roster.find((r) => r.id === id);
         if (person) names[id] = person.name;
       }
-      fields = setTypedPeople(fields, initialPeopleIds, names);
+      fields = userTouched.people
+        ? setTypedPeople(fields, initialPeopleIds, names)
+        : {
+            ...fields,
+            people: {
+              ids: initialPeopleIds,
+              names,
+              unmatched: [],
+              confidence: 0.9,
+              source: null,
+            },
+          };
     }
     return fields;
-  }, [initialMeal, initialCash, initialCard, initialPeopleIds, roster]);
+  }, [initialMeal, initialCash, initialCard, initialPeopleIds, roster, userTouched]);
 
   const [fields, setFieldsState] = useState<TipFieldsState>(buildInitialFields);
   const fieldsRef = useRef(fields);
@@ -282,42 +309,46 @@ export function VoiceSheet({
     recorderRef.current = recorder;
 
     if (variant === "live_transcript") {
-      try {
-        const ws = new WebSocket(voiceStreamUrl(sessionToken));
-        wsRef.current = ws;
-        ws.onmessage = (event) => {
-          if (cancelled || typeof event.data !== "string") return;
-          try {
-            const message = JSON.parse(event.data) as {
-              type?: string;
-              text?: string;
-            };
-            if (
-              message.type === "partial_transcript" &&
-              typeof message.text === "string" &&
-              message.text.trim()
-            ) {
-              const text = message.text.trim();
-              setLiveText((prev) => (prev ? `${prev} ${text}` : text));
+      // The stream URL needs a single-use ticket first; if the sheet is
+      // cancelled or unmounted while that request is in flight, never open
+      // the socket.
+      requestVoiceStreamUrl(sessionToken)
+        .then((url) => {
+          if (cancelled) return;
+          const ws = new WebSocket(url);
+          wsRef.current = ws;
+          ws.onmessage = (event) => {
+            if (cancelled || typeof event.data !== "string") return;
+            try {
+              const message = JSON.parse(event.data) as {
+                type?: string;
+                text?: string;
+              };
+              if (
+                message.type === "partial_transcript" &&
+                typeof message.text === "string" &&
+                message.text.trim()
+              ) {
+                const text = message.text.trim();
+                setLiveText((prev) => (prev ? `${prev} ${text}` : text));
+              }
+            } catch {
+              // Non-JSON frame; ignore.
             }
-          } catch {
-            // Non-JSON frame; ignore.
-          }
-        };
-        // Streaming failures never block field capture — fall back silently.
-        ws.onerror = () => {
-          if (!cancelled) setWsDead(true);
-        };
-        ws.onclose = () => {
-          if (!cancelled) setWsDead(true);
-        };
-      } catch {
-        // Defer past the synchronous effect body; streaming failure only
-        // downgrades the header feedback, never blocks capture.
-        queueMicrotask(() => {
+          };
+          // Streaming failures never block field capture — fall back silently.
+          ws.onerror = () => {
+            if (!cancelled) setWsDead(true);
+          };
+          ws.onclose = () => {
+            if (!cancelled) setWsDead(true);
+          };
+        })
+        .catch(() => {
+          // Ticket request or socket open failed; streaming failure only
+          // downgrades the header feedback, never blocks capture.
           if (!cancelled) setWsDead(true);
         });
-      }
     }
 
     recorder

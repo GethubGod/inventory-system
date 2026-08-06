@@ -174,39 +174,24 @@ Deno.serve(async (req) => {
           .join('; ');
       }
 
-      const { data: saved, error: saveError } = await supabaseAdmin
-        .from('tip_entries')
-        .upsert(
-          {
-            business_date: businessDate,
-            location_id: session.location_id,
-            meal_period: meal,
-            cash_amount: cash,
-            card_amount: card,
-            split_count: uniquePeople.length,
-            entry_method: entryMethod,
-            voice_variant: entryMethod === 'voice' ? voiceVariant : null,
-            corrections_count: correctionsCount,
-            entered_by: session.closer_id,
-            flagged_anomaly: flaggedAnomaly,
-            anomaly_reason: anomalyReason,
-          },
-          { onConflict: 'business_date,location_id,meal_period' },
-        )
-        .select('id')
-        .single();
+      // Atomic upsert + people replacement (single transaction in SQL) so a
+      // failed people insert or two concurrent saves can't leave a slot with
+      // a mixed or missing roster.
+      const { error: saveError } = await supabaseAdmin.rpc('tip_save_entry', {
+        p_business_date: businessDate,
+        p_location_id: session.location_id,
+        p_meal_period: meal,
+        p_cash: cash,
+        p_card: card,
+        p_people: uniquePeople,
+        p_entry_method: entryMethod,
+        p_voice_variant: entryMethod === 'voice' ? voiceVariant : null,
+        p_corrections: correctionsCount,
+        p_entered_by: session.closer_id,
+        p_flagged: flaggedAnomaly,
+        p_anomaly_reason: anomalyReason,
+      });
       if (saveError) throw saveError;
-
-      const entryId = saved.id as string;
-      const { error: deleteError } = await supabaseAdmin
-        .from('tip_entry_people')
-        .delete()
-        .eq('tip_entry_id', entryId);
-      if (deleteError) throw deleteError;
-      const { error: insertError } = await supabaseAdmin
-        .from('tip_entry_people')
-        .insert(uniquePeople.map((id) => ({ tip_entry_id: entryId, tip_employee_id: id })));
-      if (insertError) throw insertError;
 
       const entry = await loadSlot(session.location_id, businessDate, meal);
       return json(req, { ok: true, businessDate, entry });
