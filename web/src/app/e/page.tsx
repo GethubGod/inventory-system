@@ -27,7 +27,12 @@ function todayStatusLine(signIn: FreshSignIn): string {
 
 function TokenLanding() {
   const router = useRouter();
-  const token = useSearchParams().get("t");
+  // Capture the token once (first-render state): the Next router intercepts
+  // the history.replaceState that strips ?t=<token>, and a live
+  // useSearchParams read would re-run the effect with token=null and bounce
+  // the fresh sign-in straight past the "You're in" confirmation.
+  const liveToken = useSearchParams().get("t");
+  const [token] = useState(liveToken);
   const [phase, setPhase] = useState<"checking" | "in" | "error">("checking");
   const [signIn, setSignIn] = useState<FreshSignIn | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
