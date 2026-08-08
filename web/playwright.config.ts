@@ -19,6 +19,18 @@ for (const file of [".env.e2e", ".env.local"]) {
 const baseURL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)/.test(baseURL);
 
+// There is no mock backend: the suite saves real rows into TODAY's tip slots
+// for both locations and burns real rate-limit budget. That is fine on a
+// pre-launch database and destructive on a live one, so it requires an
+// explicit opt-in (set in web/.env.e2e).
+if (process.env.E2E_ALLOW_LIVE_WRITES !== "1") {
+  throw new Error(
+    "E2E writes to the LIVE database (today's tip slots, auth ledger). " +
+      "Set E2E_ALLOW_LIVE_WRITES=1 in web/.env.e2e only if that database " +
+      "holds no real tip data you care about — see e2e/README.md.",
+  );
+}
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,

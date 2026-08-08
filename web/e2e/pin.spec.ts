@@ -81,10 +81,12 @@ test.describe("PIN rate limit", () => {
     ).toBeVisible();
     await page.getByRole("button", { name: "Poki & Pho", exact: true }).click();
 
-    // Per-device cap is 6 failures / 10 min → the 7th try must be refused
-    // before the PIN is even checked. There is also a per-location cap
-    // (30 failures / 10 min) shared with earlier runs until cleanup.sql is
-    // applied, so the lockout may legitimately arrive sooner — never later.
+    // Per-device cap is 6 failures / 10 min → exactly the 7th try must be
+    // refused before the PIN is even checked. The per-location cap
+    // (30 failures / 10 min) can pre-lock the location if a previous run's
+    // failures weren't cleaned up: distinguishable because then the very
+    // FIRST attempt is already refused — skip with instructions rather
+    // than pass vacuously or fail confusingly.
     let lockedAtAttempt: number | null = null;
     for (let attempt = 1; attempt <= 7; attempt += 1) {
       const verdict = await submitPin(page, wrongPin);
@@ -97,16 +99,14 @@ test.describe("PIN rate limit", () => {
       expect(verdict.code).toBe("invalid");
     }
 
+    test.skip(
+      lockedAtAttempt === 1,
+      "location ledger still carries a previous run's failures — apply e2e/cleanup.sql and re-run",
+    );
     expect(
       lockedAtAttempt,
-      "rate limit never engaged within 7 bad tries",
-    ).not.toBeNull();
-    if (lockedAtAttempt !== 7) {
-      test.info().annotations.push({
-        type: "note",
-        description: `locked out at attempt ${lockedAtAttempt} — location ledger carried failures from a previous run (clean run locks at exactly 7)`,
-      });
-    }
+      "per-device rate limit must engage on exactly the 7th bad try",
+    ).toBe(7);
 
     // And the person holding the phone is told what happened.
     await expect(page.getByText("Too many attempts")).toBeVisible();
