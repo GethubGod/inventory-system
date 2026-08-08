@@ -5,12 +5,20 @@ Babytuna Sushi and Babytuna Poki & Pho. Employees enter tips on their phones
 (voice-first, typing as an equal fallback); managers get a dashboard with
 exports. Lives in the same repo + Supabase project as the mobile app.
 
-> **Status 2026-08-07:** the backend is **deployed and verified live** — the
-> migrations are applied, all four edge functions are ACTIVE, and the full
-> entry flow (token → session → closer → save → ticket, plus anon-access
-> denial) was smoke-tested against production and cleaned up. Remaining
-> manual steps: deploy `web/` to Vercel, then rotate tokens/PINs and add the
-> roster from `/manager` (sections 5–8).
+> **Status 2026-08-08:** backend **and frontend are deployed and verified.**
+> Migrations applied, all four edge functions ACTIVE, and `web/` deploys from
+> Vercel project `inventory-system` (root directory `web`, framework
+> Next.js; env vars set for Production + Preview). The branch
+> `feat/tips-web-app` serves at **https://babytuna-tips.vercel.app** (a
+> project domain pinned to that branch; after merge, production serves from
+> `main` on the project's default domains). One manual step remains:
+> **Vercel → Settings → Deployment Protection → Vercel Authentication →
+> Disabled** — until then every `*.vercel.app` URL of this project sits
+> behind a Vercel SSO interstitial and phones can't open the QR links.
+> Test access (tokens/PINs/placeholder roster) is seeded; a Playwright E2E
+> suite + voice-parse harness live in `web/e2e/` (see `e2e/README.md`) and
+> pass against local dev; two Codex review rounds ended with no blocking
+> findings. Post-merge chores are listed in the launch handoff note.
 
 ## 1. Environment
 
@@ -76,6 +84,7 @@ npm run test       # Vitest unit tests
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint
 npm run build      # must pass before deploy
+npm run test:e2e   # Playwright E2E against the live backend — read e2e/README.md FIRST
 ```
 
 The entry flow needs real edge functions + tables (see above) — there is no
