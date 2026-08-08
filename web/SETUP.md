@@ -5,9 +5,12 @@ Babytuna Sushi and Babytuna Poki & Pho. Employees enter tips on their phones
 (voice-first, typing as an equal fallback); managers get a dashboard with
 exports. Lives in the same repo + Supabase project as the mobile app.
 
-> **Heads up:** at build time the Supabase project (`whrohvitvmcrmedepurd`)
-> was **paused** (status INACTIVE). Restore it in the Supabase dashboard
-> before any of the deploy steps below.
+> **Status 2026-08-07:** the backend is **deployed and verified live** — the
+> migrations are applied, all four edge functions are ACTIVE, and the full
+> entry flow (token → session → closer → save → ticket, plus anon-access
+> denial) was smoke-tested against production and cleaned up. Remaining
+> manual steps: deploy `web/` to Vercel, then rotate tokens/PINs and add the
+> roster from `/manager` (sections 5–8).
 
 ## 1. Environment
 

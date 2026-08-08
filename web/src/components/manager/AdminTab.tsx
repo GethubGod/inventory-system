@@ -206,7 +206,7 @@ export default function AdminTab() {
           })
         : await supabase.rpc("tip_rotate_entry_pin", {
             p_location_id: location.id,
-            p_pin: /^\d{4}$/.test(pinChoice) ? pinChoice : null,
+            p_pin: /^\d{4}$/.test(pinChoice) ? pinChoice : undefined,
           });
     if (response.error || typeof response.data !== "string") {
       setActionError(response.error?.message ?? "Rotation failed.");
