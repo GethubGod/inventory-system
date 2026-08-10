@@ -1,4 +1,7 @@
-import { buildComposerOrderText } from '../features/ordering/orderPreview';
+import {
+  buildComposerItemNameList,
+  buildComposerOrderText,
+} from '../features/ordering/orderPreview';
 
 describe('buildComposerOrderText', () => {
   it('renders one parser-friendly line per item with pluralized units', () => {
@@ -22,5 +25,26 @@ describe('buildComposerOrderText', () => {
     expect(
       buildComposerOrderText([{ item_name: 'Gloves', quantity: 3, unit: 'box' }]),
     ).toBe('Gloves 3 boxes');
+  });
+});
+
+describe('buildComposerItemNameList', () => {
+  it('renders item names only, one per line, dropping quantities and units', () => {
+    const text = buildComposerItemNameList([
+      { item_name: 'Salmon', quantity: 3, unit: 'case' },
+      { item_name: 'Yellowtail (Hamachi)', quantity: 0, unit: 'case' },
+      { item_name: 'Tuna Loin', quantity: 5, unit: null },
+    ]);
+    expect(text).toBe('Salmon\nYellowtail (Hamachi)\nTuna Loin');
+  });
+
+  it('trims names, de-duplicates case-insensitively, and skips blanks', () => {
+    const text = buildComposerItemNameList([
+      { item_name: '  Ebi  ', quantity: 1, unit: 'pack' },
+      { item_name: 'ebi', quantity: 2, unit: 'pack' },
+      { item_name: '   ', quantity: 1, unit: null },
+      { item_name: 'Mackerel', quantity: 3, unit: 'pack' },
+    ]);
+    expect(text).toBe('Ebi\nMackerel');
   });
 });

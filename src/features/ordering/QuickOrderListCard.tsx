@@ -4,7 +4,6 @@ import {
   LayoutChangeEvent,
   NativeScrollEvent,
   NativeSyntheticEvent,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,15 +11,24 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
 import { triggerConfirmationHaptic } from "@/lib/haptics";
 import {
   colors,
   glassColors,
   glassHairlineWidth,
+  glassRadii,
   grayScale,
   quickOrderAccent,
 } from "@/theme/design";
+import { LocationSwitcherDropdown } from "@/features/stock-check/components/LocationSwitcherDropdown";
+import type { Location } from "@/types";
 import {
   QUICK_ORDER_ROW_MIN_HEIGHT,
   QuickOrderItemRow,
@@ -34,12 +42,14 @@ import {
   type ParsedQuickOrderItem,
 } from "./quickOrderItems";
 
-const CARD_PADDING = 14;
-const CARD_SECTION_GAP = 10;
+const CARD_PADDING = 13;
+const CARD_SECTION_GAP = 7;
 const VISIBLE_ROW_SLOTS = 4;
-const CTA_HEIGHT = 44;
+const CTA_HEIGHT = 36;
 const SCROLLBAR_WIDTH = 5;
 const SCROLLBAR_MIN_THUMB = 28;
+const LOCATION_PILL_HEIGHT = 32;
+const CHEVRON_TIMING = { duration: 200, easing: Easing.bezier(0.2, 0, 0.2, 1) };
 
 type QuickOrderListCardProps = {
   items: ParsedQuickOrderItem[];
@@ -55,6 +65,20 @@ type QuickOrderListCardProps = {
   onRemoveItems: (items: ParsedQuickOrderItem[]) => void;
   onConfirm: () => void;
   onHeightChange: (height: number) => void;
+  /**
+   * Location switcher, hosted inside the card header. When these props are
+   * omitted the pill/trash affordances are simply not rendered (used by tests).
+   */
+  locationShortLabel?: string;
+  locationLabel?: string;
+  locations?: Location[];
+  selectedLocationId?: string | null;
+  isLocationDropdownOpen?: boolean;
+  onToggleLocationDropdown?: () => void;
+  onSelectLocation?: (location: Location) => void;
+  onCloseLocationDropdown?: () => void;
+  /** Clears the current order (trash button). */
+  onClear?: () => void;
 };
 
 type ConfirmState = "empty" | "needs-fixing" | "ready" | "confirming";
@@ -92,9 +116,45 @@ export function QuickOrderListCard({
   onRemoveItems,
   onConfirm,
   onHeightChange,
+  locationShortLabel,
+  locationLabel,
+  locations,
+  selectedLocationId,
+  isLocationDropdownOpen = false,
+  onToggleLocationDropdown,
+  onSelectLocation,
+  onCloseLocationDropdown,
+  onClear,
 }: QuickOrderListCardProps) {
   const ds = useScaledStyles();
   const scrollRef = useRef<ScrollView | null>(null);
+
+  const showLocationPill = Boolean(onToggleLocationDropdown && locationShortLabel);
+  const sortedLocations = useMemo(
+    () => [...(locations ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+    [locations],
+  );
+
+
+  // Rotate the pill chevron 180° in lock-step with the dropdown open progress.
+  const chevronProgress = useSharedValue(isLocationDropdownOpen ? 1 : 0);
+  useEffect(() => {
+    chevronProgress.value = withTiming(
+      isLocationDropdownOpen ? 1 : 0,
+      CHEVRON_TIMING,
+    );
+  }, [chevronProgress, isLocationDropdownOpen]);
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${chevronProgress.value * 180}deg` }],
+  }));
+
+  const handleSelectLocation = useCallback(
+    (location: Location) => {
+      onSelectLocation?.(location);
+      onCloseLocationDropdown?.();
+    },
+    [onCloseLocationDropdown, onSelectLocation],
+  );
 
   const displayGroups = useMemo(() => groupOrderListItems(items), [items]);
   const count = displayGroups.length;
@@ -112,11 +172,6 @@ export function QuickOrderListCard({
   const scrollable = count > VISIBLE_ROW_SLOTS;
   const listMaxHeight = rowSlot * VISIBLE_ROW_SLOTS;
 
-  // Tracks how close the scroll position is to the bottom so the scroll-hint
-  // pill can flip its direction (down → up) once the user is already at the
-  // end of the list. Defaults to "not at bottom" until we get a real event.
-  const [isAtBottom, setIsAtBottom] = useState(false);
-
   // Live scroll geometry powering the always-visible custom scrollbar. The
   // native indicator fades out after scrolling stops, so we draw our own thumb
   // and keep it pinned. Seeded from onLayout / onContentSizeChange so the bar
@@ -131,16 +186,13 @@ export function QuickOrderListCard({
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const { contentOffset, contentSize, layoutMeasurement } =
         event.nativeEvent;
-      const distanceFromBottom =
-        contentSize.height - layoutMeasurement.height - contentOffset.y;
-      setIsAtBottom(distanceFromBottom <= rowSlot * 0.5);
       setScrollGeometry({
         offsetY: contentOffset.y,
         contentHeight: contentSize.height,
         viewportHeight: layoutMeasurement.height,
       });
     },
-    [rowSlot],
+    [],
   );
 
   const handleScrollContentSizeChange = useCallback(
@@ -181,15 +233,6 @@ export function QuickOrderListCard({
       ? Math.min(maxThumbTravel, (offsetY / maxOffset) * maxThumbTravel)
       : 0;
 
-  const handleScrollHintPress = useCallback(() => {
-    if (!scrollRef.current) return;
-    if (isAtBottom) {
-      scrollRef.current.scrollTo({ y: 0, animated: true });
-    } else {
-      scrollRef.current.scrollToEnd({ animated: true });
-    }
-  }, [isAtBottom]);
-
   const handleLayout = useCallback(
     (event: LayoutChangeEvent) =>
       onHeightChange(event.nativeEvent.layout.height),
@@ -202,13 +245,10 @@ export function QuickOrderListCard({
     onConfirm();
   }, [confirmState, onConfirm]);
 
-  const itemWord = count === 1 ? "item" : "items";
   const summary =
     issueCount > 0
-      ? `${count} ${itemWord} · ${issueCount} to fix`
-      : `${count} ${itemWord} · all set`;
-  const moreCount = Math.max(0, count - VISIBLE_ROW_SLOTS);
-  const moreWord = moreCount === 1 ? "item" : "items";
+      ? `${count} · ${issueCount} to fix`
+      : `${count} · all set`;
 
   // Find the first item that needs attention so we can scroll it into view.
   const firstIssueIndex = useMemo(() => {
@@ -263,35 +303,78 @@ export function QuickOrderListCard({
           },
         ]}
       >
-        {/* 1. Header */}
+        {/* 1. Header — title, plus the location switcher + clear affordances. */}
         <View style={styles.header}>
           <Text style={[styles.title, { fontSize: ds.fontSize(17) }]}>
             Order list
           </Text>
-          {count > 0 ? (
-            <View
-              style={[
-                styles.statusBadge,
-                issueCount > 0 ? styles.statusBadgeAmber : styles.statusBadgeGreen,
-                {
-                  paddingHorizontal: ds.spacing(6),
-                  paddingVertical: ds.spacing(2),
-                  borderRadius: ds.radius(999),
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusBadgeText,
-                  issueCount > 0
-                    ? styles.statusBadgeTextAmber
-                    : styles.statusBadgeTextGreen,
-                  { fontSize: ds.fontSize(12) },
-                ]}
-                numberOfLines={1}
-              >
-                {summary}
-              </Text>
+          {showLocationPill || onClear ? (
+            <View style={styles.headerActions}>
+              {showLocationPill ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={`Active location ${
+                    locationLabel ?? locationShortLabel
+                  }. Tap to change.`}
+                  accessibilityState={{ expanded: isLocationDropdownOpen }}
+                  onPress={onToggleLocationDropdown}
+                  disabled={(locations?.length ?? 0) === 0}
+                  activeOpacity={0.75}
+                  style={[
+                    styles.locationPill,
+                    {
+                      height: ds.spacing(LOCATION_PILL_HEIGHT),
+                      paddingLeft: ds.spacing(10),
+                      paddingRight: ds.spacing(8),
+                      borderRadius: ds.radius(999),
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.locationDot,
+                      { marginRight: ds.spacing(7) },
+                    ]}
+                  />
+                  <Text
+                    style={[styles.locationLabel, { fontSize: ds.fontSize(14) }]}
+                    numberOfLines={1}
+                  >
+                    {locationShortLabel}
+                  </Text>
+                  <Animated.View style={[{ marginLeft: ds.spacing(4) }, chevronStyle]}>
+                    <Ionicons
+                      name="chevron-down"
+                      size={ds.icon(15)}
+                      color={glassColors.textSecondary}
+                    />
+                  </Animated.View>
+                </TouchableOpacity>
+              ) : null}
+              {onClear ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear quick order"
+                  onPress={onClear}
+                  activeOpacity={0.7}
+                  hitSlop={8}
+                  style={[
+                    styles.trashButton,
+                    {
+                      width: ds.spacing(LOCATION_PILL_HEIGHT),
+                      height: ds.spacing(LOCATION_PILL_HEIGHT),
+                      marginLeft: ds.spacing(8),
+                      borderRadius: ds.radius(999),
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name="trash-outline"
+                    size={ds.icon(16)}
+                    color={glassColors.textSecondary}
+                  />
+                </TouchableOpacity>
+              ) : null}
             </View>
           ) : null}
         </View>
@@ -373,54 +456,80 @@ export function QuickOrderListCard({
               ) : null}
             </View>
           )}
-
-          {scrollable && moreCount > 0 ? (
-            <View style={styles.scrollHintWrap} pointerEvents="box-none">
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isAtBottom ? "Scroll to top of order list" : "Scroll to bottom of order list"
-                }
-                hitSlop={10}
-                onPress={handleScrollHintPress}
-                style={({ pressed }) => [
-                  styles.scrollHint,
-                  { opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                <Ionicons
-                  name={isAtBottom ? "chevron-up" : "chevron-down"}
-                  size={ds.icon(16)}
-                  color={colors.textSecondary}
-                />
-                <Text
-                  style={[styles.scrollHintText, { fontSize: ds.fontSize(12) }]}
-                  numberOfLines={1}
-                >
-                  {`${moreCount} more ${moreWord}`}
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
         </View>
 
-        {/* 3. Full-width confirm button. Hidden when empty. */}
+        {/* 3. Footer — status badge (left) + compact confirm button (right). */}
         {confirmState !== "empty" ? (
           <View
             style={[
-              styles.footerWrap,
-              {
-                marginTop: ds.spacing(CARD_SECTION_GAP),
-                height: ds.spacing(CTA_HEIGHT),
-              },
+              styles.footer,
+              { marginTop: ds.spacing(CARD_SECTION_GAP) },
             ]}
           >
+            {count > 0 ? (
+              <View
+                style={[
+                  styles.statusBadge,
+                  issueCount > 0 ? styles.statusBadgeAmber : styles.statusBadgeGreen,
+                  {
+                    paddingHorizontal: ds.spacing(10),
+                    paddingVertical: ds.spacing(5),
+                    borderRadius: ds.radius(999),
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusBadgeText,
+                    issueCount > 0
+                      ? styles.statusBadgeTextAmber
+                      : styles.statusBadgeTextGreen,
+                    { fontSize: ds.fontSize(13) },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {summary}
+                </Text>
+              </View>
+            ) : (
+              <View />
+            )}
             <ConfirmButton
               state={confirmState}
               onPress={handleConfirmPress}
               radius={ds.radius(999)}
               fontSize={ds.fontSize(15)}
               iconSize={ds.icon(18)}
+              height={ds.spacing(CTA_HEIGHT)}
+              paddingHorizontal={ds.spacing(34)}
+            />
+          </View>
+        ) : null}
+
+        {/* Location dropdown overlay — anchored so its top-right corner lands on
+            the pill's top-right corner. Absolute insets are measured from the
+            card's border box, so we inset by the card padding to reach the
+            content box where the pill actually sits. The menu then grows down +
+            outward from the pill. */}
+        {showLocationPill ? (
+          <View
+            pointerEvents="box-none"
+            style={[
+              styles.dropdownOverlay,
+              {
+                top: ds.spacing(CARD_PADDING),
+                left: ds.spacing(CARD_PADDING),
+                right: ds.spacing(CARD_PADDING),
+              },
+            ]}
+          >
+            <LocationSwitcherDropdown
+              isOpen={isLocationDropdownOpen}
+              locations={sortedLocations}
+              selectedLocationId={selectedLocationId ?? null}
+              onSelect={handleSelectLocation}
+              onRequestClose={onCloseLocationDropdown ?? (() => {})}
+              tone="muted"
             />
           </View>
         ) : null}
@@ -490,6 +599,8 @@ type ConfirmButtonProps = {
   radius: number;
   fontSize: number;
   iconSize: number;
+  height: number;
+  paddingHorizontal: number;
 };
 
 const FOOTER_LABEL: Record<ConfirmState, string> = {
@@ -505,6 +616,8 @@ function ConfirmButton({
   radius,
   fontSize,
   iconSize,
+  height,
+  paddingHorizontal,
 }: ConfirmButtonProps) {
   const disabled = state !== "ready";
   const variant = FOOTER_VARIANT[state];
@@ -519,11 +632,8 @@ function ConfirmButton({
       disabled={disabled}
       onPress={disabled ? undefined : onPress}
       style={{
-        position: "absolute",
-        left: 0,
-        right: 0,
-        top: 0,
-        bottom: 0,
+        height,
+        paddingHorizontal,
         backgroundColor: variant.background,
         borderColor: variant.border,
         borderWidth: variant.borderWidth,
@@ -628,13 +738,42 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0,
   },
-  summary: {
-    color: colors.textSecondary,
-    fontWeight: "700",
-    letterSpacing: 0,
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
     flexShrink: 1,
     marginLeft: 12,
-    textAlign: "right",
+  },
+  locationPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexShrink: 1,
+    backgroundColor: "#F2F2F7",
+    borderWidth: glassHairlineWidth,
+    borderColor: glassColors.cardBorder,
+  },
+  locationDot: {
+    width: 9,
+    height: 9,
+    borderRadius: glassRadii.round,
+    backgroundColor: glassColors.accent,
+  },
+  locationLabel: {
+    flexShrink: 1,
+    color: glassColors.textPrimary,
+    fontWeight: "700",
+    letterSpacing: -0.2,
+  },
+  trashButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F2F2F7",
+  },
+  dropdownOverlay: {
+    position: "absolute",
+    // top/left/right are set inline (insets = card padding) so the box aligns
+    // with the content where the pill sits.
+    zIndex: 50,
   },
   emptyPanel: {
     flexDirection: "column",
@@ -660,29 +799,9 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: "rgba(60, 60, 67, 0.55)",
   },
-  scrollHintWrap: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "flex-end",
-  },
-  scrollHint: {
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  scrollHintText: {
-    color: colors.textSecondary,
-    fontWeight: "600",
-    letterSpacing: 0,
-    marginTop: 2,
-  },
   statusBadge: {
     alignItems: "center",
     justifyContent: "center",
-    marginLeft: 12,
   },
   statusBadgeAmber: {
     backgroundColor: "#FEF3C7",
@@ -700,8 +819,9 @@ const styles = StyleSheet.create({
   statusBadgeTextGreen: {
     color: "#166534",
   },
-  footerWrap: {
-    width: "100%",
-    position: "relative",
+  footer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
 });

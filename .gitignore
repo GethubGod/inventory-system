@@ -11,3 +11,4 @@ supabase/.temp/
 .env.local
 expo-env.d.ts
 # @end expo-cli
+.vercel

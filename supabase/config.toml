@@ -32,3 +32,12 @@ enable_confirmations = false
 [storage]
 enabled = true
 file_size_limit = "50MiB"
+
+[functions.quick-order-voice-stream]
+verify_jwt = false
+
+# Tips web app entry endpoints use their own session-token auth (entry devices
+# have no Supabase JWT beyond the anon key). The HTTP functions still require
+# the anon key as bearer; the WebSocket stream cannot send headers at all.
+[functions.tip-voice-stream]
+verify_jwt = false

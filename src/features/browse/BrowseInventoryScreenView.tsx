@@ -162,8 +162,11 @@ export function BrowseInventoryScreenView({
   }, [autoFocusSearch]);
 
   const allItemsSorted = useMemo(
-    () => [...items].sort((left, right) => left.name.localeCompare(right.name)),
-    [items],
+    () =>
+      items
+        .filter((item) => !item.location_id || item.location_id === activeLocationId)
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [activeLocationId, items],
   );
   const dynamicCategories = useMemo(() => buildCategoryList(items), [items]);
   const sortedLocations = useMemo(

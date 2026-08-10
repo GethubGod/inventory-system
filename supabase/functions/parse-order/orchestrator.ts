@@ -15,6 +15,7 @@ import { classifyQuickOrderInput } from './input-classifier.ts';
 import type { QuickOrderInputClassificationResult } from './input-classifier.ts';
 import { buildCommandOperations } from './operations.ts';
 import { parseWithLlmFallback } from './llm-fallback.ts';
+import { resolveItemCandidate } from './rule-resolver.ts';
 import { answerProductQuestion, type QaContextProduct } from './qa-handler.ts';
 import {
   deriveAllowedUnitLabels,
@@ -30,6 +31,8 @@ import type {
   CatalogMatchResult,
   CatalogItem,
   EmployeeQuickOrderAlias,
+  QuickOrderAliasRule,
+  QuickOrderUnitRule,
   ParserCorrection,
   ParseDiagnostics,
   ParserExample,
@@ -45,6 +48,7 @@ type OrchestratorInput = {
   rawText: string;
   locationId?: string;
   userId?: string | null;
+  mode?: 'order' | 'inventory';
   catalog: CatalogItem[];
   globalCatalog?: CatalogItem[];
   examples: ParserExample[];
@@ -56,6 +60,10 @@ type OrchestratorInput = {
   catalogIndex?: CatalogSearchIndex;
   globalCatalogIndex?: CatalogSearchIndex;
   employeeAliases?: EmployeeQuickOrderAlias[];
+  employeeNameKeys?: string[];
+  aliasRules?: QuickOrderAliasRule[];
+  unitRules?: QuickOrderUnitRule[];
+  parserSettings?: Record<string, unknown>;
   classification?: QuickOrderInputClassificationResult;
   debugCatalog?: boolean;
 };
@@ -83,7 +91,29 @@ function matchCatalogWithEmployeeAliases(
   catalogIndex: CatalogSearchIndex,
   employeeAliases: EmployeeQuickOrderAlias[],
   locationId: string | null,
+  aliasRules: QuickOrderAliasRule[] = [],
+  context: {
+    mode?: 'order' | 'inventory';
+    employeeNameKeys?: string[];
+    employeeUserId?: string | null;
+    parserSettings?: Record<string, unknown>;
+  } = {},
 ): CatalogMatchResult {
+  if (aliasRules.length > 0) {
+    return resolveItemCandidate({
+      inputText: itemText,
+      catalogIndex,
+      aliasRules,
+      context: {
+        mode: context.mode ?? 'order',
+        employeeNameKeys: context.employeeNameKeys ?? [],
+        employeeUserId: context.employeeUserId ?? null,
+        locationId,
+        settings: context.parserSettings ?? {},
+      },
+    });
+  }
+
   const officialNameMatch = matchOfficialCatalogName(itemText, catalogIndex);
   if (officialNameMatch) return officialNameMatch;
 
@@ -296,13 +326,33 @@ export async function parseQuickOrder(input: OrchestratorInput): Promise<ParseRe
       catalogIndex,
       input.employeeAliases ?? [],
       input.locationId ?? null,
+      input.aliasRules ?? [],
+      {
+        mode: input.mode ?? 'order',
+        employeeNameKeys: input.employeeNameKeys ?? input.employeeAliases?.map((alias) => alias.employee_name_key).filter(Boolean) ?? [],
+        employeeUserId: input.userId ?? null,
+        parserSettings: input.parserSettings,
+      },
     );
     const match = maybePromoteBareCatalogToken(
       candidate,
       maybeAmbiguousBareCatalogToken(candidate, baseMatch, catalogIndex),
       catalogIndex,
     );
-    const validated = validateParsedLine({ candidate, match, catalog: input.catalog, unitAliases });
+    const validated = validateParsedLine({
+      candidate,
+      match,
+      catalog: input.catalog,
+      unitAliases,
+      unitRules: input.unitRules,
+      resolverContext: {
+        mode: input.mode ?? 'order',
+        locationId: input.locationId ?? null,
+        employeeNameKeys: input.employeeNameKeys ?? input.employeeAliases?.map((alias) => alias.employee_name_key).filter(Boolean) ?? [],
+        employeeUserId: input.userId ?? null,
+        settings: input.parserSettings ?? {},
+      },
+    });
     parsedItems.push(validated.item);
     flags.push(...validated.flags);
   }

@@ -204,6 +204,17 @@ describe('validateSubmitRequest', () => {
     ).toBeNull();
   });
 
+  test('accepts voice order metadata fields', () => {
+    expect(
+      validateSubmitRequest(
+        makeRequest({
+          entryMethod: 'voice_order',
+          quickSessionId: 'session-voice',
+        })
+      )
+    ).toBeNull();
+  });
+
   test('accepts draft status', () => {
     expect(validateSubmitRequest(makeRequest({ status: 'draft' }))).toBeNull();
   });

@@ -6,9 +6,11 @@ import type {
   ParsedItem,
   ParseFlag,
   ParseSource,
+  QuickOrderUnitRule,
 } from './types.ts';
 import { matchCatalogItem } from './catalog-matcher.ts';
 import type { CatalogSearchIndex } from './catalog-search-index.ts';
+import { resolveMissingUnit, resolveUnit, type RuleResolverContext } from './rule-resolver.ts';
 import {
   deriveAllowedUnitLabels,
   deriveAllowedUnits,
@@ -18,6 +20,7 @@ import {
   isKnownUnit,
   isUnitAllowedForItem,
   normalizeUnit,
+  singleAllowedUnit,
   DEFAULT_UNIT_ALIASES,
   type UnitAliasMap,
 } from './units.ts';
@@ -28,15 +31,29 @@ export function validateParsedLine(input: {
   catalog: CatalogItem[];
   parseSource?: ParseSource;
   unitAliases?: UnitAliasMap;
+  unitRules?: QuickOrderUnitRule[];
+  resolverContext?: RuleResolverContext;
 }): { item: ParsedItem; flags: ParseFlag[] } {
   const unitAliases = input.unitAliases ?? DEFAULT_UNIT_ALIASES;
   const { candidate, match, catalog } = input;
   const flags: ParseFlag[] = [];
   const catalogItem = match.item_id ? catalog.find((item) => item.id === match.item_id) ?? null : null;
-  const quantity = candidate.quantity != null && candidate.quantity > 0 ? candidate.quantity : null;
+  let quantity = candidate.quantity != null && candidate.quantity > 0 ? candidate.quantity : null;
   const rawUnit = candidate.unit_raw ?? candidate.unit;
   const normalizedUnit = normalizeUnit(candidate.unit, unitAliases);
-  const unit = normalizedUnit ?? rawUnit?.trim().toLowerCase() ?? null;
+  let unit = normalizedUnit ?? rawUnit?.trim().toLowerCase() ?? null;
+  const unitResolution = catalogItem && input.unitRules?.length && input.resolverContext
+    ? (unit
+        ? resolveUnit({ item: catalogItem, typedUnit: unit, unitRules: input.unitRules, unitAliases, context: input.resolverContext })
+        : resolveMissingUnit({ item: catalogItem, unitRules: input.unitRules, unitAliases, context: input.resolverContext }))
+    : null;
+  if (unitResolution?.unit) unit = unitResolution.unit;
+  if (quantity != null && unitResolution) quantity *= unitResolution.multiplier;
+  // No unit typed, but the item can only be ordered in one unit — there is
+  // nothing to choose, so adopt it instead of asking the employee to pick.
+  if (!unit && catalogItem) {
+    unit = singleAllowedUnit(catalogItem) ?? unit;
+  }
   const unresolved = !catalogItem;
   let needsClarification = unresolved || match.needs_clarification;
   let issue = match.issue;
@@ -109,6 +126,29 @@ export function validateParsedLine(input: {
   const confidence = Math.min(candidate.parse_confidence, match.confidence || 0.5);
   const source: ParseSource = input.parseSource ?? (match.match_type === 'fuzzy' ? 'fuzzy' : 'deterministic');
   const displayName = catalogItem?.name ?? match.item_name ?? candidate.item_text ?? 'Unresolved item';
+  const aliasMetadata = catalogItem && match.matched_alias
+    ? {
+        reason_codes: [match.match_type === 'employee_alias' ? 'employee_alias' : 'global_alias'],
+        resolution_trace: [`Matched "${match.matched_alias}" to ${catalogItem.name}.`],
+        alias_source: match.match_type === 'employee_alias' ? 'employee' as const : 'global' as const,
+        confidence: match.confidence,
+        user_visible_note: match.match_type === 'employee_alias'
+          ? `Matched "${match.matched_alias}" to ${catalogItem.name} using an employee inventory alias.`
+          : `Matched "${match.matched_alias}" to ${catalogItem.name} using a global alias.`,
+      }
+    : catalogItem && match.match_type === 'fuzzy'
+      ? {
+          reason_codes: ['fuzzy_match'],
+          resolution_trace: [`Closest match for "${candidate.item_text}" was ${catalogItem.name}.`],
+          alias_source: 'fuzzy' as const,
+          confidence: match.confidence,
+          user_visible_note: match.needs_clarification
+            ? `Please confirm ${catalogItem.name}; this was a low-confidence match.`
+            : null,
+        }
+      : null;
+  const reasonCodes = [...(aliasMetadata?.reason_codes ?? []), ...(unitResolution?.metadata.reason_codes ?? [])];
+  const resolutionTrace = [...(aliasMetadata?.resolution_trace ?? []), ...(unitResolution?.metadata.resolution_trace ?? [])];
 
   const item: ParsedItem = {
     id: `parsed:${candidate.line_index}:${candidate.normalized_text}`,
@@ -147,6 +187,11 @@ export function validateParsedLine(input: {
       issue,
     }),
     match_type: match.match_type,
+    matched_alias: match.matched_alias ?? null,
+    resolution: aliasMetadata ?? unitResolution?.metadata,
+    reason_codes: reasonCodes.length > 0 ? reasonCodes : undefined,
+    resolution_trace: resolutionTrace.length > 0 ? resolutionTrace : undefined,
+    user_visible_note: aliasMetadata?.user_visible_note ?? unitResolution?.metadata.user_visible_note,
     diagnostics: {
       match_type: match.match_type,
       match_confidence: match.confidence,
@@ -172,8 +217,13 @@ export function normalizeParsedItemStatus(
     : null;
   const rawUnit = item.unit_raw ?? item.unit;
   const normalizedUnit = normalizeUnit(item.unit, unitAliases);
-  const unit = normalizedUnit ?? rawUnit?.trim().toLowerCase() ?? null;
+  let unit = normalizedUnit ?? rawUnit?.trim().toLowerCase() ?? null;
   const hasItem = Boolean(item.item_id && catalogItem);
+  // Single-unit items have nothing to choose — fill in their only unit rather
+  // than surfacing a "Choose unit" prompt.
+  if (!unit && hasItem) {
+    unit = singleAllowedUnit(catalogItem) ?? unit;
+  }
   let status: ParsedItem['status'];
   let needsClarification = true;
   let unresolved = !hasItem;

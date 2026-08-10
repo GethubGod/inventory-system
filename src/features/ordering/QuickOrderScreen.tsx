@@ -8,6 +8,7 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   FlatList,
   InteractionManager,
   Keyboard,
@@ -22,6 +23,14 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import {
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+  useAudioRecorder,
+  useAudioRecorderState,
+  type RecordingOptions,
+} from "expo-audio";
 import NetInfo from "@react-native-community/netinfo";
 import Animated, {
   Easing,
@@ -35,28 +44,41 @@ import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { ConfirmLocationBottomSheet } from "@/components";
 import { getTabBarBottomInset } from "@/components/navigation";
+import {
+  formatOrderConfirmationSummary,
+  type OrderConfirmationPayload,
+} from "@/features/cart/orderConfirmation";
+import { OrderSubmissionConfirmationOverlay } from "@/features/cart/OrderSubmissionConfirmationOverlay";
 import { useResolvedActiveLocation } from "@/hooks/useResolvedActiveLocation";
 import { useScaledStyles } from "@/hooks/useScaledStyles";
-import { triggerSelectionHaptic } from "@/lib/haptics";
+import {
+  triggerConfirmationHaptic,
+  triggerSelectionHaptic,
+} from "@/lib/haptics";
 import { supabase } from "@/lib/supabase";
-import { useAuthStore, useOrderStore, useSettingsStore } from "@/store";
+import { useAuthStore, useSettingsStore } from "@/store";
 import {
   areQuickOrderItemsCartReady,
   quickOrderItemsToCartAdds,
 } from "@/store/helpers";
-import { useRouter } from "expo-router";
+import { submitOrder as submitOrderService } from "@/services/orderSubmission";
+import {
+  OrderSubmissionError,
+  type OrderItemPayload,
+} from "@/services/orderValidation";
+import { resolveActiveLocationReminders } from "@/services/locationReminderService";
+import { completePendingRemindersForUser } from "@/services/notificationService";
 import {
   colors,
   glassColors,
   glassHairlineWidth,
-  glassSpacing,
   quickOrderAccent,
   quickOrderAccentLight,
   quickOrderAccentPale,
   quickOrderAssistantPillBackground,
 } from "@/theme/design";
-import { StockCheckHeader } from "@/features/stock-check/components/StockCheckHeader";
 import type { Location } from "@/types";
 import type { OrderingMode } from "./types";
 import { QuickOrderListCard } from "./QuickOrderListCard";
@@ -82,7 +104,7 @@ import {
 import { QuickOrderUserMessage } from "./QuickOrderUserMessage";
 import { QuickOrderWelcomeMessageCard } from "./QuickOrderWelcomeMessage";
 import { NeedsInputActionButtons } from "./NeedsInputActionButtons";
-import { buildComposerOrderText } from "./orderPreview";
+import { buildComposerItemNameList, buildComposerOrderText } from "./orderPreview";
 import {
   buildQuickOrderDisplayMessages,
   createQuickOrderWelcomeMessage,
@@ -111,13 +133,30 @@ import {
   type QuickOrderStockUpdate,
 } from "./quickOrderResponse";
 import {
+  buildQuickOrderContextNotes,
+  getQuickOrderContextNotesHeader,
+  type QuickOrderContextNote,
+} from "./quickOrderContextNotes";
+import {
   getComposerPlaceholder,
   type ComposerMode,
 } from "./quickOrderComposer";
 import {
+  cleanupQuickOrderVoiceFile,
+  isQuickOrderVoiceTooShort,
+  reduceQuickOrderVoiceState,
+  transcribeQuickOrderVoiceFile,
+  type QuickOrderVoiceErrorCode,
+  type QuickOrderVoiceEvent,
+  type QuickOrderVoiceStatus,
+  type VoiceParsedAction,
+  type VoiceUnresolvedAction,
+} from "./quickOrderVoice";
+import {
   countUnresolvedItems,
   applyQuickOrderClarificationAction,
   applyQuickOrderOperations,
+  createQuickOrderClientKey,
   formatQuickOrderQuantity,
   getParsedItemDisplayName,
   getParsedItemIssue,
@@ -133,22 +172,6 @@ import {
   type QuickOrderMergeResult,
   type QuickOrderOperationResult,
 } from "./quickOrderItems";
-
-type SpeechRecognitionModule = {
-  addListener: (eventName: string, listener: (event: any) => void) => { remove: () => void };
-  requestPermissionsAsync: () => Promise<{ granted?: boolean }>;
-  start: (options: Record<string, unknown>) => void;
-  stop: () => void;
-  abort: () => void;
-};
-
-let ExpoSpeechRecognitionModule: SpeechRecognitionModule | null = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  ExpoSpeechRecognitionModule = require("expo-speech-recognition").ExpoSpeechRecognitionModule;
-} catch {
-  ExpoSpeechRecognitionModule = null;
-}
 
 type QuickOrderFlag = {
   type: string;
@@ -199,6 +222,15 @@ type QuickOrderInvokeResult = {
 };
 
 const QUICK_ORDER_RETRY_DELAYS_MS = [700, 1_400, 2_800, 5_600] as const;
+const QUICK_ORDER_MAX_RECORDING_MS = 30_000;
+const QUICK_ORDER_VOICE_SESSION_TIMEOUT_MS = 10_000;
+const QUICK_ORDER_VOICE_SESSION_TIMEOUT_MESSAGE = "VOICE_SESSION_TIMEOUT";
+const QUICK_ORDER_RECORDING_OPTIONS: RecordingOptions = {
+  ...RecordingPresets.HIGH_QUALITY,
+  isMeteringEnabled: true,
+  numberOfChannels: 1,
+  bitRate: 64_000,
+};
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -288,6 +320,41 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function withPromiseTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function generateQuickOrderSubmitId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = (Math.random() * 16) | 0;
+    const value = char === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
 function isRetryableQuickOrderFunctionError(
   details: QuickOrderFunctionErrorDetails,
 ): boolean {
@@ -374,6 +441,18 @@ type SmartMissingCheck = {
   source: "proactive" | "manual";
 };
 
+type VoiceReviewState = {
+  rawTranscript: string;
+  normalizedText: string;
+  modelUsed: string;
+  confidence: number;
+  voiceEventId: string | null;
+  detectedLanguages: string[];
+  actions: VoiceParsedAction[];
+  unresolved: VoiceUnresolvedAction[];
+  warnings: string[];
+};
+
 type QuickOrderMessage = {
   id: string;
   role: "user" | "assistant" | "error";
@@ -458,6 +537,7 @@ const CARD_TIMING = {
 const CHAT_NEAR_BOTTOM_THRESHOLD = 160;
 const QUICK_ORDER_READY_NUDGE_DELAY_MS = 120_000;
 const MISSING_ITEM_THROTTLE_COOLDOWN_MS = 120_000;
+const ORDER_SUBMIT_UI_TIMEOUT_MS = 20_000;
 
 /** Quick-action pills shown above the composer input. */
 const COMPOSER_SUGGESTION_PILLS: {
@@ -627,6 +707,10 @@ function recommendationsToParsedItems(
     isSuggested: true,
     suggestionReason: item.reason,
     suggestionSource: "remaining_inventory",
+    resolution: item.resolution,
+    reason_codes: item.reason_codes,
+    resolution_trace: item.resolution_trace,
+    user_visible_note: item.user_visible_note,
   }));
 }
 
@@ -638,10 +722,11 @@ function recommendationsToParsedItems(
 type QuickOrderInventoryUpdate = {
   item_id: string;
   item_name: string;
-  current_quantity: number;
+  current_quantity: number | null;
   current_unit: string | null;
   new_quantity: number | null;
   new_unit: string | null;
+  no_order_reason?: string | null;
 };
 
 /**
@@ -653,6 +738,7 @@ type QuickOrderInventoryUpdate = {
 function buildInventoryUpdateRows(
   stockUpdates: QuickOrderStockUpdate[],
   recommendations: QuickOrderRecommendation[],
+  safetyWarnings: QuickOrderSafetyWarning[] = [],
 ): QuickOrderInventoryUpdate[] {
   const recommendationByItemId = new Map<string, QuickOrderRecommendation>();
   for (const recommendation of recommendations) {
@@ -661,10 +747,23 @@ function buildInventoryUpdateRows(
       recommendationByItemId.set(recommendation.item_id, recommendation);
     }
   }
-  return stockUpdates.map((update) => {
+  const noOrderReasonByItemKey = new Map<string, string>();
+  for (const warning of safetyWarnings) {
+    if (warning.type !== "no_order_needed" || !warning.message) continue;
+    const key = warning.item_id ?? warning.item_name?.trim().toLowerCase();
+    if (key && !noOrderReasonByItemKey.has(key)) {
+      noOrderReasonByItemKey.set(key, warning.message);
+    }
+  }
+  const rows: QuickOrderInventoryUpdate[] = stockUpdates.map((update) => {
     const recommendation = update.item_id
       ? recommendationByItemId.get(update.item_id)
       : undefined;
+    const noOrderReason = recommendation
+      ? null
+      : noOrderReasonByItemKey.get(update.item_id) ??
+        noOrderReasonByItemKey.get(update.item_name.trim().toLowerCase()) ??
+        null;
     return {
       item_id: update.item_id,
       item_name: update.item_name,
@@ -672,9 +771,91 @@ function buildInventoryUpdateRows(
       current_unit: update.unit,
       new_quantity: recommendation ? recommendation.suggested_quantity : null,
       new_unit: recommendation ? recommendation.unit : update.unit,
+      no_order_reason: noOrderReason,
     };
   });
+  const existingKeys = new Set(
+    rows.map((row) => row.item_id || row.item_name.trim().toLowerCase()),
+  );
+  for (const warning of safetyWarnings) {
+    if (warning.type !== "no_order_needed") continue;
+    const itemName = warning.item_name?.trim();
+    if (!itemName) continue;
+    const key = warning.item_id || itemName.toLowerCase();
+    if (existingKeys.has(key)) continue;
+    existingKeys.add(key);
+    rows.push({
+      item_id: warning.item_id ?? key,
+      item_name: itemName,
+      current_quantity: null,
+      current_unit: null,
+      new_quantity: null,
+      new_unit: warning.unit ?? null,
+      no_order_reason: warning.message,
+    });
+  }
+  return rows;
 }
+
+/**
+ * Builds the concise gray "why" notes for a reply (inventory rules, personal
+ * aliases, spelling corrections, inferred units, …). See
+ * {@link buildQuickOrderContextNotes} — this thin wrapper just feeds it the
+ * message's structured fields.
+ */
+function deriveContextNotes(message: QuickOrderMessage): QuickOrderContextNote[] {
+  return buildQuickOrderContextNotes({
+    parsedItems: message.parsedItems,
+    stockUpdates: message.stockUpdates,
+    recommendations: message.recommendations,
+    safetyWarnings: message.safetyWarnings,
+    inventoryUpdates: message.inventoryUpdates,
+  });
+}
+
+/**
+ * The gray disclosure above a reply that explains a non-obvious decision. The
+ * heading names what happened (e.g. "Inventory rules", "Personal context") and
+ * "Show more" reveals the one-line reasons — so a surprising result like
+ * "Salmon — 0" comes with the rule that produced it ("a lot" → no order).
+ */
+const ContextNotesDisclosure = React.memo(function ContextNotesDisclosure({
+  notes,
+}: {
+  notes: QuickOrderContextNote[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const handleToggle = useCallback(() => {
+    void triggerSelectionHaptic();
+    setExpanded((prev) => !prev);
+  }, []);
+
+  if (notes.length === 0) return null;
+  const header = getQuickOrderContextNotesHeader(notes);
+
+  return (
+    <View style={styles.personalContextDisclosure}>
+      <Text style={styles.personalContextNote}>
+        {header}
+      </Text>
+      {expanded ? (
+        <Text style={styles.personalContextNote}>
+          {notes.map((note) => note.text).join("\n")}
+        </Text>
+      ) : null}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={expanded ? `Hide ${header}` : `Show ${header}`}
+        onPress={handleToggle}
+        hitSlop={8}
+      >
+        <Text style={styles.personalContextToggle}>
+          {expanded ? "Show less" : "Show more"}
+        </Text>
+      </Pressable>
+    </View>
+  );
+});
 
 function markHumanOrderItems(items: ParsedQuickOrderItem[]): ParsedQuickOrderItem[] {
   return items.map((item) => ({
@@ -685,6 +866,232 @@ function markHumanOrderItems(items: ParsedQuickOrderItem[]): ParsedQuickOrderIte
     suggestionSource: undefined,
   }));
 }
+
+function voiceActionToParsedItem(
+  action: VoiceParsedAction,
+  review: VoiceReviewState,
+): ParsedQuickOrderItem | null {
+  if (
+    action.type !== "add" ||
+    !action.itemId ||
+    action.quantity == null ||
+    !Number.isFinite(action.quantity) ||
+    action.quantity <= 0 ||
+    !action.unit?.trim()
+  ) {
+    return null;
+  }
+
+  const itemName = action.canonicalItemName ?? action.itemName;
+  return {
+    item_id: action.itemId,
+    item_name: itemName,
+    display_name: itemName,
+    item_text: itemName,
+    raw_token: action.sourceText || action.spokenItemName || itemName,
+    raw_text: action.sourceText || review.normalizedText,
+    quantity: action.quantity,
+    unit: action.unit,
+    confidence: action.confidence,
+    needs_clarification: false,
+    unresolved: false,
+    status: "valid",
+    action: null,
+    notes: null,
+    parse_source: "llm",
+    source: "voice",
+    isSuggested: false,
+    client_key: createQuickOrderClientKey("voice"),
+    voiceSessionId: review.voiceEventId,
+    rawTranscript: review.rawTranscript,
+    normalizedText: review.normalizedText,
+    modelUsed: review.modelUsed,
+    voiceConfidence: review.confidence,
+  };
+}
+
+function voiceSafeAddActions(review: VoiceReviewState | null): VoiceParsedAction[] {
+  if (!review) return [];
+  return review.actions.filter((action) =>
+    action.type === "add" &&
+    Boolean(action.itemId) &&
+    action.quantity != null &&
+    Number.isFinite(action.quantity) &&
+    action.quantity > 0 &&
+    Boolean(action.unit?.trim())
+  );
+}
+
+function formatVoiceReviewAction(action: VoiceParsedAction): string {
+  const name = action.canonicalItemName ?? action.itemName;
+  if (action.quantity == null || !action.unit) return name;
+  return `${name} - ${formatQuickOrderQuantity(action.quantity, action.unit)}`;
+}
+
+function voiceUnresolvedLabel(entry: VoiceUnresolvedAction): string {
+  const source = entry.sourceText || entry.spokenItemName || "voice input";
+  switch (entry.reason) {
+    case "missing_quantity":
+      return `"${source}" - add quantity`;
+    case "missing_unit":
+      return `"${source}" - choose unit`;
+    case "ambiguous_item":
+      return `"${source}" - choose item`;
+    case "low_confidence":
+      return `"${source}" - low confidence`;
+    case "unsupported_command":
+      return `"${source}" - not an order`;
+    case "unknown_item":
+    default:
+      return `"${source}" - unknown item`;
+  }
+}
+
+const VoiceReviewCard = React.memo(function VoiceReviewCard({
+  review,
+  status,
+  onAdd,
+  onEditText,
+  onRetry,
+  onDiscard,
+}: {
+  review: VoiceReviewState;
+  status: QuickOrderVoiceStatus;
+  onAdd: () => void;
+  onEditText: () => void;
+  onRetry: () => void;
+  onDiscard: () => void;
+}) {
+  const ds = useScaledStyles();
+  const safeActions = voiceSafeAddActions(review);
+  const isAdding = status === "adding_to_order";
+  const canAdd = safeActions.length > 0 && !isAdding;
+
+  return (
+    <View
+      style={[
+        styles.voiceReviewCard,
+        {
+          borderRadius: ds.radius(18),
+          padding: ds.spacing(14),
+          marginTop: ds.spacing(10),
+        },
+      ]}
+    >
+      <View style={styles.voiceReviewHeader}>
+        <Ionicons name="mic-circle" size={ds.icon(20)} color={quickOrderAccent} />
+        <Text style={[styles.voiceReviewTitle, { fontSize: ds.fontSize(16) }]}>
+          Suggested from voice
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Discard voice suggestion"
+          onPress={onDiscard}
+          hitSlop={8}
+          style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+        >
+          <Ionicons name="close" size={ds.icon(18)} color={colors.textMuted} />
+        </Pressable>
+      </View>
+
+      {safeActions.length > 0 ? (
+        <View style={{ marginTop: ds.spacing(10), gap: ds.spacing(7) }}>
+          {safeActions.map((action, index) => (
+            <View key={`${action.itemId}:${action.unit}:${index}`} style={styles.voiceReviewRow}>
+              <Ionicons name="checkmark-circle" size={ds.icon(17)} color={colors.statusGreen} />
+              <Text style={[styles.voiceReviewRowText, { fontSize: ds.fontSize(15) }]} numberOfLines={1}>
+                {formatVoiceReviewAction(action)}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={[styles.voiceReviewMutedText, { fontSize: ds.fontSize(14), marginTop: ds.spacing(8) }]}>
+          I cleaned the voice input, but could not safely match an item yet.
+        </Text>
+      )}
+
+      {review.unresolved.length > 0 ? (
+        <View style={[styles.voiceReviewUnresolved, { marginTop: ds.spacing(12), padding: ds.spacing(10), borderRadius: ds.radius(12) }]}>
+          <Text style={[styles.voiceReviewSectionLabel, { fontSize: ds.fontSize(12) }]}>
+            Needs review
+          </Text>
+          {review.unresolved.slice(0, 4).map((entry, index) => (
+            <Text key={`${entry.reason}:${index}`} style={[styles.voiceReviewWarningText, { fontSize: ds.fontSize(13) }]}>
+              {voiceUnresolvedLabel(entry)}
+              {entry.alternatives?.length ? ` - did you mean ${entry.alternatives.map((alt) => alt.itemName).join(" or ")}?` : ""}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
+      {review.warnings.length > 0 && review.unresolved.length === 0 ? (
+        <Text style={[styles.voiceReviewMutedText, { fontSize: ds.fontSize(12), marginTop: ds.spacing(8) }]} numberOfLines={2}>
+          {review.warnings.join(" ")}
+        </Text>
+      ) : null}
+
+      <View style={[styles.voiceReviewActions, { marginTop: ds.spacing(12), gap: ds.spacing(8) }]}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Add voice items to order"
+          disabled={!canAdd}
+          onPress={onAdd}
+          style={({ pressed }) => [
+            styles.voiceReviewPrimaryButton,
+            {
+              borderRadius: ds.radius(12),
+              paddingVertical: ds.spacing(10),
+              opacity: !canAdd ? 0.45 : pressed ? 0.82 : 1,
+            },
+          ]}
+        >
+          {isAdding ? (
+            <ActivityIndicator size="small" color={colors.textOnPrimary} />
+          ) : (
+            <Text style={[styles.voiceReviewPrimaryText, { fontSize: ds.fontSize(14) }]}>
+              Add to order
+            </Text>
+          )}
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Edit voice text"
+          onPress={onEditText}
+          style={({ pressed }) => [
+            styles.voiceReviewSecondaryButton,
+            {
+              borderRadius: ds.radius(12),
+              paddingVertical: ds.spacing(10),
+              opacity: pressed ? 0.75 : 1,
+            },
+          ]}
+        >
+          <Text style={[styles.voiceReviewSecondaryText, { fontSize: ds.fontSize(14) }]}>
+            Edit text
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Retry voice recording"
+          onPress={onRetry}
+          style={({ pressed }) => [
+            styles.voiceReviewSecondaryButton,
+            {
+              borderRadius: ds.radius(12),
+              paddingVertical: ds.spacing(10),
+              opacity: pressed ? 0.75 : 1,
+            },
+          ]}
+        >
+          <Text style={[styles.voiceReviewSecondaryText, { fontSize: ds.fontSize(14) }]}>
+            Retry
+          </Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+});
 
 function isInventoryCountReviewItem(item: ParsedQuickOrderItem | null | undefined): boolean {
   return item?.source === "remaining_inventory" ||
@@ -1928,8 +2335,10 @@ const InventoryUpdateCard = React.memo(function InventoryUpdateCard({
             style={[styles.inventoryUpdateRow, { gap: ds.spacing(6) }]}
           >
             <Text style={[styles.stockRowText, { fontSize: ds.fontSize(14) }]}>
-              {update.item_name}{" "}
-              {formatQuickOrderQuantity(update.current_quantity, update.current_unit)}
+              {update.item_name}
+              {update.current_quantity != null
+                ? ` ${formatQuickOrderQuantity(update.current_quantity, update.current_unit)}`
+                : ""}
             </Text>
             {update.new_quantity != null ? (
               <>
@@ -1942,7 +2351,16 @@ const InventoryUpdateCard = React.memo(function InventoryUpdateCard({
                   {formatQuickOrderQuantity(update.new_quantity, update.new_unit)}
                 </Text>
               </>
-            ) : null}
+            ) : (
+              <>
+                <Text style={[styles.inventoryUpdateDashText, { fontSize: ds.fontSize(14) }]}>
+                  –
+                </Text>
+                <Text style={[styles.inventoryUpdateNotOrderedText, { fontSize: ds.fontSize(14) }]}>
+                  {formatQuickOrderQuantity(0, update.new_unit ?? update.current_unit)}
+                </Text>
+              </>
+            )}
           </View>
         ))}
         {hasOverflow ? (
@@ -2076,12 +2494,13 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const insets = useSafeAreaInsets();
   const chatListRef = useRef<FlatList<QuickOrderMessage> | null>(null);
   const user = useAuthStore((state) => state.user);
+  const profile = useAuthStore((state) => state.profile);
   const allLocations = useAuthStore((state) => state.locations);
   const setAuthLocation = useAuthStore((state) => state.setLocation);
-  const addToCart = useOrderStore((state) => state.addToCart);
-  const router = useRouter();
   const { location } = useResolvedActiveLocation();
   const tabBarHeight = 60 + getTabBarBottomInset(insets.bottom);
+  const audioRecorder = useAudioRecorder(QUICK_ORDER_RECORDING_OPTIONS);
+  const audioRecorderState = useAudioRecorderState(audioRecorder, 100);
 
   const [composerHeight, setComposerHeight] = useState(0);
   const [composerBottomOffset, setComposerBottomOffset] =
@@ -2124,10 +2543,17 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     Record<string, true>
   >({});
   const [isConfirming, setIsConfirming] = useState(false);
-  const [isVoiceListening, setIsVoiceListening] = useState(false);
-  const [liveVoiceTranscript, setLiveVoiceTranscript] = useState("");
-  const [finalVoiceTranscript, setFinalVoiceTranscript] = useState<string | null>(null);
+  const [showConfirmLocationSheet, setShowConfirmLocationSheet] = useState(false);
+  const [confirmLocationId, setConfirmLocationId] = useState<string | null>(null);
+  const [orderConfirmation, setOrderConfirmation] =
+    useState<OrderConfirmationPayload | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<QuickOrderVoiceStatus>("idle");
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceReview, setVoiceReview] = useState<VoiceReviewState | null>(null);
+  const [lastVoiceRecording, setLastVoiceRecording] = useState<{
+    uri: string;
+    durationMs: number;
+  } | null>(null);
   const [nudgeSent, setNudgeSent] = useState(false);
   const [smartMissingCheck, setSmartMissingCheck] = useState<SmartMissingCheck>({
     status: "idle",
@@ -2144,6 +2570,20 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const lastUserTextRef = useRef("");
   const requestGenerationRef = useRef(0);
   const isSendingRef = useRef(false);
+  const voiceMachineRef = useRef({
+    status: "idle" as QuickOrderVoiceStatus,
+    uploadInFlight: false,
+    errorCode: null as QuickOrderVoiceErrorCode | null,
+  });
+  const pendingVoiceDraftMetadataRef = useRef<{
+    raw_transcript?: string;
+    transcript_confidence?: number;
+    language?: string;
+  } | null>(null);
+  const voiceReviewAddInFlightRef = useRef(false);
+  const recordingStartTimeRef = useRef<number | null>(null);
+  const maxRecordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isVoiceStoppingRef = useRef(false);
   const isConfirmingRef = useRef(false);
   const quickOrderPendingOrderIdRef = useRef<string | null>(null);
   const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2167,14 +2607,65 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   useEffect(() => {
     setComposerMode("order");
-  }, [mode.scope]);
+  }, [mode.scope, setComposerMode]);
 
   const userId = user?.id ?? null;
   const locationId = location?.id ?? null;
-  const isOrderBusy = isSending || isConfirming;
+  // The order-list header shows only the last word of the location name
+  // ("Babytuna Sushi" → "Sushi") to keep the compact pill short.
+  const locationShortLabel = useMemo(() => {
+    const name = location?.name?.trim() ?? "";
+    if (!name) return "";
+    const parts = name.split(/\s+/);
+    return parts[parts.length - 1];
+  }, [location?.name]);
+  const applyVoiceEvent = useCallback(
+    (event: QuickOrderVoiceEvent, errorCode: QuickOrderVoiceErrorCode | null = null) => {
+      const next = reduceQuickOrderVoiceState(voiceMachineRef.current, event, errorCode);
+      voiceMachineRef.current = next;
+      setVoiceStatus(next.status);
+    },
+    [],
+  );
+  const isOrderBusy =
+    isSending ||
+    isConfirming ||
+    showConfirmLocationSheet ||
+    orderConfirmation != null;
   const voiceEnabled =
-    process.env.EXPO_PUBLIC_ENABLE_QUICK_ORDER_VOICE === "true" &&
-    ExpoSpeechRecognitionModule != null;
+    process.env.EXPO_PUBLIC_ENABLE_QUICK_ORDER_VOICE === "true";
+
+  const submitLocationOptions = useMemo(() => {
+    const optionsById = new Map<string, { id: string; name: string; shortCode?: string }>();
+    const activeLocations = allLocations.filter((option) => option.active !== false);
+    const sourceLocations = activeLocations.length > 0 ? activeLocations : allLocations;
+
+    sourceLocations.forEach((option) => {
+      optionsById.set(option.id, {
+        id: option.id,
+        name: option.name,
+        shortCode: option.short_code,
+      });
+    });
+
+    if (location && !optionsById.has(location.id)) {
+      optionsById.set(location.id, {
+        id: location.id,
+        name: location.name,
+        shortCode: location.short_code,
+      });
+    }
+
+    return Array.from(optionsById.values());
+  }, [allLocations, location]);
+
+  const locationNameById = useMemo(() => {
+    const next = new Map<string, string>();
+    submitLocationOptions.forEach((option) => {
+      next.set(option.id, option.name);
+    });
+    return next;
+  }, [submitLocationOptions]);
 
   const updateChatStickiness = useCallback((active = false) => {
     const next = shouldAutoStickToBottom({
@@ -2467,45 +2958,37 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       if (nudgeTimerRef.current) {
         clearTimeout(nudgeTimerRef.current);
       }
+      if (maxRecordingTimerRef.current) {
+        clearTimeout(maxRecordingTimerRef.current);
+      }
+      if (audioRecorder.isRecording) {
+        try {
+          void audioRecorder.stop();
+        } catch {
+          // Recorder may already be stopped during unmount.
+        }
+      }
     },
-    [],
+    [audioRecorder],
   );
 
   useEffect(() => {
-    if (!voiceEnabled || !ExpoSpeechRecognitionModule) return;
-
-    const subscriptions = [
-      ExpoSpeechRecognitionModule.addListener("start", () => {
-        setIsVoiceListening(true);
-        setVoiceError(null);
-      }),
-      ExpoSpeechRecognitionModule.addListener("end", () => {
-        setIsVoiceListening(false);
-      }),
-      ExpoSpeechRecognitionModule.addListener("result", (event: any) => {
-        const transcript = event?.results?.[0]?.transcript ?? "";
-        if (event?.isFinal) {
-          setFinalVoiceTranscript(transcript);
-          setLiveVoiceTranscript("");
-        } else {
-          setLiveVoiceTranscript(transcript);
-        }
-      }),
-      ExpoSpeechRecognitionModule.addListener("error", () => {
-        setIsVoiceListening(false);
-        setVoiceError("I had trouble hearing that. Try again.");
-      }),
-    ];
-
-    return () => {
-      subscriptions.forEach((subscription) => subscription.remove());
+    if (!voiceEnabled) return undefined;
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active" || !audioRecorder.isRecording) return;
       try {
-        ExpoSpeechRecognitionModule?.abort();
+        void audioRecorder.stop();
       } catch {
-        // The native module can already be stopped during unmount.
+        // Recorder may already be stopped.
       }
+      applyVoiceEvent("cancel");
+      setVoiceReview(null);
+      setVoiceError("Recording stopped when the app moved to the background.");
+    });
+    return () => {
+      subscription.remove();
     };
-  }, [voiceEnabled]);
+  }, [applyVoiceEvent, audioRecorder, voiceEnabled]);
 
   const issueCount = useMemo(
     () => countUnresolvedItems(parsedItems) + pendingClarifications.length,
@@ -2528,6 +3011,14 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       !sessionLoadError &&
       shouldShowQuickOrderWelcomeMessage(parsedItems.length, messages),
     [isLoadingSession, messages, parsedItems.length, sessionLoadError],
+  );
+
+  // Composer suggestion pills are independent of the (first-load-only) welcome
+  // card: they reappear whenever the order list is empty, including after
+  // sending an order or clearing it via the trash icon.
+  const showComposerPills = useMemo(
+    () => !isLoadingSession && !sessionLoadError && parsedItems.length === 0,
+    [isLoadingSession, sessionLoadError, parsedItems.length],
   );
 
   const displayMessages = useMemo(
@@ -2731,10 +3222,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     setEditingState(null);
     setQuantityFlow(null);
     setQuantitySuggestions(new Map());
-    setLiveVoiceTranscript("");
-    setFinalVoiceTranscript(null);
     setVoiceError(null);
-    setIsVoiceListening(false);
+    setVoiceReview(null);
+    setLastVoiceRecording(null);
+    applyVoiceEvent("reset");
     setNudgeSent(false);
 
     if (sessionId) {
@@ -2753,7 +3244,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         setSessionId(null);
       }
     }
-  }, [isOrderBusy, sessionId]);
+  }, [applyVoiceEvent, isOrderBusy, sessionId]);
 
   const handleClearRequest = useCallback(() => {
     if (isOrderBusy) return;
@@ -3219,6 +3710,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
             inventoryUpdates: buildInventoryUpdateRows(
               response.stockUpdates,
               response.recommendations,
+              response.safetyWarnings,
             ),
             safetyWarnings: response.safetyWarnings,
             blockedOperations: response.blockedOperations,
@@ -3450,6 +3942,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         reorderPill?: "last_week" | "recent" | "usual";
         composerMode?: ComposerMode;
         modeConflictResolution?: "keep_inventory";
+        preparsedQuickOrderData?: unknown;
       },
     ) => {
       // If the user typed a bare quantity ("1pk", "2 cases") and the most
@@ -3607,35 +4100,38 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           });
         }
 
-        const { data, error, attempts } = await invokeParseOrderWithRetry({
-          label: "quick-order-submit",
-          body: {
-            source: source === "typed" ? "text" : source,
-            mode: requestMode,
-            mode_conflict_resolution: options?.modeConflictResolution,
-            message: rawText,
-            raw_text: rawText,
-            location_id: locationId,
-            session_id: activeSessionId,
-            user_id: userId,
-            existing_items: parsedItems,
-            recent_messages: optimisticMessages
-              .slice(-12)
-              .map(buildPersistedMessage)
-              .filter(
-                (message): message is PersistedQuickOrderMessage => message != null,
-              ),
-            voice_metadata:
-              source === "voice"
-                ? {
-                    raw_transcript: voiceMetadata?.raw_transcript ?? rawText,
-                    transcript_confidence:
-                      voiceMetadata?.transcript_confidence,
-                    language: voiceMetadata?.language ?? "en-US",
-                  }
-                : undefined,
-          },
-        });
+        const preParsed = options?.preparsedQuickOrderData;
+        const { data, error, attempts } = preParsed
+          ? { data: preParsed, error: null, attempts: 1 }
+          : await invokeParseOrderWithRetry({
+              label: "quick-order-submit",
+              body: {
+                source: source === "typed" ? "text" : source,
+                mode: requestMode,
+                mode_conflict_resolution: options?.modeConflictResolution,
+                message: rawText,
+                raw_text: rawText,
+                location_id: locationId,
+                session_id: activeSessionId,
+                user_id: userId,
+                existing_items: parsedItems,
+                recent_messages: optimisticMessages
+                  .slice(-12)
+                  .map(buildPersistedMessage)
+                  .filter(
+                    (message): message is PersistedQuickOrderMessage => message != null,
+                  ),
+                voice_metadata:
+                  source === "voice"
+                    ? {
+                        raw_transcript: voiceMetadata?.raw_transcript ?? rawText,
+                        transcript_confidence:
+                          voiceMetadata?.transcript_confidence,
+                        language: voiceMetadata?.language ?? "en-US",
+                      }
+                    : undefined,
+              },
+            });
 
         if (__DEV__) {
           console.log("[QuickOrder] Raw invoke result", {
@@ -3746,7 +4242,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
             }),
           );
           if (gathered.length > 0) {
-            reorderPrefillText = buildComposerOrderText(gathered);
+            reorderPrefillText =
+              requestMode === "inventory"
+                ? buildComposerItemNameList(gathered)
+                : buildComposerOrderText(gathered);
           }
         }
         // Auto-accept high-confidence single-alternative matches (e.g. "shrimp"
@@ -3759,6 +4258,13 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         );
         const autoApplyInventoryRecommendations =
           requestMode === "inventory" && response.recommendations.length > 0;
+        const showInventoryUpdateCard =
+          requestMode === "inventory" &&
+          (
+            response.stockUpdates.length > 0 ||
+            response.recommendations.length > 0 ||
+            response.safetyWarnings.some((warning) => warning.type === "no_order_needed")
+          );
         const autoAppliedRecommendationItems = autoApplyInventoryRecommendations
           ? recommendationsToParsedItems(response.recommendations)
           : [];
@@ -3864,13 +4370,19 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           // composer speak for itself. When nothing came back, fall through to
           // the backend's not-found message ("No matching order…").
           if (reorderPill) {
-            finalAssistantText = reorderPrefillText
-              ? reorderPill === "last_week"
-                ? "Got it — last week’s order is in the composer. Edit it if needed, then send."
-                : reorderPill === "recent"
-                  ? "Got it — your most recent order is in the composer. Edit it if needed, then send."
-                  : "Got it — your usual order is in the composer. Edit it if needed, then send."
-              : response.displayMessage;
+            if (requestMode === "inventory") {
+              finalAssistantText = reorderPrefillText
+                ? "Got it — your last inventory list is in the composer. Re-count each item, then send."
+                : response.displayMessage;
+            } else {
+              finalAssistantText = reorderPrefillText
+                ? reorderPill === "last_week"
+                  ? "Got it — last week’s order is in the composer. Edit it if needed, then send."
+                  : reorderPill === "recent"
+                    ? "Got it — your most recent order is in the composer. Edit it if needed, then send."
+                    : "Got it — your usual order is in the composer. Edit it if needed, then send."
+                : response.displayMessage;
+            }
           }
 
           applySnapshot = {
@@ -3887,10 +4399,11 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
               suggestions: reorderPill ? [] : responseSuggestions,
               stockUpdates: response.stockUpdates,
               recommendations: displayedRecommendations,
-              inventoryUpdates: autoApplyInventoryRecommendations
+              inventoryUpdates: showInventoryUpdateCard
                 ? buildInventoryUpdateRows(
                     response.stockUpdates,
                     response.recommendations,
+                    response.safetyWarnings,
                   )
                 : [],
               safetyWarnings: response.safetyWarnings,
@@ -4301,50 +4814,368 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     ],
   );
 
-  useEffect(() => {
-    const transcript = finalVoiceTranscript?.trim();
-    if (!transcript) return;
-    setFinalVoiceTranscript(null);
-    void handleSubmitMore(transcript, "voice", {
-      raw_transcript: transcript,
-      transcript_confidence: 0.8,
-      language: "en-US",
-    }, { composerMode });
-  }, [composerMode, finalVoiceTranscript, handleSubmitMore]);
+  const processVoiceRecording = useCallback(
+    async (recording: { uri: string; durationMs: number }) => {
+      if (!userId || !locationId) {
+        applyVoiceEvent("process_failed", "UNKNOWN");
+        setVoiceError("Choose a location before using voice order.");
+        setVoiceReview(null);
+        return;
+      }
+
+      let activeSessionId = sessionId;
+      try {
+        activeSessionId = await withPromiseTimeout(
+          ensureSession(),
+          QUICK_ORDER_VOICE_SESSION_TIMEOUT_MS,
+          QUICK_ORDER_VOICE_SESSION_TIMEOUT_MESSAGE,
+        );
+        const result = await transcribeQuickOrderVoiceFile({
+          uri: recording.uri,
+          durationMs: recording.durationMs,
+          locationId,
+          userId,
+          sessionId: activeSessionId,
+          mode: composerMode,
+          existingItems: parsedItems,
+          recentMessages: messages
+            .slice(-12)
+            .map(buildPersistedMessage)
+            .filter(
+              (message): message is PersistedQuickOrderMessage => message != null,
+            ),
+        });
+
+        if (!result.success) {
+          applyVoiceEvent("process_failed", result.errorCode);
+          setVoiceError(result.message);
+          setVoiceReview(null);
+          return;
+        }
+
+        const voiceText = (result.normalizedText || result.rawTranscript).trim();
+        const safeActions = result.actions.filter((action) =>
+          action.type === "add" &&
+          Boolean(action.itemId) &&
+          action.quantity != null &&
+          Number.isFinite(action.quantity) &&
+          action.quantity > 0 &&
+          Boolean(action.unit?.trim())
+        );
+        if (!voiceText && safeActions.length === 0 && result.unresolved.length === 0) {
+          applyVoiceEvent("process_failed", "VOICE_LOW_CONFIDENCE");
+          setVoiceError("I couldn't turn that into order text. Try again.");
+          setVoiceReview(null);
+          return;
+        }
+
+        const review: VoiceReviewState = {
+          rawTranscript: result.rawTranscript || voiceText,
+          normalizedText: voiceText,
+          modelUsed: result.modelUsed,
+          confidence: result.confidence,
+          voiceEventId: result.voiceEventId,
+          detectedLanguages: result.detectedLanguages,
+          actions: result.actions,
+          unresolved: result.unresolved,
+          warnings: result.warnings,
+        };
+
+        applyVoiceEvent("review_ready");
+        setVoiceError(null);
+        setLastVoiceRecording(null);
+        setVoiceReview(review);
+        await cleanupQuickOrderVoiceFile(recording.uri);
+
+        if (safeActions.length === 0 && voiceText) {
+          setVoiceError("I cleaned the voice input, but could not safely match every item. Please review before adding.");
+          pendingVoiceDraftMetadataRef.current = {
+            raw_transcript: result.rawTranscript || voiceText,
+            transcript_confidence: result.confidence,
+            language: result.detectedLanguages[0],
+          };
+          setComposerPrefill((prev) => ({
+            text: voiceText,
+            nonce: prev.nonce + 1,
+          }));
+        }
+      } catch (error) {
+        console.warn("[QuickOrder] Failed to process voice order:", error);
+        applyVoiceEvent("process_failed", "MODEL_FAILED");
+        setVoiceReview(null);
+        setVoiceError(
+          error instanceof Error && error.message === QUICK_ORDER_VOICE_SESSION_TIMEOUT_MESSAGE
+            ? "Voice setup took too long. Check your connection and try again."
+            : "Voice order cleanup failed. Try again.",
+        );
+      }
+    },
+    [
+      applyVoiceEvent,
+      composerMode,
+      ensureSession,
+      locationId,
+      messages,
+      parsedItems,
+      sessionId,
+      userId,
+    ],
+  );
+
+  const handleStopVoice = useCallback(async (): Promise<{
+    uri: string;
+    durationMs: number;
+  } | null> => {
+    if (
+      isVoiceStoppingRef.current ||
+      voiceMachineRef.current.status !== "recording"
+    ) {
+      return null;
+    }
+    isVoiceStoppingRef.current = true;
+    if (maxRecordingTimerRef.current) {
+      clearTimeout(maxRecordingTimerRef.current);
+      maxRecordingTimerRef.current = null;
+    }
+    try {
+      await audioRecorder.stop();
+      const durationMs =
+        audioRecorderState.durationMillis ||
+        (recordingStartTimeRef.current ? Date.now() - recordingStartTimeRef.current : 0);
+      const uri = audioRecorder.uri || audioRecorderState.url;
+      recordingStartTimeRef.current = null;
+      if (!uri || isQuickOrderVoiceTooShort(durationMs)) {
+        if (uri) await cleanupQuickOrderVoiceFile(uri);
+        applyVoiceEvent("process_failed", "TOO_SHORT");
+        setVoiceError("Hold the mic a little longer and try again.");
+        return null;
+      }
+      const recording = { uri, durationMs };
+      setLastVoiceRecording(recording);
+      applyVoiceEvent("stop");
+      return recording;
+    } catch (error) {
+      console.warn("[QuickOrder] Failed to stop voice input:", error);
+      applyVoiceEvent("process_failed", "INVALID_AUDIO");
+      setVoiceError("Voice input is unavailable right now.");
+      return null;
+    } finally {
+      isVoiceStoppingRef.current = false;
+      try {
+        await setAudioModeAsync({ allowsRecording: false });
+      } catch {
+        // Non-fatal audio session cleanup.
+      }
+    }
+  }, [
+    applyVoiceEvent,
+    audioRecorder,
+    audioRecorderState.durationMillis,
+    audioRecorderState.url,
+  ]);
+
+  // Single-tap "stop and submit": ends the recording and immediately uploads it
+  // for parsing. Both the square stop and the send arrow route here, so there's
+  // no separate review step (matches the composer's recording-mode mockup).
+  const handleSubmitVoice = useCallback(async () => {
+    if (voiceMachineRef.current.uploadInFlight) return;
+    const recording = await handleStopVoice();
+    if (!recording) return;
+    setVoiceError(null);
+    setVoiceReview(null);
+    void processVoiceRecording(recording);
+  }, [handleStopVoice, processVoiceRecording]);
 
   const handleStartVoice = useCallback(async () => {
-    if (!voiceEnabled || !ExpoSpeechRecognitionModule || isSending) return;
+    if (!voiceEnabled || isSending || voiceMachineRef.current.uploadInFlight) return;
     try {
-      const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      const result = await AudioModule.requestRecordingPermissionsAsync();
       if (!result.granted) {
-        setVoiceError("Microphone and speech recognition access are needed.");
+        applyVoiceEvent("process_failed", "PERMISSION_DENIED");
+        setVoiceError("Microphone access is needed for voice order.");
         return;
       }
       setVoiceError(null);
-      setLiveVoiceTranscript("");
-      setFinalVoiceTranscript(null);
-      void triggerSelectionHaptic();
-      ExpoSpeechRecognitionModule.start({
-        lang: "en-US",
-        interimResults: true,
-        continuous: false,
-        addsPunctuation: true,
+      setVoiceReview(null);
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
+      await audioRecorder.prepareToRecordAsync(QUICK_ORDER_RECORDING_OPTIONS);
+      recordingStartTimeRef.current = Date.now();
+      applyVoiceEvent("start");
+      void triggerSelectionHaptic();
+      audioRecorder.record({ forDuration: QUICK_ORDER_MAX_RECORDING_MS / 1000 });
+      maxRecordingTimerRef.current = setTimeout(() => {
+        void handleSubmitVoice();
+      }, QUICK_ORDER_MAX_RECORDING_MS);
     } catch (error) {
       console.warn("[QuickOrder] Failed to start voice input:", error);
+      applyVoiceEvent("process_failed", "INVALID_AUDIO");
       setVoiceError("Voice input is unavailable right now.");
     }
-  }, [isSending, voiceEnabled]);
+  }, [
+    applyVoiceEvent,
+    audioRecorder,
+    handleSubmitVoice,
+    isSending,
+    voiceEnabled,
+  ]);
 
-  const handleStopVoice = useCallback(() => {
-    if (!ExpoSpeechRecognitionModule) return;
-    try {
-      ExpoSpeechRecognitionModule.stop();
-    } catch {
-      // Voice may already be stopped.
+  const handleCancelVoice = useCallback(async () => {
+    if (voiceMachineRef.current.status === "transcribing") return;
+    if (maxRecordingTimerRef.current) {
+      clearTimeout(maxRecordingTimerRef.current);
+      maxRecordingTimerRef.current = null;
     }
-    setIsVoiceListening(false);
-  }, []);
+    try {
+      if (audioRecorder.isRecording) {
+        await audioRecorder.stop();
+      }
+      const uri = audioRecorder.uri || audioRecorderState.url || lastVoiceRecording?.uri;
+      await cleanupQuickOrderVoiceFile(uri);
+    } catch {
+      // Best effort cancellation.
+    }
+    recordingStartTimeRef.current = null;
+    setLastVoiceRecording(null);
+    setVoiceError(null);
+    setVoiceReview(null);
+    applyVoiceEvent("cancel");
+    setTimeout(() => applyVoiceEvent("reset"), 250);
+  }, [
+    applyVoiceEvent,
+    audioRecorder,
+    audioRecorderState.url,
+    lastVoiceRecording?.uri,
+  ]);
+
+  const handleRetryVoice = useCallback(() => {
+    if (!lastVoiceRecording || voiceMachineRef.current.uploadInFlight) return;
+    applyVoiceEvent("transcribe");
+    setVoiceError(null);
+    setVoiceReview(null);
+    void processVoiceRecording(lastVoiceRecording);
+  }, [applyVoiceEvent, lastVoiceRecording, processVoiceRecording]);
+
+  const handleEditVoiceReview = useCallback(() => {
+    if (!voiceReview) return;
+    const text = (voiceReview.normalizedText || voiceReview.rawTranscript).trim();
+    if (!text) return;
+    pendingVoiceDraftMetadataRef.current = {
+      raw_transcript: voiceReview.rawTranscript || text,
+      transcript_confidence: voiceReview.confidence,
+      language: voiceReview.detectedLanguages[0],
+    };
+    setComposerPrefill((prev) => ({
+      text,
+      nonce: prev.nonce + 1,
+    }));
+    setVoiceReview(null);
+    setVoiceError(null);
+    applyVoiceEvent("reset");
+  }, [applyVoiceEvent, voiceReview]);
+
+  const handleDiscardVoiceReview = useCallback(() => {
+    setVoiceReview(null);
+    setVoiceError(null);
+    applyVoiceEvent("reset");
+  }, [applyVoiceEvent]);
+
+  const handleRetryVoiceReview = useCallback(() => {
+    setVoiceReview(null);
+    setVoiceError(null);
+    applyVoiceEvent("reset");
+    requestAnimationFrame(() => {
+      void handleStartVoice();
+    });
+  }, [applyVoiceEvent, handleStartVoice]);
+
+  const handleAddVoiceReview = useCallback(async () => {
+    const review = voiceReview;
+    if (!review || voiceReviewAddInFlightRef.current) return;
+    const incomingItems = voiceSafeAddActions(review)
+      .map((action) => voiceActionToParsedItem(action, review))
+      .filter((item): item is ParsedQuickOrderItem => item != null);
+
+    if (incomingItems.length === 0) {
+      handleEditVoiceReview();
+      return;
+    }
+    if (!userId || !locationId) {
+      setVoiceError("Choose a location before using voice order.");
+      return;
+    }
+
+    voiceReviewAddInFlightRef.current = true;
+    applyVoiceEvent("add_to_order");
+
+    try {
+      const activeSessionId = await ensureSession();
+      let nextParsedItems: ParsedQuickOrderItem[] = parsedItems;
+      let addedCount = incomingItems.length;
+
+      setParsedItems((current) => {
+        const mergeResult = mergeQuickOrderParsedItemsDetailed(current, incomingItems);
+        nextParsedItems = mergeResult.items;
+        addedCount = mergeResult.addedCount + mergeResult.updatedCount;
+        return mergeResult.items;
+      });
+
+      const voiceText = (review.normalizedText || review.rawTranscript).trim();
+      const userMessage: QuickOrderMessage = {
+        id: createMessageId(),
+        role: "user",
+        text: voiceText,
+        source: "voice",
+        transcriptPreview: review.rawTranscript,
+        createdAt: new Date().toISOString(),
+      };
+      const assistantMessage: QuickOrderMessage = {
+        id: createMessageId(),
+        role: "assistant",
+        text: addedCount === 1
+          ? "Added 1 item from voice."
+          : `Added ${addedCount} items from voice.`,
+        source: "voice",
+        createdAt: new Date().toISOString(),
+        parsedItems: incomingItems,
+        pendingClarifications: [],
+      };
+      const nextMessages = [...messages, userMessage, assistantMessage];
+
+      setMessages(nextMessages);
+      setVoiceReview(null);
+      setVoiceError(null);
+      loadQuantitySuggestions(nextParsedItems.map((item) => item.item_id));
+      scheduleChatScrollToEnd("voice-review-added", true, buildSendSnapDelays(), {
+        active: true,
+        afterInteractions: true,
+      });
+      await persistSession(activeSessionId, nextMessages, nextParsedItems);
+      applyVoiceEvent("added");
+      setTimeout(() => applyVoiceEvent("reset"), 450);
+    } catch (error) {
+      console.warn("[QuickOrder] Failed to add voice review:", error);
+      voiceMachineRef.current = { status: "review_ready", uploadInFlight: false, errorCode: null };
+      setVoiceStatus("review_ready");
+      setVoiceError("Could not add the voice items. Try again.");
+    } finally {
+      voiceReviewAddInFlightRef.current = false;
+    }
+  }, [
+    applyVoiceEvent,
+    ensureSession,
+    handleEditVoiceReview,
+    loadQuantitySuggestions,
+    locationId,
+    messages,
+    parsedItems,
+    persistSession,
+    scheduleChatScrollToEnd,
+    userId,
+    voiceReview,
+  ]);
 
   const handleClarificationAction = useCallback(
     async (
@@ -4533,6 +5364,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       recordDraftMutation,
       scheduleChatScrollToEnd,
       sessionId,
+      setComposerMode,
       userId,
       handleSubmitMore,
     ],
@@ -4801,6 +5633,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           isSuggested: true,
           suggestionReason: item.reason,
           suggestionSource: "remaining_inventory",
+          resolution: item.resolution,
+          reason_codes: item.reason_codes,
+          resolution_trace: item.resolution_trace,
+          user_visible_note: item.user_visible_note,
         }),
       );
       if (incoming.length === 0) return;
@@ -4894,16 +5730,18 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         nonce: prev.nonce + 1,
       }));
     },
-    [],
+    [setComposerMode],
   );
 
-  const handleConfirmOrder = useCallback(async () => {
+  const handleConfirmOrder = useCallback(() => {
     if (
       parsedItems.length === 0 ||
       issueCount > 0 ||
       isConfirmingRef.current ||
       isConfirming ||
       isSending ||
+      showConfirmLocationSheet ||
+      orderConfirmation ||
       !areQuickOrderItemsCartReady(parsedItems)
     ) {
       return;
@@ -4940,27 +5778,131 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     skipMissingReviewOnceRef.current = false;
 
     Keyboard.dismiss();
-    isConfirmingRef.current = true;
-    setIsConfirming(true);
+    setConfirmLocationId(locationId);
+    setShowConfirmLocationSheet(true);
+    void triggerConfirmationHaptic();
+  }, [
+    isConfirming,
+    isSending,
+    issueCount,
+    highConfidenceMissingSuggestions,
+    locationId,
+    orderConfirmation,
+    parsedItems,
+    showConfirmLocationSheet,
+    smartMissingCheck,
+    userId,
+  ]);
 
-    const sessionToClose = sessionId;
+  const handleSelectSubmitLocation = useCallback((nextLocationId: string) => {
+    if (confirmLocationId === nextLocationId) {
+      return;
+    }
+
+    setConfirmLocationId(nextLocationId);
+    void triggerConfirmationHaptic();
+  }, [confirmLocationId]);
+
+  const handleUnavailableSubmitLocationChange = useCallback(() => {
+    Alert.alert("No other location", "There is no other location available for this order.");
+  }, []);
+
+  const handleCloseConfirmLocationSheet = useCallback(() => {
+    if (isConfirmingRef.current || isConfirming) {
+      return;
+    }
+
+    setShowConfirmLocationSheet(false);
+    setConfirmLocationId(null);
+  }, [isConfirming]);
+
+  const handleConfirmSubmitOrder = useCallback(async () => {
+    if (
+      !confirmLocationId ||
+      !userId ||
+      parsedItems.length === 0 ||
+      issueCount > 0 ||
+      isConfirmingRef.current ||
+      isConfirming ||
+      isSending ||
+      !areQuickOrderItemsCartReady(parsedItems)
+    ) {
+      return;
+    }
+
+    const selectedLocationName =
+      locationNameById.get(confirmLocationId) ?? "Selected location";
+    const sessionToSubmit = sessionId;
 
     try {
+      isConfirmingRef.current = true;
+      setIsConfirming(true);
+
       const loadedInventory = await loadInventoryItems();
       const inventoryById = new Map<string, QuickOrderInventoryItem>(
         loadedInventory.map((item) => [item.id, item]),
       );
       const cartAdds = quickOrderItemsToCartAdds(parsedItems, inventoryById);
+      const orderItems: OrderItemPayload[] = cartAdds.map((add) => ({
+        inventory_item_id: add.inventoryItemId,
+        quantity: add.quantity,
+        unit_type: add.unitType,
+        input_mode: "quantity",
+        quantity_requested: add.quantity,
+        remaining_reported: null,
+        decided_quantity: null,
+        decided_by: null,
+        decided_at: null,
+        note: add.note,
+        was_suggested: add.wasSuggested,
+        original_suggested_qty: add.originalSuggestedQty,
+      }));
+      const orderId =
+        quickOrderPendingOrderIdRef.current ?? generateQuickOrderSubmitId();
+      quickOrderPendingOrderIdRef.current = orderId;
+      const entryMethod = parsedItems.some((item) => item.source === "voice")
+        ? "voice_order"
+        : "quick_order";
 
-      for (const add of cartAdds) {
-        addToCart(locationId, add.inventoryItemId, add.quantity, add.unitType, {
-          inputMode: "quantity",
-          quantityRequested: add.quantity,
-          note: add.note ?? undefined,
-          wasSuggested: add.wasSuggested,
-          originalSuggestedQty: add.originalSuggestedQty,
-        });
-      }
+      const result = await withPromiseTimeout(
+        submitOrderService({
+          orderId,
+          locationId: confirmLocationId,
+          userId,
+          status: "submitted",
+          items: orderItems,
+          entryMethod,
+          quickSessionId: sessionToSubmit,
+        }),
+        ORDER_SUBMIT_UI_TIMEOUT_MS,
+        "Order submission timed out. Please check your connection and try again.",
+      );
+      const order = result.order;
+      const normalizedOrderNumber =
+        typeof order.order_number === "number" || typeof order.order_number === "string"
+          ? String(order.order_number)
+          : null;
+      const submittedBy =
+        profile?.full_name?.trim() ||
+        user?.name?.trim() ||
+        user?.email?.trim() ||
+        "Staff";
+      const itemCount = order.order_items?.length ?? orderItems.length;
+
+      setShowConfirmLocationSheet(false);
+      setConfirmLocationId(null);
+      setOrderConfirmation({
+        orderId: order.id,
+        orderNumber: normalizedOrderNumber,
+        locationName: selectedLocationName,
+        itemCount,
+        summary: formatOrderConfirmationSummary(itemCount, selectedLocationName),
+        submittedBy,
+        submittedAt: order.created_at,
+      });
+      void triggerConfirmationHaptic();
+      completePendingRemindersForUser(userId).catch(() => {});
+      resolveActiveLocationReminders(confirmLocationId).catch(() => {});
 
       if (nudgeTimerRef.current) {
         clearTimeout(nudgeTimerRef.current);
@@ -4975,57 +5917,39 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       setEditingState(null);
       setQuantityFlow(null);
       setQuantitySuggestions(new Map());
-      setLiveVoiceTranscript("");
-      setFinalVoiceTranscript(null);
       setVoiceError(null);
-      setIsVoiceListening(false);
+      setVoiceReview(null);
+      setLastVoiceRecording(null);
+      applyVoiceEvent("reset");
       setSessionId(null);
       setNudgeSent(false);
       quickOrderPendingOrderIdRef.current = null;
-
-      if (sessionToClose) {
-        try {
-          await supabase
-            .from("quick_order_sessions")
-            .update({
-              status: "abandoned",
-              messages: [],
-              parsed_items: [],
-            })
-            .eq("id", sessionToClose);
-        } catch (closeError) {
-          console.warn(
-            "[QuickOrder] Failed to close session after confirm:",
-            closeError,
-          );
-        }
-      }
-
-      router.push("/(tabs)/cart" as never);
     } catch (error) {
-      console.warn("[QuickOrder] Failed to add items to cart:", error);
+      console.warn("[QuickOrder] Failed to submit order:", error);
+      const isRetryable = error instanceof OrderSubmissionError ? error.retryable : true;
       Alert.alert(
-        "Could not open cart",
+        isRetryable ? "Submit Order Failed" : "Cannot Submit Order",
         error instanceof Error
           ? error.message
-          : "Couldn't add these items to your cart. Please try again.",
+          : "Something went wrong. Please try again.",
       );
     } finally {
       isConfirmingRef.current = false;
       setIsConfirming(false);
     }
   }, [
-    addToCart,
+    confirmLocationId,
+    applyVoiceEvent,
     isConfirming,
     isSending,
     issueCount,
-    highConfidenceMissingSuggestions,
     loadInventoryItems,
-    locationId,
+    locationNameById,
     parsedItems,
-    router,
+    profile?.full_name,
     sessionId,
-    smartMissingCheck,
+    user?.email,
+    user?.name,
     userId,
   ]);
 
@@ -5099,11 +6023,21 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
             .map((c) => c.item_id ?? c.item_name?.toLowerCase() ?? "")
             .filter((key) => key.length > 0),
         );
+        const inventoryUpdateNoOrderKeys = new Set(
+          (message.inventoryUpdates ?? [])
+            .filter((row) => row.new_quantity == null)
+            .map((row) => row.item_id || row.item_name.toLowerCase())
+            .filter((key) => key.length > 0),
+        );
         const filteredSafetyWarnings = (message.safetyWarnings ?? []).filter(
           (warning) => {
             const key =
               warning.item_id ?? warning.item_name?.toLowerCase() ?? "";
-            return key.length === 0 || !clarificationItemKeys.has(key);
+            if (key.length > 0 && clarificationItemKeys.has(key)) return false;
+            if (warning.type === "no_order_needed" && key.length > 0 && inventoryUpdateNoOrderKeys.has(key)) {
+              return false;
+            }
+            return true;
           },
         );
         // Inventory-mode replies speak through the "Updated" card alone: the
@@ -5122,8 +6056,10 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
         // Q&A/info. A revertable cart mutation gets a subtle "Revert" affordance
         // beneath the bubble — the assistant-side mirror of the "Copy" control
         // under user messages.
+        const contextNotes = deriveContextNotes(message);
         return (
           <View>
+            <ContextNotesDisclosure notes={contextNotes} />
             {suppressAssistantPill ? null : (
               <AIResponsePill message={message} onLayout={layoutHandler} />
             )}
@@ -5288,7 +6224,14 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
 
   const handleComposerSubmit = useCallback(
     (text: string) => {
-      void handleSubmitMore(text, "typed", undefined, { composerMode });
+      const voiceMetadata = pendingVoiceDraftMetadataRef.current;
+      pendingVoiceDraftMetadataRef.current = null;
+      void handleSubmitMore(
+        text,
+        voiceMetadata ? "voice" : "typed",
+        voiceMetadata ?? undefined,
+        { composerMode },
+      );
     },
     [composerMode, handleSubmitMore],
   );
@@ -5330,30 +6273,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <View style={styles.screen}>
-        <View
-          style={[
-            styles.header,
-            {
-              paddingHorizontal: glassSpacing.screen,
-              paddingTop: ds.spacing(4),
-            },
-          ]}
-        >
-          <StockCheckHeader
-            locationLabel={location?.name ?? ""}
-            locations={allLocations}
-            selectedLocationId={location?.id ?? null}
-            isDropdownOpen={locationDropdownOpen}
-            onToggleDropdown={handleToggleLocationDropdown}
-            onSelectLocation={handleSelectLocation}
-            onCloseDropdown={handleCloseLocationDropdown}
-            onPressMore={handleClearRequest}
-            moreAccessibilityLabel="Clear quick order"
-            moreIconName="trash-outline"
-          />
-        </View>
-
-        <View style={styles.chatArea}>
+        <View style={[styles.chatArea, { paddingTop: ds.spacing(5) }]}>
           {/* Layer 1 — the chat scrolls the full height, passing beneath the card. */}
           <FlatList
             ref={chatListRef}
@@ -5429,26 +6349,38 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
               ) : null
             }
             ListFooterComponent={
-              isSending ? (
-                <View
-                  style={[
-                    styles.typingCard,
-                    {
-                      borderRadius: ds.radius(18),
-                      paddingHorizontal: ds.spacing(14),
-                      paddingVertical: ds.spacing(11),
-                      marginTop: ds.spacing(10),
-                    },
-                  ]}
-                >
-                  <ActivityIndicator color={quickOrderAccent} />
-                  <Text
-                    style={[styles.typingText, { fontSize: ds.fontSize(15) }]}
+              <>
+                {voiceReview ? (
+                  <VoiceReviewCard
+                    review={voiceReview}
+                    status={voiceStatus}
+                    onAdd={() => { void handleAddVoiceReview(); }}
+                    onEditText={handleEditVoiceReview}
+                    onRetry={handleRetryVoiceReview}
+                    onDiscard={handleDiscardVoiceReview}
+                  />
+                ) : null}
+                {isSending ? (
+                  <View
+                    style={[
+                      styles.typingCard,
+                      {
+                        borderRadius: ds.radius(18),
+                        paddingHorizontal: ds.spacing(14),
+                        paddingVertical: ds.spacing(11),
+                        marginTop: ds.spacing(10),
+                      },
+                    ]}
                   >
-                    Reading order...
-                  </Text>
-                </View>
-              ) : null
+                    <ActivityIndicator color={quickOrderAccent} />
+                    <Text
+                      style={[styles.typingText, { fontSize: ds.fontSize(15) }]}
+                    >
+                      Reading order...
+                    </Text>
+                  </View>
+                ) : null}
+              </>
             }
           />
 
@@ -5462,12 +6394,21 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
             onRemoveItems={handleRemoveItems}
             onConfirm={() => void handleConfirmOrder()}
             onHeightChange={handleOrderCardHeightChange}
+            locationShortLabel={locationShortLabel}
+            locationLabel={location?.name ?? ""}
+            locations={allLocations}
+            selectedLocationId={location?.id ?? null}
+            isLocationDropdownOpen={locationDropdownOpen}
+            onToggleLocationDropdown={handleToggleLocationDropdown}
+            onSelectLocation={handleSelectLocation}
+            onCloseLocationDropdown={handleCloseLocationDropdown}
+            onClear={handleClearRequest}
           />
         </View>
 
         <QuickOrderComposerBar
           onSubmit={handleComposerSubmit}
-          isSending={isSending}
+          isSending={isSending || voiceStatus === "transcribing"}
           bottomInset={insets.bottom}
           tabBarHeight={tabBarHeight}
           prefillText={composerPrefill.text}
@@ -5475,16 +6416,18 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           placeholder={getComposerPlaceholder(composerMode)}
           composerMode={composerMode}
           onComposerModeChange={setComposerMode}
-          suggestionPills={showWelcomeMessage ? COMPOSER_SUGGESTION_PILLS : undefined}
+          suggestionPills={showComposerPills ? COMPOSER_SUGGESTION_PILLS : undefined}
           onSuggestionPillPress={handleComposerPillPress}
           onHeightChange={handleComposerHeightChange}
           onBottomOffsetChange={handleComposerBottomOffsetChange}
           voiceEnabled={voiceEnabled}
-          isVoiceListening={isVoiceListening}
-          voiceTranscript={liveVoiceTranscript}
+          voiceStatus={voiceStatus}
+          voiceMetering={audioRecorderState.metering}
           voiceError={voiceError}
           onStartVoice={handleStartVoice}
-          onStopVoice={handleStopVoice}
+          onSubmitVoice={handleSubmitVoice}
+          onCancelVoice={handleCancelVoice}
+          onRetryVoice={handleRetryVoice}
         />
 
         <Modal
@@ -5612,6 +6555,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           visible={Boolean(quantityFlow)}
           queue={quantityQueueItems}
           index={quantityFlow?.index ?? 0}
+          composerMode={composerMode}
           isSaving={isQuantitySaving}
           onClose={handleQuantityClose}
           onApply={(result) => void handleQuantityApply(result)}
@@ -5619,6 +6563,24 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           onRemove={handleQuantityRemove}
         />
       </View>
+
+      <ConfirmLocationBottomSheet
+        visible={showConfirmLocationSheet}
+        selectedLocationId={confirmLocationId}
+        locationOptions={submitLocationOptions}
+        isSubmitting={isConfirming}
+        onLocationChange={handleSelectSubmitLocation}
+        onNoLocationAvailable={handleUnavailableSubmitLocationChange}
+        onConfirm={() => { void handleConfirmSubmitOrder(); }}
+        onClose={handleCloseConfirmLocationSheet}
+      />
+
+      <OrderSubmissionConfirmationOverlay
+        confirmation={orderConfirmation}
+        onDismissed={() => {
+          setOrderConfirmation(null);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -5631,11 +6593,6 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  header: {
-    backgroundColor: colors.background,
-    // Keep the header (and its location dropdown overlay) above the floating card.
-    zIndex: 30,
   },
   chatArea: {
     flex: 1,
@@ -5698,6 +6655,85 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     color: colors.textSecondary,
     fontWeight: "700",
+    letterSpacing: 0,
+  },
+  voiceReviewCard: {
+    alignSelf: "stretch",
+    backgroundColor: colors.white,
+    borderWidth: glassHairlineWidth,
+    borderColor: glassColors.cardBorder,
+  },
+  voiceReviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  voiceReviewTitle: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  voiceReviewRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  voiceReviewRowText: {
+    flex: 1,
+    color: colors.textPrimary,
+    fontWeight: "700",
+    letterSpacing: 0,
+  },
+  voiceReviewUnresolved: {
+    backgroundColor: colors.statusAmberBg,
+    borderWidth: glassHairlineWidth,
+    borderColor: colors.statusAmber,
+  },
+  voiceReviewSectionLabel: {
+    color: colors.statusAmber,
+    fontWeight: "900",
+    letterSpacing: 0,
+    textTransform: "uppercase",
+    marginBottom: 4,
+  },
+  voiceReviewWarningText: {
+    color: colors.textPrimary,
+    fontWeight: "700",
+    letterSpacing: 0,
+    marginTop: 3,
+  },
+  voiceReviewMutedText: {
+    color: colors.textSecondary,
+    fontWeight: "700",
+    letterSpacing: 0,
+  },
+  voiceReviewActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  voiceReviewPrimaryButton: {
+    flex: 1.25,
+    minHeight: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: quickOrderAccent,
+  },
+  voiceReviewPrimaryText: {
+    color: colors.textOnPrimary,
+    fontWeight: "900",
+    letterSpacing: 0,
+  },
+  voiceReviewSecondaryButton: {
+    flex: 1,
+    minHeight: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: quickOrderAccentPale,
+  },
+  voiceReviewSecondaryText: {
+    color: quickOrderAccent,
+    fontWeight: "800",
     letterSpacing: 0,
   },
   aiPill: {
@@ -5878,6 +6914,23 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     letterSpacing: 0,
   },
+  personalContextNote: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontStyle: "italic",
+    marginBottom: 4,
+    marginLeft: 4,
+  },
+  personalContextDisclosure: {
+    marginBottom: 4,
+  },
+  personalContextToggle: {
+    color: colors.textMuted,
+    fontSize: 12,
+    fontStyle: "italic",
+    fontWeight: "700",
+    marginLeft: 4,
+  },
   inventoryUpdateRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -5885,6 +6938,18 @@ const styles = StyleSheet.create({
   },
   inventoryUpdateNewText: {
     color: quickOrderAccent,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  inventoryUpdateDashText: {
+    color: colors.textSecondary,
+    fontWeight: "800",
+    letterSpacing: 0,
+  },
+  // Counted but not ordered (above range, no order needed, etc.): "– 0 unit" in
+  // black so it reads as deliberately left alone, distinct from the red orders.
+  inventoryUpdateNotOrderedText: {
+    color: colors.textPrimary,
     fontWeight: "800",
     letterSpacing: 0,
   },

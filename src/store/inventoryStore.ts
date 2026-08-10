@@ -43,7 +43,7 @@ interface InventoryState {
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 const INVENTORY_FETCH_LIMIT = 5000;
 const SESSION_EXPIRED_MESSAGE = 'Session expired. Please sign in again.';
-const DIRECT_INVENTORY_OPTIONAL_COLUMNS = ['supplier_id', 'created_by'] as const;
+const DIRECT_INVENTORY_OPTIONAL_COLUMNS = ['supplier_id', 'location_id', 'created_by'] as const;
 
 type DirectInventoryRow = {
   id: string;
@@ -51,6 +51,7 @@ type DirectInventoryRow = {
   category: ItemCategory;
   supplier_category?: SupplierCategory | null;
   supplier_id?: string | null;
+  location_id?: string | null;
   base_unit: string;
   pack_unit?: string | null;
   pack_size?: number | null;
@@ -105,6 +106,7 @@ function mapDirectInventoryRow(row: DirectInventoryRow): InventoryItem {
     category: row.category,
     supplier_category: row.supplier_category ?? 'main_distributor',
     supplier_id: row.supplier_id ?? null,
+    location_id: row.location_id ?? null,
     base_unit: row.base_unit ?? '',
     pack_unit: row.pack_unit ?? '',
     pack_size: row.pack_size ?? 1,
@@ -123,6 +125,7 @@ async function listInventoryDirect(options?: {
     'category',
     'supplier_category',
     'supplier_id',
+    'location_id',
     'base_unit',
     'pack_unit',
     'pack_size',

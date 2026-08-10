@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Keyboard,
   KeyboardEvent,
   LayoutChangeEvent,
@@ -19,10 +20,12 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { useAmplitudeBuffer } from '@/hooks/useAmplitudeBuffer';
 import { triggerSelectionHaptic } from '@/lib/haptics';
 import { colors, grayScale, quickOrderAccent } from '@/theme/design';
 import { isMessageSubmittable, type ComposerMode } from './quickOrderComposer';
 import { ComposerSuggestionPills } from './ComposerSuggestionPills';
+import { BAR_COUNT, RollingSpectrogram } from './RollingSpectrogram';
 
 type QuickOrderComposerBarProps = {
   onSubmit: (text: string) => void;
@@ -47,11 +50,14 @@ type QuickOrderComposerBarProps = {
   }[];
   onSuggestionPillPress?: (id: string) => void;
   voiceEnabled?: boolean;
-  isVoiceListening?: boolean;
-  voiceTranscript?: string;
+  voiceStatus?: 'idle' | 'recording' | 'transcribing' | 'review_ready' | 'adding_to_order' | 'added' | 'failed' | 'cancelled';
+  voiceMetering?: number;
   voiceError?: string | null;
   onStartVoice?: () => void;
-  onStopVoice?: () => void;
+  /** Stop recording and immediately submit it for parsing (square + send). */
+  onSubmitVoice?: () => void;
+  onCancelVoice?: () => void;
+  onRetryVoice?: () => void;
 };
 
 const SEND_BUTTON_SIZE = 48;
@@ -66,10 +72,10 @@ const LINE_HEIGHT = 22;
 const MIN_TEXT_INPUT_HEIGHT = LINE_HEIGHT;
 const MAX_INPUT_LINES = 20;
 const MAX_TEXT_INPUT_HEIGHT = LINE_HEIGHT * MAX_INPUT_LINES;
-const CONTROL_EDGE_INSET = 6;
+const CONTROL_EDGE_INSET = 5;
 const CONTROL_ROW_HEIGHT = Math.max(SEND_BUTTON_SIZE, MODE_SELECTOR_HEIGHT);
-const INPUT_BOTTOM_RESERVE = CONTROL_ROW_HEIGHT + 4;
-const INPUT_WRAPPER_TOP_PADDING = 10;
+const INPUT_BOTTOM_RESERVE = CONTROL_ROW_HEIGHT;
+const INPUT_WRAPPER_TOP_PADDING = 6;
 const INPUT_WRAPPER_VERTICAL_SPACE =
   INPUT_WRAPPER_TOP_PADDING + INPUT_BOTTOM_RESERVE + CONTROL_EDGE_INSET;
 const MAX_INPUT_HEIGHT = MAX_TEXT_INPUT_HEIGHT + INPUT_WRAPPER_VERTICAL_SPACE;
@@ -93,35 +99,62 @@ function QuickOrderComposerBarImpl({
   suggestionPills,
   onSuggestionPillPress,
   voiceEnabled = false,
-  isVoiceListening = false,
-  voiceTranscript = '',
+  voiceStatus = 'idle',
+  voiceMetering,
   voiceError = null,
   onStartVoice,
-  onStopVoice,
+  onSubmitVoice,
+  onCancelVoice,
+  onRetryVoice,
 }: QuickOrderComposerBarProps) {
   const ds = useScaledStyles();
 
   const [text, setText] = useState('');
   const inputRef = useRef<TextInput>(null);
+  const pressHoldActiveRef = useRef(false);
+  const suppressNextVoiceTapRef = useRef(false);
 
   // Suggestion pills (Usual / Recent / Last week) sit above the input until the
   // user engages — they hide the moment typing starts or a pill is tapped, and
-  // reappear only when the parent re-offers them (e.g. a fresh welcome state).
+  // reappear whenever the composer empties out again (after sending or clearing
+  // the order list). `awaitingPrefillRef` guards the brief gap between tapping a
+  // pill and its prefill arriving so the pills don't flash back in.
   const [pillsDismissed, setPillsDismissed] = useState(false);
+  const awaitingPrefillRef = useRef(false);
   const hasSuggestionPills = !!(
     suggestionPills &&
     suggestionPills.length > 0 &&
     onSuggestionPillPress
   );
   useEffect(() => {
-    if (!hasSuggestionPills) setPillsDismissed(false);
-  }, [hasSuggestionPills]);
+    if (!hasSuggestionPills) {
+      setPillsDismissed(false);
+      awaitingPrefillRef.current = false;
+      return;
+    }
+    if (text.length === 0 && !awaitingPrefillRef.current) {
+      setPillsDismissed(false);
+    }
+  }, [hasSuggestionPills, text]);
   const showSuggestionPills =
     hasSuggestionPills && !pillsDismissed && text.length === 0;
+
+  // A pill tap won't always produce a prefill (e.g. no inventory history yet);
+  // once the send completes with an empty composer, drop the guard and re-show
+  // the pills.
+  const prevSendingRef = useRef(isSending);
+  useEffect(() => {
+    if (prevSendingRef.current && !isSending) {
+      awaitingPrefillRef.current = false;
+      if (text.length === 0) setPillsDismissed(false);
+    }
+    prevSendingRef.current = isSending;
+  }, [isSending, text]);
 
   const handleSuggestionPillPress = useCallback(
     (id: string) => {
       setPillsDismissed(true);
+      awaitingPrefillRef.current = true;
       onSuggestionPillPress?.(id);
     },
     [onSuggestionPillPress],
@@ -139,21 +172,32 @@ function QuickOrderComposerBarImpl({
   useEffect(() => {
     if (prefillNonce === lastPrefillNonceRef.current) return;
     lastPrefillNonceRef.current = prefillNonce;
+    awaitingPrefillRef.current = false;
     setText(prefillText);
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [prefillNonce, prefillText]);
 
   const submittable = isMessageSubmittable(text, isSending);
 
+  // Voice recording mode. While capturing (recording → transcribing) the
+  // composer swaps the text input for a rolling waveform and recolors the send
+  // button. `isRecording` is the live state; `isVoiceBusy` is the brief
+  // stop→cleanup tail where the waveform freezes and the send shows a spinner.
+  const isRecording = voiceEnabled && voiceStatus === 'recording';
+  const isVoiceBusy =
+    voiceEnabled && voiceStatus === 'transcribing';
+  const isVoiceCapture = isRecording || isVoiceBusy;
+
   // Drive the send-button color transition on the UI thread so it doesn't
-  // schedule a React re-render on every keystroke.
+  // schedule a React re-render on every keystroke. Red while there's text to
+  // send or while voice capture is active.
   const activeProgress = useSharedValue(0);
   useEffect(() => {
-    activeProgress.value = withTiming(submittable ? 1 : 0, {
+    activeProgress.value = withTiming(submittable || isVoiceCapture ? 1 : 0, {
       duration: TRANSITION_MS,
       easing: Easing.out(Easing.cubic),
     });
-  }, [activeProgress, submittable]);
+  }, [activeProgress, isVoiceCapture, submittable]);
 
   const sendButtonAnimatedStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
@@ -251,18 +295,65 @@ function QuickOrderComposerBarImpl({
   }, [isSending, onSubmit, text]);
 
   const handleVoicePress = useCallback(() => {
+    if (suppressNextVoiceTapRef.current) {
+      suppressNextVoiceTapRef.current = false;
+      return;
+    }
     if (!voiceEnabled || isSending) return;
-    if (isVoiceListening) {
-      onStopVoice?.();
+    if (isVoiceBusy) return;
+    if (isRecording) {
+      // Square stop: end recording and submit in one tap.
+      onSubmitVoice?.();
     } else {
       onStartVoice?.();
     }
-  }, [isSending, isVoiceListening, onStartVoice, onStopVoice, voiceEnabled]);
+  }, [isRecording, isSending, isVoiceBusy, onStartVoice, onSubmitVoice, voiceEnabled]);
+
+  const handleVoiceLongPress = useCallback(() => {
+    if (!voiceEnabled || isSending || isVoiceCapture) {
+      return;
+    }
+    pressHoldActiveRef.current = true;
+    suppressNextVoiceTapRef.current = true;
+    onStartVoice?.();
+  }, [isSending, isVoiceCapture, onStartVoice, voiceEnabled]);
+
+  const handleVoicePressOut = useCallback(() => {
+    if (!pressHoldActiveRef.current) return;
+    pressHoldActiveRef.current = false;
+    // Push-to-talk release submits the captured audio.
+    onSubmitVoice?.();
+  }, [onSubmitVoice]);
+
+  // Rolling spectrogram buffer. We push the recorder's latest metering on a
+  // fixed cadence (not on every prop change) so the bars keep scrolling and
+  // decay to the baseline during silence, when `metering` stops changing.
+  const { amplitudes, pushAmplitude, reset: resetAmplitudes } =
+    useAmplitudeBuffer(BAR_COUNT);
+
+  // expo-audio reports `metering` in dBFS (~-60 floor .. 0 peak), updated every
+  // 100ms. Normalize to 0..1 with the same window the composer already used.
+  const meterRef = useRef(0);
+  useEffect(() => {
+    meterRef.current =
+      typeof voiceMetering === 'number' && Number.isFinite(voiceMetering)
+        ? Math.max(0, Math.min(1, (voiceMetering + 60) / 60))
+        : 0;
+  }, [voiceMetering]);
+
+  useEffect(() => {
+    if (voiceStatus !== 'recording') return;
+    const id = setInterval(() => pushAmplitude(meterRef.current), 80);
+    return () => clearInterval(id);
+  }, [pushAmplitude, voiceStatus]);
+
+  useEffect(() => {
+    if (voiceStatus === 'idle' || voiceStatus === 'cancelled') resetAmplitudes();
+  }, [resetAmplitudes, voiceStatus]);
 
   const handleModePress = useCallback(
     (nextMode: ComposerMode) => {
       if (nextMode === composerMode || isSending) return;
-      Keyboard.dismiss();
       void triggerSelectionHaptic();
       onComposerModeChange?.(nextMode);
     },
@@ -298,7 +389,16 @@ function QuickOrderComposerBarImpl({
           fontSize: 18,
           minHeight: MIN_TEXT_INPUT_HEIGHT,
           maxHeight: MAX_TEXT_INPUT_HEIGHT,
+          paddingLeft: ds.spacing(4),
           paddingBottom: ds.spacing(INPUT_BOTTOM_RESERVE),
+        },
+        // Waveform occupies the same top box as the text input's first line, so
+        // the card height doesn't shift when switching into recording mode.
+        voiceCapture: {
+          minHeight: MIN_TEXT_INPUT_HEIGHT,
+          paddingLeft: ds.spacing(4),
+          paddingBottom: ds.spacing(INPUT_BOTTOM_RESERVE),
+          justifyContent: 'center',
         },
         sendButton: {
           width: SEND_BUTTON_SIZE,
@@ -328,36 +428,74 @@ function QuickOrderComposerBarImpl({
             disabled={isSending}
           />
         ) : null}
-        {voiceEnabled && (voiceTranscript || voiceError || isVoiceListening) ? (
-          <View style={styles.voicePreview}>
-            <Ionicons
-              name={voiceError ? 'alert-circle-outline' : isVoiceListening ? 'mic' : 'mic-outline'}
-              size={14}
-              color={voiceError ? colors.statusAmber : quickOrderAccent}
-            />
-            <Text style={styles.voicePreviewText} numberOfLines={1}>
-              {voiceError || voiceTranscript || 'Listening...'}
-            </Text>
+        {voiceEnabled && voiceStatus === 'failed' ? (
+          <View style={[styles.voicePreview, styles.voicePreviewFailed]}>
+            <View style={styles.voicePreviewLabel}>
+              <Ionicons name="alert-circle-outline" size={14} color={colors.statusAmber} />
+              <Text style={styles.voicePreviewText} numberOfLines={1}>
+                {voiceError || "Couldn't understand. Try again."}
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Retry voice order"
+              onPress={onRetryVoice}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              style={styles.voiceRetryButton}
+            >
+              <Text style={styles.voiceRetryText} allowFontScaling={false}>Retry</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Discard voice order"
+              onPress={onCancelVoice}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              style={styles.voiceMiniButton}
+            >
+              <Ionicons name="close" size={16} color={colors.textMuted} />
+            </Pressable>
           </View>
         ) : null}
         <View style={[styles.inputWrapper, dynamicStyles.inputWrapper]}>
-          <TextInput
-            ref={inputRef}
-            value={text}
-            onChangeText={handleChangeText}
-            placeholder={placeholder}
-            placeholderTextColor={colors.textMuted}
-            multiline
-            editable={!isSending}
-            style={[styles.input, dynamicStyles.input]}
-            accessibilityLabel="Order message"
-            accessibilityHint="Type the items you want to order, then press send."
-            textAlignVertical="top"
-            keyboardAppearance="light"
-            returnKeyType="default"
-            blurOnSubmit={false}
-            allowFontScaling={false}
-          />
+          {isVoiceCapture ? (
+            <View
+              style={[styles.voiceCapture, dynamicStyles.voiceCapture]}
+              accessibilityElementsHidden
+              accessibilityRole="image"
+              accessibilityLabel={isRecording ? 'Recording audio' : 'Cleaning voice order'}
+            >
+              <View style={{ opacity: isVoiceBusy ? 0.45 : 1 }}>
+                <RollingSpectrogram
+                  amplitudes={amplitudes}
+                  height={22}
+                  barColor={colors.textPrimary}
+                />
+              </View>
+              {isVoiceBusy ? (
+                <Text style={styles.voiceCaptureText} numberOfLines={1} allowFontScaling={false}>
+                  Cleaning voice order...
+                </Text>
+              ) : null}
+            </View>
+          ) : (
+            <TextInput
+              ref={inputRef}
+              value={text}
+              onChangeText={handleChangeText}
+              placeholder={placeholder}
+              placeholderTextColor={colors.textMuted}
+              multiline
+              editable={!isSending}
+              style={[styles.input, dynamicStyles.input]}
+              accessibilityLabel="Order message"
+              accessibilityHint="Type the items you want to order, then press send."
+              textAlignVertical="top"
+              keyboardAppearance="light"
+              returnKeyType="default"
+              blurOnSubmit={false}
+              allowFontScaling={false}
+            />
+          )}
           <View
             style={[
               styles.composerBottomRow,
@@ -429,52 +567,59 @@ function QuickOrderComposerBarImpl({
                 },
               ]}
             >
-              {voiceEnabled ? (
+              {voiceEnabled && !isVoiceBusy ? (
                 <Pressable
                   onPress={handleVoicePress}
+                  onLongPress={handleVoiceLongPress}
+                  onPressOut={handleVoicePressOut}
+                  delayLongPress={180}
                   disabled={isSending}
                   accessibilityRole="button"
-                  accessibilityLabel={isVoiceListening ? 'Stop voice input' : 'Start voice input'}
-                  accessibilityState={{ selected: isVoiceListening, disabled: isSending }}
+                  accessibilityLabel={isRecording ? 'Stop voice input' : 'Start voice input'}
+                  accessibilityState={{ selected: isRecording, disabled: isSending }}
                   hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
                   style={({ pressed }) => [
                     styles.voiceButton,
                     dynamicStyles.toolButton,
                     {
-                      backgroundColor: isVoiceListening ? quickOrderAccent : grayScale[100],
+                      backgroundColor: isRecording ? '#F5F1E8' : grayScale[100],
                       opacity: isSending ? 0.5 : pressed ? 0.85 : 1,
                     },
                   ]}
                 >
-                  <Ionicons
-                    name={isVoiceListening ? 'stop' : 'mic-outline'}
-                    size={19}
-                    color={isVoiceListening ? colors.textOnPrimary : colors.textMuted}
-                  />
+                  {isRecording ? (
+                    <View style={styles.voiceStopSquare} />
+                  ) : (
+                    <Ionicons name="mic-outline" size={19} color={colors.textMuted} />
+                  )}
                 </Pressable>
               ) : null}
               <Pressable
-                onPress={handleSubmit}
-                disabled={!submittable}
+                onPress={isRecording ? onSubmitVoice : handleSubmit}
+                disabled={isVoiceBusy || (!isRecording && !submittable)}
                 accessibilityRole="button"
                 accessibilityLabel="Send"
-                accessibilityState={{ disabled: !submittable }}
+                accessibilityState={{ disabled: isVoiceBusy || (!isRecording && !submittable) }}
                 hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
                 style={({ pressed }) => [
                   styles.sendButtonPressable,
                   dynamicStyles.sendButton,
-                  { opacity: !submittable ? 1 : pressed ? 0.85 : 1 },
+                  { opacity: !isRecording && !submittable && !isVoiceBusy ? 1 : pressed ? 0.85 : 1 },
                 ]}
               >
                 <Animated.View
                   style={[styles.sendButtonFill, dynamicStyles.sendButton, sendButtonAnimatedStyle]}
                   pointerEvents="none"
                 >
-                  <AnimatedIonicons
-                    name="arrow-up"
-                    size={20}
-                    style={sendIconAnimatedStyle}
-                  />
+                  {isVoiceBusy ? (
+                    <ActivityIndicator size="small" color={colors.textOnPrimary} />
+                  ) : (
+                    <AnimatedIonicons
+                      name="arrow-up"
+                      size={20}
+                      style={sendIconAnimatedStyle}
+                    />
+                  )}
                 </Animated.View>
               </Pressable>
             </View>
@@ -504,16 +649,54 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     gap: 6,
-    paddingHorizontal: 6,
-    paddingBottom: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    minHeight: 42,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+  },
+  voicePreviewFailed: {
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  voicePreviewLabel: {
+    minWidth: 132,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   voicePreviewText: {
-    flex: 1,
     color: colors.textMuted,
     fontSize: 12,
     fontWeight: '700',
     letterSpacing: 0,
+  },
+  voiceRetryButton: {
+    minWidth: 56,
+    height: 30,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: quickOrderAccent,
+    backgroundColor: colors.white,
+  },
+  voiceRetryText: {
+    color: quickOrderAccent,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+  },
+  voiceMiniButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: grayScale[100],
   },
   inputWrapper: {
     backgroundColor: colors.white,
@@ -555,10 +738,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Square "stop" indicator shown inside the voice button while recording.
+  voiceStopSquare: {
+    width: 11,
+    height: 11,
+    borderRadius: 2,
+    backgroundColor: '#1A1A1A',
+  },
+  voiceCapture: {
+    width: '100%',
+  },
+  voiceCaptureText: {
+    position: 'absolute',
+    left: 4,
+    right: 4,
+    bottom: INPUT_BOTTOM_RESERVE - 4,
+    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0,
+    textAlign: 'center',
+  },
   composerBottomRow: {
     position: 'absolute',
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
   },
   modeSelector: {
@@ -602,13 +806,15 @@ export const QuickOrderComposerBar = React.memo(
     prev.suggestionPills === next.suggestionPills &&
     prev.onSuggestionPillPress === next.onSuggestionPillPress &&
     prev.voiceEnabled === next.voiceEnabled &&
-    prev.isVoiceListening === next.isVoiceListening &&
-    prev.voiceTranscript === next.voiceTranscript &&
+    prev.voiceStatus === next.voiceStatus &&
+    prev.voiceMetering === next.voiceMetering &&
     prev.voiceError === next.voiceError &&
     prev.onSubmit === next.onSubmit &&
     prev.onComposerModeChange === next.onComposerModeChange &&
     prev.onStartVoice === next.onStartVoice &&
-    prev.onStopVoice === next.onStopVoice &&
+    prev.onSubmitVoice === next.onSubmitVoice &&
+    prev.onCancelVoice === next.onCancelVoice &&
+    prev.onRetryVoice === next.onRetryVoice &&
     prev.onHeightChange === next.onHeightChange &&
     prev.onBottomOffsetChange === next.onBottomOffsetChange,
 );

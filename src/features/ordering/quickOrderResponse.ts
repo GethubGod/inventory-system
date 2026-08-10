@@ -46,6 +46,14 @@ export type QuickOrderStockUpdate = {
   confidence: number;
   original_text: string;
   approximate_modifier?: string | null;
+  /** Phrase from the employee's personal alias that resolved this item, if any. */
+  personal_alias?: string | null;
+  /** True when no unit was typed and the item's own unit was filled in. */
+  unit_inferred?: boolean;
+  resolution?: Record<string, unknown> | null;
+  reason_codes?: string[];
+  resolution_trace?: string[];
+  user_visible_note?: string | null;
 };
 
 export type QuickOrderSafetyWarning = {
@@ -56,6 +64,10 @@ export type QuickOrderSafetyWarning = {
   quantity?: number | null;
   unit?: string | null;
   severity?: 'info' | 'warning' | 'blocked';
+  resolution?: Record<string, unknown> | null;
+  reason_codes?: string[];
+  resolution_trace?: string[];
+  user_visible_note?: string | null;
 };
 
 export type QuickOrderBlockedOperation = {
@@ -79,6 +91,10 @@ export type QuickOrderRecommendation = {
   safety_status: 'normal' | 'confirm' | 'manager_approval' | 'blocked';
   recommendation_type?: 'stock_reorder_rule' | 'history_profile' | 'recent_history';
   auto_apply_eligible?: boolean;
+  resolution?: Record<string, unknown> | null;
+  reason_codes?: string[];
+  resolution_trace?: string[];
+  user_visible_note?: string | null;
 };
 
 export type QuickOrderAssistantAction = {
@@ -357,6 +373,8 @@ export function buildQuickOrderAssistantMessage(input: {
   }
 
   if (mergeResult.addedCount > 0 && reviewCount > 0) {
+    const inputPrompt = formatItemsNeedingInputMessage(mergeResult.reviewItems);
+    if (inputPrompt) return inputPrompt;
     return pendingCount > 0 ? 'Review the item below.' : 'Done, with items to fix.';
   }
 
@@ -368,6 +386,8 @@ export function buildQuickOrderAssistantMessage(input: {
   }
 
   if (reviewCount > 0) {
+    const inputPrompt = formatItemsNeedingInputMessage(mergeResult.reviewItems);
+    if (inputPrompt) return inputPrompt;
     if (pendingCount > 0 && isSpecificAssistantMessage(normalized.assistantMessage)) {
       return normalized.assistantMessage;
     }
@@ -480,6 +500,7 @@ function normalizeParsedItem(value: unknown): ParsedQuickOrderItem | null {
     parse_source: normalizeParseSource(value.parse_source),
     status,
     match_type: stringValue(value.match_type) ?? undefined,
+    matched_alias: stringValue(value.matched_alias),
     pending_conflict_id: stringValue(value.pending_conflict_id) ?? undefined,
     merge_behavior: normalizeMergeBehavior(value.merge_behavior),
     merge_delta_quantity: numberValue(value.merge_delta_quantity),
@@ -488,6 +509,10 @@ function normalizeParsedItem(value: unknown): ParsedQuickOrderItem | null {
     isSuggested: value.isSuggested === true || value.is_suggested === true,
     suggestionReason: stringValue(value.suggestionReason) ?? stringValue(value.suggestion_reason) ?? undefined,
     suggestionSource: normalizeSuggestionSource(value.suggestionSource ?? value.suggestion_source),
+    resolution: isRecord(value.resolution) ? value.resolution : null,
+    reason_codes: arrayOfStrings(value.reason_codes),
+    resolution_trace: arrayOfStrings(value.resolution_trace),
+    user_visible_note: stringValue(value.user_visible_note),
   });
 }
 
@@ -646,6 +671,12 @@ function normalizeStockUpdates(value: unknown): QuickOrderStockUpdate[] {
     confidence: numberValue(entry.confidence) ?? 0.8,
     original_text: stringValue(entry.original_text) ?? '',
     approximate_modifier: stringValue(entry.approximate_modifier),
+    personal_alias: stringValue(entry.personal_alias),
+    unit_inferred: entry.unit_inferred === true,
+    resolution: isRecord(entry.resolution) ? entry.resolution : null,
+    reason_codes: arrayOfStrings(entry.reason_codes),
+    resolution_trace: arrayOfStrings(entry.resolution_trace),
+    user_visible_note: stringValue(entry.user_visible_note),
   })).filter((entry) => entry.item_id && entry.item_name);
 }
 
@@ -662,6 +693,10 @@ function normalizeRecommendations(value: unknown): QuickOrderRecommendation[] {
     safety_status: normalizeRecommendationSafety(entry.safety_status),
     recommendation_type: normalizeRecommendationType(entry.recommendation_type),
     auto_apply_eligible: entry.auto_apply_eligible === true,
+    resolution: isRecord(entry.resolution) ? entry.resolution : null,
+    reason_codes: arrayOfStrings(entry.reason_codes),
+    resolution_trace: arrayOfStrings(entry.resolution_trace),
+    user_visible_note: stringValue(entry.user_visible_note),
   })).filter((entry) => entry.item_id && entry.suggested_quantity > 0);
 }
 
@@ -675,6 +710,10 @@ function normalizeSafetyWarnings(value: unknown): QuickOrderSafetyWarning[] {
     quantity: numberValue(entry.quantity),
     unit: stringValue(entry.unit),
     severity: entry.severity === 'blocked' || entry.severity === 'info' ? entry.severity : 'warning',
+    resolution: isRecord(entry.resolution) ? entry.resolution : null,
+    reason_codes: arrayOfStrings(entry.reason_codes),
+    resolution_trace: arrayOfStrings(entry.resolution_trace),
+    user_visible_note: stringValue(entry.user_visible_note),
   }));
 }
 
@@ -787,6 +826,54 @@ function normalizeStatus(
   if (pendingActions.length > 0) return 'needs_clarification';
   if (items.some((item) => getParsedItemIssue(item))) return 'needs_review';
   return items.length > 0 ? 'ok' : 'error';
+}
+
+/**
+ * Builds a chat prompt for items that were added but still need a quantity (or,
+ * rarely, a unit) before they can be ordered. The Order List shows an "Add
+ * quantity"/"Choose unit" button on each, but nothing in the chat told the
+ * employee to act — this is that message. Returns null when no added item is
+ * waiting on quantity/unit input (e.g. the only issues are item-match prompts,
+ * which surface as their own clarification cards).
+ */
+function formatItemsNeedingInputMessage(items: ParsedQuickOrderItem[]): string | null {
+  const needQuantity: ParsedQuickOrderItem[] = [];
+  const needUnit: ParsedQuickOrderItem[] = [];
+  for (const item of items) {
+    const issue = getParsedItemIssue(item);
+    if (issue?.kind === 'pick-quantity') needQuantity.push(item);
+    else if (issue?.kind === 'pick-unit') needUnit.push(item);
+  }
+  if (needQuantity.length === 0 && needUnit.length === 0) return null;
+
+  if (needUnit.length === 0) {
+    const list = formatItemNameList(needQuantity);
+    return needQuantity.length === 1
+      ? `How much ${list} do you need? Type the quantity (like “3 cases”) or tap “Add quantity”.`
+      : `I still need quantities for ${list}. Type them in (like “3 cases salmon”) or tap “Add quantity” on each.`;
+  }
+  if (needQuantity.length === 0) {
+    const list = formatItemNameList(needUnit);
+    return needUnit.length === 1
+      ? `What unit for ${list}? Type it in or tap “Choose unit”.`
+      : `I still need units for ${list}. Type them in or tap “Choose unit” on each.`;
+  }
+  const list = formatItemNameList([...needQuantity, ...needUnit]);
+  return `A few items still need details: ${list}. Type the quantity or unit, or tap the button on each item.`;
+}
+
+/** "Salmon", "Salmon and Tuna Loin", "Salmon, Tuna Loin, and 2 more". */
+function formatItemNameList(items: ParsedQuickOrderItem[]): string {
+  const names = items.map(getParsedItemDisplayName);
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  const shown = names.slice(0, 3);
+  const remainder = names.length - shown.length;
+  if (remainder <= 0) {
+    return `${shown.slice(0, -1).join(', ')}, and ${shown[shown.length - 1]}`;
+  }
+  return `${shown.join(', ')}, and ${remainder} more`;
 }
 
 function formatAddedItems(items: ParsedQuickOrderItem[]): string {

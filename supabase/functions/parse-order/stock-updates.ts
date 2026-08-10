@@ -1,14 +1,20 @@
 import { matchCatalogItem } from './catalog-matcher.ts';
 import { parseDeterministicOrder } from './deterministic-parser.ts';
+import { resolveItemCandidate, resolveMissingUnit, resolveStatusTerm, resolveUnit } from './rule-resolver.ts';
 import { DEFAULT_UNIT_ALIASES, getUnitWords, normalizeUnitForComparison, type UnitAliasMap } from './units.ts';
 import type {
   CatalogItem,
   EmployeeQuickOrderAlias,
   InventoryStatusItem,
   InventoryStatusTerm,
+  QuickOrderAliasRule,
+  QuickOrderStatusTerm,
   ParserCorrection,
   QuickOrderSource,
   StockOperation,
+  ItemAllowedUnitRule,
+  QuickOrderUnitRule,
+  QuickOrderResolutionMetadata,
 } from './types.ts';
 
 export type StockUpdateExtraction = {
@@ -21,6 +27,54 @@ export type StockUpdateExtraction = {
 
 const STOCK_SIGNAL =
   /\b(?:we have|i have|if i have|if we have|have|has|left|remaining|on hand|current stock|counted|out of|no|is at|are at|low on|almost at|around|about)\b/i;
+
+// Inventory-only: a count like "a lot yellowtail" / "lots of crab sushi" means
+// there is plenty in stock. We never order it and never warn — we just forget
+// the line. (Configured `inventory_status_terms` for "a lot" still take
+// precedence; this is the hardcoded fallback when no term is set up.)
+const ABUNDANT_STOCK_PHRASE = /^\s*(?:a\s+lot|lots)\b/i;
+
+// Inventory-only: "box" is treated as synonymous with "case".
+const STOCK_UNIT_SYNONYMS: Record<string, string> = {
+  box: 'cs',
+};
+
+/**
+ * Apply inventory-mode unit synonyms (currently box → case) to a single unit.
+ * Stock counts use this everywhere a unit is finalized so the synonym holds no
+ * matter which path (deterministic, status term, or LLM) produced the count.
+ * Ordering is unaffected — it never calls this.
+ */
+export function applyStockUnitSynonym(
+  unit: string | null | undefined,
+  synonyms?: { from_unit: string; to_unit: string }[],
+): string | null {
+  if (!unit) return unit ?? null;
+  const normalized = normalizeUnitForComparison(unit) ?? unit.trim().toLowerCase();
+
+  if (synonyms && synonyms.length > 0) {
+    const match = synonyms.find(
+      (s) => normalizeUnitForComparison(s.from_unit) === normalized
+    );
+    if (match && match.to_unit) {
+      return normalizeUnitForComparison(match.to_unit) ?? match.to_unit;
+    }
+  }
+
+  return STOCK_UNIT_SYNONYMS[normalized] ?? unit;
+}
+
+/** Normalize every stock operation's unit through the inventory synonyms. */
+export function applyStockUnitSynonyms(
+  updates: StockOperation[],
+  synonyms?: { from_unit: string; to_unit: string }[],
+): StockOperation[] {
+  return updates.map((update) => {
+    if (update.tracking_unit) return update;
+    const synonym = applyStockUnitSynonym(update.unit, synonyms);
+    return synonym === update.unit ? update : { ...update, unit: synonym };
+  });
+}
 
 const NUMBER_WORDS: Record<string, string> = {
   one: '1',
@@ -53,9 +107,17 @@ export function extractStockUpdates(input: {
   catalogIndex?: import('./catalog-search-index.ts').CatalogSearchIndex;
   unitAliases?: import('./units.ts').UnitAliasMap;
   statusTerms?: InventoryStatusTerm[];
+  statusTermRules?: QuickOrderStatusTerm[];
   employeeAliases?: EmployeeQuickOrderAlias[];
+  employeeNameKeys?: string[];
+  employeeUserId?: string | null;
+  aliasRules?: QuickOrderAliasRule[];
+  unitRules?: QuickOrderUnitRule[];
+  parserSettings?: Record<string, unknown>;
   locationId?: string | null;
   assumeStock?: boolean;
+  allowedUnitRules?: ItemAllowedUnitRule[];
+  unitSynonyms?: { from_unit: string; to_unit: string }[];
 }): StockUpdateExtraction {
   const hasStockSignal = input.assumeStock === true || STOCK_SIGNAL.test(input.message);
   if (!hasStockSignal) {
@@ -74,6 +136,19 @@ export function extractStockUpdates(input: {
       statusItems.push(statusParsed.statusItem);
       if (statusParsed.stockUpdate) stockUpdates.push(statusParsed.stockUpdate);
       stockSegments.push(segment);
+      continue;
+    }
+
+    if (ABUNDANT_STOCK_PHRASE.test(segment)) {
+      // Plenty in stock — emit a "no order needed" status so the employee sees
+      // a clear result instead of an empty (and confusing) reply. If we cannot
+      // resolve the item, fall through to dropping the line so it is neither
+      // ordered nor surfaced as leftover text.
+      const abundant = parseAbundantStockSegment(segment, input);
+      if (abundant) {
+        statusItems.push(abundant);
+        stockSegments.push(segment);
+      }
       continue;
     }
 
@@ -104,7 +179,14 @@ function parseStockSegment(
     catalogIndex?: import('./catalog-search-index.ts').CatalogSearchIndex;
     unitAliases?: UnitAliasMap;
     employeeAliases?: EmployeeQuickOrderAlias[];
+    employeeNameKeys?: string[];
+    employeeUserId?: string | null;
+    aliasRules?: QuickOrderAliasRule[];
+    unitRules?: QuickOrderUnitRule[];
+    parserSettings?: Record<string, unknown>;
     locationId?: string | null;
+    allowedUnitRules?: ItemAllowedUnitRule[];
+    unitSynonyms?: { from_unit: string; to_unit: string }[];
   },
 ): StockOperation | null {
   const trimmed = segment.trim();
@@ -188,22 +270,67 @@ function buildStockOperation(input: {
     catalogIndex?: import('./catalog-search-index.ts').CatalogSearchIndex;
     unitAliases?: UnitAliasMap;
     employeeAliases?: EmployeeQuickOrderAlias[];
+    employeeNameKeys?: string[];
+    employeeUserId?: string | null;
+    aliasRules?: QuickOrderAliasRule[];
+    unitRules?: QuickOrderUnitRule[];
+    parserSettings?: Record<string, unknown>;
     locationId?: string | null;
+    allowedUnitRules?: ItemAllowedUnitRule[];
+    unitSynonyms?: { from_unit: string; to_unit: string }[];
   };
 }): StockOperation | null {
   const resolved = resolveStockCatalogItem(input.itemText, input.input);
   if (!resolved) return null;
   const unitAliases = input.input.unitAliases ?? DEFAULT_UNIT_ALIASES;
-  const unit = normalizeUnitForComparison(input.unit, unitAliases) ?? resolved.item.default_unit ?? resolved.item.base_unit ?? resolved.item.pack_unit ?? null;
+  const typedUnit = applyStockUnitSynonym(normalizeUnitForComparison(input.unit, unitAliases), input.input.unitSynonyms);
+  // No unit typed: the count is implied to be the item's own unit (the only
+  // unit it can be counted in), so fill it in and mark it as inferred.
+  const unitInferred = typedUnit == null;
+  const resolverContext = {
+    mode: 'inventory' as const,
+    employeeNameKeys: input.input.employeeNameKeys ?? [],
+    employeeUserId: input.input.employeeUserId ?? null,
+    locationId: input.input.locationId ?? null,
+    settings: input.input.parserSettings ?? {},
+  };
+  const unitResolution = input.input.unitRules?.length
+    ? (unitInferred
+        ? resolveMissingUnit({ item: resolved.item, unitRules: input.input.unitRules, unitAliases, context: resolverContext })
+        : resolveUnit({ item: resolved.item, typedUnit, unitRules: input.input.unitRules, unitAliases, context: resolverContext }))
+    : null;
+  let unit = unitResolution?.unit ?? typedUnit;
+  const trackingUnit = unitResolution?.rule?.is_custom_counting_unit
+    ? unitResolution.rule.tracking_unit ?? unitResolution.rule.from_unit ?? input.unit
+    : null;
+  let quantity = input.quantity;
+  if (unitResolution) quantity *= unitResolution.multiplier;
+  if (unitInferred && !unit) {
+    const customRule = input.input.allowedUnitRules?.find(
+      (rule) => rule.item_id === resolved.item.id
+    );
+    if (customRule && customRule.unit) {
+      unit = customRule.unit;
+    } else {
+      unit = resolved.item.default_unit ?? resolved.item.base_unit ?? resolved.item.pack_unit ?? null;
+    }
+  }
   return {
     item_id: resolved.item.id,
     item_name: resolved.item.name,
-    quantity: input.quantity,
+    quantity,
     unit,
+    tracking_unit: trackingUnit,
+    unit_inferred: unitInferred,
     approximate_modifier: input.approximateModifier ?? null,
     source: input.input.source,
     confidence: Math.min(input.confidence, resolved.matchConfidence || 0.5),
     original_text: input.originalText,
+    personal_alias: resolved.personalAlias ?? null,
+    resolution: resolved.metadata ?? unitResolution?.metadata,
+    reason_codes: [...(resolved.metadata?.reason_codes ?? []), ...(unitResolution?.metadata.reason_codes ?? [])],
+    resolution_trace: [...(resolved.metadata?.resolution_trace ?? []), ...(unitResolution?.metadata.resolution_trace ?? [])],
+    user_visible_note: resolved.metadata?.user_visible_note ?? unitResolution?.metadata.user_visible_note ?? null,
   };
 }
 
@@ -216,14 +343,57 @@ function parseStatusSegment(
     catalogIndex?: import('./catalog-search-index.ts').CatalogSearchIndex;
     unitAliases?: UnitAliasMap;
     statusTerms?: InventoryStatusTerm[];
+    statusTermRules?: QuickOrderStatusTerm[];
     employeeAliases?: EmployeeQuickOrderAlias[];
+    employeeNameKeys?: string[];
+    employeeUserId?: string | null;
+    aliasRules?: QuickOrderAliasRule[];
+    unitRules?: QuickOrderUnitRule[];
+    parserSettings?: Record<string, unknown>;
     locationId?: string | null;
+    allowedUnitRules?: ItemAllowedUnitRule[];
+    unitSynonyms?: { from_unit: string; to_unit: string }[];
   },
 ): { statusItem: InventoryStatusItem; stockUpdate: StockOperation | null } | null {
-  const term = matchStatusTerm(segment, input.statusTerms ?? []);
+  const v2Term = resolveStatusTerm({
+    inputText: segment,
+    statusTerms: input.statusTermRules ?? [],
+    context: {
+      mode: 'inventory',
+      employeeNameKeys: input.employeeNameKeys ?? [],
+      employeeUserId: input.employeeUserId ?? null,
+      locationId: input.locationId ?? null,
+      settings: input.parserSettings ?? {},
+    },
+  });
+  const term = v2Term
+    ? {
+        rawPhrase: v2Term.rawPhrase,
+        position: 'prefix' as const,
+        term: {
+          active: v2Term.term.active,
+          phrase: v2Term.term.phrase,
+          phrase_key: v2Term.term.phrase_key ?? normalizeStatusPhraseKey(v2Term.term.phrase),
+          status: v2Term.term.status === 'out' ? 'zero' : v2Term.term.status,
+          remaining_qty: v2Term.term.recommendation_action === 'order_needed' ? 0 : null,
+          remaining_unit_behavior: v2Term.term.recommendation_action === 'order_needed' ? 'item_default_unit' : 'none',
+          recommendation_action: v2Term.term.recommendation_action === 'no_order'
+            ? 'no_order'
+            : v2Term.term.recommendation_action === 'ask'
+              ? 'ask_quantity'
+              : 'check_reorder_rule',
+          priority: 1,
+          notes: v2Term.term.notes ?? null,
+          source: v2Term.term.source ?? 'google_sheet',
+        } as InventoryStatusTerm,
+      }
+    : matchStatusTerm(segment, input.statusTerms ?? []);
   if (!term) return null;
 
-  const afterPhrase = segment.trim().slice(term.rawPhrase.length).trim();
+  const trimmedSegment = segment.trim();
+  const afterPhrase = term.position === 'suffix'
+    ? trimmedSegment.slice(0, Math.max(0, trimmedSegment.length - term.rawPhrase.length)).trim()
+    : stripLeadingOf(trimmedSegment.slice(term.rawPhrase.length).trim());
   const unitAliases = input.unitAliases ?? DEFAULT_UNIT_ALIASES;
   const unitAndItem = splitDetectedUnitPrefix(afterPhrase, unitAliases);
   const itemText = term.term.remaining_unit_behavior === 'detected_unit'
@@ -252,6 +422,10 @@ function parseStatusSegment(
     original_text: segment.trim(),
     confidence: resolved ? Math.min(0.94, resolved.matchConfidence) : 0.5,
     issue: resolved ? null : 'item_not_found',
+    resolution: v2Term?.metadata ?? resolved?.metadata ?? null,
+    reason_codes: [...(v2Term?.metadata.reason_codes ?? []), ...(resolved?.metadata?.reason_codes ?? [])],
+    resolution_trace: [...(v2Term?.metadata.resolution_trace ?? []), ...(resolved?.metadata?.resolution_trace ?? [])],
+    user_visible_note: v2Term?.metadata.user_visible_note ?? resolved?.metadata?.user_visible_note ?? null,
   };
 
   const shouldCreateStock =
@@ -278,10 +452,64 @@ function parseStatusSegment(
   };
 }
 
+/**
+ * Hardcoded fallback for "a lot of X" / "lots of X" when no `inventory_status_terms`
+ * row is configured. Produces the same "enough → no_order" status a configured
+ * term would, so the employee sees "no order needed" instead of an empty reply.
+ */
+function parseAbundantStockSegment(
+  segment: string,
+  input: {
+    catalog: CatalogItem[];
+    corrections: ParserCorrection[];
+    catalogIndex?: import('./catalog-search-index.ts').CatalogSearchIndex;
+    employeeAliases?: EmployeeQuickOrderAlias[];
+    employeeNameKeys?: string[];
+    employeeUserId?: string | null;
+    aliasRules?: QuickOrderAliasRule[];
+    parserSettings?: Record<string, unknown>;
+    locationId?: string | null;
+  },
+): InventoryStatusItem | null {
+  const itemText = stripLeadingOf(segment.trim().replace(ABUNDANT_STOCK_PHRASE, '').trim());
+  if (!itemText) return null;
+  const resolved = resolveStockCatalogItem(itemText, input);
+  if (!resolved) return null;
+  return {
+    item_id: resolved.item.id,
+    item_name: resolved.item.name,
+    item_text: itemText,
+    phrase: 'a lot',
+    phrase_key: 'a lot',
+    status: 'enough',
+    recommendation_action: 'no_order',
+    remaining_qty: null,
+    remaining_unit: null,
+    original_text: segment.trim(),
+    confidence: Math.min(0.9, resolved.matchConfidence),
+    issue: null,
+    resolution: resolved.metadata ?? {
+      reason_codes: ['abundant_stock_status'],
+      resolution_trace: [`"${segment.trim().split(/\s+/).slice(0, 2).join(' ')}" means enough stock.`],
+      status_term_applied: 'a lot',
+      confidence: 0.9,
+      user_visible_note: 'No order suggested because "a lot" means enough stock.',
+    },
+    reason_codes: resolved.metadata?.reason_codes ?? ['abundant_stock_status'],
+    resolution_trace: resolved.metadata?.resolution_trace ?? ['"a lot" means enough stock.'],
+    user_visible_note: resolved.metadata?.user_visible_note ?? 'No order suggested because "a lot" means enough stock.',
+  };
+}
+
+/** Drop a leading "of " so "a lot of salmon" resolves the item "salmon". */
+function stripLeadingOf(value: string): string {
+  return value.replace(/^of\s+/i, '').trim();
+}
+
 function matchStatusTerm(
   segment: string,
   terms: InventoryStatusTerm[],
-): { term: InventoryStatusTerm; rawPhrase: string } | null {
+): { term: InventoryStatusTerm; rawPhrase: string; position: 'prefix' | 'suffix' } | null {
   const normalizedSegment = normalizeStatusPhraseKey(segment);
   if (!normalizedSegment) return null;
   const candidates = terms
@@ -289,7 +517,11 @@ function matchStatusTerm(
     .map((term) => ({ term, key: normalizeStatusPhraseKey(term.phrase_key || term.phrase) }))
     .filter((entry) =>
       entry.key &&
-      (normalizedSegment === entry.key || normalizedSegment.startsWith(`${entry.key} `))
+      (
+        normalizedSegment === entry.key ||
+        normalizedSegment.startsWith(`${entry.key} `) ||
+        normalizedSegment.endsWith(` ${entry.key}`)
+      )
     )
     .sort((a, b) =>
       (a.term.priority ?? 100) - (b.term.priority ?? 100) ||
@@ -297,8 +529,17 @@ function matchStatusTerm(
     );
   const selected = candidates[0];
   if (!selected) return null;
-  const rawMatch = segment.trim().match(new RegExp(`^\\s*${escapeRegExp(selected.key).replace(/\\ /g, '\\s+')}\\b`, 'i'));
-  return { term: selected.term, rawPhrase: rawMatch?.[0]?.trim() ?? selected.term.phrase };
+  const phrasePattern = escapeRegExp(selected.key).replace(/\\ /g, '\\s+');
+  const prefixMatch = segment.trim().match(new RegExp(`^\\s*${phrasePattern}\\b`, 'i'));
+  if (prefixMatch) {
+    return { term: selected.term, rawPhrase: prefixMatch[0]?.trim() ?? selected.term.phrase, position: 'prefix' };
+  }
+  const suffixMatch = segment.trim().match(new RegExp(`\\b${phrasePattern}\\s*$`, 'i'));
+  return {
+    term: selected.term,
+    rawPhrase: suffixMatch?.[0]?.trim() ?? selected.term.phrase,
+    position: 'suffix',
+  };
 }
 
 function splitDetectedUnitPrefix(
@@ -321,11 +562,57 @@ function resolveStockCatalogItem(
     corrections: ParserCorrection[];
     catalogIndex?: import('./catalog-search-index.ts').CatalogSearchIndex;
     employeeAliases?: EmployeeQuickOrderAlias[];
+    employeeNameKeys?: string[];
+    employeeUserId?: string | null;
+    aliasRules?: QuickOrderAliasRule[];
+    parserSettings?: Record<string, unknown>;
     locationId?: string | null;
   },
-): { item: CatalogItem; matchConfidence: number } | null {
+): { item: CatalogItem; matchConfidence: number; personalAlias?: string | null; metadata?: QuickOrderResolutionMetadata | null } | null {
   const normalized = normalizeStatusPhraseKey(itemText);
   if (!normalized) return null;
+  if (input.aliasRules?.length && input.catalogIndex) {
+    const match = resolveItemCandidate({
+      inputText: itemText,
+      catalogIndex: input.catalogIndex,
+      aliasRules: input.aliasRules,
+      context: {
+        mode: 'inventory',
+        employeeNameKeys: input.employeeNameKeys ?? [],
+        employeeUserId: input.employeeUserId ?? null,
+        locationId: input.locationId ?? null,
+        settings: input.parserSettings ?? {},
+      },
+    });
+    const item = match.item_id ? input.catalog.find((entry) => entry.id === match.item_id) ?? null : null;
+    if (item && !match.needs_clarification) {
+      const aliasSource = match.match_type === 'employee_alias'
+        ? 'employee'
+        : match.match_type === 'exact_alias'
+          ? 'global'
+          : match.match_type === 'fuzzy'
+            ? 'fuzzy'
+            : 'exact';
+      const typed = match.matched_alias ?? itemText;
+      const metadata: QuickOrderResolutionMetadata = {
+        reason_codes: [aliasSource === 'employee' ? 'employee_alias' : aliasSource === 'global' ? 'global_alias' : aliasSource === 'fuzzy' ? 'fuzzy_match' : 'exact_item_match'],
+        resolution_trace: [`Matched "${typed}" to ${item.name}.`],
+        alias_source: aliasSource,
+        confidence: match.confidence,
+        user_visible_note: aliasSource === 'employee'
+          ? `Matched "${typed}" to ${item.name} using an employee inventory alias.`
+          : aliasSource === 'global'
+            ? `Matched "${typed}" to ${item.name} using a global alias.`
+            : null,
+      };
+      return {
+        item,
+        matchConfidence: match.confidence || 0.5,
+        personalAlias: aliasSource === 'employee' ? typed : null,
+        metadata,
+      };
+    }
+  }
   const exactName = input.catalog.filter((item) => normalizeStatusPhraseKey(item.name) === normalized);
   if (exactName.length === 1) return { item: exactName[0], matchConfidence: 1 };
 
@@ -343,7 +630,9 @@ function resolveStockCatalogItem(
     : aliasCandidates.filter((alias) => alias.location_id == null);
   if (scoped.length === 1) {
     const item = input.catalog.find((entry) => entry.id === scoped[0].inventory_item_id) ?? null;
-    if (item) return { item, matchConfidence: 0.98 };
+    // Surface the phrase the employee typed so the UI can show that personal
+    // context (not a generic guess) linked this term to the item.
+    if (item) return { item, matchConfidence: 0.98, personalAlias: scoped[0].alias_text };
   }
 
   const match = matchCatalogItem(itemText, input.catalog, input.corrections, input.catalogIndex);

@@ -13,8 +13,17 @@ import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
+  grayScale,
 } from '@/theme/design';
 import type { Location } from '@/types';
+
+/**
+ * Visual tone of the dropdown surface.
+ *  - `surface` (default): white card, used by the Stock Check / Browse headers.
+ *  - `muted`: a solid gray card so it reads as distinct when it floats over
+ *    another white card (the Quick Order list).
+ */
+type DropdownTone = 'surface' | 'muted';
 
 interface LocationSwitcherDropdownProps {
   isOpen: boolean;
@@ -28,6 +37,7 @@ interface LocationSwitcherDropdownProps {
    * scroll-begin and on chevron-toggle instead.
    */
   onRequestClose: () => void;
+  tone?: DropdownTone;
 }
 
 const ROW_HEIGHT = 52;
@@ -42,6 +52,7 @@ interface LocationRowProps {
   isSelected: boolean;
   isLast: boolean;
   onSelect: (location: Location) => void;
+  isMuted?: boolean;
 }
 
 const LocationRow = memo(function LocationRow({
@@ -49,6 +60,7 @@ const LocationRow = memo(function LocationRow({
   isSelected,
   isLast,
   onSelect,
+  isMuted = false,
 }: LocationRowProps) {
   const ds = useScaledStyles();
   const handlePress = useCallback(() => onSelect(location), [location, onSelect]);
@@ -65,7 +77,7 @@ const LocationRow = memo(function LocationRow({
         height: ROW_HEIGHT,
         paddingHorizontal: ds.spacing(16),
         borderBottomWidth: isLast ? 0 : glassHairlineWidth,
-        borderBottomColor: glassColors.divider,
+        borderBottomColor: isMuted ? grayScale[300] : glassColors.divider,
       }}
     >
       <View
@@ -121,7 +133,9 @@ export const LocationSwitcherDropdown = memo(function LocationSwitcherDropdown({
   selectedLocationId,
   onSelect,
   onRequestClose,
+  tone = 'surface',
 }: LocationSwitcherDropdownProps) {
+  const isMuted = tone === 'muted';
   const progress = useSharedValue(isOpen ? 1 : 0);
 
   useEffect(() => {
@@ -137,12 +151,11 @@ export const LocationSwitcherDropdown = memo(function LocationSwitcherDropdown({
 
   const containerStyle = useAnimatedStyle(() => ({
     opacity: progress.value,
-    maxHeight: progress.value * naturalHeight,
-    transform: [
-      {
-        translateY: (1 - progress.value) * -8,
-      },
-    ],
+    // Grow out from the pill: with the transform origin pinned to the top-right
+    // (where the pill sits), the menu starts at roughly pill size and expands
+    // downward + outward, so it reads as the pill itself enlarging. The top-right
+    // corner stays put, so it never rises above where the pill was.
+    transform: [{ scale: 0.38 + progress.value * 0.62 }],
   }));
 
   const isClosed = !isOpen;
@@ -152,13 +165,20 @@ export const LocationSwitcherDropdown = memo(function LocationSwitcherDropdown({
       pointerEvents={isClosed ? 'none' : 'auto'}
       style={[
         {
-          backgroundColor: colors.white,
+          // Same pale tone as the collapsed location pill so the open menu reads
+          // as that pill grown larger, not a separate surface.
+          backgroundColor: isMuted ? '#F2F2F7' : colors.white,
+          alignSelf: 'flex-end',
+          minWidth: 280,
           borderRadius: glassRadii.surface,
-          borderWidth: glassHairlineWidth,
+          borderWidth: isMuted ? 0 : glassHairlineWidth,
           borderColor: glassColors.cardBorder,
           overflow: 'hidden',
+          // Pin growth to the top-right corner — where the pill lives — so the
+          // expansion appears to originate from the pill.
+          transformOrigin: 'top right',
           shadowColor: 'rgba(15, 23, 42, 0.35)',
-          shadowOpacity: 0.16,
+          shadowOpacity: isMuted ? 0.22 : 0.16,
           shadowRadius: 18,
           shadowOffset: { width: 0, height: 12 },
           elevation: 6,
@@ -179,6 +199,7 @@ export const LocationSwitcherDropdown = memo(function LocationSwitcherDropdown({
             isSelected={loc.id === selectedLocationId}
             isLast={index === locations.length - 1}
             onSelect={onSelect}
+            isMuted={isMuted}
           />
         ))}
       </ScrollView>

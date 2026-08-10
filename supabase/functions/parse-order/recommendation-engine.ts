@@ -7,11 +7,14 @@ import type {
   ItemOrderProfile,
   ItemOrderLimit,
   ItemReorderRule,
+  QuickOrderReorderRule,
+  QuickOrderUnitRule,
   Recommendation,
   ReorderRoundingPolicy,
   SafetyWarning,
   StockOperation,
 } from './types.ts';
+import { resolveReorderRecommendation } from './rule-resolver.ts';
 import { normalizeUnitForComparison } from './units.ts';
 
 export type RecommendationHistoryOrder = {
@@ -37,6 +40,9 @@ export type CalculateOrderRecommendationInput = {
   recentOrders?: RecommendationHistoryOrder[];
   limits?: ItemOrderLimit[];
   allowedUnitRules?: ItemAllowedUnitRule[];
+  globalAllowedUnitRules?: ItemAllowedUnitRule[];
+  originalStockQty?: number | null;
+  originalStockUnit?: string | null;
 };
 
 export type EvaluateReorderRuleInput = {
@@ -94,7 +100,13 @@ export function buildQuickOrderRecommendations(input: {
   recentOrders: RecommendationHistoryOrder[];
   limits: ItemOrderLimit[];
   allowedUnitRules: ItemAllowedUnitRule[];
+  globalAllowedUnitRules?: ItemAllowedUnitRule[];
   inventoryReorderRules?: InventoryReorderRule[];
+  quickOrderReorderRules?: QuickOrderReorderRule[];
+  quickOrderUnitRules?: QuickOrderUnitRule[];
+  employeeNameKeys?: string[];
+  employeeUserId?: string | null;
+  parserSettings?: Record<string, unknown>;
   reorderRules?: ItemReorderRule[];
   orderProfiles?: ItemOrderProfile[];
   locationId?: string | null;
@@ -105,6 +117,9 @@ export function buildQuickOrderRecommendations(input: {
   const warnings: SafetyWarning[] = [];
   const statusItems = input.statusItems ?? [];
   const handledNoOrderStatusKeys = new Set<string>();
+  // Inventory mode leaves above-normal-range items unordered (rendered as "– 0"
+  // in the Updated card) instead of asking the employee to confirm.
+  const inventoryMode = input.mode === 'inventory';
   for (const statusItem of statusItems) {
     if (!statusItem.item_id) {
       warnings.push({
@@ -126,6 +141,10 @@ export function buildQuickOrderRecommendations(input: {
         quantity: statusItem.remaining_qty,
         unit: statusItem.remaining_unit,
         severity: 'info',
+        resolution: statusItem.resolution ?? undefined,
+        reason_codes: statusItem.reason_codes,
+        resolution_trace: statusItem.resolution_trace,
+        user_visible_note: statusItem.user_visible_note,
       });
       continue;
     }
@@ -157,6 +176,83 @@ export function buildQuickOrderRecommendations(input: {
     if (!catalogItem) continue;
     const stock = latestStockForItem(input.stockUpdates, itemId);
     if (stock && !handledNoOrderStatusKeys.has(itemId)) {
+      if (inventoryMode && (input.quickOrderReorderRules?.length ?? 0) > 0) {
+        const v2RuleResult = resolveReorderRecommendation({
+          item: catalogItem,
+          remainingQty: stock.quantity,
+          remainingUnit: stock.unit,
+          rules: input.quickOrderReorderRules ?? [],
+          unitRules: input.quickOrderUnitRules ?? [],
+          context: {
+            mode: input.mode ?? 'inventory',
+            employeeNameKeys: input.employeeNameKeys ?? [],
+            employeeUserId: input.employeeUserId ?? null,
+            locationId: input.locationId ?? null,
+            settings: input.parserSettings ?? {},
+          },
+        });
+        if (v2RuleResult.status === 'recommend') {
+          const limit = findLimit(input.limits, itemId);
+          const safety = applyRecommendationSafety(v2RuleResult.suggestedQuantity, v2RuleResult.unit, limit, catalogItem);
+          if (safety.warning) warnings.push({ ...safety.warning, item_id: catalogItem.id, item_name: catalogItem.name });
+          recommendations.push({
+            item_id: catalogItem.id,
+            item_name: catalogItem.name,
+            suggested_quantity: safety.cappedQuantity,
+            unit: v2RuleResult.unit,
+            confidence: stock.confidence >= 0.9 ? 0.95 : 0.88,
+            reason: v2RuleResult.reason,
+            inputs: {
+              current_stock: v2RuleResult.convertedRemainingQty ?? stock.quantity,
+              expected_usage: null,
+              safety_stock: null,
+              previous_average: null,
+              day_of_week_pattern: null,
+              next_delivery_date: null,
+            },
+            safety_status: safety.status,
+            recommendation_type: 'stock_reorder_rule',
+            auto_apply_eligible: false,
+            resolution: v2RuleResult.metadata,
+            reason_codes: v2RuleResult.metadata.reason_codes,
+            resolution_trace: v2RuleResult.metadata.resolution_trace,
+            user_visible_note: v2RuleResult.metadata.user_visible_note,
+          });
+          continue;
+        }
+        if (v2RuleResult.status === 'no_order_needed' || (v2RuleResult.status === 'no_matching_rule' && v2RuleResult.rule)) {
+          warnings.push({
+            type: 'no_order_needed',
+            message: v2RuleResult.reason,
+            item_id: catalogItem.id,
+            item_name: catalogItem.name,
+            quantity: stock.quantity,
+            unit: stock.unit,
+            severity: 'info',
+            resolution: v2RuleResult.metadata,
+            reason_codes: v2RuleResult.metadata.reason_codes,
+            resolution_trace: v2RuleResult.metadata.resolution_trace,
+            user_visible_note: v2RuleResult.metadata.user_visible_note,
+          });
+          continue;
+        }
+        if (v2RuleResult.status === 'needs_input' || v2RuleResult.status === 'cannot_evaluate') {
+          warnings.push({
+            type: 'recommendation_unavailable',
+            message: v2RuleResult.reason,
+            item_id: catalogItem.id,
+            item_name: catalogItem.name,
+            quantity: stock.quantity,
+            unit: stock.unit,
+            severity: 'info',
+            resolution: v2RuleResult.metadata,
+            reason_codes: v2RuleResult.metadata.reason_codes,
+            resolution_trace: v2RuleResult.metadata.resolution_trace,
+            user_visible_note: v2RuleResult.metadata.user_visible_note,
+          });
+          continue;
+        }
+      }
       const sheetRuleResult = evaluateReorderRule({
         remainingQty: stock.quantity,
         remainingUnit: stock.unit,
@@ -165,7 +261,7 @@ export function buildQuickOrderRecommendations(input: {
         locationId: input.locationId ?? null,
         mode: input.mode ?? 'inventory',
         rules: input.inventoryReorderRules ?? [],
-        allowedUnitRules: input.allowedUnitRules,
+        allowedUnitRules: input.globalAllowedUnitRules ?? input.allowedUnitRules,
       });
       if (sheetRuleResult.status === 'recommend') {
         const limit = findLimit(input.limits, itemId);
@@ -229,18 +325,79 @@ export function buildQuickOrderRecommendations(input: {
         continue;
       }
     }
+    if (stock && catalogItem.target_stock != null) {
+      const target = positiveNumber(catalogItem.target_stock);
+      if (target != null && stock.quantity < target) {
+        const unit = catalogItem.default_order_unit ?? catalogItem.order_unit ?? stock.unit ?? defaultUnitForItem(catalogItem, [], null);
+        const suggested = roundRecommendation(target - stock.quantity, unit);
+        if (suggested > 0) {
+          recommendations.push({
+            item_id: catalogItem.id,
+            item_name: catalogItem.name,
+            suggested_quantity: suggested,
+            unit,
+            confidence: stock.confidence >= 0.9 ? 0.9 : 0.82,
+            reason: `Based on target stock of ${target} and current stock.`,
+            inputs: {
+              current_stock: stock.quantity,
+              expected_usage: target,
+              safety_stock: null,
+              previous_average: null,
+              day_of_week_pattern: null,
+              next_delivery_date: null,
+            },
+            safety_status: 'normal',
+            recommendation_type: 'stock_reorder_rule',
+            auto_apply_eligible: false,
+            resolution: {
+              reason_codes: ['target_stock'],
+              reorder_rule_source: 'target_stock',
+              confidence: 0.86,
+              user_visible_note: `Used ${catalogItem.name}'s target stock from qo_items.`,
+            },
+            reason_codes: ['target_stock'],
+            user_visible_note: `Used ${catalogItem.name}'s target stock from qo_items.`,
+          });
+          continue;
+        }
+      } else if (target != null) {
+        warnings.push({
+          type: 'no_order_needed',
+          message: `${catalogItem.name} is already at or above target stock. No order is needed.`,
+          item_id: catalogItem.id,
+          item_name: catalogItem.name,
+          quantity: stock.quantity,
+          unit: stock.unit,
+          severity: 'info',
+          reason_codes: ['target_stock_no_order'],
+          user_visible_note: `Used ${catalogItem.name}'s target stock from qo_items.`,
+        });
+        continue;
+      }
+    }
     const reorderRule = findReorderRule(input.reorderRules ?? [], itemId);
     const profile = findOrderProfile(input.orderProfiles ?? [], itemId);
     const limit = findLimit(input.limits, itemId);
-    const unit = reorderRule?.target_stock_unit
+    const matchingUnitRule = stock
+      ? input.allowedUnitRules.find(
+          (rule) =>
+            rule.item_id === itemId &&
+            normalizeUnitForComparison(rule.unit) === normalizeUnitForComparison(stock.unit)
+        )
+      : null;
+    const unit = matchingUnitRule?.order_unit
+      ?? reorderRule?.target_stock_unit
       ?? reorderRule?.usual_order_unit
       ?? profile?.usual_unit
-      ?? defaultUnitForItem(catalogItem, input.allowedUnitRules, limit);
+      ?? defaultUnitForItem(catalogItem, input.globalAllowedUnitRules ?? input.allowedUnitRules, limit);
     const currentStockInOrderUnit = stock
-      ? convertStockQuantityToUnit(stock, unit, input.allowedUnitRules)
+      ? convertStockQuantityToUnit(stock, unit, input.globalAllowedUnitRules ?? input.allowedUnitRules)
       : null;
 
-    if (stock && currentStockInOrderUnit == null && stock.unit && unit && normalizeUnitForComparison(stock.unit) !== normalizeUnitForComparison(unit)) {
+    // When the employee typed no unit, the count is implied to be in the item's
+    // only unit, so we treat it as already being in the order unit rather than
+    // warning about a missing conversion.
+    if (stock && !stock.unit_inferred && currentStockInOrderUnit == null && stock.unit && unit && normalizeUnitForComparison(stock.unit) !== normalizeUnitForComparison(unit)) {
       warnings.push({
         type: 'unusual_unit',
         message: `${catalogItem.name} stock was counted as ${stock.unit}, but I do not have a conversion to ${unit}.`,
@@ -266,11 +423,19 @@ export function buildQuickOrderRecommendations(input: {
           recentOrders: input.recentOrders,
           limits: input.limits,
           allowedUnitRules: input.allowedUnitRules,
+          globalAllowedUnitRules: input.globalAllowedUnitRules ?? input.allowedUnitRules,
+          originalStockQty: stock.quantity,
+          originalStockUnit: stock.unit,
         })
       : null;
 
     if (stockRecommendation?.status === 'recommend' && stock) {
       const safety = applyRecommendationSafety(stockRecommendation.suggestedQuantity, stockRecommendation.unit, limit, catalogItem);
+      if (inventoryMode && safety.status === 'confirm') {
+        // Above the normal range: leave it unordered. The counted row still
+        // shows in the Updated card (as "– 0"); no confirmation is requested.
+        continue;
+      }
       if (safety.warning) warnings.push({ ...safety.warning, item_id: catalogItem.id, item_name: catalogItem.name });
       recommendations.push({
         item_id: catalogItem.id,
@@ -455,6 +620,78 @@ export function calculateOrderRecommendation(
 ): CalculateOrderRecommendationResult {
   const item = input.item ?? null;
   const itemName = item?.name ?? 'this item';
+
+  const checkUnit = input.originalStockUnit ?? input.currentUnit;
+  const checkQty = input.originalStockQty ?? input.currentQuantity;
+  const itemRules = (input.allowedUnitRules ?? []).filter((rule) => rule.item_id === input.itemId);
+  let unitRule = itemRules.find(
+    (rule) => normalizeUnitForComparison(rule.unit) === normalizeUnitForComparison(checkUnit)
+  ) ?? null;
+
+  let evaluatedQty = checkQty;
+  let evaluatedUnit = checkUnit;
+
+  if (!unitRule && itemRules.length > 0) {
+    const thresholdRule = itemRules.find((rule) => rule.min_quantity != null || rule.max_quantity != null);
+    if (thresholdRule && thresholdRule.unit) {
+      const globalRules = input.globalAllowedUnitRules ?? input.allowedUnitRules ?? [];
+      const converted = convertRemainingQtyToTriggerUnit({
+        itemId: input.itemId,
+        remainingQty: checkQty,
+        remainingUnit: checkUnit,
+        triggerUnit: thresholdRule.unit,
+        allowedUnitRules: globalRules,
+      });
+      if (converted.status === 'ok') {
+        unitRule = thresholdRule;
+        evaluatedQty = converted.quantity;
+        evaluatedUnit = thresholdRule.unit;
+      }
+    }
+  }
+
+  if (unitRule) {
+    const targetUnit = unitRule.order_unit || unitRule.unit;
+    // Check min_quantity violation
+    if (unitRule.min_quantity != null && evaluatedQty < unitRule.min_quantity) {
+      const orderQty = unitRule.order_quantity != null ? unitRule.order_quantity : 0;
+      if (orderQty > 0) {
+        return {
+          status: 'recommend',
+          suggestedQuantity: orderQty,
+          rawNeeded: orderQty,
+          unit: targetUnit,
+          targetQuantity: orderQty,
+          targetUnit: targetUnit,
+          reason: `Current stock ${formatQuantity(evaluatedQty, evaluatedUnit)} is below min threshold of ${formatQuantity(unitRule.min_quantity, evaluatedUnit)}. Ordering ${formatQuantity(orderQty, targetUnit)}.`,
+          recommendationType: 'stock_reorder_rule',
+        };
+      } else {
+        return {
+          status: 'no_order_needed',
+          suggestedQuantity: 0,
+          unit: targetUnit,
+          targetUnit: targetUnit,
+          reason: `Current stock ${formatQuantity(evaluatedQty, evaluatedUnit)} is below min threshold of ${formatQuantity(unitRule.min_quantity, evaluatedUnit)}. No order is needed.`,
+        };
+      }
+    }
+
+    // Check max_quantity violation
+    if (unitRule.max_quantity != null && evaluatedQty > unitRule.max_quantity) {
+      return {
+        status: 'recommend',
+        suggestedQuantity: 0,
+        rawNeeded: 0,
+        unit: targetUnit,
+        targetQuantity: 0,
+        targetUnit: targetUnit,
+        reason: `Current stock ${formatQuantity(evaluatedQty, evaluatedUnit)} is above the maximum allowed limit of ${formatQuantity(unitRule.max_quantity, evaluatedUnit)}.`,
+        recommendationType: 'stock_reorder_rule',
+      };
+    }
+  }
+
   const reorderRule = findReorderRule(input.reorderRules ?? [], input.itemId);
   const profile = findOrderProfile(input.orderProfiles ?? [], input.itemId);
   const limit = findLimit(input.limits ?? [], input.itemId);
@@ -925,11 +1162,13 @@ function convertStockQuantityToUnit(
 
   const stockRule = rules.find((rule) =>
     rule.item_id === stock.item_id &&
-    normalizeUnitForComparison(rule.unit) === stockUnit
+    (normalizeUnitForComparison(rule.unit) === stockUnit ||
+      (rule.order_unit && normalizeUnitForComparison(rule.order_unit) === stockUnit))
   );
   const targetRule = rules.find((rule) =>
     rule.item_id === stock.item_id &&
-    normalizeUnitForComparison(rule.unit) === normalizedTarget
+    (normalizeUnitForComparison(rule.unit) === normalizedTarget ||
+      (rule.order_unit && normalizeUnitForComparison(rule.order_unit) === normalizedTarget))
   );
   const stockConversion = positiveNumber(stockRule?.conversion_to_base_unit);
   const targetConversion = positiveNumber(targetRule?.conversion_to_base_unit);
@@ -964,37 +1203,7 @@ function applyRecommendationSafety(
   status: Recommendation['safety_status'];
   warning: SafetyWarning | null;
 } {
-  const hardMaxOverride = positiveNumber(limit?.hard_max_quantity) ?? positiveNumber(limit?.max_single_order_quantity);
-  const hardMax = hardMaxOverride ?? positiveNumber(catalogItem?.hard_cap);
-  const softMaxOverride = positiveNumber(limit?.soft_max_quantity);
-  const softMax = softMaxOverride ?? positiveNumber(catalogItem?.soft_cap);
-  const managerApproval = positiveNumber(limit?.manager_approval_quantity);
-  const cappedQuantity = hardMax != null ? Math.min(quantity, hardMax) : quantity;
-  const status: Recommendation['safety_status'] =
-    hardMax != null && quantity > hardMax
-      ? 'blocked'
-      : managerApproval != null && quantity > managerApproval
-        ? 'manager_approval'
-        : softMax != null && quantity > softMax
-          ? 'confirm'
-          : 'normal';
-  if (status === 'normal') return { cappedQuantity, status, warning: null };
-  const nameLabel = catalogItem?.name ?? 'Recommendation';
-  return {
-    cappedQuantity,
-    status,
-    warning: {
-      type: status === 'blocked'
-        ? 'above_hard_max'
-        : status === 'manager_approval'
-          ? 'manager_approval_required'
-          : 'above_soft_max',
-      message: `${nameLabel} recommendation is above the configured normal range.`,
-      quantity: cappedQuantity,
-      unit,
-      severity: status === 'blocked' ? 'blocked' : 'warning',
-    },
-  };
+  return { cappedQuantity: quantity, status: 'normal', warning: null };
 }
 
 function roundRecommendation(quantity: number, unit: string | null): number {

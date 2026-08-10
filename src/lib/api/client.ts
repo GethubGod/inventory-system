@@ -255,6 +255,7 @@ interface InventoryItemDTO {
   packUnit: string | null;
   packSize: number | null;
   supplierId: string | null;
+  locationId?: string | null;
   active: boolean;
   notes: string | null;
   createdAt: string | null;
@@ -304,6 +305,7 @@ function inventoryDtoToItem(dto: InventoryItemDTO): InventoryItem {
     category: dto.category as InventoryItem['category'],
     supplier_category: (dto.supplierCategory ?? 'main_distributor') as InventoryItem['supplier_category'],
     supplier_id: dto.supplierId ?? null,
+    location_id: dto.locationId ?? null,
     base_unit: dto.baseUnit ?? '',
     pack_unit: dto.packUnit ?? '',
     pack_size: dto.packSize ?? 1,

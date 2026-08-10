@@ -138,6 +138,7 @@ describe('useInventoryStore.fetchItems', () => {
         pack_unit: 'case',
         pack_size: 1,
         active: true,
+        location_id: null,
         created_at: '2026-03-23T00:00:00.000Z',
         created_by: 'user-1',
       },

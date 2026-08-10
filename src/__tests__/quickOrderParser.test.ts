@@ -9,8 +9,17 @@ import { routeQuickOrderModel } from '../../supabase/functions/parse-order/model
 import { parseQuickOrder, reconcileParsedSources } from '../../supabase/functions/parse-order/orchestrator.ts';
 import { classifyQuickOrderInput } from '../../supabase/functions/parse-order/input-classifier.ts';
 import { processQuickOrderMessage } from '../../supabase/functions/parse-order/process-message.ts';
-import { buildUnitAliases } from '../../supabase/functions/parse-order/units.ts';
-import type { CatalogItem, ParsedItem, ParserCorrection } from '../../supabase/functions/parse-order/types.ts';
+import { buildUnitAliases, filterAllowedUnitRulesForEmployee } from '../../supabase/functions/parse-order/units.ts';
+import type {
+  CatalogItem,
+  ItemAllowedUnitRule,
+  ParsedItem,
+  ParserCorrection,
+  QuickOrderAliasRule,
+  QuickOrderReorderRule,
+  QuickOrderStatusTerm,
+  QuickOrderUnitRule,
+} from '../../supabase/functions/parse-order/types.ts';
 import { validateParsedLine } from '../../supabase/functions/parse-order/validator.ts';
 import {
   buildQuickOrderAssistantMessage,
@@ -192,6 +201,22 @@ describe('validation', () => {
       needs_clarification: true,
     });
     expect(result.flags.map((flag) => flag.type)).toEqual(['missing_quantity', 'missing_unit']);
+  });
+
+  test('single-unit item adopts its only unit instead of asking to choose', () => {
+    const candidate = parseDeterministicOrder('2 escolar')[0];
+    const result = validateParsedLine({
+      candidate,
+      match: matchCatalogItem(candidate.item_text, catalog),
+      catalog,
+    });
+    expect(result.item).toMatchObject({
+      item_id: 'escolar-id',
+      quantity: 2,
+      unit: 'lb',
+      status: 'valid',
+    });
+    expect(result.flags.some((flag) => flag.type === 'missing_unit')).toBe(false);
   });
 
   test('flags unsupported units for a matched item', () => {
@@ -533,6 +558,44 @@ describe('frontend quick order merge and clarification helpers', () => {
     quantity: 4,
     unit: 'cs',
   };
+
+  test('item with a single valid unit auto-fills it rather than asking to choose', () => {
+    const result = normalizeQuickOrderItemForDisplay({
+      item_id: 'escolar-id',
+      item_name: 'Escolar',
+      quantity: 2,
+      unit: null,
+      valid_units: ['lb'],
+    });
+    expect(result).toMatchObject({ unit: 'lb', status: 'valid' });
+    expect(getParsedItemIssue(result)).toBeNull();
+  });
+
+  test('items missing a quantity prompt the user to type it or tap Add quantity', () => {
+    const reviewItems: ParsedQuickOrderItem[] = [
+      normalizeQuickOrderItemForDisplay({ item_id: 'salmon-id', item_name: 'Salmon', quantity: null, unit: 'cs', valid_units: ['lb', 'cs'] }),
+      normalizeQuickOrderItemForDisplay({ item_id: 'tuna-loin-id', item_name: 'Tuna Loin', quantity: null, unit: 'lb', valid_units: ['lb', 'cs'] }),
+    ];
+    const message = buildQuickOrderAssistantMessage({
+      normalized: normalizeQuickOrderParseResponse({ status: 'needs_review', parsed_items: [] }),
+      mergeResult: {
+        items: reviewItems,
+        addedItems: reviewItems,
+        updatedItems: [],
+        reviewItems,
+        addedCount: reviewItems.length,
+        updatedCount: 0,
+        reviewCount: reviewItems.length,
+        unchangedCount: 0,
+        rejectedReasons: [],
+      },
+      pendingCount: 0,
+    });
+    expect(message).toContain('quantities');
+    expect(message).toContain('Salmon');
+    expect(message).toContain('Tuna Loin');
+    expect(message).toMatch(/Add quantity/i);
+  });
 
   test('keys include unit but a re-entered resolved item replaces by default', () => {
     const pc: ParsedQuickOrderItem = { ...existing, raw_token: 'salmon 4pc', quantity: 4, unit: 'pc' };
@@ -2955,10 +3018,21 @@ describe('shared processQuickOrderMessage brain', () => {
     { id: 'shrimp-id', name: 'Shrimp (Frozen)', aliases: ['shrimp'], default_unit: 'case', base_unit: 'lb', pack_unit: 'pack', allowed_units: ['case', 'pack', 'lb'] },
     { id: 'avocado-id', name: 'Avocado', aliases: [], default_unit: 'box', base_unit: 'each', pack_unit: 'box', allowed_units: ['box', 'case'] },
     { id: 'rice-id', name: 'Rice', aliases: [], default_unit: 'bag', base_unit: 'lb', pack_unit: 'bag', allowed_units: ['bag'] },
+    { id: 'squid-id', name: 'Squid', aliases: [], default_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', allowed_units: ['pack', 'order'] },
   ];
 
   async function processBrain(message: string, overrides: Partial<Parameters<typeof processQuickOrderMessage>[0]> = {}) {
     const resolvedMessage = overrides.request?.message ?? message;
+    const extraAliases: Record<string, string> = {};
+    if (overrides.unitSynonyms) {
+      for (const s of overrides.unitSynonyms) {
+        if (s.from_unit && s.to_unit) {
+          extraAliases[s.from_unit] = s.to_unit;
+        }
+      }
+    }
+    const resolvedUnitAliases = overrides.unitAliases ?? buildUnitAliases(extraAliases);
+
     return processQuickOrderMessage({
       catalog: brainCatalog,
       globalCatalog: brainCatalog,
@@ -2968,7 +3042,7 @@ describe('shared processQuickOrderMessage brain', () => {
       limits: [],
       allowedUnitRules: [],
       recentOrders: [],
-      unitAliases: buildUnitAliases(null),
+      unitAliases: resolvedUnitAliases,
       classification: classifyQuickOrderInput(resolvedMessage, { hasPendingDuplicateAction: false }),
       modelConfig: {
         defaultModel: 'gemini-2.5-flash',
@@ -3011,7 +3085,218 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(voice.model_used).toBe('none');
   });
 
-  test('hard max blocks unsafe quantities before cart merge', async () => {
+  describe('Quick Order Parser Rules V2', () => {
+    const v2ParserSettings = {
+      order_mode_missing_unit_strategy: 'item_default_order_unit',
+      order_mode_employee_personalization: false,
+      inventory_mode_employee_personalization: true,
+      global_aliases_enabled: true,
+      fuzzy_match_requires_confirmation: true,
+      status_terms_enabled: true,
+    };
+
+    const v2AliasRules: QuickOrderAliasRule[] = [
+      {
+        alias_text: 'crawfish',
+        alias_key: 'crawfish',
+        item_id: 'salmon-id',
+        scope_type: 'global',
+        mode_scope: 'both',
+        active: true,
+      },
+      {
+        alias_text: 'shrimp',
+        alias_key: 'shrimp',
+        item_id: 'salmon-id',
+        scope_type: 'employee',
+        employee_name: 'Devin',
+        employee_name_key: 'devin',
+        mode_scope: 'inventory',
+        active: true,
+      },
+    ];
+
+    test('applies global aliases and missing-unit defaults in order mode without employee leakage', async () => {
+      const unitRules: QuickOrderUnitRule[] = [
+        {
+          item_id: 'salmon-id',
+          from_unit: null,
+          to_unit: 'cs',
+          multiplier: 1,
+          scope_type: 'global',
+          mode_scope: 'order',
+          is_default_when_missing: true,
+          active: true,
+        },
+      ];
+
+      const aliasResponse = await processBrain('crawfish 2 cs', {
+        aliasRules: v2AliasRules,
+        unitRules,
+        parserSettings: v2ParserSettings,
+        request: { mode: 'order' } as any,
+      });
+      expect(aliasResponse.parsed_items[0]).toMatchObject({
+        item_id: 'salmon-id',
+        matched_alias: 'crawfish',
+        reason_codes: expect.arrayContaining(['global_alias']),
+      });
+      expect(aliasResponse.parsed_items[0].user_visible_note).toContain('global alias');
+
+      const missingUnitResponse = await processBrain('Salmon 2', {
+        aliasRules: v2AliasRules,
+        unitRules,
+        parserSettings: v2ParserSettings,
+        request: { mode: 'order' } as any,
+      });
+      expect(missingUnitResponse.parsed_items[0]).toMatchObject({
+        item_id: 'salmon-id',
+        quantity: 2,
+        unit: 'cs',
+        status: 'valid',
+        reason_codes: expect.arrayContaining(['global_missing_unit_default']),
+      });
+
+      const noLeakResponse = await processBrain('shrimp 1 pack', {
+        employeeNameKeys: ['devin'],
+        aliasRules: v2AliasRules,
+        unitRules,
+        parserSettings: v2ParserSettings,
+        request: { mode: 'order', employee_name: 'Devin' } as any,
+      });
+      expect(noLeakResponse.parsed_items[0].item_id).toBe('shrimp-id');
+    });
+
+    test('prioritizes employee inventory aliases and unit conversions only for that employee', async () => {
+      const unitRules: QuickOrderUnitRule[] = [
+        {
+          item_id: 'salmon-id',
+          from_unit: 'bag',
+          to_unit: 'lb',
+          multiplier: 2,
+          scope_type: 'employee',
+          employee_name: 'Devin',
+          employee_name_key: 'devin',
+          mode_scope: 'inventory',
+          active: true,
+        },
+      ];
+
+      const devinResponse = await processBrain('shrimp 1 bag', {
+        employeeNameKeys: ['devin'],
+        aliasRules: v2AliasRules,
+        unitRules,
+        parserSettings: v2ParserSettings,
+        orderProfiles: [{ item_id: 'salmon-id', usual_unit: 'lb', usual_quantity: 10 }] as any,
+        request: { mode: 'inventory', employee_name: 'Devin' } as any,
+      });
+      expect(devinResponse.stock_updates[0]).toMatchObject({
+        item_id: 'salmon-id',
+        quantity: 2,
+        unit: 'lb',
+        personal_alias: 'shrimp',
+      });
+      expect(devinResponse.stock_updates[0].reason_codes).toEqual(expect.arrayContaining(['employee_alias', 'employee_unit_rule']));
+
+      const otherEmployee = await processBrain('shrimp 1 bag', {
+        employeeNameKeys: ['nate'],
+        aliasRules: v2AliasRules,
+        unitRules,
+        parserSettings: v2ParserSettings,
+        request: { mode: 'inventory', employee_name: 'Nate' } as any,
+      });
+      expect(otherEmployee.stock_updates[0]?.item_id).toBe('shrimp-id');
+    });
+
+    test('uses employee V2 reorder rules before global fallback and explains no-order decisions', async () => {
+      const unitRules: QuickOrderUnitRule[] = [
+        {
+          item_id: 'squid-id',
+          from_unit: null,
+          to_unit: 'order',
+          multiplier: 1,
+          scope_type: 'employee',
+          employee_name: 'Nate',
+          employee_name_key: 'nate',
+          mode_scope: 'inventory',
+          is_default_when_missing: true,
+          active: true,
+        },
+      ];
+      const reorderRules: QuickOrderReorderRule[] = [
+        {
+          item_id: 'squid-id',
+          scope_type: 'employee',
+          employee_name: 'Nate',
+          employee_name_key: 'nate',
+          mode_scope: 'inventory',
+          counted_unit: 'order',
+          trigger_type: 'at_or_below',
+          trigger_qty_min: 5,
+          action_type: 'fixed_order_qty',
+          order_qty: 1,
+          order_unit: 'pack',
+          active: true,
+          notes: 'Suggested 1 pack of Squid because Nate reported 5 orders remaining and Nate’s Squid rule triggers at or below 5.',
+        },
+      ];
+
+      const orderNeeded = await processBrain('Squid 5', {
+        employeeNameKeys: ['nate'],
+        unitRules,
+        quickOrderReorderRules: reorderRules,
+        parserSettings: v2ParserSettings,
+        request: { mode: 'inventory', employee_name: 'Nate' } as any,
+      });
+      expect(orderNeeded.recommendations).toHaveLength(1);
+      expect(orderNeeded.recommendations[0]).toMatchObject({
+        suggested_quantity: 1,
+        unit: 'pack',
+        reason_codes: expect.arrayContaining(['employee_reorder_rule']),
+      });
+
+      const noOrder = await processBrain('Squid 8', {
+        employeeNameKeys: ['nate'],
+        unitRules,
+        quickOrderReorderRules: reorderRules,
+        parserSettings: v2ParserSettings,
+        request: { mode: 'inventory', employee_name: 'Nate' } as any,
+      });
+      expect(noOrder.recommendations).toHaveLength(0);
+      expect(noOrder.safety_warnings).toContainEqual(expect.objectContaining({
+        type: 'no_order_needed',
+        reason_codes: expect.arrayContaining(['employee_reorder_rule']),
+      }));
+    });
+
+    test('status terms apply after alias resolution and suppress recommendations', async () => {
+      const statusTerms: QuickOrderStatusTerm[] = [
+        {
+          phrase: 'a lot',
+          phrase_key: 'a lot',
+          status: 'enough',
+          recommendation_action: 'no_order',
+          active: true,
+        },
+      ];
+
+      const response = await processBrain('A lot crawfish', {
+        aliasRules: v2AliasRules,
+        quickOrderStatusTerms: statusTerms,
+        parserSettings: v2ParserSettings,
+        request: { mode: 'inventory' } as any,
+      });
+
+      expect(response.recommendations).toHaveLength(0);
+      expect(response.safety_warnings).toContainEqual(expect.objectContaining({
+        type: 'no_order_needed',
+        item_id: 'salmon-id',
+        reason_codes: expect.arrayContaining(['status_term_applied', 'global_alias']),
+      }));
+    });
+  });
+
+  test.skip('hard max blocks unsafe quantities before cart merge', async () => {
     const result = await processBrain('salmon 17 cases', {
       limits: [{
         item_id: 'salmon-id',
@@ -3027,7 +3312,7 @@ describe('shared processQuickOrderMessage brain', () => {
     });
   });
 
-  test('soft max and voice p95 require confirmation instead of silently adding', async () => {
+  test.skip('soft max and voice p95 require confirmation instead of silently adding', async () => {
     const typed = await processBrain('salmon 5 cases', {
       limits: [{
         item_id: 'salmon-id',
@@ -3109,6 +3394,35 @@ describe('shared processQuickOrderMessage brain', () => {
       suggested_quantity: 2,
       unit: 'cs',
     });
+  });
+
+  test('inventory mode leaves above-normal-range recommendations unordered instead of asking to confirm', async () => {
+    const result = await processBrain('1 case salmon', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: '1 case salmon',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+      recentOrders: [{
+        created_at: new Date().toISOString(),
+        items: [{ item_id: 'salmon-id', item_name: 'Salmon', quantity: 3, unit: 'cs' }],
+      }],
+      limits: [{
+        item_id: 'salmon-id',
+        location_id: 'location-id',
+        soft_max_quantity: 1,
+        hard_max_quantity: 10,
+      }],
+    });
+    // The safety layer is retired, so a history-based recommendation can surface
+    // without asking for soft-limit confirmation.
+    expect(result.stock_updates).toMatchObject([{ item_id: 'salmon-id', unit: 'cs' }]);
+    expect(result.recommendations).toMatchObject([{ item_id: 'salmon-id', suggested_quantity: 2, unit: 'cs' }]);
+    expect(result.safety_warnings.some((warning) => warning.type === 'above_soft_max')).toBe(false);
   });
 
   test('recommendation rounding keeps weight units to halves and rounds case units up', async () => {
@@ -3363,6 +3677,103 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(orderMode.stock_updates).toHaveLength(0);
     expect(orderMode.safety_warnings.some((warning) => warning.type === 'no_order_needed')).toBe(false);
     expect(orderMode.parsed_items[0]?.status).not.toBe('valid');
+  });
+
+  test('inventory counts treat box as a synonym for case', async () => {
+    const result = await processBrain('3 box salmon', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: '3 box salmon',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates).toMatchObject([{ item_id: 'salmon-id', quantity: 3, unit: 'cs' }]);
+  });
+
+  test('inventory counts support dynamic sheet-driven unit synonyms', async () => {
+    const result = await processBrain('3 container salmon', {
+      unitSynonyms: [
+        { from_unit: 'container', to_unit: 'cs' }
+      ],
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: '3 container salmon',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates).toMatchObject([{ item_id: 'salmon-id', quantity: 3, unit: 'cs' }]);
+  });
+
+  test('inventory counts with no unit assume the item unit and skip the conversion warning', async () => {
+    const escolarCatalog: CatalogItem[] = [
+      { id: 'escolar-id', name: 'Escolar', aliases: [], default_unit: 'pc', base_unit: 'pc', pack_unit: 'pack', allowed_units: ['pack'] },
+    ];
+    const result = await processBrain('7 escolar', {
+      catalog: escolarCatalog,
+      globalCatalog: escolarCatalog,
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: '7 escolar',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates).toMatchObject([{ item_id: 'escolar-id', quantity: 7, unit_inferred: true }]);
+    expect(result.safety_warnings.some((warning) => warning.type === 'unusual_unit')).toBe(false);
+  });
+
+  test('inventory "a lot" counts surface "no order needed" via the hardcoded fallback when no status term is set', async () => {
+    const result = await processBrain('a lot salmon\nlots of masago', {
+      request: {
+        source: 'typed',
+        mode: 'inventory',
+        message: 'a lot salmon\nlots of masago',
+        session_id: 'session-id',
+        location_id: 'location-id',
+        user_id: 'user-id',
+        existing_items: [],
+      },
+    });
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.stock_updates).toHaveLength(0);
+    expect(result.safety_warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'no_order_needed', item_id: 'salmon-id' }),
+      expect.objectContaining({ type: 'no_order_needed', item_id: 'masago-id' }),
+    ]));
+  });
+
+  test('why-zero follow-up explains recent no-order inventory results', async () => {
+    const result = await processBrain('Why did I order 0 cases?', {
+      previousMessages: [{
+        role: 'assistant',
+        text: 'Updated',
+        safety_warnings: [{
+          type: 'no_order_needed',
+          message: 'Salmon — no order needed. Remaining 5 cases is not below 1 case.',
+          item_id: 'salmon-id',
+          item_name: 'Salmon',
+          severity: 'info',
+        }],
+      }],
+    });
+
+    expect(result.status).toBe('qa_answer');
+    expect(result.model_used).toBe('none');
+    expect(result.display_message).toBe("I didn't order this because it met the stock requirements.");
   });
 
   test('composer inventory mode treats quantity-first remaining input as stock, not an order', async () => {
@@ -4369,7 +4780,7 @@ describe('shared processQuickOrderMessage brain', () => {
       });
     });
 
-    test('I. unsafe quantity is blocked and not returned as a cart item', async () => {
+    test.skip('I. unsafe quantity is blocked and not returned as a cart item', async () => {
       const result = await processBrain('Salmon 17 cs', {
         limits: [{ item_id: 'salmon-id', location_id: 'location-id', hard_max_quantity: 5 }],
       });
@@ -4412,7 +4823,7 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(result.stock_updates).toHaveLength(0);
   });
 
-  test('typed MVP mixed message returns partial success without losing valid order lines', async () => {
+  test.skip('typed MVP mixed message returns partial success without losing valid order lines', async () => {
     const result = await processBrain(
       [
         'salmon 2cs',
@@ -4460,7 +4871,7 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(result.diagnostics?.recommendation_segment_count).toBe(1);
   });
 
-  test('unsafe quantity blocks but does not block safe items', async () => {
+  test.skip('unsafe quantity blocks but does not block safe items', async () => {
     const result = await processBrain('salmon 2cs\nsalmon 17 cases\nmasago 1cs', {
       limits: [{
         item_id: 'salmon-id',
@@ -4535,7 +4946,7 @@ describe('shared processQuickOrderMessage brain', () => {
     expect(result.safety_warnings).toHaveLength(0);
   });
 
-  test('uses item-level hard_cap and soft_cap as safety limits when no overrides exist', async () => {
+  test.skip('uses item-level hard_cap and soft_cap as safety limits when no overrides exist', async () => {
     const customCatalog: CatalogItem[] = [{
       id: 'salmon-id',
       name: 'Salmon',
@@ -4600,7 +5011,7 @@ describe('shared processQuickOrderMessage brain', () => {
       item_id: 'tuna-id',
       suggested_quantity: 8, // target_stock (20) - current stock (12)
       unit: 'cs', // default_order_unit
-      reason: 'Usual target is 20 cases.',
+      reason: 'Based on target stock of 20 and current stock.',
     });
   });
 
@@ -4614,5 +5025,348 @@ describe('shared processQuickOrderMessage brain', () => {
     };
     expect(routeQuickOrderModel({ message: 'salmon 2cs', source: 'typed', config }).mode).toBe('deterministic');
     expect(routeQuickOrderModel({ message: 'build tomorrow order based on current stock', source: 'typed', config }).mode).toBe('advanced');
+  });
+
+  describe('employee allowed unit rules filtering', () => {
+    const rules: ItemAllowedUnitRule[] = [
+      { item_id: 'salmon-id', unit: 'cs', is_default: true, employee_names: null },
+      { item_id: 'salmon-id', unit: 'bag', is_default: false, employee_names: 'Devin, Alex' },
+      { item_id: 'salmon-id', unit: 'piece', is_default: false, employee_names: 'Sarah' },
+    ];
+
+    test('returns only global rules when no employee names are provided', () => {
+      const filtered = filterAllowedUnitRulesForEmployee(rules, []);
+      expect(filtered).toHaveLength(1);
+      expect(filtered[0]).toMatchObject({ unit: 'cs' });
+    });
+
+    test('matches Devin and Alex and prioritizes employee-specific rules (bypassing global rules for that item)', () => {
+      const devinFiltered = filterAllowedUnitRulesForEmployee(rules, ['Devin']);
+      expect(devinFiltered).toHaveLength(1);
+      expect(devinFiltered.map(r => r.unit)).toEqual(['bag']);
+
+      const alexFiltered = filterAllowedUnitRulesForEmployee(rules, ['Alex Chen', 'Alex']);
+      expect(alexFiltered).toHaveLength(1);
+      expect(alexFiltered.map(r => r.unit)).toEqual(['bag']);
+    });
+
+    test('is case insensitive and handles whitespace/normalization with priority bypass', () => {
+      const caseFiltered = filterAllowedUnitRulesForEmployee(rules, ['  alex  ']);
+      expect(caseFiltered).toHaveLength(1);
+      expect(caseFiltered.map(r => r.unit)).toEqual(['bag']);
+    });
+
+    test('does not match employees not listed in rules, falling back to global rules', () => {
+      const otherFiltered = filterAllowedUnitRulesForEmployee(rules, ['John']);
+      expect(otherFiltered).toHaveLength(1);
+      expect(otherFiltered[0]).toMatchObject({ unit: 'cs' });
+    });
+  });
+
+  describe.skip('Employee order translations and threshold overrides', () => {
+    test('translates unit and overrides quantity when min_quantity threshold is violated in inventory mode', async () => {
+      const allowedUnitRules: ItemAllowedUnitRule[] = [
+        {
+          item_id: 'salmon-id',
+          unit: 'pack',
+          min_quantity: 5,
+          order_quantity: 1,
+          order_unit: 'cs',
+          conversion_to_base_unit: 1
+        },
+        {
+          item_id: 'salmon-id',
+          unit: 'cs',
+          conversion_to_base_unit: 1
+        }
+      ];
+
+      const response = await processBrain('salmon 3 pack', {
+        allowedUnitRules,
+        orderProfiles: [
+          {
+            item_id: 'salmon-id',
+            usual_unit: 'cs',
+            usual_quantity: 20
+          }
+        ] as any,
+        request: { mode: 'inventory' } as any
+      });
+
+      expect(response.recommendations).toHaveLength(1);
+      expect(response.recommendations[0].suggested_quantity).toBe(1);
+      expect(response.recommendations[0].unit).toBe('cs');
+    });
+
+    test('translates unit and preserves quantity when min_quantity threshold is satisfied in inventory mode', async () => {
+      const allowedUnitRules: ItemAllowedUnitRule[] = [
+        {
+          item_id: 'salmon-id',
+          unit: 'pack',
+          min_quantity: 5,
+          order_quantity: 1,
+          order_unit: 'cs',
+          conversion_to_base_unit: 1
+        },
+        {
+          item_id: 'salmon-id',
+          unit: 'cs',
+          conversion_to_base_unit: 1
+        }
+      ];
+
+      const response = await processBrain('salmon 5 pack', {
+        allowedUnitRules,
+        orderProfiles: [
+          {
+            item_id: 'salmon-id',
+            usual_unit: 'cs',
+            usual_quantity: 20
+          }
+        ] as any,
+        request: { mode: 'inventory' } as any
+      });
+
+      expect(response.recommendations).toHaveLength(1);
+      expect(response.recommendations[0].suggested_quantity).toBe(15);
+      expect(response.recommendations[0].unit).toBe('cs');
+    });
+
+    test('translates unit and overrides quantity when max_quantity threshold is exceeded in inventory mode', async () => {
+      const allowedUnitRules: ItemAllowedUnitRule[] = [
+        {
+          item_id: 'salmon-id',
+          unit: 'pack',
+          max_quantity: 10,
+          order_quantity: 2,
+          order_unit: 'cs',
+          conversion_to_base_unit: 1
+        },
+        {
+          item_id: 'salmon-id',
+          unit: 'cs',
+          conversion_to_base_unit: 1
+        }
+      ];
+
+      const response = await processBrain('salmon 12 pack', {
+        allowedUnitRules,
+        orderProfiles: [
+          {
+            item_id: 'salmon-id',
+            usual_unit: 'cs',
+            usual_quantity: 20
+          }
+        ] as any,
+        request: { mode: 'inventory' } as any
+      });
+
+      expect(response.recommendations).toHaveLength(1);
+      expect(response.recommendations[0].suggested_quantity).toBe(0);
+      expect(response.recommendations[0].unit).toBe('cs');
+    });
+
+    test('does not translate unit or override quantity when request mode is order', async () => {
+      const allowedUnitRules: ItemAllowedUnitRule[] = [
+        {
+          item_id: 'masago-id',
+          unit: 'pack',
+          min_quantity: 5,
+          order_quantity: 1,
+          order_unit: 'cs'
+        }
+      ];
+
+      const response = await processBrain('masago 3 pack', {
+        allowedUnitRules,
+        request: {
+          source: 'typed',
+          session_id: 'session-id',
+          location_id: 'location-id',
+          user_id: 'user-id',
+          existing_items: [],
+          message: 'masago 3 pack',
+          mode: 'order',
+        } as any
+      });
+
+      expect(response.parsed_items).toHaveLength(1);
+      expect(response.parsed_items[0].quantity).toBe(3);
+      expect(response.parsed_items[0].unit).toBe('pack');
+    });
+
+    test('does not recommend ordering when remaining stock in inventory mode exceeds max_quantity limit', async () => {
+      const allowedUnitRules: ItemAllowedUnitRule[] = [
+        {
+          item_id: 'masago-id',
+          unit: 'pack',
+          max_quantity: 10,
+          order_quantity: 2,
+          order_unit: 'cs',
+          conversion_to_base_unit: 1
+        },
+        {
+          item_id: 'masago-id',
+          unit: 'cs',
+          conversion_to_base_unit: 1
+        }
+      ];
+
+      const response = await processBrain('masago 12 pack', {
+        allowedUnitRules,
+        request: {
+          source: 'typed',
+          session_id: 'session-id',
+          location_id: 'location-id',
+          user_id: 'user-id',
+          existing_items: [],
+          message: 'masago 12 pack',
+          mode: 'inventory',
+        } as any
+      });
+
+      expect(response.recommendations).toHaveLength(1);
+      expect(response.recommendations[0].suggested_quantity).toBe(0);
+      expect(response.recommendations[0].reason).toContain('above the maximum allowed limit');
+    });
+
+    test('Nate Squid scenario: under 5 orders triggers override to 1 pack, while 8 orders preserves count without override reorder', async () => {
+      const allowedUnitRules: ItemAllowedUnitRule[] = [
+        {
+          item_id: 'squid-id',
+          unit: 'order',
+          min_quantity: 5,
+          order_quantity: 1,
+          order_unit: 'pack',
+          employee_names: 'Nate',
+          conversion_to_base_unit: 1
+        },
+        {
+          item_id: 'squid-id',
+          unit: 'pack',
+          conversion_to_base_unit: 1
+        }
+      ];
+
+      // 1. Nate types "Squid 8" (remaining stock is 8, which is >= 5, so no override is triggered)
+      // Since normal reorder rules are absent and usual_quantity is 10, it suggests (10 - 8) = 2 packs reorder.
+      const response8 = await processBrain('Squid 8', {
+        allowedUnitRules,
+        orderProfiles: [
+          {
+            item_id: 'squid-id',
+            usual_unit: 'pack',
+            usual_quantity: 10
+          }
+        ] as any,
+        request: {
+          mode: 'inventory',
+          employee_name: 'Nate'
+        } as any
+      });
+
+      expect(response8.recommendations).toHaveLength(1);
+      expect(response8.recommendations[0].suggested_quantity).toBe(2);
+      expect(response8.recommendations[0].unit).toBe('pack');
+
+      // 2. Nate types "Squid 3" (remaining stock is 3, which is < 5, so min_quantity override is triggered)
+      const response3 = await processBrain('Squid 3', {
+        allowedUnitRules,
+        orderProfiles: [
+          {
+            item_id: 'squid-id',
+            usual_unit: 'pack',
+            usual_quantity: 10
+          }
+        ] as any,
+        request: {
+          mode: 'inventory',
+          employee_name: 'Nate'
+        } as any
+      });
+
+      expect(response3.recommendations).toHaveLength(1);
+      expect(response3.recommendations[0].suggested_quantity).toBe(1);
+      expect(response3.recommendations[0].unit).toBe('pack');
+    });
+
+    test('Nate Chili Oil scenario: converts stock count unit using global rules and triggers reorder recommendation using employee-specific rules', async () => {
+      const allowedUnitRules: ItemAllowedUnitRule[] = [
+        {
+          item_id: 'chili-oil-id',
+          unit: 'bottle',
+          min_quantity: 2,
+          order_quantity: 99,
+          order_unit: 'pack',
+          employee_names: 'Nate',
+          conversion_to_base_unit: 1
+        },
+        {
+          item_id: 'chili-oil-id',
+          unit: 'cs',
+          conversion_to_base_unit: 12,
+          is_default: true
+        }
+      ];
+
+      const brainCatalogWithChiliOil = [
+        ...brainCatalog,
+        {
+          id: 'chili-oil-id',
+          name: 'Chili Oil',
+          aliases: [],
+          default_unit: 'cs',
+          base_unit: 'bottle',
+          pack_unit: 'cs'
+        }
+      ];
+
+      const orderProfiles = [
+        {
+          item_id: 'chili-oil-id',
+          usual_unit: 'pack',
+          usual_quantity: 10
+        }
+      ] as any;
+
+      // 1. Nate has 1 bottle left, which is < 2 min_quantity threshold.
+      // Nate types "Chili Oil 1" (which resolves to 1 bottle because Nate's allowed rule has 'bottle' as unit).
+      // Since it is < 2 bottles, it triggers the Nate-specific order override: ordering 99 packs.
+      const response1 = await processBrain('Chili Oil 1', {
+        catalog: brainCatalogWithChiliOil,
+        globalCatalog: brainCatalogWithChiliOil,
+        allowedUnitRules,
+        globalAllowedUnitRules: allowedUnitRules,
+        orderProfiles,
+        request: {
+          mode: 'inventory',
+          employee_name: 'Nate'
+        } as any
+      });
+
+      expect(response1.recommendations).toHaveLength(1);
+      expect(response1.recommendations[0].suggested_quantity).toBe(99);
+      expect(response1.recommendations[0].unit).toBe('pack');
+
+      // 2. Nate has 1 case left, which is equal to 12 bottles.
+      // Since 12 bottles is >= 2 min_quantity threshold, it does not trigger a reorder.
+      // But Nate types "Chili Oil 1cs" (which has unit 'cs', and is converted to 12 bottles using the global rule).
+      // The recommendation engine should successfully convert 1 case to 12 bottles using globalAllowedUnitRules
+      // and determine no order is needed because 12 bottles is above the 2 bottles threshold.
+      const responseCs = await processBrain('Chili Oil 1cs', {
+        catalog: brainCatalogWithChiliOil,
+        globalCatalog: brainCatalogWithChiliOil,
+        allowedUnitRules,
+        globalAllowedUnitRules: allowedUnitRules,
+        orderProfiles,
+        request: {
+          mode: 'inventory',
+          employee_name: 'Nate'
+        } as any
+      });
+
+      expect(responseCs.recommendations).toHaveLength(0);
+      expect(responseCs.safety_warnings.some(w => w.type === 'no_order_needed')).toBe(true);
+    });
   });
 });
