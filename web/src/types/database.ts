@@ -1702,6 +1702,105 @@ export type Database = {
           },
         ]
       }
+      order_checklist_items: {
+        Row: {
+          checklist_id: string
+          created_at: string
+          default_checked: boolean
+          id: string
+          item_id: string | null
+          item_name: string
+          item_source: string
+          last_ordered_at: string | null
+          order_frequency_days: number | null
+          recommended_qty: number | null
+          sort_order: number
+          staleness_bucket: string | null
+          typical_qty: number | null
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          checklist_id: string
+          created_at?: string
+          default_checked?: boolean
+          id?: string
+          item_id?: string | null
+          item_name: string
+          item_source?: string
+          last_ordered_at?: string | null
+          order_frequency_days?: number | null
+          recommended_qty?: number | null
+          sort_order?: number
+          staleness_bucket?: string | null
+          typical_qty?: number | null
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          checklist_id?: string
+          created_at?: string
+          default_checked?: boolean
+          id?: string
+          item_id?: string | null
+          item_name?: string
+          item_source?: string
+          last_ordered_at?: string | null
+          order_frequency_days?: number | null
+          recommended_qty?: number | null
+          sort_order?: number
+          staleness_bucket?: string | null
+          typical_qty?: number | null
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_checklist_items_checklist_id_fkey"
+            columns: ["checklist_id"]
+            isOneToOne: false
+            referencedRelation: "order_checklists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "order_checklist_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      order_checklists: {
+        Row: {
+          created_at: string
+          generated_at: string
+          generation_source: string
+          id: string
+          location_group: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          generated_at?: string
+          generation_source?: string
+          id?: string
+          location_group: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          generated_at?: string
+          generation_source?: string
+          id?: string
+          location_group?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       order_items: {
         Row: {
           created_at: string
@@ -2388,6 +2487,7 @@ export type Database = {
           last_active_at: string | null
           last_order_at: string | null
           notifications_enabled: boolean
+          order_send_mode: string
           profile_completed: boolean
           provider: string | null
           role: string | null
@@ -2404,6 +2504,7 @@ export type Database = {
           last_active_at?: string | null
           last_order_at?: string | null
           notifications_enabled?: boolean
+          order_send_mode?: string
           profile_completed?: boolean
           provider?: string | null
           role?: string | null
@@ -2420,6 +2521,7 @@ export type Database = {
           last_active_at?: string | null
           last_order_at?: string | null
           notifications_enabled?: boolean
+          order_send_mode?: string
           profile_completed?: boolean
           provider?: string | null
           role?: string | null
@@ -4558,6 +4660,10 @@ export type Database = {
             }
             Returns: Json
           }
+      generate_order_checklist: {
+        Args: { p_location_group: string; p_user_id: string }
+        Returns: string
+      }
       get_usual_order: {
         Args: {
           p_limit?: number

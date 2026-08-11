@@ -21,6 +21,8 @@ import { formatQuantity, type SelectionLine } from '../checklistSelection';
 
 interface ConfirmOrderSheetProps {
   visible: boolean;
+  /** 'review' routes to manager review; 'direct' continues to the per-supplier send queue. */
+  mode: 'review' | 'direct';
   lines: SelectionLine[];
   unmatchedNames: string[];
   isSending: boolean;
@@ -35,6 +37,7 @@ const STEPPER_SIZE = 36;
 
 export function ConfirmOrderSheet({
   visible,
+  mode,
   lines,
   unmatchedNames,
   isSending,
@@ -82,8 +85,10 @@ export function ConfirmOrderSheet({
           marginBottom: ds.spacing(10),
         }}
       >
-        {sendableCount === 1 ? '1 item' : `${sendableCount} items`} — goes to
-        manager review
+        {sendableCount === 1 ? '1 item' : `${sendableCount} items`} —{' '}
+        {mode === 'direct'
+          ? 'sends straight to your suppliers'
+          : 'goes to manager review'}
       </Text>
 
       <ScrollView
@@ -277,7 +282,11 @@ export function ConfirmOrderSheet({
               color: colors.white,
             }}
           >
-            {sendableCount === 1 ? 'Send 1 item' : `Send ${sendableCount} items`}
+            {mode === 'direct'
+              ? 'Continue to send'
+              : sendableCount === 1
+                ? 'Send 1 item'
+                : `Send ${sendableCount} items`}
           </Text>
         )}
       </TouchableOpacity>
