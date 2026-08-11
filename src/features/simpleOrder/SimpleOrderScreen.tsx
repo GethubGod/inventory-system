@@ -31,10 +31,14 @@ import {
 } from '@/lib/haptics';
 import {
   getOrGenerateMyChecklist,
+  prepareDirectSend,
   regenerateMyChecklist,
   sendChecklistOrder,
   type Checklist,
+  type DirectSendGroup,
 } from '@/services/orderChecklist';
+import { getMyOrderSendMode, type OrderSendMode } from '@/services/orderSendMode';
+import type { SendAllQueueProgress } from '@/features/fulfillment/sendAll/sendAllQueue';
 import { useAuthStore, useInventoryStore } from '@/store';
 import {
   colors,
@@ -47,7 +51,6 @@ import type { InventoryItem, Location } from '@/types';
 import { LocationSwitcherDropdown } from '@/features/stock-check/components/LocationSwitcherDropdown';
 import {
   buildSendLines,
-  countChecked,
   EMPTY_SELECTION_STATE,
   getCheckedLines,
   locationGroupForLocation,
@@ -55,9 +58,12 @@ import {
   selectionReducer,
   type SelectionLine,
 } from './checklistSelection';
+import { buildDirectSendLines } from './directSendFlow';
 import { AddItemsSheet } from './components/AddItemsSheet';
 import { ChecklistItemRow } from './components/ChecklistItemRow';
 import { ConfirmOrderSheet } from './components/ConfirmOrderSheet';
+import { DirectSendQueue } from './components/DirectSendQueue';
+import { RecentOrdersSheet } from './components/RecentOrdersSheet';
 
 interface ChecklistSection {
   key: 'frequent' | 'occasional' | 'added' | 'rare';
@@ -98,7 +104,25 @@ export function SimpleOrderScreen() {
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [sentItemCount, setSentItemCount] = useState<number | null>(null);
+  const [sendMode, setSendMode] = useState<OrderSendMode>('review');
+  const [directSendGroups, setDirectSendGroups] = useState<DirectSendGroup[] | null>(null);
+  const [recentOrdersVisible, setRecentOrdersVisible] = useState(false);
   const loadRequestRef = useRef(0);
+
+  // Manager-configured 5b preference; unknown/error safely means review mode.
+  useEffect(() => {
+    let active = true;
+    getMyOrderSendMode()
+      .then((mode) => {
+        if (active) setSendMode(mode);
+      })
+      .catch(() => {
+        if (active) setSendMode('review');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const loadChecklist = useCallback(
     async (mode: 'load' | 'refresh') => {
@@ -249,7 +273,34 @@ export function SimpleOrderScreen() {
   }, [checkedCount]);
 
   const handleConfirmSend = useCallback(async () => {
-    if (!selection.checklistId || sendLines.length === 0 || isSending) return;
+    if (isSending) return;
+
+    // 5b direct mode: group checked lines per supplier and run the Phase 1
+    // style card queue instead of creating a manager-review order.
+    if (sendMode === 'direct') {
+      const { lines: directLines } = buildDirectSendLines(selection);
+      if (directLines.length === 0) return;
+      setIsSending(true);
+      setSendError(null);
+      try {
+        const groups = await prepareDirectSend(directLines);
+        void triggerConfirmationHaptic();
+        setConfirmVisible(false);
+        setDirectSendGroups(groups);
+      } catch (error) {
+        void triggerNotificationHaptic(NotificationFeedbackType.Error);
+        setSendError(
+          error instanceof Error
+            ? error.message
+            : 'Could not prepare your supplier orders. Please try again.',
+        );
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
+    if (!selection.checklistId || sendLines.length === 0) return;
     setIsSending(true);
     setSendError(null);
     try {
@@ -267,7 +318,19 @@ export function SimpleOrderScreen() {
     } finally {
       setIsSending(false);
     }
-  }, [isSending, selection.checklistId, sendLines]);
+  }, [isSending, selection, sendLines, sendMode]);
+
+  const handleDirectSendDone = useCallback(
+    (progress: SendAllQueueProgress) => {
+      setDirectSendGroups(null);
+      // Anything was sent: reset the checklist back to its defaults, same as
+      // the review-mode success state. All-skipped keeps the selection intact.
+      if (progress.sent > 0 && checklist) {
+        dispatch({ type: 'init', checklist });
+      }
+    },
+    [checklist],
+  );
 
   const handleSuccessDone = useCallback(() => {
     setSentItemCount(null);
@@ -422,7 +485,11 @@ export function SimpleOrderScreen() {
   const locationLabel = location?.name ?? 'Choose location';
 
   let content: React.ReactNode;
-  if (sentItemCount !== null) {
+  if (directSendGroups !== null) {
+    content = (
+      <DirectSendQueue groups={directSendGroups} onDone={handleDirectSendDone} />
+    );
+  } else if (sentItemCount !== null) {
     content = (
       <View
         style={{
@@ -555,6 +622,32 @@ export function SimpleOrderScreen() {
               expanded={locationDropdownOpen}
               onPress={() => setLocationDropdownOpen((prev) => !prev)}
             />
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              onPress={() => {
+                void triggerImpactHaptic(ImpactFeedbackStyle.Light);
+                setRecentOrdersVisible(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Recent orders"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: glassHairlineWidth,
+                borderColor: glassColors.controlBorder,
+                backgroundColor: colors.glassCircle,
+              }}
+            >
+              <Ionicons
+                name="time-outline"
+                size={ds.icon(19)}
+                color={glassColors.textPrimary}
+              />
+            </TouchableOpacity>
           </View>
           <LocationSwitcherDropdown
             isOpen={locationDropdownOpen}
@@ -568,7 +661,11 @@ export function SimpleOrderScreen() {
         {content}
       </View>
 
-      {sentItemCount === null && !isLoading && !loadError && checkedCount > 0 ? (
+      {directSendGroups === null &&
+      sentItemCount === null &&
+      !isLoading &&
+      !loadError &&
+      checkedCount > 0 ? (
         <View
           style={{
             position: 'absolute',
@@ -618,14 +715,22 @@ export function SimpleOrderScreen() {
 
       <ConfirmOrderSheet
         visible={confirmVisible}
-        lines={sendableCheckedLines}
-        unmatchedNames={unmatchedNames}
+        mode={sendMode}
+        // Direct mode can send unmatched lines too — they go out via the
+        // share-sheet-only Unassigned card instead of being skipped.
+        lines={sendMode === 'direct' ? checkedLines : sendableCheckedLines}
+        unmatchedNames={sendMode === 'direct' ? [] : unmatchedNames}
         isSending={isSending}
         sendError={sendError}
         onAdjustQuantity={handleAdjustQuantity}
         onRemoveLine={handleRemoveLine}
         onConfirm={() => void handleConfirmSend()}
         onClose={() => setConfirmVisible(false)}
+      />
+
+      <RecentOrdersSheet
+        visible={recentOrdersVisible}
+        onClose={() => setRecentOrdersVisible(false)}
       />
     </SafeAreaView>
   );
