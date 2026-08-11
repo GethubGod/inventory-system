@@ -8,13 +8,14 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, router } from 'expo-router';
+import { Redirect, useFocusEffect, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { useAuthStore, useOrderStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
+import { useModuleAccessGuard } from '@/hooks';
 
 type DateFilter = 'all' | 'today' | '7d' | '30d';
 
@@ -84,7 +85,23 @@ function isInDateFilter(createdAt: string, filter: DateFilter) {
   return true;
 }
 
-export default function FulfillmentHistoryScreen() {
+export default function FulfillmentHistoryRoute() {
+  // Phase 3: same fulfillment-module gate as the parent fulfillment tab —
+  // deep links to a disabled module redirect to manager home.
+  const guard = useModuleAccessGuard('fulfillment', '/(manager)');
+
+  if (guard.isChecking) {
+    return null;
+  }
+
+  if (guard.redirectTo) {
+    return <Redirect href={guard.redirectTo} />;
+  }
+
+  return <FulfillmentHistoryScreen />;
+}
+
+function FulfillmentHistoryScreen() {
   const { user } = useAuthStore();
   const { pastOrders, fetchPastOrders, flushPendingPastOrderSync } = useOrderStore();
   const [searchQuery, setSearchQuery] = useState('');

@@ -309,7 +309,7 @@ export function SimpleOrderScreen() {
       setIsSending(true);
       setSendError(null);
       try {
-        const groups = await prepareDirectSend(directLines);
+        const groups = await prepareDirectSend(directLines, locationGroup);
         void triggerConfirmationHaptic();
         setConfirmVisible(false);
         setDirectSendGroups(groups);
@@ -344,7 +344,7 @@ export function SimpleOrderScreen() {
     } finally {
       setIsSending(false);
     }
-  }, [isSending, selection, sendLines, sendMode]);
+  }, [isSending, locationGroup, selection, sendLines, sendMode]);
 
   const handleDirectSendDone = useCallback(
     (progress: SendAllQueueProgress) => {
