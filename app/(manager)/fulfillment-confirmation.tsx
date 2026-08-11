@@ -38,6 +38,14 @@ import {
   loadUnitConversionLookup,
   resolveUnitConversionMultiplier,
 } from '@/services/unitConversion';
+import { findStaleConsumedOrderItemIds } from '@/services/orderItemFreshness';
+import {
+  buildUnitLabelAvailabilityMap,
+  resolveUnitSelectorProps,
+  type InventoryUnitInfo,
+  type UnitLabelAvailability,
+  type UnitSelectorProps,
+} from '@/features/fulfillment/unitLabels';
 import {
   glassColors,
   glassHairlineWidth,
@@ -348,84 +356,8 @@ function assertNoReportedInExportText(message: string) {
   }
 }
 
-interface InventoryUnitInfo {
-  id: string;
-  base_unit: string;
-  pack_unit: string;
-  pack_size: number;
-}
-
 interface ItemExportSettings {
   exportUnitType: 'base' | 'pack';
-}
-
-interface UnitLabelAvailability {
-  baseLabel: string | null;
-  packLabel: string | null;
-  hasBase: boolean;
-  hasPack: boolean;
-}
-
-interface UnitSelectorProps {
-  baseUnitLabel: string;
-  packUnitLabel: string;
-  canSwitchUnit: boolean;
-}
-
-function normalizeUnitLabel(value: unknown): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function unitLabelsMatch(left: string | null | undefined, right: string | null | undefined): boolean {
-  const normalizedLeft = normalizeUnitLabel(left)?.toLowerCase();
-  const normalizedRight = normalizeUnitLabel(right)?.toLowerCase();
-  if (!normalizedLeft || !normalizedRight) return false;
-  return normalizedLeft === normalizedRight;
-}
-
-function resolveUnitSelectorProps({
-  unitInfo,
-  availability,
-  currentUnitType,
-  currentUnitLabel,
-}: {
-  unitInfo: InventoryUnitInfo | undefined;
-  availability: UnitLabelAvailability | undefined;
-  currentUnitType: 'base' | 'pack';
-  currentUnitLabel: string;
-}): UnitSelectorProps {
-  const currentLabel = normalizeUnitLabel(currentUnitLabel) ?? (currentUnitType === 'pack' ? 'pack' : 'unit');
-  const infoBaseLabel = normalizeUnitLabel(unitInfo?.base_unit);
-  const infoPackLabel = normalizeUnitLabel(unitInfo?.pack_unit);
-
-  let baseUnitLabel = infoBaseLabel ?? availability?.baseLabel ?? (currentUnitType === 'base' ? currentLabel : 'base');
-  let packUnitLabel = infoPackLabel ?? availability?.packLabel ?? (currentUnitType === 'pack' ? currentLabel : 'pack');
-
-  const hasAlternateUnitType = Boolean(availability?.hasBase && availability?.hasPack);
-  const hasDistinctUnitLabelsFromInventory =
-    Boolean(infoBaseLabel && infoPackLabel) && !unitLabelsMatch(infoBaseLabel, infoPackLabel);
-  const knownOppositeLabel =
-    currentUnitType === 'base'
-      ? infoPackLabel ?? availability?.packLabel ?? null
-      : infoBaseLabel ?? availability?.baseLabel ?? null;
-  const hasDistinctKnownOppositeLabel =
-    Boolean(knownOppositeLabel) && !unitLabelsMatch(knownOppositeLabel, currentLabel);
-
-  // If both unit types are known but labels collapsed to one value, keep toggle enabled with a safe generic fallback.
-  if (hasAlternateUnitType && unitLabelsMatch(baseUnitLabel, packUnitLabel)) {
-    if (currentUnitType === 'base') {
-      packUnitLabel = availability?.packLabel ?? infoPackLabel ?? 'pack';
-    } else {
-      baseUnitLabel = availability?.baseLabel ?? infoBaseLabel ?? 'base';
-    }
-  }
-
-  const canSwitchUnit =
-    hasAlternateUnitType || hasDistinctUnitLabelsFromInventory || hasDistinctKnownOppositeLabel;
-
-  return { baseUnitLabel, packUnitLabel, canSwitchUnit };
 }
 
 interface RemainingContributorSummary {
@@ -1347,40 +1279,12 @@ export default function FulfillmentConfirmationScreen() {
     return output;
   }, [groupedItems]);
 
-  const unitLabelAvailabilityByInventoryItemId = useMemo(() => {
-    const output: Record<string, UnitLabelAvailability> = {};
-    const register = (inventoryItemId: string, unitType: 'base' | 'pack', unitLabel: string) => {
-      const id = typeof inventoryItemId === 'string' ? inventoryItemId.trim() : '';
-      if (!id) return;
-
-      if (!output[id]) {
-        output[id] = {
-          baseLabel: null,
-          packLabel: null,
-          hasBase: false,
-          hasPack: false,
-        };
-      }
-
-      const normalizedLabel = normalizeUnitLabel(unitLabel);
-      if (unitType === 'base') {
-        output[id].hasBase = true;
-        if (normalizedLabel && !output[id].baseLabel) {
-          output[id].baseLabel = normalizedLabel;
-        }
-        return;
-      }
-
-      output[id].hasPack = true;
-      if (normalizedLabel && !output[id].packLabel) {
-        output[id].packLabel = normalizedLabel;
-      }
-    };
-
-    items.forEach((item) => register(item.inventoryItemId, item.unitType, item.unitLabel));
-    remainingItems.forEach((item) => register(item.inventoryItemId, item.unitType, item.unitLabel));
-    return output;
-  }, [items, remainingItems]);
+  const unitLabelAvailabilityByInventoryItemId = useMemo<
+    Record<string, UnitLabelAvailability>
+  >(
+    () => buildUnitLabelAvailabilityMap([...items, ...remainingItems]),
+    [items, remainingItems]
+  );
 
   const getUnitSelectorPropsByInventoryItemId = useCallback(
     (inventoryItemId: string, unitType: 'base' | 'pack', unitLabel: string): UnitSelectorProps =>
@@ -2711,41 +2615,19 @@ export default function FulfillmentConfirmationScreen() {
           );
         }
 
-        const normalizedIds = Array.from(
-          new Set(
-            payload.consumedOrderItemIds.filter(
-              (id): id is string => typeof id === 'string' && id.trim().length > 0
-            )
-          )
-        );
-        if (normalizedIds.length > 0) {
-          try {
-            const { data, error } = await supabase
-              .from('order_items')
-              .select('id,status')
-              .in('id', normalizedIds);
-            if (error) {
-              throw error;
-            }
-            const pendingIds = new Set(
-              (Array.isArray(data) ? data : [])
-                .filter((row: any) => row?.status === 'pending')
-                .map((row: any) => (typeof row?.id === 'string' ? row.id : null))
-                .filter((id: string | null): id is string => Boolean(id))
+        try {
+          const staleIds = await findStaleConsumedOrderItemIds(payload.consumedOrderItemIds);
+          if (staleIds.length > 0) {
+            Alert.alert(
+              'Order Changed',
+              'Some items were already processed on another device. The screen will refresh now.'
             );
-            const staleIds = normalizedIds.filter((id) => !pendingIds.has(id));
-            if (staleIds.length > 0) {
-              Alert.alert(
-                'Order Changed',
-                'Some items were already processed on another device. The screen will refresh now.'
-              );
-              await fetchPendingFulfillmentOrders(managerLocationIds);
-              router.replace('/(manager)/fulfillment');
-              return false;
-            }
-          } catch (validationError) {
-            console.warn('[Fulfillment:Confirm] unable to validate item freshness before finalize.', validationError);
+            await fetchPendingFulfillmentOrders(managerLocationIds);
+            router.replace('/(manager)/fulfillment');
+            return false;
           }
+        } catch (validationError) {
+          console.warn('[Fulfillment:Confirm] unable to validate item freshness before finalize.', validationError);
         }
 
         setIsFinalizing(true);
