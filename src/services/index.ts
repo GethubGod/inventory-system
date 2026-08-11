@@ -9,6 +9,7 @@ export * from './orderReceiving';
 export * from './orderSubmission';
 export * from './orderValidation';
 export * from './seedStations';
+export * from './stockCheckV2';
 export * from './supplierResolver';
 export * from './unitConversion';
 export * from './userManagement';
