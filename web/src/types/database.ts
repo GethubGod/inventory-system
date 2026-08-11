@@ -3956,6 +3956,10 @@ export type Database = {
       suppliers: {
         Row: {
           active: boolean | null
+          contact_channel: string
+          contact_name: string | null
+          contact_notes: string | null
+          contact_phone: string | null
           created_at: string
           email: string | null
           id: string
@@ -3967,6 +3971,10 @@ export type Database = {
         }
         Insert: {
           active?: boolean | null
+          contact_channel?: string
+          contact_name?: string | null
+          contact_notes?: string | null
+          contact_phone?: string | null
           created_at?: string
           email?: string | null
           id?: string
@@ -3978,6 +3986,10 @@ export type Database = {
         }
         Update: {
           active?: boolean | null
+          contact_channel?: string
+          contact_name?: string | null
+          contact_notes?: string | null
+          contact_phone?: string | null
           created_at?: string
           email?: string | null
           id?: string
