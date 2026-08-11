@@ -30,14 +30,20 @@ export interface AcceptInviteInput {
   name: string;
 }
 
-async function getFunctionErrorMessage(error: unknown): Promise<string | null> {
+interface FunctionErrorDetails {
+  message: string | null;
+  /** Structured reason from the error body, when the backend sent one. */
+  reason: InviteFailureReason | null;
+}
+
+async function getFunctionErrorDetails(error: unknown): Promise<FunctionErrorDetails> {
   if (error && typeof error === 'object' && 'context' in error) {
     const context = (error as { context?: any }).context;
 
     if (context) {
       // Newer supabase-js: context is the already-parsed JSON body
       if (typeof context === 'object' && !(context instanceof Response) && typeof context.error === 'string') {
-        return context.error;
+        return { message: context.error, reason: readReason(context.reason) };
       }
 
       // Older supabase-js: context is a Response object
@@ -45,7 +51,7 @@ async function getFunctionErrorMessage(error: unknown): Promise<string | null> {
         try {
           const payload = await context.json();
           if (typeof payload?.error === 'string') {
-            return payload.error;
+            return { message: payload.error, reason: readReason(payload?.reason) };
           }
         } catch {
           // body already consumed or not JSON – fall through
@@ -60,11 +66,11 @@ async function getFunctionErrorMessage(error: unknown): Promise<string | null> {
       typeof message === 'string' &&
       !message.toLowerCase().includes('edge function returned a non-2xx')
     ) {
-      return message;
+      return { message, reason: null };
     }
   }
 
-  return null;
+  return { message: null, reason: null };
 }
 
 function readRole(value: unknown): UserRole | null {
@@ -107,8 +113,8 @@ export async function fetchInvitePreview(token: string): Promise<InvitePreview> 
   });
 
   if (error) {
-    const message = await getFunctionErrorMessage(error);
-    throw new InviteError(classifyInviteFailure(message), message ?? undefined);
+    const { message, reason } = await getFunctionErrorDetails(error);
+    throw new InviteError(reason ?? classifyInviteFailure(message), message ?? undefined);
   }
 
   const payload = data as
@@ -152,13 +158,16 @@ export async function acceptInvite(input: AcceptInviteInput): Promise<{ role: Us
   });
 
   if (error) {
-    const message = await getFunctionErrorMessage(error);
-    if (message) {
-      const reason = classifyInviteFailure(message);
+    // Prefer the structured reason from the 409 body (mirrors the dry-run
+    // handling); keyword classification is only the fallback for older
+    // backends that send just an error string.
+    const { message, reason: structuredReason } = await getFunctionErrorDetails(error);
+    if (message || structuredReason) {
+      const reason = structuredReason ?? classifyInviteFailure(message);
       if (reason !== 'invalid') {
-        throw new InviteError(reason, message);
+        throw new InviteError(reason, message ?? undefined);
       }
-      throw new Error(message);
+      throw new Error(message ?? describeInviteFailure(reason));
     }
     throw new Error('Unable to accept the invite. Please try again.');
   }

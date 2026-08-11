@@ -153,6 +153,15 @@ describe('manager tab list', () => {
       'profile',
     ]);
   });
+
+  it('drops the quick-order tab when ordering_advanced is off', () => {
+    const modules = { ...getRoleDefaultModules('manager'), ordering_advanced: false };
+    expect(getVisibleManagerTabs(modules)).toEqual([
+      'index',
+      'fulfillment',
+      'profile',
+    ]);
+  });
 });
 
 describe('manageable module keys', () => {

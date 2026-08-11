@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
@@ -53,6 +53,7 @@ import {
   glassSpacing,
 } from '@/theme/design';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { useModuleAccessGuard } from '@/hooks';
 
 const AVATAR_PALETTE = [
   { background: '#F7E1D7', text: '#B05534' },
@@ -624,7 +625,23 @@ const RemainingItemRow = React.memo(function RemainingItemRow({
   );
 });
 
-export default function FulfillmentConfirmationScreen() {
+export default function FulfillmentConfirmationRoute() {
+  // Phase 3: same fulfillment-module gate as the parent fulfillment tab —
+  // deep links to a disabled module redirect to manager home.
+  const guard = useModuleAccessGuard('fulfillment', '/(manager)');
+
+  if (guard.isChecking) {
+    return null;
+  }
+
+  if (guard.redirectTo) {
+    return <Redirect href={guard.redirectTo} />;
+  }
+
+  return <FulfillmentConfirmationScreen />;
+}
+
+function FulfillmentConfirmationScreen() {
   const ds = useScaledStyles();
   const params = useLocalSearchParams<{
     items?: string;

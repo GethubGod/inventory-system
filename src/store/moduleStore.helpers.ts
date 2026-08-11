@@ -85,7 +85,8 @@ export function getVisibleEmployeeTabs(modules: EffectiveModules): string[] {
 
 /** Manager tab-bar entries, in display order, for a given module map. */
 export function getVisibleManagerTabs(modules: EffectiveModules): string[] {
-  const tabs: string[] = ['index', 'quick-order'];
+  const tabs: string[] = ['index'];
+  if (modules.ordering_advanced) tabs.push('quick-order');
   if (modules.fulfillment) tabs.push('fulfillment');
   tabs.push('profile');
   return tabs;

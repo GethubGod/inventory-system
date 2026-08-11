@@ -264,7 +264,7 @@ describe('orderChecklist service', () => {
     const groups = await prepareDirectSend([
       { itemId: 'salmon', itemName: 'Salmon', unit: 'lb', quantity: 2 },
       { itemId: 'nori', itemName: 'Nori', unit: 'pack', quantity: 4 },
-    ]);
+    ], 'poki');
 
     expect(mockResolveOrderItemSupplier).toHaveBeenCalledTimes(2);
     expect(groups).toEqual([
@@ -274,6 +274,7 @@ describe('orderChecklist service', () => {
         contact: expect.objectContaining({ supplierId: 'fish-1', contactChannel: 'sms' }),
         lines: [{ itemId: 'salmon', itemName: 'Salmon', unit: 'lb', quantity: 2 }],
         messageText: '- Salmon: 2 lbs\n\nThank you!',
+        locationGroup: 'poki',
       }),
       expect.objectContaining({
         supplierId: 'dry-1',
@@ -281,6 +282,7 @@ describe('orderChecklist service', () => {
         contact: null,
         lines: [{ itemId: 'nori', itemName: 'Nori', unit: 'pack', quantity: 4 }],
         messageText: '- Nori: 4 pack\n\nThank you!',
+        locationGroup: 'poki',
       }),
     ]);
   });
@@ -339,6 +341,7 @@ describe('orderChecklist service', () => {
       contact: null,
       lines: [{ itemId: 'salmon', itemName: 'Salmon', unit: 'case', quantity: 2 }],
       messageText: '- Salmon: 2 case\n\nThank you!',
+      locationGroup: 'sushi',
     }, 'share');
 
     expect(mockFrom).toHaveBeenNthCalledWith(1, 'inventory_items');
@@ -363,8 +366,39 @@ describe('orderChecklist service', () => {
         item_id: 'salmon',
         unit_type: 'pack',
         ordered_at: '2026-08-12T14:00:00.000Z',
+        // F4 regression: generate_order_checklist filters history on
+        // location_group, so archived direct sends must carry the group.
+        location_group: 'sushi',
       }),
     ]);
     expect(mockSubmitOrder).not.toHaveBeenCalled();
+  });
+
+  test('archives direct sends from legacy groups without a location group as null', async () => {
+    const inventoryQuery = query({
+      data: [{ id: 'salmon', base_unit: 'lb', pack_unit: 'case' }],
+      error: null,
+    }, 'in');
+    const pastOrderQuery = archivePastOrderQuery({
+      data: { id: 'past-2', created_at: '2026-08-12T14:00:00.000Z' },
+      error: null,
+    });
+    const pastItemsQuery = archiveItemsQuery({ data: null, error: null });
+    mockFrom
+      .mockReturnValueOnce(inventoryQuery)
+      .mockReturnValueOnce(pastOrderQuery)
+      .mockReturnValueOnce(pastItemsQuery);
+
+    await archiveDirectSend({
+      supplierId: 'fish-1',
+      supplierName: 'Bluefin Fish',
+      contact: null,
+      lines: [{ itemId: 'salmon', itemName: 'Salmon', unit: 'case', quantity: 2 }],
+      messageText: '- Salmon: 2 case\n\nThank you!',
+    }, 'copy');
+
+    expect(pastItemsQuery.insert).toHaveBeenCalledWith([
+      expect.objectContaining({ location_group: null }),
+    ]);
   });
 });
