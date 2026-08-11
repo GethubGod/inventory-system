@@ -36,6 +36,11 @@ file_size_limit = "50MiB"
 [functions.quick-order-voice-stream]
 verify_jwt = false
 
+# Invite acceptance happens before a user has a session. Its opaque, single-use
+# token is validated by the function with service-role database access.
+[functions.accept-invite]
+verify_jwt = false
+
 # Tips web app entry endpoints use their own session-token auth (entry devices
 # have no Supabase JWT beyond the anon key). The HTTP functions still require
 # the anon key as bearer; the WebSocket stream cannot send headers at all.
