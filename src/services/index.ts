@@ -3,6 +3,7 @@ export * from './employeeReminders';
 export * from './fulfillmentDataSource';
 export * from './locationReminderService';
 export * from './notificationService';
+export * from './orderReceiving';
 export * from './orderSubmission';
 export * from './orderValidation';
 export * from './seedStations';
