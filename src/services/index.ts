@@ -5,6 +5,7 @@ export * from './fulfillmentDataSource';
 export * from './locationReminderService';
 export * from './loginCredentials';
 export * from './notificationService';
+export * from './orderReceiving';
 export * from './orderSubmission';
 export * from './orderValidation';
 export * from './seedStations';
