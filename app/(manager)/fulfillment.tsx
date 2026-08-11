@@ -1704,6 +1704,40 @@ export default function FulfillmentScreen() {
     [buildRegularConfirmationItems, buildRemainingConfirmationItems]
   );
 
+  const handleSendAll = useCallback(() => {
+    const nowMs = Date.now();
+    if (nowMs < sendTapLockUntilRef.current) {
+      return;
+    }
+    sendTapLockUntilRef.current = nowMs + 700;
+
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    const sendableGroups = supplierGroups.filter(
+      (group) => !group.isUnknown && group.totalItems > 0
+    );
+    if (sendableGroups.length === 0) {
+      Alert.alert('Nothing to Send', 'There are no supplier orders ready to send.');
+      return;
+    }
+
+    router.push({
+      pathname: '/(manager)/fulfillment-send-all',
+      params: {
+        suppliers: encodeURIComponent(
+          JSON.stringify(
+            sendableGroups.map((group) => ({
+              id: group.supplierId,
+              name: group.supplierName,
+            }))
+          )
+        ),
+      },
+    } as any);
+  }, [supplierGroups]);
+
   const addToTargetItem = useMemo(
     () => orderLaterQueue.find((item) => item.id === addToTargetItemId) ?? null,
     [addToTargetItemId, orderLaterQueue]
@@ -2534,7 +2568,39 @@ export default function FulfillmentScreen() {
                   </TouchableOpacity>
                 </GlassSurface>
               ) : (
-                supplierCardData.map((entry, index) => (
+                <>
+                {supplierCardData.length > 0 ? (
+                  <TouchableOpacity
+                    onPress={handleSendAll}
+                    activeOpacity={0.82}
+                    style={{
+                      minHeight: Math.max(46, ds.buttonH - 4),
+                      borderRadius: glassRadii.button,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'row',
+                      backgroundColor: glassColors.accent,
+                      marginBottom: ds.spacing(16),
+                    }}
+                  >
+                    <Ionicons
+                      name="paper-plane-outline"
+                      size={ds.icon(17)}
+                      color={glassColors.textOnPrimary}
+                    />
+                    <Text
+                      style={{
+                        marginLeft: ds.spacing(8),
+                        fontSize: ds.fontSize(15),
+                        fontWeight: '700',
+                        color: glassColors.textOnPrimary,
+                      }}
+                    >
+                      Send All ({supplierCardData.length} supplier{supplierCardData.length === 1 ? '' : 's'})
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+                {supplierCardData.map((entry, index) => (
                   <View 
                     key={entry.group.supplierId} 
                     style={{ 
@@ -2554,7 +2620,8 @@ export default function FulfillmentScreen() {
                       onOrderPress={() => handleSend(entry.group)}
                     />
                   </View>
-                ))
+                ))}
+                </>
               )}
             </FulfillmentSuppliersCard>
           </View>

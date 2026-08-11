@@ -216,6 +216,7 @@ export default function ManagerLayout() {
       <Tabs.Screen name="cart" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="export-fish-order" options={{ href: null }} />
       <Tabs.Screen name="fulfillment-confirmation" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="fulfillment-send-all" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="fulfillment-history" options={{ href: null }} />
       <Tabs.Screen name="fulfillment-history-detail" options={{ href: null }} />
       <Tabs.Screen name="past-orders/index" options={{ href: null, tabBarStyle: { display: "none" } }} />
@@ -225,6 +226,7 @@ export default function ManagerLayout() {
       <Tabs.Screen name="manager-settings/profile" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="manager-settings/access-codes" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="manager-settings/quick-order-config" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/supplier-contacts" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders-recurring" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders-settings" options={{ href: null, tabBarStyle: { display: "none" } }} />
