@@ -1,0 +1,8 @@
+{
+  "items": [
+    { "name": "salmon", "quantity": 3, "unit": "case", "note": "range 2-3" },
+    { "name": "shrimp", "quantity": 5, "unit": "lb", "note": "range 5-6 taken at lower bound — simulated typical error" },
+    { "name": "eel", "quantity": 2, "unit": "box", "note": "range 1-2" },
+    { "name": "crab stick", "quantity": 4, "unit": null }
+  ]
+}

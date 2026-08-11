@@ -1,0 +1,14 @@
+{
+  "items": [
+    {
+      "name": "salmon",
+      "quantity": 2,
+      "unit": "case"
+    },
+    {
+      "name": "nori",
+      "quantity": 3,
+      "unit": "pack"
+    }
+  ]
+}

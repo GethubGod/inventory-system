@@ -1,0 +1,9 @@
+{
+  "items": [
+    { "name": "salmon", "quantity": 5, "unit": "lb" },
+    { "name": "gyoza", "quantity": 3, "unit": null, "note": "unit shorthand 'pk' missed — simulated typical error" },
+    { "name": "rice", "quantity": 1, "unit": "bag", "note": "50 lb" },
+    { "name": "ebi shrimp", "quantity": 2, "unit": "box" },
+    { "name": "unagi", "quantity": 10, "unit": "piece" }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "name": "salmon",
+      "quantity": 2,
+      "unit": "case"
+    },
+    {
+      "name": "mayo",
+      "quantity": 1,
+      "unit": "bottle"
+    },
+    {
+      "name": "masago",
+      "quantity": 1,
+      "unit": "tub"
+    }
+  ]
+}

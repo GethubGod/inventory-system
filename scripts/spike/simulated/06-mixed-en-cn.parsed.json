@@ -1,0 +1,8 @@
+{
+  "items": [
+    { "name": "鲑鱼", "quantity": 2, "unit": "箱", "note": "CJK unit left untranslated — simulated typical error" },
+    { "name": "nori", "quantity": 3, "unit": "pack" },
+    { "name": "金枪鱼", "quantity": 1, "unit": "case" },
+    { "name": "white tuna", "quantity": 2, "unit": "lb" }
+  ]
+}
