@@ -1,5 +1,17 @@
 import { supabase } from '@/lib/supabase';
+import {
+  buildSendAllMessage,
+  type InventoryUnitInfo,
+  type SendAllRegularItem,
+} from '@/features/fulfillment/sendAll/sendAllMessage';
+import { DEFAULT_EXPORT_FORMAT_SETTINGS } from '@/types/settings';
 import { generateUUID, submitOrder } from './orderSubmission';
+import { listSupplierContacts, type SupplierContact } from './supplierContacts';
+import {
+  loadSupplierLookup,
+  resolveOrderItemSupplier,
+  type SupplierLookupMaps,
+} from './supplierResolver';
 
 export interface ChecklistItem {
   id: string;
@@ -25,6 +37,14 @@ export interface ChecklistSendLine {
   itemName: string;
   unit: string;
   quantity: number;
+}
+
+export interface DirectSendGroup {
+  supplierId: string | null;
+  supplierName: string;
+  contact: SupplierContact | null;
+  lines: ChecklistSendLine[];
+  messageText: string;
 }
 
 type LocationGroup = Checklist['locationGroup'];
@@ -53,6 +73,19 @@ type InventoryUnitRow = {
   base_unit: string | null;
   pack_unit: string | null;
 };
+
+type InventoryDirectSendRow = InventoryUnitRow & Record<string, unknown>;
+
+type PastOrderInsertRow = {
+  id: string;
+  created_at: string | null;
+};
+
+const UNASSIGNED_SUPPLIER_NAME = 'Unassigned';
+// past_order_items.supplier_id is non-null for historical lookup indexing.
+// Keep parent supplier_id null (the DirectSendGroup contract) and use this
+// stable bucket only for the required child-column value.
+const UNASSIGNED_HISTORY_SUPPLIER_ID = 'unassigned';
 
 function toNumberOrNull(value: number | string | null): number | null {
   if (value === null) return null;
@@ -176,6 +209,295 @@ function unitTypeForLine(line: ChecklistSendLine, inventoryItem: InventoryUnitRo
   return lineUnit.length > 0 && packUnit.length > 0 && lineUnit === packUnit
     ? 'pack'
     : 'base';
+}
+
+function normalizedDirectSendLine(line: ChecklistSendLine, index: number): ChecklistSendLine {
+  const itemName = line.itemName?.trim();
+  const unit = line.unit?.trim();
+  const itemId = line.itemId?.trim() || null;
+
+  if (!itemName) {
+    throw new Error(`Checklist item ${index + 1} is missing a name.`);
+  }
+  if (!unit) {
+    throw new Error(`Checklist item ${index + 1} is missing a unit.`);
+  }
+  if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
+    throw new Error(`Checklist item ${index + 1} has an invalid quantity.`);
+  }
+
+  return { itemId, itemName, unit, quantity: line.quantity };
+}
+
+function normalizeDirectSendLines(lines: ChecklistSendLine[]): ChecklistSendLine[] {
+  if (lines.length === 0) {
+    throw new Error('Select at least one checklist item to send.');
+  }
+
+  return lines.map(normalizedDirectSendLine);
+}
+
+function emptySupplierLookup(): SupplierLookupMaps {
+  return {
+    suppliers: [],
+    supplierById: new Map(),
+    supplierByNameNormalized: new Map(),
+  };
+}
+
+function toInventoryUnitInfo(inventoryItem: InventoryDirectSendRow): InventoryUnitInfo {
+  return {
+    id: inventoryItem.id,
+    base_unit: inventoryItem.base_unit?.trim() || '',
+    pack_unit: inventoryItem.pack_unit?.trim() || '',
+    pack_size: 0,
+  };
+}
+
+function buildDirectSendMessage(params: {
+  supplierName: string;
+  lines: ChecklistSendLine[];
+  inventoryById: Map<string, InventoryDirectSendRow>;
+}): string {
+  const unitInfoById: Record<string, InventoryUnitInfo> = {};
+  const regularItems: SendAllRegularItem[] = params.lines.map((line, index) => {
+    const inventoryItem = line.itemId ? params.inventoryById.get(line.itemId) : undefined;
+    const inventoryItemId = line.itemId || `unassigned-${index}`;
+
+    if (inventoryItem) {
+      unitInfoById[inventoryItemId] = toInventoryUnitInfo(inventoryItem);
+    }
+
+    return {
+      id: `direct-${inventoryItemId}-${index}`,
+      inventoryItemId,
+      name: line.itemName,
+      category: 'direct_send',
+      // ChecklistSendLine intentionally has no location group. The Phase 1
+      // builder needs one only to order sections; we remove its synthetic
+      // single-group heading below, leaving its canonical item formatting.
+      locationGroup: 'sushi',
+      quantity: line.quantity,
+      unitType: inventoryItem ? unitTypeForLine(line, inventoryItem) : 'base',
+      unitLabel: line.unit,
+      notes: [],
+      sourceOrderItemIds: [],
+      sourceOrderIds: [],
+      sourceDraftItemIds: [],
+    };
+  });
+
+  const message = buildSendAllMessage({
+    template: DEFAULT_EXPORT_FORMAT_SETTINGS.template,
+    supplierLabel: params.supplierName,
+    regularItems,
+    remainingItems: [],
+    unitInfoById,
+  });
+
+  return message.replace('--- SUSHI ---\n', '');
+}
+
+/**
+ * Builds one Phase 1-compatible send card per resolved supplier without
+ * creating an order-review queue entry. Supplier selection uses the same
+ * supplierResolver used by fulfillment; unresolved mappings intentionally
+ * become the share-sheet-only Unassigned card.
+ */
+export async function prepareDirectSend(lines: ChecklistSendLine[]): Promise<DirectSendGroup[]> {
+  const normalizedLines = normalizeDirectSendLines(lines);
+  const itemIds = Array.from(
+    new Set(
+      normalizedLines
+        .map((line) => line.itemId)
+        .filter((itemId): itemId is string => Boolean(itemId)),
+    ),
+  );
+
+  let inventoryRows: InventoryDirectSendRow[] = [];
+  if (itemIds.length > 0) {
+    const { data, error } = await supabase
+      .from('inventory_items')
+      // Match fulfillment's resolver input rather than assuming optional
+      // supplier-name columns are present in every environment.
+      .select('*')
+      .in('id', itemIds);
+
+    if (error) throw error;
+    inventoryRows = (data ?? []) as InventoryDirectSendRow[];
+  }
+
+  const inventoryById = new Map(
+    inventoryRows
+      .filter((inventoryItem) => typeof inventoryItem.id === 'string' && inventoryItem.id.trim().length > 0)
+      .map((inventoryItem) => [inventoryItem.id, inventoryItem]),
+  );
+
+  // Fulfillment deliberately leaves items visible under unresolved suppliers
+  // when a lookup is temporarily unavailable. Direct send follows that same
+  // safe behavior, with a share-sheet fallback instead of dropping a line.
+  const [supplierLookup, contacts] = await Promise.all([
+    loadSupplierLookup().catch(() => emptySupplierLookup()),
+    listSupplierContacts().catch(() => []),
+  ]);
+  const contactBySupplierId = new Map(contacts.map((contact) => [contact.supplierId, contact]));
+  const groups = new Map<
+    string,
+    Omit<DirectSendGroup, 'messageText'>
+  >();
+
+  normalizedLines.forEach((line) => {
+    const inventoryItem = line.itemId ? inventoryById.get(line.itemId) : undefined;
+    const resolution = inventoryItem
+      ? resolveOrderItemSupplier({
+          inventoryItem,
+          orderItem: null,
+          lookup: supplierLookup,
+        })
+      : null;
+    const supplierId = resolution?.primarySupplierId ?? null;
+    const supplierName = resolution?.primarySupplierName ?? UNASSIGNED_SUPPLIER_NAME;
+    const key = supplierId ?? UNASSIGNED_HISTORY_SUPPLIER_ID;
+
+    const existing = groups.get(key);
+    if (existing) {
+      existing.lines.push(line);
+      return;
+    }
+
+    groups.set(key, {
+      supplierId,
+      supplierName,
+      contact: supplierId ? contactBySupplierId.get(supplierId) ?? null : null,
+      lines: [line],
+    });
+  });
+
+  return Array.from(groups.values()).map((group) => ({
+    ...group,
+    messageText: buildDirectSendMessage({
+      supplierName: group.supplierName,
+      lines: group.lines,
+      inventoryById,
+    }),
+  }));
+}
+
+function directSendHistoryItemId(line: ChecklistSendLine, index: number): string {
+  if (line.itemId) return line.itemId;
+
+  const normalizedName = line.itemName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `unassigned:${normalizedName || 'item'}:${index + 1}`;
+}
+
+/**
+ * Archives a completed direct-send card as the employee who sent it. This
+ * writes the same parent/line-item history tables as fulfillment finalization
+ * and intentionally never creates a submitted order or review-queue entry.
+ */
+export async function archiveDirectSend(
+  group: DirectSendGroup,
+  shareMethod: 'share' | 'copy',
+): Promise<void> {
+  const lines = normalizeDirectSendLines(group.lines);
+  const userId = await getCurrentUserId();
+  const now = new Date().toISOString();
+  const supplierIdForHistory = group.supplierId ?? UNASSIGNED_HISTORY_SUPPLIER_ID;
+  const itemIds = Array.from(
+    new Set(lines.map((line) => line.itemId).filter((itemId): itemId is string => Boolean(itemId))),
+  );
+
+  let inventoryRows: InventoryUnitRow[] = [];
+  if (itemIds.length > 0) {
+    const { data, error } = await supabase
+      .from('inventory_items')
+      .select('id,base_unit,pack_unit')
+      .in('id', itemIds);
+    if (error) throw error;
+    inventoryRows = (data ?? []) as InventoryUnitRow[];
+  }
+
+  const inventoryById = new Map(inventoryRows.map((inventoryItem) => [inventoryItem.id, inventoryItem]));
+  const regularItems = lines.map((line, index) => {
+    const inventoryItem = line.itemId ? inventoryById.get(line.itemId) : undefined;
+    const unitType = inventoryItem ? unitTypeForLine(line, inventoryItem) : null;
+
+    return {
+      id: `direct-${directSendHistoryItemId(line, index)}`,
+      inventoryItemId: line.itemId,
+      name: line.itemName,
+      category: 'direct_send',
+      quantity: line.quantity,
+      unitType,
+      unitLabel: line.unit,
+      notes: [],
+      sourceOrderItemIds: [],
+      sourceOrderIds: [],
+      sourceDraftItemIds: [],
+    };
+  });
+
+  const payload = {
+    regularItems,
+    remainingItems: [],
+    locations: [],
+    sourceOrderIds: [],
+    source_order_ids: [],
+    sourceOrderItemIds: [],
+    source_order_item_ids: [],
+    totalItemCount: regularItems.length,
+    finalizedAt: now,
+    entryMethod: 'simple_checklist_direct',
+  };
+
+  const { data: pastOrderData, error: pastOrderError } = await supabase
+    .from('past_orders')
+    .insert({
+      supplier_id: group.supplierId,
+      supplier_name: group.supplierName || UNASSIGNED_SUPPLIER_NAME,
+      created_by: userId,
+      payload,
+      message_text: group.messageText,
+      share_method: shareMethod,
+    })
+    .select('id,created_at')
+    .single();
+
+  if (pastOrderError) throw pastOrderError;
+  const pastOrder = pastOrderData as PastOrderInsertRow | null;
+  if (!pastOrder?.id) {
+    throw new Error('Direct send archive did not return a past order ID.');
+  }
+
+  const orderedAt = pastOrder.created_at || now;
+  const historyRows = lines.map((line, index) => {
+    const inventoryItem = line.itemId ? inventoryById.get(line.itemId) : undefined;
+
+    return {
+      past_order_id: pastOrder.id,
+      supplier_id: supplierIdForHistory,
+      created_by: userId,
+      item_id: directSendHistoryItemId(line, index),
+      item_name: line.itemName,
+      unit: line.unit,
+      quantity: line.quantity,
+      location_id: null,
+      location_name: null,
+      location_group: null,
+      unit_type: inventoryItem ? unitTypeForLine(line, inventoryItem) : null,
+      ordered_at: orderedAt,
+      note: null,
+    };
+  });
+
+  const { error: historyError } = await supabase
+    .from('past_order_items')
+    .insert(historyRows);
+  if (historyError) throw historyError;
 }
 
 function validateSendLines(lines: ChecklistSendLine[]): asserts lines is Array<ChecklistSendLine & { itemId: string }> {
