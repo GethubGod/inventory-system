@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "name": "salmon",
+      "quantity": 5,
+      "unit": "lb"
+    },
+    {
+      "name": "gyoza",
+      "quantity": 3,
+      "unit": "pack"
+    },
+    {
+      "name": "rice",
+      "quantity": 1,
+      "unit": "bag",
+      "note": "50 lb bag"
+    },
+    {
+      "name": "ebi shrimp",
+      "quantity": 2,
+      "unit": "box"
+    },
+    {
+      "name": "unagi",
+      "quantity": 10,
+      "unit": "piece"
+    }
+  ]
+}

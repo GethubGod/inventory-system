@@ -1,0 +1,29 @@
+{
+  "items": [
+    {
+      "name": "salmon",
+      "quantity": 2,
+      "unit": "case"
+    },
+    {
+      "name": "nori",
+      "quantity": 3,
+      "unit": null
+    },
+    {
+      "name": "masago",
+      "quantity": 1,
+      "unit": "tub"
+    },
+    {
+      "name": "hamachi",
+      "quantity": 2,
+      "unit": null
+    },
+    {
+      "name": "kewpie mayo",
+      "quantity": 1,
+      "unit": "bottle"
+    }
+  ]
+}

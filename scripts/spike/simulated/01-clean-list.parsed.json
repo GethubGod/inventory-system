@@ -1,0 +1,10 @@
+{
+  "items": [
+    { "name": "salmon fillet", "quantity": 2, "unit": "case" },
+    { "name": "tuna belly", "quantity": 1, "unit": "case" },
+    { "name": "nori", "quantity": 3, "unit": "pack" },
+    { "name": "masago", "quantity": 2, "unit": "tub" },
+    { "name": "sushi rice", "quantity": 1, "unit": "bag" },
+    { "name": "hondashi", "quantity": 1, "unit": "box" }
+  ]
+}

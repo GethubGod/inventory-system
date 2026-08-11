@@ -1,0 +1,8 @@
+{
+  "items": [
+    { "name": "samon", "quantity": 2, "unit": "case" },
+    { "name": "yellow tail", "quantity": 1, "unit": null },
+    { "name": "massago", "quantity": 2, "unit": "tub" },
+    { "name": "kani", "quantity": 4, "unit": null }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "items": [
+    { "name": "salmon", "quantity": 2, "unit": "case" },
+    { "name": "tuna", "quantity": 1, "unit": "case", "note": "struck-through line not skipped — simulated typical error" },
+    { "name": "nori", "quantity": 3, "unit": "pack" }
+  ]
+}

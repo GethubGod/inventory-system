@@ -1,0 +1,6 @@
+{
+  "items": [
+    { "name": "salmon", "quantity": 2, "unit": "case" },
+    { "name": "masago", "quantity": 1, "unit": "tub" }
+  ]
+}

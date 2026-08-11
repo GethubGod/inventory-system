@@ -1,0 +1,27 @@
+{
+  "items": [
+    {
+      "name": "salmon",
+      "quantity": 3,
+      "unit": "case",
+      "note": "range 2-3"
+    },
+    {
+      "name": "shrimp",
+      "quantity": 6,
+      "unit": "lb",
+      "note": "range 5-6"
+    },
+    {
+      "name": "eel",
+      "quantity": 2,
+      "unit": "box",
+      "note": "range 1-2"
+    },
+    {
+      "name": "crab stick",
+      "quantity": 4,
+      "unit": null
+    }
+  ]
+}
