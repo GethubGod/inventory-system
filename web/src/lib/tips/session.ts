@@ -6,6 +6,8 @@ import type { VoiceVariant } from "@/types/database";
 
 const SESSION_KEY = "bt_tips_session";
 const VARIANT_KEY = "bt_tips_voice_variant";
+const CLOSER_KEY = "bt_tips_closer";
+const ONBOARDED_KEY = "bt_tips_onboarded";
 
 export interface StoredSession {
   token: string;
@@ -60,6 +62,58 @@ export function updateSession(patch: Partial<StoredSession>): StoredSession | nu
 
 export function clearSession(): void {
   storage()?.removeItem(SESSION_KEY);
+}
+
+/**
+ * Device-remembered "who's closing" — survives across entry sessions so the
+ * same phone skips the roster screen on its next scan. Keyed per location:
+ * a phone that scans the other store's sticker still gets asked.
+ */
+export interface RememberedCloser {
+  locationId: string;
+  closerId: string;
+  closerName: string;
+}
+
+export function loadRememberedCloser(locationId: string): RememberedCloser | null {
+  const store = storage();
+  if (!store) return null;
+  try {
+    const raw = store.getItem(CLOSER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<RememberedCloser>;
+    if (
+      parsed.locationId !== locationId ||
+      typeof parsed.closerId !== "string" ||
+      typeof parsed.closerName !== "string"
+    ) {
+      return null;
+    }
+    return {
+      locationId,
+      closerId: parsed.closerId,
+      closerName: parsed.closerName,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveRememberedCloser(remembered: RememberedCloser): void {
+  storage()?.setItem(CLOSER_KEY, JSON.stringify(remembered));
+}
+
+export function clearRememberedCloser(): void {
+  storage()?.removeItem(CLOSER_KEY);
+}
+
+/** First-visit onboarding carousel: shown once per device. */
+export function hasOnboarded(): boolean {
+  return storage()?.getItem(ONBOARDED_KEY) === "1";
+}
+
+export function markOnboarded(): void {
+  storage()?.setItem(ONBOARDED_KEY, "1");
 }
 
 /**

@@ -15,10 +15,19 @@ exports. Lives in the same repo + Supabase project as the mobile app.
 > **Vercel → Settings → Deployment Protection → Vercel Authentication →
 > Disabled** — until then every `*.vercel.app` URL of this project sits
 > behind a Vercel SSO interstitial and phones can't open the QR links.
-> Test access (tokens/PINs/placeholder roster) is seeded; a Playwright E2E
+> Test access (tokens/placeholder roster) is seeded; a Playwright E2E
 > suite + voice-parse harness live in `web/e2e/` (see `e2e/README.md`) and
 > pass against local dev; two Codex review rounds ended with no blocking
 > findings. Post-merge chores are listed in the launch handoff note.
+>
+> **Update 2026-08-11 (QR-only rework):** PIN entry is removed from the
+> product. Every entry session now starts with a QR scan (camera app, NFC
+> tag, or the in-page scanner on `/`), lasts one entry, and ends after the
+> save confirmation. Recorded shifts are locked against re-entry (server
+> duplicate guard + grayed-out segmented control), the device remembers
+> who's closing, and a first-run onboarding carousel shows once per device
+> (`/?onboarding=a` or `=b` to preview the two variants). Requires the
+> migration + redeploy of `tip-entry-auth`, `tip-entries`, `tip-voice-parse`.
 
 ## 1. Environment
 
@@ -55,7 +64,7 @@ Four new functions (all modeled on the existing quick-order patterns):
 
 | Function | Purpose | verify_jwt |
 | --- | --- | --- |
-| `tip-entry-auth` | validate QR token / PIN, mint entry sessions, session state, set closer | default (anon key as bearer) |
+| `tip-entry-auth` | validate QR token, mint per-scan entry sessions (12h expiry), session state, set closer, end session | default (anon key as bearer) |
 | `tip-entries` | read today's slot, save entry (+ anomaly check at save) | default |
 | `tip-voice-parse` | audio chunk + known fields → parsed tip fields (Gemini) | default |
 | `tip-voice-stream` | WebSocket relay for the live-transcript A/B variant (Gemini Live) | **false** (set in `supabase/config.toml`) |
@@ -70,6 +79,8 @@ Secrets (Dashboard → Edge Functions → Secrets, or `supabase secrets set`):
 
 - `GEMINI_API_KEY` — already set for quick-order voice; reused here.
 - Optional overrides: `TIP_VOICE_MODEL` (default `gemini-2.5-flash`),
+  `TIP_VOICE_MODEL_FALLBACK` (default `gemini-2.5-pro`; tried once when the
+  primary model fails or returns bad JSON),
   `GEMINI_LIVE_MODEL` (default `gemini-live-2.5-flash-preview`).
 - Recommended once the Vercel domain exists: add it to `ALLOWED_ORIGINS`
   (comma-separated) to restrict browser CORS on all functions.
@@ -90,7 +101,7 @@ npm run test:e2e   # Playwright E2E against the live backend — read e2e/README
 The entry flow needs real edge functions + tables (see above) — there is no
 mock mode.
 
-## 5. Access setup (tokens, PINs, QR, NFC)
+## 5. Access setup (tokens, QR, NFC)
 
 Everything is rotated from **/manager → Admin** (manager Supabase login =
 same account as the mobile app, `profiles.role = 'manager'`).
@@ -98,19 +109,19 @@ same account as the mobile app, `profiles.role = 'manager'`).
 - **Entry token** ("Rotate entry token"): generates a new URL token for a
   location. Tokens are stored hashed (sha256), so the plaintext is shown
   **once** — the button then opens the printable QR page. Rotating kills the
-  old sticker immediately.
-- **PIN** ("Rotate PIN"): 4-digit keypad fallback per location; choose one or
-  let it generate randomly. Stored bcrypt-hashed; shown once. Validation is
-  server-side and rate-limited (6 tries / 10 min per device+IP, 30 / 10 min
-  per location; entry tokens: 20 / 10 min per device+IP).
-- **Seeding**: on a fresh database there are no tokens/PINs — "rotating" the
+  old sticker immediately. Validation is server-side and rate-limited
+  (20 tries / 10 min per device+IP).
+- **PIN**: removed 2026-08-11. The DB rotation/validation RPCs still exist but
+  nothing calls them; QR (or the NFC tag with the same URL) is the only way in.
+- **Seeding**: on a fresh database there are no tokens — "rotating" the
   first time creates them. Do that once per location, print, done.
 - **Roster**: add tip-eligible staff (name + location scope Both/Sushi/Poki)
   in Admin → Roster. The "Who's closing?" screen and splitting chips read
   from this roster. Deactivate, don't delete, when someone leaves.
 - **Sign out all devices** (Admin, per location): revokes every already-minted
   entry session for that location — use after a lost phone. Rotating the
-  token/PIN alone only stops *new* sign-ins.
+  token alone only stops *new* sign-ins (though per-scan sessions now expire
+  on their own within 12 hours anyway).
 
 ### Printing the QR stickers
 
@@ -132,7 +143,11 @@ new URL.
 
 - Scanning/tapping opens `/e?t=<token>` → `tip-entry-auth` validates the
   token server-side (hash compare + rate limit) and mints an opaque
-  **entry session** (localStorage, ~180 days), scoped to that location.
+  **entry session** (localStorage), scoped to that location. Sessions are
+  **per-scan**: they expire after 12 h server-side, and the client revokes
+  its own session (`end_session`) after the save confirmation, so every entry
+  starts with a fresh scan. The device separately remembers who's closing
+  (`bt_tips_closer`) and the onboarding flag — those survive across sessions.
 - Entry sessions can only call the three entry functions; the anon key has
   **zero** direct access to tip tables (RLS: manager-only policies). Location
   scoping is enforced server-side from the session record — never by client
@@ -154,9 +169,13 @@ new URL.
   save after Friday dinner belongs to Friday. (`src/lib/tips/businessDate.ts`)
 - **Meal default**: before 4pm LA → Lunch, else Dinner (0–4am counts as
   dinner).
-- **One entry per (date, location, meal)**: saving an existing slot edits it
-  in place (the form shows "Already recorded — editing"); enforced by a DB
-  unique constraint + upsert.
+- **One entry per (date, location, meal)**: a recorded shift is **locked** —
+  the segmented control grays it out and `tip_save_entry` rejects saves from
+  any session other than the one that created the row (`already_recorded`,
+  HTTP 409). The same session may re-save (network retry, anomaly confirm).
+  Fixing a recorded slot is a manager-dashboard job. The form's shift preset
+  follows the time of day (lunch until 4pm LA) and falls to the open shift
+  when the default is taken; both recorded → "All set for today".
 - **Split math**: per-person = (cash + card) / people, computed in integer
   cents, rounded to the **nearest cent (half-up)**; leftover cents stay in
   the drawer (shares × count may be a few cents under/over the pool).
@@ -186,30 +205,38 @@ change both.
 ## 8. Click-through verification checklist
 
 Entry flows:
-1. **Token landing**: rotate a token, open `/e?t=<token>` in a fresh private
-   window → "You're in" screen with correct location + today's status → CTA →
-   "Who's closing?" → pick a name → entry form. Reload the site root →
-   goes straight to the form (no "You're in", no closer prompt).
-2. **Bad token**: `/e?t=garbage` → friendly error + PIN fallback offer.
-3. **PIN fallback**: `/pin` → pick location → wrong PIN (clears, shows error)
-   → right PIN → closer → form. 7 wrong tries → rate-limit message.
-4. **Typed entry**: enter cash/card ($0 must be accepted), pick 2+ people,
-   watch the split strip update live, Save → reload → slot shows "Already
-   recorded — editing" with values prefilled. Save with all people deselected
-   is impossible (button disabled + prompt).
-5. **Voice entry (both variants)**: on two different devices/browsers (or
+1. **First run**: fresh private window on `/` → onboarding carousel (3
+   slides) → finishes to the scan screen; reload → carousel does not return.
+   `/?onboarding=a` and `/?onboarding=b` preview the two variants.
+2. **Token landing**: rotate a token, open `/e?t=<token>` in a fresh private
+   window → "Who's closing?" → pick a name → entry form. Save → confirmation →
+   the phone lands back on the scan screen, signed out. Scan again → the
+   closer screen is skipped (remembered name shows in the header pill).
+3. **In-page scanner**: on `/`, "Scan the sticker" opens the camera view;
+   scanning the printed QR lands in the same `/e?t=` flow. A random QR shows
+   "not a Babytuna sticker".
+4. **Bad token**: `/e?t=garbage` → friendly error + "Back to scan".
+5. **Typed entry**: enter cash/card ($0 must be accepted), pick 2+ people,
+   watch the split strip update live, Save → full-screen confirmation with
+   the split summary → auto-returns to scan in ~4s (or tap Done). Save with
+   all people deselected is impossible (button disabled + prompt).
+6. **Duplicate lockout**: after a shift is saved, a new session shows that
+   shift grayed out with the "already recorded" note; both shifts recorded →
+   "All set for today". A stale device that still tries to save gets the
+   409 message and the shift locks in place.
+7. **Voice entry (both variants)**: on two different devices/browsers (or
    clear localStorage to re-roll the variant), "Speak it in" → say e.g.
    "Dinner. Cash one twenty, card three forty. Split between Maria and Jose."
    → rows check off as you pause → Done talking → review shows values +
    transcript; low-confidence fields show red-dot "?" and must be tapped;
    re-record just the card amount with its mic ("card three fifty") → Save
    tips → lands in the entry with entry_method=voice, variant + corrections
-   recorded (check dashboard).
-6. **Voice failure path**: kill the network mid-listen → sheet keeps captured
-   fields, lets you finish by typing.
-7. **Edit existing slot**: save over an existing entry → dashboard shows one
-   row (edited), not two.
-8. **Offline save**: airplane-mode a save → clear retry banner, values kept.
+   recorded (check dashboard). Saying the locked shift's name keeps the open
+   shift and explains why.
+8. **Voice failure path**: kill the network mid-listen → sheet keeps captured
+   fields, lets you finish by typing (chunk uploads retry once on transient
+   failures; the edge function falls back to `TIP_VOICE_MODEL_FALLBACK`).
+9. **Offline save**: airplane-mode a save → clear retry banner, values kept.
 
 Manager:
 9. **Login**: non-manager account is refused; manager sees entries.
@@ -220,6 +247,6 @@ Manager:
     confirm dialog quotes the usual range → save anyway → entry appears in
     Discrepancies as flagged; missing-slot list shows a day you skip.
 13. **Rotation**: rotate token → old QR dead (test it), new printable QR
-    works; rotate PIN → old PIN refused, new accepted.
+    works.
 14. **A/B readout**: after a few voice entries, both variants show counts +
     avg corrections.

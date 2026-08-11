@@ -1,9 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+// Scan gate: every entry session starts here with a QR scan. The sticker can
+// be scanned with the phone's camera app (opens /e?t=...) or with the
+// in-page scanner below — no PIN path. First visit on a device shows the
+// onboarding carousel (preview anytime with /?onboarding=a or =b).
+
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { fetchState, isSessionInvalid } from "@/lib/tips/api";
-import { clearSession, loadSession } from "@/lib/tips/session";
+import {
+  clearSession,
+  hasOnboarded,
+  loadSession,
+  markOnboarded,
+} from "@/lib/tips/session";
+import { Onboarding, type OnboardingVariant } from "@/components/entry-flow/Onboarding";
+import { QrScanner } from "@/components/entry-flow/QrScanner";
 import { Splash } from "@/components/entry-flow/chrome";
 
 function QrIcon() {
@@ -31,31 +43,42 @@ function QrIcon() {
   );
 }
 
-function TagIcon() {
+function CameraIcon() {
   return (
     <svg
-      width="32"
-      height="32"
-      viewBox="0 0 32 32"
+      width="20"
+      height="20"
+      viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2.5"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       aria-hidden
     >
-      <circle cx="16" cy="16" r="12" />
-      <circle cx="16" cy="16" r="5" />
+      <path d="M4 8h2l2-3h8l2 3h2a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" />
+      <circle cx="12" cy="13" r="3.5" />
     </svg>
   );
 }
 
-export default function ScanLandingPage() {
+function ScanLanding() {
   const router = useRouter();
+  const search = useSearchParams();
   const [phase, setPhase] = useState<"checking" | "ready">("checking");
   const [networkNote, setNetworkNote] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  // /?onboarding=a|b previews a specific carousel variant.
+  const onboardingParam = search.get("onboarding");
+  const variant: OnboardingVariant = onboardingParam === "b" ? "story" : "cards";
 
   useEffect(() => {
     let cancelled = false;
     const session = loadSession();
+    // A live session means an entry is mid-flight on this phone (refresh,
+    // tab restore) — resume it rather than demanding a re-scan.
     const verify = async (): Promise<"show" | "entry" | "closer" | "network"> => {
       if (!session) return "show";
       try {
@@ -76,25 +99,40 @@ export default function ScanLandingPage() {
         return;
       }
       if (outcome === "network") setNetworkNote(true);
+      setShowOnboarding(onboardingParam !== null || !hasOnboarded());
       setPhase("ready");
     });
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, onboardingParam]);
 
   if (phase === "checking") {
     return <Splash>One sec&hellip;</Splash>;
   }
 
+  if (showOnboarding) {
+    return (
+      <Onboarding
+        variant={variant}
+        onDone={() => {
+          markOnboarded();
+          setShowOnboarding(false);
+        }}
+      />
+    );
+  }
+
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-8 pt-14">
       <h1 className="text-3xl font-bold text-ink">Scan to enter</h1>
-      <p className="mt-2 text-ink2">Get in with the sticker by the register</p>
+      <p className="mt-2 text-ink2">
+        Every entry starts with the sticker by the register
+      </p>
       {networkNote && (
         <p className="mt-3 text-sm text-ink3">
-          Couldn&rsquo;t check this phone&rsquo;s sign-in — scan the sticker or
-          enter the PIN to try again.
+          Couldn&rsquo;t check this phone&rsquo;s last session — scan the
+          sticker to start fresh.
         </p>
       )}
 
@@ -104,22 +142,10 @@ export default function ScanLandingPage() {
             <QrIcon />
           </span>
           <div className="pt-1">
-            <p className="font-bold text-ink">Scan the QR code</p>
+            <p className="font-bold text-ink">Two ways to scan</p>
             <p className="mt-1 text-sm text-ink2">
-              Open your camera, point it at the sticker — you&rsquo;re in
-              automatically
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-start gap-4 rounded-card bg-card p-5">
-          <span className="flex h-20 w-20 shrink-0 items-center justify-center rounded-well bg-well text-ink">
-            <TagIcon />
-          </span>
-          <div className="pt-1">
-            <p className="font-bold text-ink">Or tap the tag</p>
-            <p className="mt-1 text-sm text-ink2">
-              Hold your phone against the round tag
+              Point your camera app at the sticker, or use the scanner right
+              here — same sticker either way
             </p>
           </div>
         </div>
@@ -129,14 +155,33 @@ export default function ScanLandingPage() {
 
       <button
         type="button"
-        onClick={() => router.push("/pin")}
-        className="mt-10 w-full rounded-full bg-card py-4 font-semibold text-ink active:bg-well"
+        onClick={() => setShowScanner(true)}
+        className="mt-10 flex w-full items-center justify-center gap-2 rounded-full bg-accent py-4 font-semibold text-white active:opacity-90"
       >
-        Enter PIN instead
+        <CameraIcon />
+        Scan the sticker
       </button>
       <p className="mt-4 text-center text-sm text-ink3">
-        You only do this once — this phone stays signed in
+        One scan per entry — you&rsquo;re signed out automatically after saving
       </p>
+
+      {showScanner && (
+        <QrScanner
+          onToken={(token) => {
+            setShowScanner(false);
+            router.push(`/e?t=${encodeURIComponent(token)}`);
+          }}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
     </main>
+  );
+}
+
+export default function ScanLandingPage() {
+  return (
+    <Suspense fallback={<Splash>One sec&hellip;</Splash>}>
+      <ScanLanding />
+    </Suspense>
   );
 }

@@ -4064,6 +4064,7 @@ export type Database = {
           created_at: string
           entered_by: string | null
           entry_method: string
+          entry_session_id: string | null
           flagged_anomaly: boolean
           id: string
           location_id: string
@@ -4081,6 +4082,7 @@ export type Database = {
           created_at?: string
           entered_by?: string | null
           entry_method: string
+          entry_session_id?: string | null
           flagged_anomaly?: boolean
           id?: string
           location_id: string
@@ -4098,6 +4100,7 @@ export type Database = {
           created_at?: string
           entered_by?: string | null
           entry_method?: string
+          entry_session_id?: string | null
           flagged_anomaly?: boolean
           id?: string
           location_id?: string
@@ -4112,6 +4115,13 @@ export type Database = {
             columns: ["entered_by"]
             isOneToOne: false
             referencedRelation: "tip_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_entries_entry_session_id_fkey"
+            columns: ["entry_session_id"]
+            isOneToOne: false
+            referencedRelation: "tip_entry_sessions"
             referencedColumns: ["id"]
           },
           {
@@ -4616,6 +4626,7 @@ export type Database = {
           p_location_id: string
           p_meal_period: string
           p_people: string[]
+          p_session_id: string
           p_voice_variant: string
         }
         Returns: string

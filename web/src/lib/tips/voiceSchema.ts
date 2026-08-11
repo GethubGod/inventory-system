@@ -30,6 +30,8 @@ export const TipVoiceParseResponseSchema = z.object({
   ok: z.literal(true),
   rawTranscript: z.string(),
   latencyMs: z.number().optional(),
+  /** Which Gemini model served this parse (primary or fallback). */
+  model: z.string().optional(),
   fields: TipVoiceFieldsSchema,
   warnings: z.array(z.string()).default([]),
 });

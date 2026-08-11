@@ -1,25 +1,31 @@
 "use client";
 
 // Main tip-entry screen: date/closer header, location card, Lunch|Dinner
-// segmented, cash/card amounts, roster split chips, live split strip, and the
-// sticky "Speak it in" / "Save" bar. Voice entry opens the VoiceSheet, whose
-// result feeds the same save flow (including the anomaly confirm).
+// segmented (time-of-day preset; recorded shifts locked out), cash/card
+// amounts, roster split chips, live split strip, and the sticky
+// "Speak it in" / "Save" bar. Voice entry opens the VoiceSheet, whose result
+// feeds the same save flow (including the anomaly confirm). A successful
+// save shows a full-screen confirmation, then ends the session and returns
+// to the scan gate — one QR scan per entry.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/Avatar";
 import {
+  endSession,
   fetchState,
   getSlot,
+  isAlreadyRecorded,
   isSessionInvalid,
   saveEntry,
   TipApiError,
   type SavePayload,
   type SessionState,
-  type SlotEntry,
 } from "@/lib/tips/api";
 import { anomalyMessage, type AnomalyResult } from "@/lib/tips/anomaly";
 import { formatBusinessDate } from "@/lib/tips/businessDate";
+import { formatMoney } from "@/lib/tips/format";
+import { mealPreset } from "@/lib/tips/mealPreset";
 import {
   clearSession,
   loadSession,
@@ -37,6 +43,9 @@ const MEAL_OPTIONS = [
   { value: "lunch", label: "Lunch" },
   { value: "dinner", label: "Dinner" },
 ] as const;
+
+/** How long the saved confirmation lingers before returning to the scan gate. */
+const SAVED_SCREEN_MS = 4000;
 
 interface VoiceMeta {
   variant: VoiceVariant;
@@ -81,11 +90,11 @@ function ChevronRightIcon() {
   );
 }
 
-function CheckIcon() {
+function CheckIcon({ size = 14 }: { size?: number }) {
   return (
     <svg
-      width="14"
-      height="14"
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -99,19 +108,136 @@ function CheckIcon() {
   );
 }
 
+/**
+ * Full-screen post-save confirmation. Lingers a few seconds, then ends the
+ * session and sends the phone back to the scan gate; "Done" skips the wait.
+ */
+function SavedScreen({
+  payload,
+  locationName,
+  businessDate,
+  splitNames,
+  onFinished,
+}: {
+  payload: SavePayload;
+  locationName: string;
+  businessDate: string;
+  splitNames: string[];
+  onFinished: () => void;
+}) {
+  useEffect(() => {
+    const timer = setTimeout(onFinished, SAVED_SCREEN_MS);
+    return () => clearTimeout(timer);
+  }, [onFinished]);
+
+  const total = payload.cash + payload.card;
+  const count = payload.peopleIds.length;
+  const perPerson = count > 0 ? total / count : 0;
+
+  return (
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-8 pt-20">
+      <div className="flex flex-col items-center text-center">
+        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-tint text-accent">
+          <CheckIcon size={28} />
+        </span>
+        <h1 className="mt-5 text-3xl font-bold text-ink">Saved</h1>
+        <p className="mt-2 text-ink2">
+          {payload.meal === "lunch" ? "Lunch" : "Dinner"} ·{" "}
+          {formatBusinessDate(businessDate)}
+        </p>
+      </div>
+
+      <div className="mt-8 rounded-card bg-card p-5">
+        <div className="flex items-center gap-3">
+          <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />
+          <p className="font-bold text-ink">{locationName}</p>
+        </div>
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="rounded-well bg-well p-3">
+            <div className="section-label">Cash</div>
+            <p className="mt-1 text-xl font-bold text-ink">
+              {formatMoney(payload.cash)}
+            </p>
+          </div>
+          <div className="rounded-well bg-well p-3">
+            <div className="section-label">Card</div>
+            <p className="mt-1 text-xl font-bold text-ink">
+              {formatMoney(payload.card)}
+            </p>
+          </div>
+        </div>
+        <p className="mt-4 text-ink2">
+          {count === 1
+            ? `${splitNames[0] ?? "1 person"} takes ${formatMoney(total)}`
+            : `${count} people · ${formatMoney(perPerson)} each`}
+        </p>
+        {count > 1 && splitNames.length > 0 && (
+          <p className="mt-1 text-sm text-ink3">{splitNames.join(", ")}</p>
+        )}
+      </div>
+
+      <div className="flex-1" />
+
+      <p className="text-center text-sm text-ink3">
+        Signing this phone out&hellip; next entry starts with a scan
+      </p>
+      <button
+        type="button"
+        onClick={onFinished}
+        className="mt-4 w-full rounded-full bg-card py-4 font-semibold text-ink active:bg-well"
+      >
+        Done
+      </button>
+    </main>
+  );
+}
+
+/** Both shifts recorded: nothing left to enter from this device today. */
+function AllDoneScreen({
+  locationName,
+  businessDate,
+  onFinished,
+}: {
+  locationName: string;
+  businessDate: string;
+  onFinished: () => void;
+}) {
+  return (
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5 pb-10">
+      <div className="rounded-card bg-card p-5 text-center">
+        <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-tint text-accent">
+          <CheckIcon size={24} />
+        </span>
+        <p className="mt-4 font-bold text-ink">All set for today</p>
+        <p className="mt-2 text-ink2">
+          Lunch and dinner are both recorded for {locationName} (
+          {formatBusinessDate(businessDate)}). Need a fix? Ask a manager.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onFinished}
+        className="mt-6 w-full rounded-full bg-card py-4 font-semibold text-ink active:bg-well"
+      >
+        Done
+      </button>
+    </main>
+  );
+}
+
 export function EntryForm() {
   const router = useRouter();
 
   const [session, setSession] = useState<StoredSession | null>(null);
   const [state, setState] = useState<SessionState | null>(null);
   const [meal, setMeal] = useState<MealPeriod>("dinner");
+  const [disabledMeals, setDisabledMeals] = useState<MealPeriod[]>([]);
+  const [allDone, setAllDone] = useState(false);
   const [cash, setCash] = useState("");
   const [card, setCard] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [editingExisting, setEditingExisting] = useState(false);
-  // Fields the user actually edited this visit (vs. values merely pre-filled
-  // from a saved slot). VoiceSheet only locks user-edited fields against
-  // voice overwrites; prefilled ones stay re-speakable. Reset on slot load.
+  // Fields the user actually edited this visit. VoiceSheet only locks
+  // user-edited fields against voice overwrites.
   const [touchedFields, setTouchedFields] = useState<
     Set<"cash" | "card" | "people">
   >(() => new Set());
@@ -121,12 +247,15 @@ export function EntryForm() {
   const [slotLoading, setSlotLoading] = useState(false);
 
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<{
+    message: string;
+    retryable: boolean;
+  } | null>(null);
   const [pendingAnomaly, setPendingAnomaly] = useState<{
     payload: SavePayload;
     anomaly: AnomalyResult;
   } | null>(null);
-  const [showSaved, setShowSaved] = useState(false);
+  const [savedPayload, setSavedPayload] = useState<SavePayload | null>(null);
   const [pickPersonWarning, setPickPersonWarning] = useState(false);
 
   const [showVoice, setShowVoice] = useState(false);
@@ -134,35 +263,24 @@ export function EntryForm() {
   const [voiceMeta, setVoiceMeta] = useState<VoiceMeta | null>(null);
 
   const lastPayloadRef = useRef<SavePayload | null>(null);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finishedRef = useRef(false);
 
-  const applySlot = useCallback((entry: SlotEntry | null) => {
-    if (entry) {
-      setCash(entry.cash.toFixed(2));
-      setCard(entry.card.toFixed(2));
-      setSelectedIds(entry.peopleIds);
-      setEditingExisting(true);
-    } else {
-      setCash("");
-      setCard("");
-      setSelectedIds([]);
-      setEditingExisting(false);
-    }
-    setTouchedFields(new Set());
-    setPickPersonWarning(false);
-  }, []);
+  /** End the per-scan session and return to the scan gate. */
+  const finishSession = useCallback(() => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    const stored = loadSession();
+    clearSession();
+    if (stored) void endSession(stored.token);
+    router.replace("/");
+  }, [router]);
 
   // Mount/init is split into a pure async step (no state writes) whose
   // outcome is applied in a promise callback — the pattern the repo's landing
   // page uses, and one that keeps setState out of the effect body.
   const runInit = useCallback(async (): Promise<
     | { kind: "redirect"; to: string; clear: boolean }
-    | {
-        kind: "ready";
-        stored: StoredSession;
-        fresh: SessionState;
-        slot: SlotEntry | null;
-      }
+    | { kind: "ready"; stored: StoredSession; fresh: SessionState }
     | { kind: "error"; message: string }
   > => {
     const stored = loadSession();
@@ -172,8 +290,7 @@ export function EntryForm() {
     }
     try {
       const fresh = await fetchState(stored.token);
-      const slot = await getSlot(stored.token, fresh.today.defaultMeal);
-      return { kind: "ready", stored, fresh, slot: slot.entry };
+      return { kind: "ready", stored, fresh };
     } catch (error) {
       if (isSessionInvalid(error)) {
         return { kind: "redirect", to: "/", clear: true };
@@ -200,14 +317,16 @@ export function EntryForm() {
         setLoading(false);
         return;
       }
+      const preset = mealPreset(outcome.fresh.today);
       setSession(outcome.stored);
       setState(outcome.fresh);
-      setMeal(outcome.fresh.today.defaultMeal);
-      applySlot(outcome.slot);
+      setDisabledMeals(preset.disabled);
+      setAllDone(preset.allRecorded);
+      if (preset.meal) setMeal(preset.meal);
       setLoadError(null);
       setLoading(false);
     },
-    [router, applySlot],
+    [router],
   );
 
   useEffect(() => {
@@ -220,34 +339,65 @@ export function EntryForm() {
     };
   }, [runInit, applyInit]);
 
-  useEffect(
-    () => () => {
-      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    },
-    [],
-  );
-
   const changeMeal = useCallback(
     async (next: MealPeriod) => {
       if (!session || next === meal || slotLoading) return;
+      if (disabledMeals.includes(next)) return;
       setMeal(next);
+      // The target slot is empty by construction (recorded shifts are
+      // locked), but confirm against the server so a save that landed from
+      // another device mid-session still gets caught.
       setSlotLoading(true);
       try {
         const slot = await getSlot(session.token, next);
-        applySlot(slot.entry);
+        if (slot.entry) {
+          setDisabledMeals((prev) =>
+            prev.includes(next) ? prev : [...prev, next],
+          );
+          setMeal(meal);
+        }
       } catch (error) {
         if (isSessionInvalid(error)) {
           clearSession();
           router.replace("/");
           return;
         }
-        // Target slot unknown: start it empty rather than showing stale data.
-        applySlot(null);
       } finally {
         setSlotLoading(false);
       }
     },
-    [session, meal, slotLoading, applySlot, router],
+    [session, meal, slotLoading, disabledMeals, router],
+  );
+
+  /** A slot came back already-recorded from the server: lock it here too. */
+  const applyAlreadyRecorded = useCallback(
+    (recordedMeal: MealPeriod) => {
+      setDisabledMeals((prev) => {
+        const next = prev.includes(recordedMeal) ? prev : [...prev, recordedMeal];
+        if (next.length >= 2) setAllDone(true);
+        return next;
+      });
+      const other: MealPeriod = recordedMeal === "lunch" ? "dinner" : "lunch";
+      setMeal((current) => (current === recordedMeal ? other : current));
+      // Re-fetch and re-apply the whole preset: another device may have
+      // recorded BOTH shifts since we loaded (all-done, not just this lock).
+      if (session) {
+        void fetchState(session.token)
+          .then((fresh) => {
+            setState(fresh);
+            const preset = mealPreset(fresh.today);
+            setDisabledMeals(preset.disabled);
+            setAllDone(preset.allRecorded);
+            setMeal((current) =>
+              preset.disabled.includes(current) && preset.meal
+                ? preset.meal
+                : current,
+            );
+          })
+          .catch(() => undefined);
+      }
+    },
+    [session],
   );
 
   const doSave = useCallback(
@@ -263,31 +413,29 @@ export function EntryForm() {
           return;
         }
         setPendingAnomaly(null);
-        setEditingExisting(true);
         setVoiceMeta(null);
-        setShowSaved(true);
-        if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-        toastTimerRef.current = setTimeout(() => setShowSaved(false), 2000);
-        // Refresh today's recorded/default-meal status in the background.
-        void fetchState(session.token)
-          .then(setState)
-          .catch(() => undefined);
+        setSavedPayload(payload);
       } catch (error) {
         if (isSessionInvalid(error)) {
           clearSession();
           router.replace("/");
           return;
         }
-        setSaveError(
-          error instanceof TipApiError
-            ? error.message
-            : "Something went wrong. Try again.",
-        );
+        const duplicate = isAlreadyRecorded(error);
+        if (duplicate) applyAlreadyRecorded(payload.meal);
+        setSaveError({
+          message:
+            error instanceof TipApiError
+              ? error.message
+              : "Something went wrong. Try again.",
+          // No retry for a duplicate slot — the shift is locked instead.
+          retryable: !duplicate,
+        });
       } finally {
         setSaving(false);
       }
     },
-    [session, router],
+    [session, router, applyAlreadyRecorded],
   );
 
   const amountsValid = isValidAmount(cash) && isValidAmount(card);
@@ -403,6 +551,36 @@ export function EntryForm() {
 
   if (!session || !state) return null;
 
+  if (savedPayload) {
+    return (
+      <SavedScreen
+        payload={savedPayload}
+        locationName={state.location.name}
+        businessDate={state.today.businessDate}
+        splitNames={savedPayload.peopleIds
+          .map(
+            (id) =>
+              state.roster
+                .find((person) => person.id === id)
+                ?.name.trim()
+                .split(/\s+/)[0] ?? "",
+          )
+          .filter(Boolean)}
+        onFinished={finishSession}
+      />
+    );
+  }
+
+  if (allDone) {
+    return (
+      <AllDoneScreen
+        locationName={state.location.name}
+        businessDate={state.today.businessDate}
+        onFinished={finishSession}
+      />
+    );
+  }
+
   return (
     <main className="max-w-md mx-auto px-5 min-h-dvh flex flex-col">
       <div className="flex-1 space-y-4 pt-6">
@@ -424,13 +602,6 @@ export function EntryForm() {
           </div>
         </header>
 
-        {editingExisting && (
-          <div className="inline-flex items-center gap-2 bg-tint text-alert rounded-full px-3 py-1.5 text-sm">
-            <span className="w-1.5 h-1.5 rounded-full bg-accent" aria-hidden />
-            Already recorded — editing
-          </div>
-        )}
-
         {/* Location */}
         <button
           type="button"
@@ -444,13 +615,20 @@ export function EntryForm() {
           </span>
         </button>
 
-        {/* Meal segmented */}
+        {/* Meal segmented — time-of-day preset, recorded shifts locked. */}
         <Segmented
           options={MEAL_OPTIONS}
           value={meal}
           onChange={(next) => void changeMeal(next)}
           disabled={slotLoading}
+          disabledValues={disabledMeals}
         />
+        {disabledMeals.length === 1 && (
+          <p className="text-sm text-ink3">
+            {disabledMeals[0] === "lunch" ? "Lunch" : "Dinner"} is already
+            recorded today — ask a manager if it needs a fix
+          </p>
+        )}
 
         {/* Amounts */}
         <div className="bg-card rounded-card p-4">
@@ -486,17 +664,19 @@ export function EntryForm() {
       <div className="sticky bottom-0 bg-cream pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {saveError && (
           <div className="mb-3 bg-tint text-alert rounded-well p-3 flex items-center gap-3">
-            <span className="text-sm flex-1">{saveError}</span>
-            <button
-              type="button"
-              onClick={() => {
-                const payload = lastPayloadRef.current;
-                if (payload) void doSave(payload);
-              }}
-              className="bg-card text-ink rounded-full px-4 py-2 text-sm font-semibold shrink-0"
-            >
-              Retry
-            </button>
+            <span className="text-sm flex-1">{saveError.message}</span>
+            {saveError.retryable && (
+              <button
+                type="button"
+                onClick={() => {
+                  const payload = lastPayloadRef.current;
+                  if (payload) void doSave(payload);
+                }}
+                className="bg-card text-ink rounded-full px-4 py-2 text-sm font-semibold shrink-0"
+              >
+                Retry
+              </button>
+            )}
           </div>
         )}
         <div className="flex gap-3">
@@ -524,28 +704,19 @@ export function EntryForm() {
         </div>
       </div>
 
-      {/* Saved toast */}
-      {showSaved && (
-        <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-50">
-          <div className="bg-card rounded-full px-4 py-2 flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-tint text-accent flex items-center justify-center">
-              <CheckIcon />
-            </span>
-            <span className="font-semibold text-ink">Saved</span>
-          </div>
-        </div>
-      )}
-
       {/* Location-switch info */}
       <ConfirmDialog
         open={showLocationDialog}
         title="Switch location"
-        body="Switching location needs that location's sticker or PIN."
-        confirmLabel="Go to PIN entry"
+        body="Switching location means scanning that location's sticker. This phone will sign out first."
+        confirmLabel="Sign out & scan"
         cancelLabel="Stay here"
+        // A save in flight must land (and show its confirmation) before the
+        // session can be ended from here.
+        confirmDisabled={saving}
         onConfirm={() => {
           setShowLocationDialog(false);
-          router.push("/pin");
+          finishSession();
         }}
         onCancel={() => setShowLocationDialog(false)}
       />
@@ -582,6 +753,7 @@ export function EntryForm() {
           locationName={state.location.name}
           roster={state.roster}
           initialMeal={meal}
+          disabledMeals={disabledMeals}
           initialCash={cash}
           initialCard={card}
           initialPeopleIds={selectedIds}

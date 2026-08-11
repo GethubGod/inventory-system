@@ -128,6 +128,7 @@ export function VoiceSheet({
   locationName,
   roster,
   initialMeal,
+  disabledMeals = [],
   initialCash,
   initialCard,
   initialPeopleIds,
@@ -139,6 +140,8 @@ export function VoiceSheet({
   locationName: string;
   roster: RosterPerson[];
   initialMeal: MealPeriod;
+  /** Shifts already recorded today — voice can't switch to them. */
+  disabledMeals?: MealPeriod[];
   initialCash: string;
   initialCard: string;
   initialPeopleIds: string[];
@@ -227,6 +230,7 @@ export function VoiceSheet({
   const [editingRow, setEditingRow] = useState<RowKey | null>(null);
   const [editValue, setEditValue] = useState("");
   const [locationHint, setLocationHint] = useState(false);
+  const [mealLockedHint, setMealLockedHint] = useState<MealPeriod | null>(null);
   const peopleEditWasVoiceRef = useRef(false);
 
   // Targeted re-record (review state).
@@ -238,6 +242,9 @@ export function VoiceSheet({
   const queueRef = useRef<Promise<void>>(Promise.resolve());
   const parseErrorsRef = useRef(0);
   const disposedRef = useRef(false);
+  /** Bumped on "Redo all" so parses still in flight can't merge into the
+   *  fresh session's fields. */
+  const generationRef = useRef(0);
   const levelThrottleRef = useRef(0);
 
   const closeWs = useCallback(() => {
@@ -263,8 +270,9 @@ export function VoiceSheet({
    */
   const enqueueChunk = useCallback(
     (blob: Blob, targetField: TargetField | null = null): Promise<void> => {
+      const generation = generationRef.current;
       queueRef.current = queueRef.current.then(async () => {
-        if (disposedRef.current) return;
+        if (disposedRef.current || generation !== generationRef.current) return;
         setInFlight((n) => n + 1);
         try {
           const current = fieldsRef.current;
@@ -279,25 +287,42 @@ export function VoiceSheet({
             },
             targetField,
           });
-          if (disposedRef.current) return;
-          setFields((prev) => mergeParsed(prev, response.fields, targetField));
+          if (disposedRef.current || generation !== generationRef.current) return;
+          setFields((prev) => {
+            const merged = mergeParsed(prev, response.fields, targetField);
+            // A shift that is already recorded today can't be re-entered —
+            // hold the previous meal and tell the speaker why.
+            if (
+              merged.meal.value !== null &&
+              merged.meal.value !== prev.meal.value &&
+              disabledMeals.includes(merged.meal.value)
+            ) {
+              setMealLockedHint(merged.meal.value);
+              return { ...merged, meal: prev.meal };
+            }
+            return merged;
+          });
           const spoken = response.rawTranscript.trim();
           if (spoken) {
             setTranscript((prev) => (prev ? `${prev} ${spoken}` : spoken));
           }
           parseErrorsRef.current = 0;
         } catch {
-          if (disposedRef.current) return;
+          if (disposedRef.current || generation !== generationRef.current) return;
           parseErrorsRef.current += 1;
           setParseWarning(true);
           if (parseErrorsRef.current >= 3) setVoiceBroken(true);
         } finally {
-          setInFlight((n) => Math.max(0, n - 1));
+          // An orphaned item's increment was already wiped by "Redo all"'s
+          // setInFlight(0) — decrementing again would undercount a fresh chunk.
+          if (generation === generationRef.current) {
+            setInFlight((n) => Math.max(0, n - 1));
+          }
         }
       });
       return queueRef.current;
     },
-    [sessionToken, setFields],
+    [sessionToken, setFields, disabledMeals],
   );
 
   // Main recorder + (variant B) transcript WebSocket. Re-runs on "Redo all"
@@ -425,6 +450,10 @@ export function VoiceSheet({
 
   const handleRedoAll = useCallback(() => {
     setCorrections((count) => count + 1);
+    // Orphan any parse still in flight — it belongs to the old session.
+    generationRef.current += 1;
+    queueRef.current = Promise.resolve();
+    setInFlight(0);
     const fresh = buildInitialFields();
     fieldsRef.current = fresh;
     setFieldsState(fresh);
@@ -433,6 +462,7 @@ export function VoiceSheet({
     setWsDead(false);
     setParseWarning(false);
     setVoiceBroken(false);
+    setMealLockedHint(null);
     parseErrorsRef.current = 0;
     setEditingRow(null);
     setLocationHint(false);
@@ -460,6 +490,7 @@ export function VoiceSheet({
 
   const commitMeal = useCallback(
     (meal: MealPeriod) => {
+      if (disabledMeals.includes(meal)) return;
       const previous = fieldsRef.current.meal;
       if (previous.source === "voice" && previous.value !== meal) {
         setCorrections((count) => count + 1);
@@ -467,7 +498,7 @@ export function VoiceSheet({
       setFields((prev) => setTyped(prev, "meal", meal));
       setEditingRow(null);
     },
-    [setFields],
+    [setFields, disabledMeals],
   );
 
   const togglePerson = useCallback(
@@ -791,7 +822,8 @@ export function VoiceSheet({
         </button>
         {row === "location" && locationHint && (
           <div className="px-4 pb-3 text-ink3 text-sm">
-            Signed into {locationName}. Switch via PIN screen.
+            Signed into {locationName}. Scan that location&apos;s sticker to
+            switch.
           </div>
         )}
         {(row === "cash" || row === "card") && editingRow === row && (
@@ -813,6 +845,7 @@ export function VoiceSheet({
               onChange={commitMeal}
               compact
               wellTrack
+              disabledValues={disabledMeals}
             />
           </div>
         )}
@@ -904,6 +937,14 @@ export function VoiceSheet({
           {parseWarning && !voiceBroken && (
             <p className="text-alert text-sm">
               Voice is having trouble — captured fields are kept
+            </p>
+          )}
+
+          {mealLockedHint && (
+            <p className="text-alert text-sm">
+              {mealLockedHint === "lunch" ? "Lunch" : "Dinner"} is already
+              recorded today — keeping{" "}
+              {mealLockedHint === "lunch" ? "dinner" : "lunch"}.
             </p>
           )}
 

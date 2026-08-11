@@ -1,7 +1,8 @@
 "use client";
 
-// Admin tab: roster management plus per-location entry-token / PIN rotation.
+// Admin tab: roster management plus per-location entry-token rotation.
 // Rotation secrets are shown exactly once (they are stored hashed).
+// PIN entry was removed from the product — sessions are QR-scan only.
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -24,7 +25,6 @@ interface EmployeeRow {
 interface AccessRow {
   location_id: string;
   token_rotated_at: string | null;
-  pin_rotated_at: string | null;
 }
 
 interface AdminData {
@@ -34,9 +34,8 @@ interface AdminData {
   error?: string;
 }
 
-type RotateKind = "token" | "pin";
-/** Inline-confirmed per-location actions: rotations plus session revoke. */
-type ActionKind = RotateKind | "revoke";
+/** Inline-confirmed per-location actions: token rotation plus session revoke. */
+type ActionKind = "token" | "revoke";
 
 interface PendingConfirm {
   locationId: string;
@@ -45,7 +44,6 @@ interface PendingConfirm {
 
 interface RotationResult {
   locationId: string;
-  kind: RotateKind;
   value: string;
 }
 
@@ -62,7 +60,7 @@ async function fetchAdminData(): Promise<AdminData> {
         .order("name", { ascending: true }),
       supabase
         .from("tip_location_access")
-        .select("location_id, token_rotated_at, pin_rotated_at"),
+        .select("location_id, token_rotated_at"),
     ]);
     if (locRes.error) throw new Error(locRes.error.message);
     if (empRes.error) throw new Error(empRes.error.message);
@@ -105,7 +103,6 @@ export default function AdminTab() {
 
   // Rotation flow.
   const [confirming, setConfirming] = useState<PendingConfirm | null>(null);
-  const [pinChoice, setPinChoice] = useState("");
   const [rotating, setRotating] = useState(false);
   const [result, setResult] = useState<RotationResult | null>(null);
   const [revoked, setRevoked] = useState<{
@@ -137,7 +134,7 @@ export default function AdminTab() {
   async function refreshAccess() {
     const { data } = await getSupabase()
       .from("tip_location_access")
-      .select("location_id, token_rotated_at, pin_rotated_at");
+      .select("location_id, token_rotated_at");
     if (data) setAccess(data);
   }
 
@@ -188,30 +185,22 @@ export default function AdminTab() {
 
   function startConfirm(locationId: string, kind: ActionKind) {
     setConfirming({ locationId, kind });
-    setPinChoice("");
     setResult(null);
     setRevoked(null);
     setActionError(null);
   }
 
-  async function runRotation(location: LocationRow, kind: RotateKind) {
+  async function runRotation(location: LocationRow) {
     if (rotating) return;
     setRotating(true);
     setActionError(null);
-    const supabase = getSupabase();
-    const response =
-      kind === "token"
-        ? await supabase.rpc("tip_rotate_entry_token", {
-            p_location_id: location.id,
-          })
-        : await supabase.rpc("tip_rotate_entry_pin", {
-            p_location_id: location.id,
-            p_pin: /^\d{4}$/.test(pinChoice) ? pinChoice : undefined,
-          });
+    const response = await getSupabase().rpc("tip_rotate_entry_token", {
+      p_location_id: location.id,
+    });
     if (response.error || typeof response.data !== "string") {
       setActionError(response.error?.message ?? "Rotation failed.");
     } else {
-      setResult({ locationId: location.id, kind, value: response.data });
+      setResult({ locationId: location.id, value: response.data });
       setConfirming(null);
       await refreshAccess();
     }
@@ -360,12 +349,6 @@ export default function AdminTab() {
         return (
           <div key={loc.id} className="bg-card rounded-card p-5">
             <p className="section-label mb-3">{loc.name} access</p>
-            <p className="text-sm text-ink2">
-              PIN last rotated{" "}
-              <span className="text-ink font-semibold">
-                {formatRotatedAt(accessRow?.pin_rotated_at ?? null)}
-              </span>
-            </p>
             <p className="text-sm text-ink2 mb-4">
               Entry token last rotated{" "}
               <span className="text-ink font-semibold">
@@ -378,23 +361,8 @@ export default function AdminTab() {
                 <p className="text-sm text-ink mb-2">
                   {confirmingHere.kind === "token"
                     ? "This kills the current QR/NFC sticker. Rotate?"
-                    : confirmingHere.kind === "pin"
-                      ? "This replaces the current PIN. Rotate?"
-                      : `Every phone signed into ${loc.name} will need to scan or enter the PIN again.`}
+                    : `Every phone signed into ${loc.name} will need to scan the sticker again.`}
                 </p>
-                {confirmingHere.kind === "pin" ? (
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={4}
-                    value={pinChoice}
-                    onChange={(e) =>
-                      setPinChoice(e.target.value.replace(/\D/g, ""))
-                    }
-                    placeholder="Optional 4-digit PIN (blank = random)"
-                    className="bg-card rounded-well px-3 py-2 text-sm text-ink outline-none w-full mb-2"
-                  />
-                ) : null}
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -402,7 +370,7 @@ export default function AdminTab() {
                     onClick={() =>
                       confirmingHere.kind === "revoke"
                         ? void runRevoke(loc)
-                        : void runRotation(loc, confirmingHere.kind)
+                        : void runRotation(loc)
                     }
                     className={rotating ? `${redPill} bg-disabled` : redPill}
                   >
@@ -435,13 +403,6 @@ export default function AdminTab() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => startConfirm(loc.id, "pin")}
-                  className={whitePill}
-                >
-                  Rotate PIN
-                </button>
-                <button
-                  type="button"
                   onClick={() => startConfirm(loc.id, "revoke")}
                   className={whitePill}
                 >
@@ -456,7 +417,7 @@ export default function AdminTab() {
               </p>
             ) : null}
 
-            {resultHere?.kind === "token" ? (
+            {resultHere ? (
               <div className="bg-well rounded-well p-3 mt-3">
                 <p className="section-label mb-1">New entry token</p>
                 <p className="break-all font-mono text-sm text-ink">
@@ -480,18 +441,6 @@ export default function AdminTab() {
                 >
                   Open printable QR page
                 </button>
-              </div>
-            ) : null}
-
-            {resultHere?.kind === "pin" ? (
-              <div className="bg-well rounded-well p-3 mt-3">
-                <p className="section-label mb-1">New PIN</p>
-                <p className="text-3xl font-bold text-ink tracking-widest">
-                  {resultHere.value}
-                </p>
-                <p className="text-sm text-alert mt-2">
-                  Shown once — tell your closers.
-                </p>
               </div>
             ) : null}
           </div>

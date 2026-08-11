@@ -98,11 +98,6 @@ async function callFunction(
   return json;
 }
 
-export async function listLocations(): Promise<Array<{ id: string; name: string }>> {
-  const json = await callFunction("tip-entry-auth", { action: "locations" });
-  return (json.locations as Array<{ id: string; name: string }>) ?? [];
-}
-
 export interface FreshSignIn extends SessionState {
   sessionToken: string;
 }
@@ -112,13 +107,17 @@ export async function validateToken(token: string): Promise<FreshSignIn> {
   return json as unknown as FreshSignIn;
 }
 
-export async function validatePin(locationId: string, pin: string): Promise<FreshSignIn> {
-  const json = await callFunction("tip-entry-auth", {
-    action: "validate_pin",
-    locationId,
-    pin,
-  });
-  return json as unknown as FreshSignIn;
+/**
+ * Best-effort session revoke once the save confirmation has run its course.
+ * Never throws — the local session is cleared regardless, and the server
+ * expiry backstops a lost request.
+ */
+export async function endSession(sessionToken: string): Promise<void> {
+  try {
+    await callFunction("tip-entry-auth", { action: "end_session", sessionToken });
+  } catch {
+    // Ignore: the 12h server-side expiry cleans up after us.
+  }
 }
 
 export async function fetchState(sessionToken: string): Promise<SessionState> {
@@ -173,6 +172,26 @@ export async function parseVoiceChunk(input: {
   knownState: Record<string, unknown>;
   targetField?: "meal" | "cash" | "card" | "people" | null;
 }): Promise<TipVoiceParseResponse> {
+  // One transparent retry on transient failures (network drop, 5xx): a lost
+  // chunk otherwise silently loses that stretch of speech.
+  try {
+    return await parseVoiceChunkOnce(input);
+  } catch (error) {
+    const transient =
+      error instanceof TipApiError &&
+      (error.code === "network" || error.status >= 500);
+    if (!transient) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    return parseVoiceChunkOnce(input);
+  }
+}
+
+async function parseVoiceChunkOnce(input: {
+  sessionToken: string;
+  audio: Blob;
+  knownState: Record<string, unknown>;
+  targetField?: "meal" | "cash" | "card" | "people" | null;
+}): Promise<TipVoiceParseResponse> {
   const anonKey = getSupabaseAnonKey();
   const form = new FormData();
   form.set("session_token", input.sessionToken);
@@ -221,4 +240,9 @@ export async function requestVoiceStreamUrl(sessionToken: string): Promise<strin
 
 export function isSessionInvalid(error: unknown): boolean {
   return error instanceof TipApiError && error.code === "session_invalid";
+}
+
+/** Another device already saved this meal slot today (server duplicate guard). */
+export function isAlreadyRecorded(error: unknown): boolean {
+  return error instanceof TipApiError && error.code === "already_recorded";
 }

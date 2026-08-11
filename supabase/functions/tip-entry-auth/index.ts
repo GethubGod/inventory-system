@@ -1,7 +1,7 @@
-// Tip entry session endpoint: validates QR/NFC tokens and location PINs
-// (both server-side, rate limited via SQL RPCs), mints long-lived
-// location-scoped entry sessions, and serves session state ("Who's closing?"
-// roster, today's recorded slots). Modeled on validate-access-code.
+// Tip entry session endpoint: validates QR/NFC tokens server-side and rate
+// limited via a SQL RPC, mints shift-scoped location sessions, and serves
+// session state ("Who's closing?" roster, today's recorded slots). Modeled on
+// validate-access-code.
 //
 // Entry sessions are attribution + location scoping only; they never grant
 // manager data. All queries here run with the service role and are scoped to
@@ -79,24 +79,16 @@ async function fetchToday(locationId: string) {
   };
 }
 
-async function fetchLocations() {
-  const { data, error } = await supabaseAdmin
-    .from('locations')
-    .select('id, name')
-    .order('name', { ascending: true });
-  if (error) {
-    console.warn('[tip-entry-auth] locations fetch failed', error);
-    return [];
-  }
-  return data ?? [];
-}
-
 async function mintSession(locationId: string) {
   const token = randomToken(32);
   const tokenHash = await sha256Hex(token);
   const { error } = await supabaseAdmin
     .from('tip_entry_sessions')
-    .insert({ token_hash: tokenHash, location_id: locationId });
+    .insert({
+      token_hash: tokenHash,
+      location_id: locationId,
+      expires_at: new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(),
+    });
   if (error) throw new Error(`session insert failed: ${error.message}`);
   return token;
 }
@@ -131,37 +123,13 @@ Deno.serve(async (req) => {
   const identifierHash = await sha256Hex(clientIdentifier(req));
 
   try {
-    if (action === 'locations') {
-      // Names for the PIN screen's location toggle. Public information
-      // (they're printed on the storefront), no session required.
-      return json(req, { ok: true, locations: await fetchLocations() });
-    }
-
-    if (action === 'validate_token' || action === 'validate_pin') {
-      let result: { ok: boolean; code?: string; location_id?: string; location_name?: string };
-      if (action === 'validate_token') {
-        const token = typeof body.token === 'string' ? body.token.trim() : '';
-        const { data, error } = await supabaseAdmin.rpc('tip_validate_entry_token', {
-          p_token: token,
-          p_identifier_hash: identifierHash,
-        });
-        if (error) throw error;
-        result = data;
-      } else {
-        const locationId = typeof body.locationId === 'string' ? body.locationId.trim() : '';
-        const pin = typeof body.pin === 'string' ? body.pin.trim() : '';
-        if (!UUID_PATTERN.test(locationId)) {
-          await delay(FAILURE_DELAY_MS);
-          return json(req, { ok: false, code: 'invalid', error: 'Invalid location' }, 400);
-        }
-        const { data, error } = await supabaseAdmin.rpc('tip_validate_entry_pin', {
-          p_location_id: locationId,
-          p_pin: pin,
-          p_identifier_hash: identifierHash,
-        });
-        if (error) throw error;
-        result = data;
-      }
+    if (action === 'validate_token') {
+      const token = typeof body.token === 'string' ? body.token.trim() : '';
+      const { data: result, error } = await supabaseAdmin.rpc('tip_validate_entry_token', {
+        p_token: token,
+        p_identifier_hash: identifierHash,
+      });
+      if (error) throw error;
 
       if (!result?.ok || !result.location_id) {
         await delay(FAILURE_DELAY_MS);
@@ -171,15 +139,25 @@ Deno.serve(async (req) => {
           code: result?.code ?? 'invalid',
           error: rateLimited
             ? 'Too many attempts. Wait a few minutes and try again.'
-            : action === 'validate_pin'
-              ? "That PIN didn't work. Ask a manager for the current code."
-              : 'This QR code is no longer active. Ask a manager for the new sticker.',
+            : 'This QR code is no longer active. Ask a manager for the new sticker.',
         }, rateLimited ? 429 : 401);
       }
 
       const sessionToken = await mintSession(result.location_id);
       const payload = await sessionPayload(result.location_id, result.location_name ?? '', null);
       return json(req, { ok: true, sessionToken, ...payload });
+    }
+
+    if (action === 'end_session') {
+      const session = await validateTipSession(supabaseAdmin, body.sessionToken);
+      if (session) {
+        const { error } = await supabaseAdmin
+          .from('tip_entry_sessions')
+          .update({ revoked: true })
+          .eq('id', session.id);
+        if (error) throw error;
+      }
+      return json(req, { ok: true });
     }
 
     // Everything below requires a valid entry session.
@@ -195,7 +173,7 @@ Deno.serve(async (req) => {
 
     if (action === 'voice_ticket') {
       // Single-use 60s ticket for the live-transcript WebSocket, so the
-      // long-lived session token never appears in a connection URL.
+      // entry session token never appears in a connection URL.
       const ticket = randomToken(24);
       await supabaseAdmin
         .from('tip_ws_tickets')

@@ -9,8 +9,10 @@ import { fixtures, signInAs } from "./helpers";
 test("voice sheet opens, shows the checklist, and cancels cleanly", async ({
   page,
 }) => {
-  const { sushiToken } = fixtures();
-  await signInAs(page, sushiToken, "Maria");
+  // Poki token: entry.spec.ts records today's Sushi slots, which would land
+  // this session on the "All set for today" screen instead of the form.
+  const { pokiToken } = fixtures();
+  await signInAs(page, pokiToken, "Lena");
 
   await page.goto("/entry");
   await expect(page.getByRole("heading", { name: "Tips" })).toBeVisible();

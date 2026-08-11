@@ -1,7 +1,7 @@
 // Shared helpers for the E2E suite. Sessions can be minted directly through
 // the live tip-entry-auth edge function so specs that aren't about the sign-in
 // UI can start authenticated (the sign-in UI itself is covered in
-// landing.spec.ts / pin.spec.ts).
+// landing.spec.ts).
 
 import type { Page } from "@playwright/test";
 
@@ -10,8 +10,6 @@ export interface Fixtures {
   anonKey: string;
   sushiToken: string;
   pokiToken: string;
-  sushiPin: string;
-  pokiPin: string;
 }
 
 function need(name: string): string {
@@ -31,8 +29,6 @@ export function fixtures(): Fixtures {
     anonKey: need("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
     sushiToken: need("E2E_SUSHI_TOKEN"),
     pokiToken: need("E2E_POKI_TOKEN"),
-    sushiPin: need("E2E_SUSHI_PIN"),
-    pokiPin: need("E2E_POKI_PIN"),
   };
 }
 
@@ -91,7 +87,9 @@ export async function setCloser(
 
 /**
  * Install a minted session (and a deterministic voice variant) into
- * localStorage before the app boots, so specs can start on /entry.
+ * localStorage before the app boots, so specs can start on /entry. Also
+ * marks the device as onboarded so the first-run carousel stays out of the
+ * way (it has its own spec in landing.spec.ts).
  */
 export async function installSession(
   page: Page,
@@ -102,6 +100,7 @@ export async function installSession(
     ([stored, variant]) => {
       window.localStorage.setItem("bt_tips_session", stored);
       window.localStorage.setItem("bt_tips_voice_variant", variant);
+      window.localStorage.setItem("bt_tips_onboarded", "1");
     },
     [
       JSON.stringify({

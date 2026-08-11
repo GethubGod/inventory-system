@@ -190,7 +190,16 @@ Deno.serve(async (req) => {
         p_entered_by: session.closer_id,
         p_flagged: flaggedAnomaly,
         p_anomaly_reason: anomalyReason,
+        p_session_id: session.id,
       });
+      if (saveError?.code === 'P0001' && saveError.message === 'already_recorded') {
+        const mealLabel = `${meal[0].toUpperCase()}${meal.slice(1)}`;
+        return json(req, {
+          ok: false,
+          code: 'already_recorded',
+          error: `${mealLabel} for today is already recorded on another device. Ask a manager if it needs a fix.`,
+        }, 409);
+      }
       if (saveError) throw saveError;
 
       const entry = await loadSlot(session.location_id, businessDate, meal);

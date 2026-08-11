@@ -2,6 +2,8 @@
 
 // White pill-track segmented control (Lunch | Dinner). `compact` renders the
 // smaller inline variant used inside the voice sheet checklist.
+// `disabledValues` grays out individual options (an already-recorded shift
+// can't be picked again).
 
 export interface SegmentedOption<T extends string> {
   value: T;
@@ -14,6 +16,7 @@ export function Segmented<T extends string>({
   onChange,
   compact = false,
   disabled = false,
+  disabledValues = [],
   wellTrack = false,
 }: {
   options: ReadonlyArray<SegmentedOption<T>>;
@@ -21,6 +24,8 @@ export function Segmented<T extends string>({
   onChange: (next: T) => void;
   compact?: boolean;
   disabled?: boolean;
+  /** Individual options that can't be selected (e.g. recorded shifts). */
+  disabledValues?: ReadonlyArray<T>;
   /** Cream track for use inside white cards (voice sheet inline editor). */
   wellTrack?: boolean;
 }) {
@@ -33,17 +38,24 @@ export function Segmented<T extends string>({
     >
       {options.map((option) => {
         const selected = option.value === value;
+        const optionDisabled = disabled || disabledValues.includes(option.value);
         return (
           <button
             key={option.value}
             type="button"
             role="tab"
             aria-selected={selected}
-            disabled={disabled}
+            disabled={optionDisabled}
             onClick={() => onChange(option.value)}
             className={`flex-1 rounded-full text-center font-semibold ${
               compact ? "py-1.5 text-sm" : "py-2.5"
-            } ${selected ? "bg-accent text-white" : "text-ink2"}`}
+            } ${
+              selected
+                ? "bg-accent text-white"
+                : optionDisabled
+                  ? "text-disabled line-through"
+                  : "text-ink2"
+            }`}
           >
             {option.label}
           </button>

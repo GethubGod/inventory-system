@@ -24,9 +24,11 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 const geminiApiKey = Deno.env.get('GEMINI_API_KEY') ?? Deno.env.get('GOOGLE_API_KEY');
 const TIP_VOICE_MODEL = Deno.env.get('TIP_VOICE_MODEL') ?? 'gemini-2.5-flash';
+const TIP_VOICE_MODEL_FALLBACK = Deno.env.get('TIP_VOICE_MODEL_FALLBACK') ?? 'gemini-2.5-pro';
 
 const MAX_AUDIO_BYTES = 5 * 1024 * 1024;
 const GEMINI_TIMEOUT_MS = 20_000;
+const GEMINI_FALLBACK_TIMEOUT_MS = 25_000;
 
 if (!supabaseUrl || !serviceRoleKey) {
   throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
@@ -142,52 +144,57 @@ async function callGemini(input: {
   audioBase64: string;
   mimeType: string;
   prompt: string;
-}): Promise<TipParseResult> {
+}): Promise<{ parsed: TipParseResult; model: string }> {
   if (!geminiApiKey) throw new Error('GEMINI_API_KEY is not configured');
   let lastError: Error | null = null;
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${TIP_VOICE_MODEL}:generateContent`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
-          signal: controller.signal,
-          body: JSON.stringify({
-            contents: [{
-              role: 'user',
-              parts: [
-                {
-                  text: attempt === 0
-                    ? input.prompt
-                    : `${input.prompt}\n\nThe previous response was invalid JSON. Return only strict JSON matching the schema.`,
-                },
-                { inlineData: { mimeType: input.mimeType, data: input.audioBase64 } },
-              ],
-            }],
-            generationConfig: {
-              temperature: 0.1,
-              responseMimeType: 'application/json',
-              responseSchema: GEMINI_RESPONSE_SCHEMA,
-            },
-          }),
-        },
-      );
-      if (!response.ok) {
-        throw new Error(`Gemini request failed: ${response.status} ${await response.text()}`);
+  for (const { model, attempts, timeoutMs } of [
+    { model: TIP_VOICE_MODEL, attempts: 2, timeoutMs: GEMINI_TIMEOUT_MS },
+    { model: TIP_VOICE_MODEL_FALLBACK, attempts: 1, timeoutMs: GEMINI_FALLBACK_TIMEOUT_MS },
+  ]) {
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': geminiApiKey },
+            signal: controller.signal,
+            body: JSON.stringify({
+              contents: [{
+                role: 'user',
+                parts: [
+                  {
+                    text: attempt === 0
+                      ? input.prompt
+                      : `${input.prompt}\n\nThe previous response was invalid JSON. Return only strict JSON matching the schema.`,
+                  },
+                  { inlineData: { mimeType: input.mimeType, data: input.audioBase64 } },
+                ],
+              }],
+              generationConfig: {
+                temperature: 0.1,
+                responseMimeType: 'application/json',
+                responseSchema: GEMINI_RESPONSE_SCHEMA,
+              },
+            }),
+          },
+        );
+        if (!response.ok) {
+          throw new Error(`Gemini request failed: ${response.status} ${await response.text()}`);
+        }
+        const payload = await response.json();
+        const rawText = String(payload?.candidates?.[0]?.content?.parts?.[0]?.text ?? '');
+        const parsed = parseGeminiJson(rawText);
+        if (!parsed) throw new Error('Gemini returned invalid JSON');
+        return { parsed, model };
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+      } finally {
+        clearTimeout(timer);
       }
-      const payload = await response.json();
-      const rawText = String(payload?.candidates?.[0]?.content?.parts?.[0]?.text ?? '');
-      const parsed = parseGeminiJson(rawText);
-      if (!parsed) throw new Error('Gemini returned invalid JSON');
-      return parsed;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-    } finally {
-      clearTimeout(timer);
     }
   }
   throw lastError ?? new Error('Gemini returned invalid JSON');
@@ -291,7 +298,7 @@ Deno.serve(async (req) => {
 
     const startedAt = Date.now();
     const audioBase64 = arrayBufferToBase64(await audio.arrayBuffer());
-    const parsed = await callGemini({
+    const result = await callGemini({
       audioBase64,
       mimeType: mimeType.split(';')[0],
       prompt: buildPrompt({
@@ -301,26 +308,28 @@ Deno.serve(async (req) => {
         targetField,
       }),
     });
+    console.info('[tip-voice-parse] parsed with model', result.model);
 
-    const people = matchPeople(parsed.people, roster);
-    const cash = parsed.cash === null ? null : normalizeAmount(parsed.cash);
-    const card = parsed.card === null ? null : normalizeAmount(parsed.card);
+    const people = matchPeople(result.parsed.people, roster);
+    const cash = result.parsed.cash === null ? null : normalizeAmount(result.parsed.cash);
+    const card = result.parsed.card === null ? null : normalizeAmount(result.parsed.card);
 
     return json(req, {
       ok: true,
-      rawTranscript: parsed.rawTranscript,
+      model: result.model,
+      rawTranscript: result.parsed.rawTranscript,
       latencyMs: Date.now() - startedAt,
       fields: {
-        meal: { value: parsed.meal, confidence: parsed.mealConfidence },
-        cash: { value: cash, confidence: cash === null && parsed.cash !== null ? 0 : parsed.cashConfidence },
-        card: { value: card, confidence: card === null && parsed.card !== null ? 0 : parsed.cardConfidence },
+        meal: { value: result.parsed.meal, confidence: result.parsed.mealConfidence },
+        cash: { value: cash, confidence: cash === null && result.parsed.cash !== null ? 0 : result.parsed.cashConfidence },
+        card: { value: card, confidence: card === null && result.parsed.card !== null ? 0 : result.parsed.cardConfidence },
         people: {
           matched: people.matched,
           unmatched: people.unmatched,
-          confidence: parsed.peopleConfidence,
+          confidence: result.parsed.peopleConfidence,
         },
       },
-      warnings: parsed.warnings,
+      warnings: result.parsed.warnings,
     });
   } catch (error) {
     console.error('[tip-voice-parse] failed', error);

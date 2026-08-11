@@ -4,13 +4,12 @@ Runs the real entry flows against the live Supabase backend — there is no
 mock mode. Serial on purpose (one worker): the backend's auth rate limits
 are part of what's under test.
 
-> **⚠ The suite writes to the live database.** It saves (and overwrites)
-> TODAY's tip slots for both locations, and its rate-limit spec burns real
-> failed-attempt budget (6 location-scoped failures per run; 5 uncleaned
-> runs inside 10 minutes would hit the 30-failure location cap and block
-> real PIN sign-ins). Run it only while the database holds no tip data you
-> care about, and apply `cleanup.sql` after every run. The config refuses
-> to start without `E2E_ALLOW_LIVE_WRITES=1` as the acknowledgement.
+> **⚠ The suite writes to the live database.** It saves TODAY's Sushi tip
+> slots, and bad-token attempts burn real failed-attempt budget. Entry
+> devices can no longer overwrite recorded slots, so run `cleanup.sql`
+> BEFORE a run (a leftover slot puts the specs on the "All set" screen) and
+> again after. The config refuses to start without
+> `E2E_ALLOW_LIVE_WRITES=1` as the acknowledgement.
 
 ## Setup
 
@@ -21,12 +20,11 @@ fixtures:
 E2E_ALLOW_LIVE_WRITES=1
 E2E_SUSHI_TOKEN=<plaintext entry token for Babytuna Sushi>
 E2E_POKI_TOKEN=<plaintext entry token for Babytuna Poki & Pho>
-E2E_SUSHI_PIN=<4-digit PIN for Sushi>
-E2E_POKI_PIN=<4-digit PIN for Poki & Pho>
 ```
 
 (Supabase URL/anon key are picked up from `web/.env.local`.) After a manager
-rotates tokens/PINs from /manager → Admin, update this file to match.
+rotates tokens from /manager → Admin, update this file to match. PIN entry
+was removed from the product 2026-08-11.
 
 ## Run
 

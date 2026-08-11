@@ -13,6 +13,7 @@ import {
 import {
   clearSession,
   loadSession,
+  saveRememberedCloser,
   updateSession,
   type StoredSession,
 } from "@/lib/tips/session";
@@ -68,6 +69,12 @@ export default function CloserPage() {
     updateSession({ closerId: person.id, closerName: person.name });
     try {
       await setCloser(session.token, person.id);
+      // Remember on this device so the next scan skips this screen.
+      saveRememberedCloser({
+        locationId: session.locationId,
+        closerId: person.id,
+        closerName: person.name,
+      });
       router.push("/entry");
     } catch (err: unknown) {
       updateSession(previous);
@@ -99,7 +106,8 @@ export default function CloserPage() {
 
       <h1 className="mt-4 text-3xl font-bold text-ink">Who&rsquo;s closing?</h1>
       <p className="mt-1 text-ink2">
-        {state?.location.name ?? session.locationName}
+        {state?.location.name ?? session.locationName} · this phone will
+        remember for next time
       </p>
 
       {pickError && (
