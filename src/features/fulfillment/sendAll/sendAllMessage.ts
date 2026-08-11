@@ -1,8 +1,18 @@
 // Pure message + finalize-payload builders for the Rapid Send All flow (Phase 1).
 // Mirrors the default (no per-item unit switching) output of
 // app/(manager)/fulfillment-confirmation.tsx so a Send All message matches what the
-// confirmation screen would produce out of the box.
+// confirmation screen would produce out of the box. Unit labels are resolved via
+// the shared @/features/fulfillment/unitLabels helpers — the same module the
+// confirmation screen uses — so label text can never diverge between the two.
 // No React/React Native imports — unit-tested in src/__tests__/sendAllMessage.test.ts.
+
+import {
+  buildUnitLabelAvailabilityMap,
+  resolveExportUnitLabel,
+  type InventoryUnitInfo,
+} from '../unitLabels';
+
+export type { InventoryUnitInfo } from '../unitLabels';
 
 export type SendAllLocationGroup = 'sushi' | 'poki';
 
@@ -67,12 +77,42 @@ interface GroupedLine {
 
 export function buildSendAllItemsText(
   regularItems: SendAllRegularItem[],
-  remainingItems: SendAllRemainingItem[]
+  remainingItems: SendAllRemainingItem[],
+  unitInfoById: Record<string, InventoryUnitInfo> = {}
 ): string {
   const groupOrder: SendAllLocationGroup[] = ['sushi', 'poki'];
 
-  const sortByName = <T extends { name: string }>(rows: T[]) =>
-    [...rows].sort((a, b) => a.name.localeCompare(b.name));
+  // Same registration order as the confirmation screen: regular items first,
+  // then remaining items, across all location groups.
+  const availabilityByInventoryItemId = buildUnitLabelAvailabilityMap([
+    ...regularItems,
+    ...remainingItems,
+  ]);
+
+  const resolveLabel = (item: {
+    inventoryItemId: string;
+    unitType: 'base' | 'pack';
+    unitLabel: string;
+  }): string =>
+    resolveExportUnitLabel({
+      unitInfo: unitInfoById[item.inventoryItemId],
+      availability: availabilityByInventoryItemId[item.inventoryItemId],
+      unitType: item.unitType,
+      unitLabel: item.unitLabel,
+    });
+
+  // Mirrors the confirmation screen's groupedRegularItems sort (name →
+  // inventoryItemId → unitType → unitLabel). Remaining items are NOT sorted
+  // there — they render in source order — so we keep source order too.
+  const sortRegularRows = (rows: SendAllRegularItem[]) =>
+    [...rows].sort((a, b) => {
+      const byName = a.name.localeCompare(b.name);
+      if (byName !== 0) return byName;
+      const byInventoryId = a.inventoryItemId.localeCompare(b.inventoryItemId);
+      if (byInventoryId !== 0) return byInventoryId;
+      if (a.unitType !== b.unitType) return a.unitType.localeCompare(b.unitType);
+      return a.unitLabel.localeCompare(b.unitLabel);
+    });
 
   const sections = groupOrder
     .map((group) => {
@@ -100,32 +140,37 @@ export function buildSendAllItemsText(
         orderedEntries.push({ type: 'grouped', key });
       };
 
-      sortByName(regularItems.filter((item) => item.locationGroup === group)).forEach((item) => {
-        if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+      sortRegularRows(regularItems.filter((item) => item.locationGroup === group)).forEach(
+        (item) => {
+          if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
+            orderedEntries.push({
+              type: 'raw',
+              line: `- ${item.name}: ${formatSendAllQuantity(item.quantity)} ${item.unitLabel}`,
+            });
+            return;
+          }
+          addGroupedLine({
+            name: item.name,
+            quantity: item.quantity,
+            unitLabel: resolveLabel(item),
+            unitType: item.unitType,
+          });
+        }
+      );
+
+      remainingItems.filter((item) => item.locationGroup === group).forEach((item) => {
+        const decided = item.decidedQuantity;
+        if (decided == null || !Number.isFinite(decided) || decided <= 0) {
           orderedEntries.push({
             type: 'raw',
-            line: `- ${item.name}: ${formatSendAllQuantity(item.quantity)} ${item.unitLabel}`,
+            line: `- ${item.name}: [set qty] ${resolveLabel(item)}`,
           });
           return;
         }
         addGroupedLine({
           name: item.name,
-          quantity: item.quantity,
-          unitLabel: item.unitLabel,
-          unitType: item.unitType,
-        });
-      });
-
-      sortByName(remainingItems.filter((item) => item.locationGroup === group)).forEach((item) => {
-        const decided = item.decidedQuantity;
-        if (decided == null || !Number.isFinite(decided) || decided <= 0) {
-          orderedEntries.push({ type: 'raw', line: `- ${item.name}: [set qty] ${item.unitLabel}` });
-          return;
-        }
-        addGroupedLine({
-          name: item.name,
           quantity: decided,
-          unitLabel: item.unitLabel,
+          unitLabel: resolveLabel(item),
           unitType: item.unitType,
         });
       });
@@ -153,12 +198,14 @@ export function buildSendAllMessage({
   supplierLabel,
   regularItems,
   remainingItems,
+  unitInfoById = {},
   now = new Date(),
 }: {
   template: string;
   supplierLabel: string;
   regularItems: SendAllRegularItem[];
   remainingItems: SendAllRemainingItem[];
+  unitInfoById?: Record<string, InventoryUnitInfo>;
   now?: Date;
 }): string {
   const today = now.toLocaleDateString('en-US', {
@@ -170,7 +217,7 @@ export function buildSendAllMessage({
   const variables: Record<string, string> = {
     supplier: supplierLabel,
     date: today,
-    items: buildSendAllItemsText(regularItems, remainingItems),
+    items: buildSendAllItemsText(regularItems, remainingItems, unitInfoById),
   };
 
   const filled = Object.entries(variables).reduce((text, [key, value]) => {
