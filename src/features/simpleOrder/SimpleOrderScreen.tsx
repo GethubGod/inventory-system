@@ -38,6 +38,11 @@ import {
   type DirectSendGroup,
 } from '@/services/orderChecklist';
 import { getMyOrderSendMode, type OrderSendMode } from '@/services/orderSendMode';
+import {
+  listRecurringReminderRules,
+  type RecurringReminderRule,
+} from '@/services/employeeReminders';
+import { findMyChecklistOrderDayRule } from './orderDayReminder';
 import type { SendAllQueueProgress } from '@/features/fulfillment/sendAll/sendAllQueue';
 import { useAuthStore, useInventoryStore } from '@/store';
 import {
@@ -63,6 +68,7 @@ import { AddItemsSheet } from './components/AddItemsSheet';
 import { ChecklistItemRow } from './components/ChecklistItemRow';
 import { ConfirmOrderSheet } from './components/ConfirmOrderSheet';
 import { DirectSendQueue } from './components/DirectSendQueue';
+import { OrderDayReminderSheet } from './components/OrderDayReminderSheet';
 import { RecentOrdersSheet } from './components/RecentOrdersSheet';
 
 interface ChecklistSection {
@@ -107,7 +113,27 @@ export function SimpleOrderScreen() {
   const [sendMode, setSendMode] = useState<OrderSendMode>('review');
   const [directSendGroups, setDirectSendGroups] = useState<DirectSendGroup[] | null>(null);
   const [recentOrdersVisible, setRecentOrdersVisible] = useState(false);
+  const [reminderSheetVisible, setReminderSheetVisible] = useState(false);
+  const [reminderRule, setReminderRule] = useState<RecurringReminderRule | null>(null);
   const loadRequestRef = useRef(0);
+
+  // 5c: surface whether this employee already has an order-day reminder so the
+  // header bell can reflect it. Failures fall back to the inactive state.
+  useEffect(() => {
+    let active = true;
+    listRecurringReminderRules()
+      .then((rules) => {
+        if (active) {
+          setReminderRule(findMyChecklistOrderDayRule(rules, locationGroup));
+        }
+      })
+      .catch(() => {
+        if (active) setReminderRule(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [locationGroup]);
 
   // Manager-configured 5b preference; unknown/error safely means review mode.
   useEffect(() => {
@@ -626,6 +652,50 @@ export function SimpleOrderScreen() {
             <TouchableOpacity
               onPress={() => {
                 void triggerImpactHaptic(ImpactFeedbackStyle.Light);
+                setReminderSheetVisible(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={
+                reminderRule && reminderRule.enabled !== false
+                  ? 'Edit order-day reminder'
+                  : 'Set order-day reminder'
+              }
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: glassHairlineWidth,
+                borderColor:
+                  reminderRule && reminderRule.enabled !== false
+                    ? glassColors.accentBorder
+                    : glassColors.controlBorder,
+                backgroundColor:
+                  reminderRule && reminderRule.enabled !== false
+                    ? colors.primaryPale
+                    : colors.glassCircle,
+                marginRight: ds.spacing(8),
+              }}
+            >
+              <Ionicons
+                name={
+                  reminderRule && reminderRule.enabled !== false
+                    ? 'notifications'
+                    : 'notifications-outline'
+                }
+                size={ds.icon(19)}
+                color={
+                  reminderRule && reminderRule.enabled !== false
+                    ? glassColors.accent
+                    : glassColors.textPrimary
+                }
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                void triggerImpactHaptic(ImpactFeedbackStyle.Light);
                 setRecentOrdersVisible(true);
               }}
               accessibilityRole="button"
@@ -731,6 +801,13 @@ export function SimpleOrderScreen() {
       <RecentOrdersSheet
         visible={recentOrdersVisible}
         onClose={() => setRecentOrdersVisible(false)}
+      />
+
+      <OrderDayReminderSheet
+        visible={reminderSheetVisible}
+        locationGroup={locationGroup}
+        onClose={() => setReminderSheetVisible(false)}
+        onRuleChanged={setReminderRule}
       />
     </SafeAreaView>
   );
