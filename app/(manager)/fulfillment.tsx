@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useFocusEffect } from 'expo-router';
+import { Redirect, router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import * as Haptics from 'expo-haptics';
@@ -43,6 +43,7 @@ import type {
 import { loadSupplierLookup, invalidateSupplierCache } from '@/services/supplierResolver';
 import type { PendingFulfillmentDataResult } from '@/services/fulfillmentDataSource';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
+import { useModuleAccessGuard } from '@/hooks/useMyModules';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   glassColors,
@@ -330,7 +331,23 @@ interface SupplierCardData {
   statusLabel: string | null;
 }
 
-export default function FulfillmentScreen() {
+export default function FulfillmentRoute() {
+  // Phase 3: the fulfillment tab is gated by the fulfillment module (managers
+  // default all-on). Deep links to a disabled module redirect to manager home.
+  const guard = useModuleAccessGuard('fulfillment', '/(manager)');
+
+  if (guard.isChecking) {
+    return null;
+  }
+
+  if (guard.redirectTo) {
+    return <Redirect href={guard.redirectTo} />;
+  }
+
+  return <FulfillmentScreen />;
+}
+
+function FulfillmentScreen() {
   const ds = useScaledStyles();
   const { user, locations } = useAuthStore(useShallow((state) => ({
     user: state.user,

@@ -1,8 +1,10 @@
 "use client";
 
-// "Invite" modal: name + role + expiry form → create-invite edge fn → shows
-// the personalized join link with a copy button. Flat card over dim, matching
-// ConfirmDialog.
+// "Invite" modal: name + role + expiry + module preset form → create-invite
+// edge fn → shows the personalized join link with a copy button. Flat card
+// over dim, matching ConfirmDialog. Module checkboxes default to the invited
+// role's defaults and are written as modulePreset ({module_key: boolean}),
+// applied to user_modules when the invite is accepted (Phase 3).
 
 import { useState } from "react";
 import {
@@ -12,6 +14,13 @@ import {
   type CreatedInvite,
   type InviteRole,
 } from "@/lib/dashboard/invites";
+import {
+  buildModulePreset,
+  getRoleDefaultModules,
+  moduleKeysForRole,
+  MODULE_LABELS,
+  type ModuleMap,
+} from "@/lib/dashboard/modules";
 import CopyButton from "@/components/dashboard/CopyButton";
 
 export default function InviteCreateModal({
@@ -25,11 +34,28 @@ export default function InviteCreateModal({
   const [invitedName, setInvitedName] = useState("");
   const [role, setRole] = useState<InviteRole>("employee");
   const [expiresInHours, setExpiresInHours] = useState(DEFAULT_EXPIRY_HOURS);
+  const [preset, setPreset] = useState<ModuleMap>(() =>
+    getRoleDefaultModules("employee"),
+  );
+  const [presetTouched, setPresetTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedInvite | null>(null);
 
   const canSubmit = invitedName.trim().length > 0 && !busy;
+
+  function handleRoleChange(nextRole: InviteRole) {
+    setRole(nextRole);
+    // Until the manager customizes the preset, keep it at the role defaults.
+    if (!presetTouched) {
+      setPreset(getRoleDefaultModules(nextRole));
+    }
+  }
+
+  function handlePresetToggle(key: keyof ModuleMap) {
+    setPresetTouched(true);
+    setPreset((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
 
   async function handleCreate() {
     if (!canSubmit) return;
@@ -40,6 +66,7 @@ export default function InviteCreateModal({
         invitedName: invitedName.trim(),
         role,
         expiresInHours,
+        modulePreset: buildModulePreset(role, preset),
       });
       setCreated(invite);
       onCreated();
@@ -113,7 +140,7 @@ export default function InviteCreateModal({
                   <button
                     key={option}
                     type="button"
-                    onClick={() => setRole(option)}
+                    onClick={() => handleRoleChange(option)}
                     className={`rounded-full px-4 py-2 text-sm font-semibold capitalize ${
                       role === option
                         ? "bg-accent text-white"
@@ -122,6 +149,30 @@ export default function InviteCreateModal({
                   >
                     {option}
                   </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="section-label">Modules</span>
+              <p className="text-ink3 text-xs">
+                What they can use in the app. Defaults match the {role} role;
+                you can change these later from the Team page.
+              </p>
+              <div className="flex flex-col gap-1">
+                {moduleKeysForRole(role).map((key) => (
+                  <label
+                    key={key}
+                    className="flex items-center gap-2.5 rounded-well bg-well px-4 py-2 text-sm text-ink cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={preset[key]}
+                      onChange={() => handlePresetToggle(key)}
+                      className="accent-[var(--color-accent)]"
+                    />
+                    {MODULE_LABELS[key]}
+                  </label>
                 ))}
               </div>
             </div>

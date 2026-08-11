@@ -4570,6 +4570,30 @@ export type Database = {
         }
         Relationships: []
       }
+      user_modules: {
+        Row: {
+          enabled: boolean
+          module_key: string
+          updated_at: string
+          updated_by: string | null
+          user_id: string
+        }
+        Insert: {
+          enabled: boolean
+          module_key: string
+          updated_at?: string
+          updated_by?: string | null
+          user_id: string
+        }
+        Update: {
+          enabled?: boolean
+          module_key?: string
+          updated_at?: string
+          updated_by?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           created_at: string
@@ -4656,6 +4680,13 @@ export type Database = {
             }
             Returns: Json
           }
+      get_effective_modules: {
+        Args: { p_user_id: string }
+        Returns: {
+          module_key: string
+          enabled: boolean
+        }[]
+      }
       get_last_inventory_session_items: {
         Args: { p_location_id: string; p_user_id?: string }
         Returns: Json
