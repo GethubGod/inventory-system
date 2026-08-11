@@ -71,6 +71,12 @@ function readRole(value: unknown): UserRole | null {
   return value === 'employee' || value === 'manager' ? value : null;
 }
 
+function readReason(value: unknown): InviteFailureReason | null {
+  return value === 'used' || value === 'expired' || value === 'revoked' || value === 'invalid'
+    ? value
+    : null;
+}
+
 function readName(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
@@ -106,12 +112,22 @@ export async function fetchInvitePreview(token: string): Promise<InvitePreview> 
   }
 
   const payload = data as
-    | { ok?: unknown; error?: unknown; invitedName?: unknown; invited_name?: unknown; role?: unknown }
+    | {
+        ok?: unknown;
+        valid?: unknown;
+        error?: unknown;
+        reason?: unknown;
+        invitedName?: unknown;
+        invited_name?: unknown;
+        role?: unknown;
+      }
     | null;
 
-  if (payload?.ok !== true) {
+  // Backend dry-run responds {valid, invitedName, role, reason}; tolerate {ok}.
+  if (payload?.ok !== true && payload?.valid !== true) {
+    const structured = readReason(payload?.reason);
     const message = typeof payload?.error === 'string' ? payload.error : null;
-    throw new InviteError(classifyInviteFailure(message), message ?? undefined);
+    throw new InviteError(structured ?? classifyInviteFailure(message), message ?? undefined);
   }
 
   return {
