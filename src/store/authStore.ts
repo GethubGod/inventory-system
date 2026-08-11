@@ -8,6 +8,7 @@ import { User, Location, UserRole, Profile, AuthProvider } from '@/types';
 import { clearSupabaseStoredSession, supabase } from '@/lib/supabase';
 import { deleteSelfAccountRequest, registerSessionGetter } from '@/lib/api/client';
 import { validateAccessCode } from '@/services/accessCodes';
+import { acceptInvite } from '@/services/invites';
 
 type ViewMode = 'employee' | 'manager';
 type OAuthProvider = 'google' | 'apple';
@@ -486,6 +487,12 @@ interface AuthState {
     name: string,
     accessCode: string,
     locationId?: string
+  ) => Promise<SignUpResult>;
+  signUpWithInvite: (
+    token: string,
+    email: string,
+    password: string,
+    name: string
   ) => Promise<SignUpResult>;
   completeProfile: (fullName: string, accessCode: string) => Promise<User>;
   signOut: () => Promise<void>;
@@ -1516,6 +1523,61 @@ export const useAuthStore = create<AuthState>()(
 
           const user = await hydrateAuthenticatedSession(data.session, {
             bootstrapInput,
+            waitForTriggerMs: 500,
+            repairIfNeeded: true,
+            shouldThrowOnSuspended: true,
+          });
+
+          if (!user) {
+            throw new Error('Unable to load your new account. Please try signing in.');
+          }
+
+          return { status: 'authenticated', user };
+        } catch (error) {
+          throw new Error(getAuthErrorMessage(error, 'Unable to create your account. Please try again.'));
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      signUpWithInvite: async (token, email, password, name) => {
+        beginAuthTransition();
+        set({ isLoading: true });
+        try {
+          const normalizedEmail = normalizeEmail(email) ?? email.trim().toLowerCase();
+          const normalizedName = normalizeName(name);
+
+          // accept-invite creates the account server-side (service role),
+          // marks the invite used, and returns the invite's role.
+          const { role } = await acceptInvite({
+            token,
+            email: normalizedEmail,
+            password,
+            name: normalizedName ?? '',
+          });
+
+          // Sign in with the credentials the edge function just created.
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password,
+          });
+          if (error) throw error;
+          if (!data.session) {
+            applySignedOutState();
+            return {
+              status: 'confirmation_required',
+              email: normalizedEmail,
+            };
+          }
+
+          const user = await hydrateAuthenticatedSession(data.session, {
+            bootstrapInput: {
+              email: normalizedEmail,
+              fullName: normalizedName,
+              role,
+              provider: 'email',
+              profileCompleted: true,
+            },
             waitForTriggerMs: 500,
             repairIfNeeded: true,
             shouldThrowOnSuspended: true,

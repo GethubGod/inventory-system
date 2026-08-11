@@ -140,6 +140,7 @@ export default function RootLayout() {
         <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="orders" options={{ headerShown: false }} />
         <Stack.Screen name="suspended" options={{ headerShown: false }} />
+        <Stack.Screen name="join" options={{ headerShown: false }} />
       </Stack>
     </GestureHandlerRootView>
   );
