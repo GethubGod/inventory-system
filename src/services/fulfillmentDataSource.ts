@@ -10,6 +10,7 @@ import {
   resolveOrderItemSupplier,
   summarizeSupplierIssues,
 } from '@/services/supplierResolver';
+import { isOrderFulfillmentEligible } from './fulfillmentEligibility';
 
 export type FulfillmentLocationGroup = 'sushi' | 'poki';
 
@@ -327,14 +328,7 @@ export async function loadPendingFulfillmentData(options?: {
   const unresolvedIssues: SupplierResolutionIssue[] = [];
 
   const filteredOrders = ((data || []) as unknown as OrderWithDetails[])
-    .filter((order) => {
-      const row = order as OrderWithDetails & Record<string, unknown>;
-      if (row.entry_method !== 'quick_order' && !row.quick_session_id) {
-        return true;
-      }
-
-      return row.manager_review_status === 'approved';
-    })
+    .filter((order) => isOrderFulfillmentEligible(order))
     .map((order) => {
       const rawItems = Array.isArray((order as any).order_items) ? ((order as any).order_items as any[]) : [];
 

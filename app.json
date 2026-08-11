@@ -67,6 +67,14 @@
           "recordAudioAndroid": false
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Photo library access is needed to update your profile photo.",
+          "cameraPermission": "Camera access is required to scan QR codes.",
+          "microphonePermission": false
+        }
+      ],
       "expo-font",
       "expo-asset",
       "expo-web-browser"

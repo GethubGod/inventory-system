@@ -23,14 +23,6 @@ import {
   View,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  AudioModule,
-  RecordingPresets,
-  setAudioModeAsync,
-  useAudioRecorder,
-  useAudioRecorderState,
-  type RecordingOptions,
-} from "expo-audio";
 import NetInfo from "@react-native-community/netinfo";
 import Animated, {
   Easing,
@@ -151,7 +143,6 @@ import {
 } from "./quickOrderComposer";
 import {
   cleanupQuickOrderVoiceFile,
-  isQuickOrderVoiceTooShort,
   reduceQuickOrderVoiceState,
   transcribeQuickOrderVoiceFile,
   type QuickOrderVoiceErrorCode,
@@ -232,15 +223,8 @@ type QuickOrderInvokeResult = {
 };
 
 const QUICK_ORDER_RETRY_DELAYS_MS = [700, 1_400, 2_800, 5_600] as const;
-const QUICK_ORDER_MAX_RECORDING_MS = 30_000;
 const QUICK_ORDER_VOICE_SESSION_TIMEOUT_MS = 10_000;
 const QUICK_ORDER_VOICE_SESSION_TIMEOUT_MESSAGE = "VOICE_SESSION_TIMEOUT";
-const QUICK_ORDER_RECORDING_OPTIONS: RecordingOptions = {
-  ...RecordingPresets.HIGH_QUALITY,
-  isMeteringEnabled: true,
-  numberOfChannels: 1,
-  bitRate: 64_000,
-};
 
 function isQuickOrderVoiceFeatureEnabled(): boolean {
   // Future feature: keep voice ordering hidden until product and store permissions are ready.
@@ -2501,8 +2485,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   const setAuthLocation = useAuthStore((state) => state.setLocation);
   const { location } = useResolvedActiveLocation();
   const tabBarHeight = 60 + getTabBarBottomInset(insets.bottom);
-  const audioRecorder = useAudioRecorder(QUICK_ORDER_RECORDING_OPTIONS);
-  const audioRecorderState = useAudioRecorderState(audioRecorder, 100);
 
   const [composerHeight, setComposerHeight] = useState(0);
   const [composerBottomOffset, setComposerBottomOffset] =
@@ -2592,9 +2574,6 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     language?: string;
   } | null>(null);
   const voiceReviewAddInFlightRef = useRef(false);
-  const recordingStartTimeRef = useRef<number | null>(null);
-  const maxRecordingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isVoiceStoppingRef = useRef(false);
   const isConfirmingRef = useRef(false);
   const quickOrderPendingOrderIdRef = useRef<string | null>(null);
   const nudgeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2970,31 +2949,14 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       if (nudgeTimerRef.current) {
         clearTimeout(nudgeTimerRef.current);
       }
-      if (maxRecordingTimerRef.current) {
-        clearTimeout(maxRecordingTimerRef.current);
-      }
-      try {
-        if (audioRecorder.isRecording) {
-          void audioRecorder.stop();
-        }
-      } catch {
-        // Native recorder may already be released during unmount (e.g. sign-out).
-      }
     },
-    [audioRecorder],
+    [],
   );
 
   useEffect(() => {
-    if (!voiceEnabled) return undefined;
+    if (!voiceEnabled) return;
     const subscription = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") return;
-      try {
-        if (!audioRecorder.isRecording) return;
-        void audioRecorder.stop();
-      } catch {
-        // Native recorder may already be released.
-        return;
-      }
       applyVoiceEvent("cancel");
       setVoiceReview(null);
       setVoiceError("Recording stopped when the app moved to the background.");
@@ -3002,7 +2964,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     return () => {
       subscription.remove();
     };
-  }, [applyVoiceEvent, audioRecorder, voiceEnabled]);
+  }, [applyVoiceEvent, voiceEnabled]);
 
   const issueCount = useMemo(
     () => countUnresolvedItems(parsedItems) + pendingClarifications.length,
@@ -4950,129 +4912,38 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
     uri: string;
     durationMs: number;
   } | null> => {
-    if (
-      isVoiceStoppingRef.current ||
-      voiceMachineRef.current.status !== "recording"
-    ) {
-      return null;
-    }
-    isVoiceStoppingRef.current = true;
-    if (maxRecordingTimerRef.current) {
-      clearTimeout(maxRecordingTimerRef.current);
-      maxRecordingTimerRef.current = null;
-    }
-    try {
-      await audioRecorder.stop();
-      const durationMs =
-        audioRecorderState.durationMillis ||
-        (recordingStartTimeRef.current ? Date.now() - recordingStartTimeRef.current : 0);
-      const uri = audioRecorder.uri || audioRecorderState.url;
-      recordingStartTimeRef.current = null;
-      if (!uri || isQuickOrderVoiceTooShort(durationMs)) {
-        if (uri) await cleanupQuickOrderVoiceFile(uri);
-        applyVoiceEvent("process_failed", "TOO_SHORT");
-        setVoiceError("Hold the mic a little longer and try again.");
-        return null;
-      }
-      const recording = { uri, durationMs };
-      setLastVoiceRecording(recording);
-      applyVoiceEvent("stop");
-      return recording;
-    } catch (error) {
-      console.warn("[QuickOrder] Failed to stop voice input:", error);
-      applyVoiceEvent("process_failed", "INVALID_AUDIO");
-      setVoiceError("Voice input is unavailable right now.");
-      return null;
-    } finally {
-      isVoiceStoppingRef.current = false;
-      try {
-        await setAudioModeAsync({ allowsRecording: false });
-      } catch {
-        // Non-fatal audio session cleanup.
-      }
-    }
-  }, [
-    applyVoiceEvent,
-    audioRecorder,
-    audioRecorderState.durationMillis,
-    audioRecorderState.url,
-  ]);
+    return null;
+  }, []);
 
   // Single-tap "stop and submit": ends the recording and immediately uploads it
   // for parsing. Both the square stop and the send arrow route here, so there's
   // no separate review step (matches the composer's recording-mode mockup).
   const handleSubmitVoice = useCallback(async () => {
-    if (voiceMachineRef.current.uploadInFlight) return;
-    const recording = await handleStopVoice();
-    if (!recording) return;
-    setVoiceError(null);
+    await handleStopVoice();
     setVoiceReview(null);
-    void processVoiceRecording(recording);
-  }, [handleStopVoice, processVoiceRecording]);
+    setVoiceError("Voice ordering is unavailable in this release.");
+    applyVoiceEvent("process_failed", "INVALID_AUDIO");
+  }, [applyVoiceEvent, handleStopVoice]);
 
-  const handleStartVoice = useCallback(async () => {
-    if (!voiceEnabled || isSending || voiceMachineRef.current.uploadInFlight) return;
-    try {
-      const result = await AudioModule.requestRecordingPermissionsAsync();
-      if (!result.granted) {
-        applyVoiceEvent("process_failed", "PERMISSION_DENIED");
-        setVoiceError("Microphone access is needed for voice order.");
-        return;
-      }
-      setVoiceError(null);
-      setVoiceReview(null);
-      await setAudioModeAsync({
-        allowsRecording: true,
-        playsInSilentMode: true,
-      });
-      await audioRecorder.prepareToRecordAsync(QUICK_ORDER_RECORDING_OPTIONS);
-      recordingStartTimeRef.current = Date.now();
-      applyVoiceEvent("start");
-      void triggerSelectionHaptic();
-      audioRecorder.record({ forDuration: QUICK_ORDER_MAX_RECORDING_MS / 1000 });
-      maxRecordingTimerRef.current = setTimeout(() => {
-        void handleSubmitVoice();
-      }, QUICK_ORDER_MAX_RECORDING_MS);
-    } catch (error) {
-      console.warn("[QuickOrder] Failed to start voice input:", error);
-      applyVoiceEvent("process_failed", "INVALID_AUDIO");
-      setVoiceError("Voice input is unavailable right now.");
-    }
-  }, [
-    applyVoiceEvent,
-    audioRecorder,
-    handleSubmitVoice,
-    isSending,
-    voiceEnabled,
-  ]);
+  const handleStartVoice = useCallback(() => {
+    setVoiceReview(null);
+    setVoiceError("Voice ordering is unavailable in this release.");
+    applyVoiceEvent("process_failed", "INVALID_AUDIO");
+  }, [applyVoiceEvent]);
 
   const handleCancelVoice = useCallback(async () => {
     if (voiceMachineRef.current.status === "transcribing") return;
-    if (maxRecordingTimerRef.current) {
-      clearTimeout(maxRecordingTimerRef.current);
-      maxRecordingTimerRef.current = null;
-    }
     try {
-      if (audioRecorder.isRecording) {
-        await audioRecorder.stop();
-      }
-      const uri = audioRecorder.uri || audioRecorderState.url || lastVoiceRecording?.uri;
-      await cleanupQuickOrderVoiceFile(uri);
+      await cleanupQuickOrderVoiceFile(lastVoiceRecording?.uri);
     } catch {
       // Best effort cancellation.
     }
-    recordingStartTimeRef.current = null;
     setLastVoiceRecording(null);
     setVoiceError(null);
     setVoiceReview(null);
     applyVoiceEvent("cancel");
     setTimeout(() => applyVoiceEvent("reset"), 250);
-  }, [
-    applyVoiceEvent,
-    audioRecorder,
-    audioRecorderState.url,
-    lastVoiceRecording?.uri,
-  ]);
+  }, [applyVoiceEvent, lastVoiceRecording?.uri]);
 
   const handleRetryVoice = useCallback(() => {
     if (!lastVoiceRecording || voiceMachineRef.current.uploadInFlight) return;
@@ -6481,7 +6352,7 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
           onBottomOffsetChange={handleComposerBottomOffsetChange}
           voiceEnabled={voiceEnabled}
           voiceStatus={voiceStatus}
-          voiceMetering={audioRecorderState.metering}
+          voiceMetering={undefined}
           voiceError={voiceError}
           onStartVoice={handleStartVoice}
           onSubmitVoice={handleSubmitVoice}

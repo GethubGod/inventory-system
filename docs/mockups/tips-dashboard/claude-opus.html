@@ -1,0 +1,2210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Babytuna — Tips manager dashboard · three design variants</title>
+<style>
+/* ============================================================
+   TOKENS
+   ============================================================ */
+:root{
+  --cream:#f5f1e8;
+  --paper:#ffffff;
+  --ink:#1a1a1a;
+  --ink2:#5f5f5f;
+  --muted:#9c9890;
+  --accent:#e84d38;       /* fills, rules, large numerals only */
+  --accent-deep:#c03520;  /* text + button fills (AA on white/cream) */
+  --accent-tint:#fbeae7;
+  --hair:rgba(0,0,0,0.06);
+  --hair-2:rgba(0,0,0,0.12);
+  --logged-bg:#efece3;    /* the "card / logged only" bucket */
+  --logged-ink:#6c6860;
+  --r-card:20px;
+  --r-in:14px;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--cream);color:var(--ink);
+  font-family:var(--sans);font-size:14px;line-height:1.45;
+  font-variant-numeric:tabular-nums;
+}
+h1,h2,h3,h4{margin:0;font-weight:650;letter-spacing:-0.01em}
+p{margin:0}
+button{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
+input,select{font:inherit;color:inherit;font-variant-numeric:tabular-nums}
+a{color:var(--accent-deep)}
+:focus-visible{outline:2.5px solid var(--accent-deep);outline-offset:2px;border-radius:4px}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.num{font-variant-numeric:tabular-nums}
+.mono{font-family:var(--mono)}
+
+/* ============================================================
+   APP CHROME + VARIANT SWITCHER
+   ============================================================ */
+.topbar{
+  position:sticky;top:0;z-index:60;background:var(--cream);
+  border-bottom:1px solid var(--hair-2);
+}
+.topbar-in{
+  max-width:1420px;margin:0 auto;padding:14px 28px 0;
+  display:flex;align-items:flex-start;gap:28px;flex-wrap:wrap;
+}
+.brand{display:flex;align-items:baseline;gap:10px;padding-bottom:14px}
+.brand-mark{
+  width:26px;height:26px;border-radius:8px;background:var(--accent);
+  display:grid;place-items:center;color:#fff;font-weight:700;font-size:13px;
+  align-self:center;
+}
+.brand-name{font-weight:650;font-size:15px}
+.brand-sub{color:var(--muted);font-size:12.5px}
+.switch{display:flex;gap:2px;margin-left:auto;align-self:flex-end}
+.switch button{
+  background:transparent;border:0;border-bottom:3px solid transparent;
+  padding:9px 18px 11px;cursor:pointer;color:var(--ink2);
+  font-weight:600;font-size:13.5px;border-radius:6px 6px 0 0;
+}
+.switch button:hover{color:var(--ink);background:rgba(0,0,0,0.03)}
+.switch button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.switch .sw-idx{color:var(--muted);font-weight:600;margin-right:7px;font-size:12px}
+.switch button[aria-selected="true"] .sw-idx{color:var(--accent-deep)}
+
+main{max-width:1420px;margin:0 auto;padding:0 28px 120px}
+.panel[hidden]{display:none}
+.panel{padding-top:22px}
+
+/* thesis block — read before scrolling into the variant */
+.thesis{
+  border-left:4px solid var(--accent);background:var(--paper);
+  border-radius:6px var(--r-in) var(--r-in) 6px;padding:16px 22px 18px;
+  margin-bottom:24px;max-width:920px;
+}
+.thesis h2{font-size:19px;margin-bottom:5px}
+.thesis .kicker{
+  font-size:11px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--accent-deep);font-weight:700;margin-bottom:7px;
+}
+.thesis p{color:var(--ink2);font-size:14px;max-width:78ch}
+.thesis .tradeoff{margin-top:7px;color:var(--muted)}
+.thesis .tradeoff b{color:var(--ink2);font-weight:650}
+
+/* ============================================================
+   SHARED PRIMITIVES
+   ============================================================ */
+.card{background:var(--paper);border-radius:var(--r-card);border:1px solid var(--hair)}
+.sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.sec-head h3{font-size:16px}
+.sec-head .hint{color:var(--muted);font-size:12.5px}
+.sec-head .spacer{flex:1}
+
+.btn{
+  border:1px solid var(--hair-2);background:var(--paper);color:var(--ink);
+  border-radius:10px;padding:7px 13px;cursor:pointer;font-weight:600;font-size:13px;
+}
+.btn:hover{background:#faf8f4;border-color:rgba(0,0,0,.2)}
+.btn.primary{background:var(--accent-deep);border-color:var(--accent-deep);color:#fff}
+.btn.primary:hover{background:#a82d1b;border-color:#a82d1b}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--ink2)}
+.btn.ghost:hover{background:rgba(0,0,0,.04);color:var(--ink)}
+.btn.danger{color:var(--accent-deep);border-color:rgba(192,53,32,.35);background:#fff}
+.btn.danger:hover{background:var(--accent-tint)}
+.btn.sm{padding:4px 9px;font-size:12px;border-radius:8px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+.seg{display:inline-flex;background:rgba(0,0,0,.045);border-radius:10px;padding:3px}
+.seg button{
+  border:0;background:transparent;padding:6px 13px;border-radius:8px;
+  cursor:pointer;font-weight:600;font-size:12.5px;color:var(--ink2);
+}
+.seg button[aria-pressed="true"]{background:var(--paper);color:var(--ink);box-shadow:0 0 0 1px var(--hair)}
+.field{display:flex;flex-direction:column;gap:4px}
+.field label{font-size:11.5px;font-weight:650;color:var(--ink2);letter-spacing:.02em}
+.field input,.field select{
+  border:1px solid var(--hair-2);border-radius:10px;padding:7px 10px;background:var(--paper);
+}
+.field input:focus,.field select:focus{border-color:var(--accent-deep)}
+
+.tag{
+  display:inline-block;font-size:11px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;padding:2px 7px;border-radius:6px;
+  background:rgba(0,0,0,.05);color:var(--ink2);
+}
+.tag.flag{background:var(--accent-tint);color:var(--accent-deep)}
+.tag.off{background:rgba(0,0,0,.05);color:var(--muted)}
+
+/* the two money buckets — one motif, expressed differently per variant */
+.cash-ink{color:var(--ink);font-weight:650}
+.card-ink{color:var(--logged-ink)}
+.nosplit{
+  display:inline-flex;align-items:center;gap:5px;color:var(--logged-ink);
+  font-size:11.5px;font-weight:650;
+}
+.nosplit svg{flex:none}
+
+.legend{
+  display:flex;gap:22px;flex-wrap:wrap;align-items:center;
+  font-size:12.5px;color:var(--ink2);
+}
+.legend .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:7px;vertical-align:-1px}
+.legend .sw.cash{background:var(--accent-tint);box-shadow:inset 0 0 0 1.5px var(--accent)}
+.legend .sw.card{background:var(--logged-bg);box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.16)}
+
+table{border-collapse:collapse;width:100%}
+th{text-align:left;font-weight:650;color:var(--ink2)}
+caption{text-align:left}
+
+.toastwrap{position:fixed;left:24px;bottom:24px;z-index:200;display:flex;flex-direction:column;gap:8px}
+.toast{
+  background:var(--ink);color:#fff;padding:11px 16px;border-radius:12px;
+  font-size:13px;font-weight:500;max-width:420px;
+}
+.toast b{font-weight:700}
+
+/* ============================================================
+   VARIANT A — LEDGER
+   ============================================================ */
+.v-a .a-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:18px}
+.v-a .a-bar{
+  background:var(--paper);border:1px solid var(--hair);border-radius:var(--r-in);
+  padding:12px 16px;display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;
+}
+.v-a .a-bar .chips{display:flex;gap:6px;align-items:center}
+.v-a .chip{
+  border:1px solid var(--hair-2);background:var(--paper);border-radius:999px;
+  padding:5px 12px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink2);
+}
+.v-a .chip[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:#fff}
+
+.v-a .a-totals{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;
+  background:var(--hair-2);border:1px solid var(--hair-2);border-radius:var(--r-in);overflow:hidden;
+}
+.v-a .a-tot{background:var(--paper);padding:13px 16px}
+.v-a .a-tot.is-cash{background:var(--accent-tint)}
+.v-a .a-tot.is-card{background:var(--logged-bg)}
+.v-a .a-tot dt{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:700;color:var(--ink2);margin-bottom:3px}
+.v-a .a-tot.is-cash dt{color:var(--accent-deep)}
+.v-a .a-tot dd{margin:0;font-size:26px;font-weight:650;letter-spacing:-.02em}
+.v-a .a-tot .sub{font-size:12px;color:var(--ink2);font-weight:500;margin-top:2px}
+.v-a .a-tot.is-card dd,.v-a .a-tot.is-card .sub{color:var(--logged-ink)}
+
+.v-a .a-chart{padding:14px 16px 10px}
+.v-a .a-chart figcaption{font-size:12.5px;color:var(--ink2);margin-bottom:8px}
+
+.v-a .a-tablewrap{overflow-x:auto}
+.v-a table.ledger{min-width:1080px;font-size:13.5px}
+.v-a table.ledger thead th{
+  position:sticky;top:69px;background:var(--paper);z-index:5;
+  font-size:11px;letter-spacing:.07em;text-transform:uppercase;
+  padding:9px 10px;border-bottom:1.5px solid var(--hair-2);white-space:nowrap;
+}
+.v-a table.ledger thead tr.grp th{
+  top:69px;padding:7px 10px 3px;border-bottom:0;font-size:10.5px;
+}
+.v-a table.ledger thead tr.cols th{top:94px}
+.v-a td.zone-cash{background:var(--accent-tint)}
+.v-a td.zone-card{background:var(--logged-bg);color:var(--logged-ink)}
+/* must outrank `.v-a table.ledger thead th` */
+.v-a table.ledger thead th.zone-cash{background:var(--accent-tint)}
+.v-a table.ledger thead th.zone-card{background:var(--logged-bg);color:var(--logged-ink)}
+.v-a th.zone-cash.first,.v-a td.zone-cash.first{border-left:2px solid var(--accent)}
+.v-a th.zone-card.first,.v-a td.zone-card.first{border-left:2px solid rgba(0,0,0,.18)}
+.v-a table.ledger tbody td{padding:9px 10px;border-bottom:1px solid var(--hair);vertical-align:middle}
+.v-a tr.daybreak td{
+  background:#f0ece2;font-weight:650;font-size:12px;padding:6px 10px;
+  border-bottom:1px solid var(--hair-2);border-top:1px solid var(--hair-2);
+  text-transform:uppercase;letter-spacing:.06em;color:var(--ink2);
+}
+.v-a tr.daybreak .dsum{float:right;font-weight:600;text-transform:none;letter-spacing:0;font-size:12.5px}
+.v-a tr.rec:hover td{background:#fbf9f5}
+.v-a tr.rec:hover td.zone-cash{background:#f8e2de}
+.v-a tr.rec:hover td.zone-card{background:#e9e5db}
+.v-a tr.rec.flagged td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.v-a .pp{font-size:15px;font-weight:700}
+.v-a .divsign{color:var(--accent-deep);font-weight:700}
+.v-a .who{color:var(--ink2);font-size:12.5px}
+.v-a .meta{color:var(--muted);font-size:12px;white-space:nowrap}
+.v-a tr.totals td{
+  padding:11px 10px;font-weight:700;border-top:2px solid var(--hair-2);background:#faf8f4;
+}
+.v-a tr.totals td.zone-cash{background:#f8e2de}
+.v-a tr.totals td.zone-card{background:#e9e5db}
+.v-a tr.editrow td{padding:0;background:#fdfbf7}
+.v-a .edit-in{padding:16px 18px;border-top:2px solid var(--accent);border-bottom:2px solid var(--accent)}
+.v-a .edit-grid{display:grid;grid-template-columns:150px 150px minmax(260px,1fr) minmax(280px,340px);gap:20px;align-items:start}
+.v-a .ppl-box{display:flex;flex-wrap:wrap;gap:6px}
+.v-a .roundnote{font-size:12px;color:var(--muted);margin-top:8px}
+
+.chk{
+  display:inline-flex;align-items:center;gap:6px;border:1px solid var(--hair-2);
+  border-radius:999px;padding:5px 11px 5px 8px;cursor:pointer;font-size:13px;background:var(--paper);
+  font-weight:550;
+}
+.chk:hover{border-color:rgba(0,0,0,.25)}
+.chk input{accent-color:var(--accent-deep);margin:0}
+.chk.on{background:var(--accent-tint);border-color:var(--accent)}
+.chk.other{opacity:.72}
+
+.preview{background:var(--paper);border:1px solid var(--hair-2);border-radius:var(--r-in);padding:12px 14px}
+.preview h4{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink2);margin-bottom:9px}
+.delta{display:flex;justify-content:space-between;gap:12px;padding:4px 0;border-bottom:1px dashed var(--hair)}
+.delta:last-child{border-bottom:0}
+.delta .nm{font-weight:600}
+.delta .vals{font-variant-numeric:tabular-nums}
+.delta .was{color:var(--muted);text-decoration:line-through;margin-right:7px}
+.delta .now{font-weight:700}
+.delta.up .now{color:var(--accent-deep)}
+.delta.down .now{color:#1a6b4a}
+.delta.gone .now{color:var(--muted);text-decoration:none}
+.warnline{
+  background:var(--accent-tint);border-radius:10px;padding:9px 12px;color:var(--accent-deep);
+  font-size:12.5px;font-weight:600;margin-top:10px;
+}
+
+.v-a .a-two{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:18px}
+@media (max-width:1180px){.v-a .a-two{grid-template-columns:minmax(0,1fr)}.v-a .a-totals{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.v-a table.staff{font-size:13.5px}
+.v-a table.staff th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;padding:8px 10px;border-bottom:1.5px solid var(--hair-2)}
+.v-a table.staff td{padding:7px 10px;border-bottom:1px solid var(--hair)}
+.v-a tr.newrow td{background:var(--accent-tint);border-bottom:2px solid var(--accent)}
+.v-a tr.inactive td{color:var(--muted)}
+.v-a .ordbtns{display:inline-flex;gap:2px}
+.v-a .ordbtn{
+  border:1px solid var(--hair-2);background:var(--paper);width:24px;height:24px;
+  border-radius:6px;cursor:pointer;line-height:1;padding:0;color:var(--ink2);
+}
+.v-a .ordbtn:hover:not(:disabled){background:#f2efe8;color:var(--ink)}
+.v-a .acc-t td{padding:9px 10px;border-bottom:1px solid var(--hair);font-size:13px}
+.v-a .acc-t th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;padding:8px 10px;border-bottom:1.5px solid var(--hair-2)}
+.v-a .danger-zone{border-top:1px solid var(--hair-2);margin-top:2px;padding:12px 16px 14px;background:#fbf9f5;border-radius:0 0 var(--r-card) var(--r-card)}
+.v-a .never{color:var(--accent-deep);font-weight:650}
+.confirmbar{
+  background:var(--accent-tint);border:1.5px solid var(--accent);border-radius:var(--r-in);
+  padding:11px 14px;margin-top:10px;display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+}
+.confirmbar p{font-size:13px;color:var(--accent-deep);font-weight:600;flex:1;min-width:260px}
+
+/* one-time reveal — shared shell, three different framings */
+.reveal{
+  border:2px solid var(--accent);border-radius:var(--r-in);background:var(--paper);
+  padding:14px 16px;margin-top:10px;
+}
+.reveal .once{
+  display:inline-flex;align-items:center;gap:7px;font-size:11px;font-weight:800;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:9px;
+}
+.secret{
+  font-family:var(--mono);font-size:19px;font-weight:600;letter-spacing:.06em;
+  background:#f7f4ee;border:1px dashed var(--hair-2);border-radius:10px;
+  padding:11px 14px;word-break:break-all;
+}
+.ackline{display:flex;align-items:center;gap:9px;margin-top:11px;flex-wrap:wrap}
+.ackline label{font-size:13px;font-weight:600;display:inline-flex;gap:7px;align-items:center;cursor:pointer}
+.ackline input{accent-color:var(--accent-deep)}
+
+/* ============================================================
+   VARIANT B — NIGHTLY
+   ============================================================ */
+.v-b{max-width:1120px}
+.v-b .b-hero{margin-bottom:20px}
+.v-b .b-hero-head{display:flex;align-items:baseline;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.v-b .b-hero-head h3{font-size:20px}
+.v-b .b-hero-head .when{color:var(--muted);font-size:13px}
+.v-b .b-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:1100px){.v-b .b-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.v-b .tile{background:var(--paper);border:1px solid var(--hair);border-radius:var(--r-card);padding:16px 18px 14px}
+.v-b .tile .where{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.v-b .dot{width:9px;height:9px;border-radius:3px;flex:none}
+.v-b .dot.sushi{background:var(--accent)}
+.v-b .dot.poki{background:#2f7d68}
+.v-b .tile .where b{font-size:13.5px;font-weight:650}
+.v-b .tile .where .meal{color:var(--muted);font-size:12.5px}
+.v-b .pp-big{font-size:34px;font-weight:650;letter-spacing:-.025em;line-height:1.05}
+.v-b .pp-cap{font-size:12px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--accent-deep);margin-bottom:2px}
+.v-b .pp-math{color:var(--ink2);font-size:13px;margin-top:6px}
+.v-b .tile .cardline{
+  margin-top:12px;padding-top:10px;border-top:1px solid var(--hair);
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+}
+.v-b .tile .cardline .amt{color:var(--logged-ink);font-weight:650}
+.v-b .names{color:var(--ink2);font-size:12.5px;margin-top:3px}
+
+.v-b .attention{
+  background:var(--accent-tint);border:1.5px solid var(--accent);border-radius:var(--r-in);
+  padding:13px 16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:18px;
+}
+.v-b .attention .txt{flex:1;min-width:340px}
+.v-b .attention b{color:var(--accent-deep)}
+.v-b .attention .sub{color:var(--ink2);font-size:13px;margin-top:2px}
+
+.v-b .b-controls{
+  display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;
+  padding:12px 16px;background:var(--paper);border:1px solid var(--hair);border-radius:var(--r-in);margin-bottom:14px;
+}
+.v-b .day{background:var(--paper);border:1px solid var(--hair);border-radius:var(--r-card);margin-bottom:12px;overflow:hidden}
+.v-b .day-head{
+  display:flex;align-items:baseline;gap:14px;padding:12px 18px;background:#faf8f4;
+  border-bottom:1px solid var(--hair);flex-wrap:wrap;
+}
+.v-b .day-head h4{font-size:14.5px}
+.v-b .day-head .sum{margin-left:auto;display:flex;gap:18px;font-size:12.5px;color:var(--ink2)}
+.v-b .day-head .sum b{color:var(--ink)}
+.v-b .shift{
+  display:grid;grid-template-columns:minmax(180px,1.1fr) minmax(150px,.9fr) minmax(130px,.7fr) minmax(150px,.8fr) auto;
+  gap:16px;align-items:center;padding:13px 18px;border-bottom:1px solid var(--hair);
+  width:100%;text-align:left;background:transparent;border-left:0;border-right:0;border-top:0;cursor:pointer;
+}
+.v-b .shift:last-child{border-bottom:0}
+/* each grid cell stacks its label over its value */
+.v-b .shift>span{display:flex;flex-direction:column;min-width:0}
+.v-b .shift .lbl{display:block}
+.v-b .shift .chev{justify-content:center}
+.v-b .shift:hover{background:#fbf9f5}
+.v-b .shift.flagged{background:#fdf4f2}
+.v-b .shift.flagged:hover{background:#fbeae7}
+.v-b .shift .lbl{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:700;margin-bottom:1px}
+.v-b .shift .cash-amt{font-size:16px;font-weight:650}
+.v-b .shift .pp-amt{font-size:16px;font-weight:700;color:var(--ink)}
+.v-b .shift .card-amt{font-size:15px;font-weight:600;color:var(--logged-ink)}
+.v-b .shift .cash-cell{border-left:3px solid var(--accent);padding-left:11px}
+.v-b .shift .card-cell{border-left:3px solid rgba(0,0,0,.16);padding-left:11px}
+.v-b .chev{color:var(--muted);font-size:18px;line-height:1}
+
+.v-b .b-sec{margin-top:26px}
+.v-b .roster{padding:6px 0}
+.v-b .rline{display:flex;align-items:center;gap:14px;padding:10px 18px;border-bottom:1px solid var(--hair)}
+.v-b .rline:last-child{border-bottom:0}
+.v-b .rline .grip{color:var(--muted);font-size:12px;width:22px}
+.v-b .rline .nm{font-weight:650;min-width:90px}
+.v-b .rline .at{color:var(--ink2);font-size:13px}
+.v-b .rline .rt{margin-left:auto;display:flex;gap:6px;align-items:center}
+.v-b .rline.inactive .nm,.v-b .rline.inactive .at{color:var(--muted)}
+.v-b .addbox{padding:16px 18px;background:var(--accent-tint);border-bottom:1px solid var(--hair)}
+.v-b .addgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:end}
+.v-b .grouplabel{
+  padding:10px 18px 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);font-weight:700;
+}
+.v-b details.access{background:var(--paper);border:1px solid var(--hair);border-radius:var(--r-card)}
+.v-b details.access>summary{
+  padding:15px 20px;cursor:pointer;font-weight:650;display:flex;align-items:center;gap:10px;list-style:none;
+}
+.v-b details.access>summary::-webkit-details-marker{display:none}
+.v-b details.access>summary .mk{color:var(--muted);font-size:12px;transition:transform .15s}
+.v-b details.access[open]>summary .mk{transform:rotate(90deg)}
+.v-b details.access>summary .sub{color:var(--muted);font-weight:500;font-size:12.5px;margin-left:auto}
+.v-b .accbody{padding:4px 20px 20px;border-top:1px solid var(--hair)}
+.v-b .accrest{padding:16px 0;border-bottom:1px solid var(--hair)}
+.v-b .accrest:last-child{border-bottom:0}
+.v-b .accrow{display:flex;gap:16px;align-items:center;padding:9px 0;flex-wrap:wrap}
+.v-b .accrow .what{min-width:230px}
+.v-b .accrow .what b{display:block;font-size:13.5px}
+.v-b .accrow .what span{color:var(--muted);font-size:12.5px}
+
+/* drawer */
+.scrim{position:fixed;inset:0;background:rgba(26,26,26,.34);z-index:100;opacity:0;animation:fade .16s forwards}
+@keyframes fade{to{opacity:1}}
+.drawer{
+  position:fixed;top:0;right:0;bottom:0;width:min(520px,94vw);background:var(--cream);
+  z-index:101;box-shadow:-1px 0 0 var(--hair-2);display:flex;flex-direction:column;
+  transform:translateX(100%);animation:slide .2s forwards;
+}
+@keyframes slide{to{transform:translateX(0)}}
+@media (prefers-reduced-motion:reduce){.scrim,.drawer{animation:none;opacity:1;transform:none}}
+.drawer-head{padding:18px 22px 14px;border-bottom:1px solid var(--hair-2);display:flex;align-items:flex-start;gap:12px}
+.drawer-head h3{font-size:17px}
+.drawer-head .sub{color:var(--ink2);font-size:13px;margin-top:2px}
+.drawer-body{overflow-y:auto;padding:18px 22px;flex:1}
+.drawer-foot{padding:14px 22px;border-top:1px solid var(--hair-2);background:var(--paper);display:flex;gap:10px;align-items:center}
+.drawer-foot .spacer{flex:1}
+.stepdots{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--muted);font-weight:600}
+.xbtn{border:0;background:transparent;font-size:20px;line-height:1;cursor:pointer;color:var(--ink2);padding:2px 6px;border-radius:8px}
+.xbtn:hover{background:rgba(0,0,0,.05);color:var(--ink)}
+.blk{background:var(--paper);border:1px solid var(--hair);border-radius:var(--r-in);padding:14px 16px;margin-bottom:14px}
+.blk h4{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink2);margin-bottom:10px}
+.money-in{position:relative}
+.money-in span{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:600}
+.money-in input{padding-left:24px;width:100%;font-size:16px;font-weight:600}
+.readonly-line{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed var(--hair);font-size:13.5px}
+.readonly-line:last-child{border-bottom:0}
+.readonly-line .k{color:var(--ink2)}
+.readonly-line .v{font-weight:650}
+
+/* ============================================================
+   VARIANT C — PAYOUT
+   ============================================================ */
+.v-c .c-top{
+  display:flex;gap:18px;align-items:flex-end;flex-wrap:wrap;margin-bottom:18px;
+  padding:14px 18px;background:var(--paper);border:1px solid var(--hair);border-radius:var(--r-in);
+}
+.v-c .c-cols{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:1180px){.v-c .c-cols{grid-template-columns:minmax(0,1fr)}}
+.v-c .payhead{padding:18px 20px 14px;border-bottom:1px solid var(--hair)}
+.v-c .payhead .cap{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:800;color:var(--accent-deep)}
+.v-c .payhead .big{font-size:38px;font-weight:650;letter-spacing:-.03em;line-height:1.1;margin-top:4px}
+.v-c .payhead .note{color:var(--ink2);font-size:13px;margin-top:4px}
+.v-c .person{border-bottom:1px solid var(--hair)}
+.v-c .person:last-child{border-bottom:0}
+.v-c .pbtn{
+  width:100%;display:flex;align-items:center;gap:14px;padding:13px 20px;background:transparent;
+  border:0;cursor:pointer;text-align:left;
+}
+.v-c .pbtn:hover{background:#fbf9f5}
+.v-c .avatar{
+  width:34px;height:34px;border-radius:11px;background:var(--accent-tint);color:var(--accent-deep);
+  display:grid;place-items:center;font-weight:700;font-size:14px;flex:none;
+}
+.v-c .avatar.poki{background:#e2efe9;color:#1f5c4c}
+.v-c .avatar.both{background:linear-gradient(90deg,var(--accent-tint) 50%,#e2efe9 50%);color:var(--ink)}
+.v-c .pname{font-weight:650;font-size:14.5px}
+.v-c .pmeta{color:var(--muted);font-size:12.5px}
+/* these live inside inline spans — stack them explicitly */
+.v-c .pname,.v-c .pmeta,.v-c .pamt .n,.v-c .pamt .s{display:block}
+.v-c .pamt{margin-left:auto;text-align:right}
+.v-c .pamt .n{font-size:19px;font-weight:700}
+.v-c .pamt .s{color:var(--muted);font-size:12px}
+.v-c .pdetail{padding:2px 20px 16px 68px;background:#fbf9f5;border-top:1px dashed var(--hair)}
+.v-c .pdrow{display:flex;gap:14px;padding:7px 0;border-bottom:1px dashed var(--hair);font-size:13px;align-items:center}
+.v-c .pdrow:last-child{border-bottom:0}
+.v-c .pdrow .d{color:var(--ink2);min-width:130px}
+.v-c .pdrow .m{color:var(--muted);flex:1}
+.v-c .pdrow .a{font-weight:650}
+.v-c .recon{
+  padding:14px 20px;background:#faf8f4;border-top:1px solid var(--hair);font-size:12.5px;color:var(--ink2);
+  border-radius:0 0 var(--r-card) var(--r-card);
+}
+.v-c .recon dl{display:grid;grid-template-columns:auto auto;gap:3px 16px;margin:0 0 7px}
+.v-c .recon dt{color:var(--ink2)}
+.v-c .recon dd{margin:0;font-weight:650;text-align:right}
+
+.v-c .quarantine{
+  background:var(--logged-bg);border:1px solid rgba(0,0,0,.1);border-radius:var(--r-card);
+  padding:16px 18px;
+}
+.v-c .quarantine .qh{display:flex;align-items:center;gap:9px;margin-bottom:4px}
+.v-c .quarantine h3{font-size:14.5px;color:#3d3a34}
+.v-c .quarantine .qtot{font-size:28px;font-weight:650;color:#3d3a34;letter-spacing:-.02em;margin-top:6px}
+.v-c .quarantine p{color:var(--logged-ink);font-size:12.5px;max-width:52ch}
+.v-c .qbreak{display:flex;gap:22px;margin-top:12px;padding-top:11px;border-top:1px solid rgba(0,0,0,.09);flex-wrap:wrap}
+.v-c .qbreak div{font-size:12.5px;color:var(--logged-ink)}
+.v-c .qbreak b{display:block;font-size:16px;color:#3d3a34}
+
+.v-c .reclist .rrow{
+  display:grid;grid-template-columns:minmax(120px,.9fr) minmax(150px,1.1fr) minmax(90px,.7fr) minmax(90px,.7fr) auto;
+  gap:12px;align-items:center;padding:11px 18px;border-bottom:1px solid var(--hair);font-size:13px;
+}
+.v-c .reclist .rrow:last-child{border-bottom:0}
+.v-c .reclist .rrow.flagged{background:#fdf4f2;box-shadow:inset 3px 0 0 var(--accent)}
+.v-c .reclist .rhead{
+  display:grid;grid-template-columns:minmax(120px,.9fr) minmax(150px,1.1fr) minmax(90px,.7fr) minmax(90px,.7fr) auto;
+  gap:12px;padding:9px 18px;border-bottom:1.5px solid var(--hair-2);
+  font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;font-weight:700;color:var(--ink2);
+}
+.v-c .reclist .cashv{font-weight:650}
+.v-c .reclist .cardv{color:var(--logged-ink)}
+.v-c .rrow .ppl{color:var(--ink2);font-size:12.5px}
+
+.v-c .keys{position:relative}
+.v-c .keys.locked .keybody{opacity:.42;pointer-events:none;filter:saturate(.3)}
+.v-c .lockbar{
+  display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--hair);flex-wrap:wrap;
+}
+.v-c .lockbar .lk{flex:1;min-width:240px}
+.v-c .lockbar b{font-size:14px}
+.v-c .lockbar span{display:block;color:var(--muted);font-size:12.5px}
+.v-c .keyrow{display:flex;align-items:center;gap:14px;padding:12px 18px;border-bottom:1px solid var(--hair);flex-wrap:wrap}
+.v-c .keyrow:last-child{border-bottom:0}
+.v-c .keyrow .kw{min-width:210px}
+.v-c .keyrow .kw b{display:block;font-size:13.5px}
+.v-c .keyrow .kw span{color:var(--muted);font-size:12.5px}
+.v-c .keyrow .kb{margin-left:auto;display:flex;gap:8px}
+
+/* modal */
+.modal{
+  position:fixed;z-index:101;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:min(720px,94vw);max-height:88vh;overflow:auto;background:var(--cream);
+  border-radius:var(--r-card);border:1px solid var(--hair-2);
+}
+.modal-head{padding:20px 24px 16px;border-bottom:1px solid var(--hair-2);display:flex;gap:14px;align-items:flex-start}
+.modal-head h3{font-size:18px}
+.modal-head .sub{color:var(--ink2);font-size:13px;margin-top:3px}
+.modal-body{padding:20px 24px}
+.modal-foot{padding:15px 24px;border-top:1px solid var(--hair-2);display:flex;gap:10px;align-items:center;background:var(--paper);border-radius:0 0 var(--r-card) var(--r-card)}
+.modal-foot .spacer{flex:1}
+.difftable{width:100%;font-size:13.5px;background:var(--paper);border-radius:var(--r-in);overflow:hidden;border:1px solid var(--hair)}
+.difftable th{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;padding:9px 14px;border-bottom:1px solid var(--hair-2);background:#faf8f4}
+.difftable td{padding:10px 14px;border-bottom:1px solid var(--hair)}
+.difftable tr:last-child td{border-bottom:0}
+.difftable .was{color:var(--muted);text-decoration:line-through}
+.difftable .now{font-weight:700}
+.difftable .up .now{color:var(--accent-deep)}
+.difftable .down .now{color:#1a6b4a}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:640px){.grid2{grid-template-columns:1fr}}
+
+/* takeover (variant C one-time reveal) */
+.takeover{
+  position:fixed;inset:0;z-index:150;background:var(--cream);
+  display:grid;place-items:center;padding:32px;overflow:auto;
+}
+.takeover .sheet{width:min(640px,100%);background:var(--paper);border-radius:var(--r-card);border:2px solid var(--accent);padding:28px 32px 26px}
+.takeover .once{
+  display:inline-flex;gap:8px;align-items:center;background:var(--accent-tint);color:var(--accent-deep);
+  border-radius:999px;padding:6px 14px;font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
+}
+.takeover h3{font-size:24px;margin:16px 0 6px;letter-spacing:-.02em}
+.takeover .lede{color:var(--ink2);font-size:14px;max-width:56ch}
+.checklist{margin:20px 0 0;padding:0;list-style:none}
+.checklist li{border-top:1px solid var(--hair);padding:12px 0}
+.checklist label{display:flex;gap:11px;align-items:flex-start;cursor:pointer;font-size:14px;font-weight:600}
+.checklist input{margin-top:3px;accent-color:var(--accent-deep);width:17px;height:17px}
+.checklist .sub{display:block;font-weight:400;color:var(--ink2);font-size:12.5px;margin-top:2px}
+.qrbox{display:flex;gap:22px;align-items:center;margin-top:18px;flex-wrap:wrap}
+.qrbox svg{border:1px solid var(--hair-2);border-radius:12px;background:#fff;padding:8px;flex:none}
+</style>
+</head>
+<body>
+
+<a class="sr" href="#main">Skip to dashboard</a>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">B</div>
+      <div>
+        <div class="brand-name">Babytuna — Tips</div>
+        <div class="brand-sub">Manager view · Sushi + Poki &amp; Pho</div>
+      </div>
+    </div>
+    <div class="switch" role="tablist" aria-label="Design variant">
+      <button role="tab" id="t-a" aria-controls="p-a" aria-selected="true"  data-v="a"><span class="sw-idx">01</span>Ledger</button>
+      <button role="tab" id="t-b" aria-controls="p-b" aria-selected="false" data-v="b" tabindex="-1"><span class="sw-idx">02</span>Nightly</button>
+      <button role="tab" id="t-c" aria-controls="p-c" aria-selected="false" data-v="c" tabindex="-1"><span class="sw-idx">03</span>Payout</button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+  <section class="panel v-a" id="p-a" role="tabpanel" aria-labelledby="t-a" tabindex="-1">
+    <div class="thesis">
+      <div class="kicker">Variant 01</div>
+      <h2>Ledger</h2>
+      <p>Optimizes for the owner who already knows what he is looking for: every record, every total, and both money buckets are on screen at once in one dense table, and corrections happen inline in the row without leaving the grid.</p>
+      <p class="tradeoff"><b>Trades away:</b> comfort and guidance. Nothing is progressively disclosed, so a first shift with it is busy, and the four areas compete for attention rather than taking turns.</p>
+    </div>
+    <div id="body-a"></div>
+  </section>
+
+  <section class="panel v-b" id="p-b" role="tabpanel" aria-labelledby="t-b" tabindex="-1" hidden>
+    <div class="thesis">
+      <div class="kicker">Variant 02</div>
+      <h2>Nightly</h2>
+      <p>Optimizes for the twenty-second morning glance — last night answers itself before any scrolling, days are the unit of reading, and a correction opens a drawer that makes you look at whose pay changes before it will let you save.</p>
+      <p class="tradeoff"><b>Trades away:</b> density and range work. You cannot scan a month at a glance, and each record costs a click to inspect.</p>
+    </div>
+    <div id="body-b"></div>
+  </section>
+
+  <section class="panel v-c" id="p-c" role="tabpanel" aria-labelledby="t-c" tabindex="-1" hidden>
+    <div class="thesis">
+      <div class="kicker">Variant 03</div>
+      <h2>Payout</h2>
+      <p>Reorganizes the page around the question the cash actually answers — what each person is owed — and demotes shift records to the evidence behind it, with card tips quarantined in a visually separate bucket that can never be mistaken for the split.</p>
+      <p class="tradeoff"><b>Trades away:</b> the familiar shift-first model. "What did Saturday dinner do?" becomes a secondary lookup, and the owner has to learn a structure that does not match the phone app he already knows.</p>
+    </div>
+    <div id="body-c"></div>
+  </section>
+
+</main>
+
+<div class="toastwrap" id="toasts" role="status" aria-live="polite"></div>
+<div id="overlay"></div>
+
+<script>
+"use strict";
+
+/* ============================================================
+   DATA — one seed, cloned per variant so play in one variant
+   never changes the numbers a reviewer sees in another.
+   ============================================================ */
+const TODAY = "2026-08-10";
+const TODAY_LABEL = "Aug 10, 2026";
+
+const STAFF_SEED = [
+  {id:"maria", name:"Maria", at:"sushi", active:true},
+  {id:"jose",  name:"Jose",  at:"sushi", active:true},
+  {id:"ken",   name:"Ken",   at:"both",  active:true},
+  {id:"rey",   name:"Rey",   at:"both",  active:true},
+  {id:"lena",  name:"Lena",  at:"poki",  active:true},
+  {id:"tom",   name:"Tom",   at:"poki",  active:true},
+  {id:"aiko",  name:"Aiko",  at:"sushi", active:false}
+];
+
+/* cash / card held in integer cents throughout */
+const REC_SEED = [
+  {id:"r1",  date:"2026-08-09", dow:"Sun", rest:"sushi", meal:"dinner", cash:41200,  card:68850, people:["maria","jose","ken"], by:"Maria", how:"typed", flag:false},
+  {id:"r2",  date:"2026-08-09", dow:"Sun", rest:"sushi", meal:"lunch",  cash:9625,   card:21000, people:["maria","ken"],         by:"Ken",   how:"voice", flag:false},
+  {id:"r3",  date:"2026-08-09", dow:"Sun", rest:"poki",  meal:"dinner", cash:18800,  card:40275, people:["lena","tom"],          by:"Lena",  how:"typed", flag:false},
+  {id:"r4",  date:"2026-08-08", dow:"Sat", rest:"sushi", meal:"dinner", cash:36650,  card:59400, people:["jose","ken","rey"],    by:"Jose",  how:"typed", flag:false},
+  {id:"r5",  date:"2026-08-08", dow:"Sat", rest:"poki",  meal:"dinner", cash:20575,  card:38800, people:["lena","tom","rey"],    by:"Tom",   how:"voice", flag:false},
+  {id:"r6",  date:"2026-08-08", dow:"Sat", rest:"poki",  meal:"lunch",  cash:7400,   card:16525, people:["lena"],               by:"Lena",  how:"typed", flag:false},
+  {id:"r7",  date:"2026-08-07", dow:"Fri", rest:"sushi", meal:"dinner", cash:310000, card:61000, people:["maria","jose"],        by:"Jose",  how:"voice", flag:true},
+  {id:"r8",  date:"2026-08-07", dow:"Fri", rest:"sushi", meal:"lunch",  cash:8850,   card:17400, people:["maria"],              by:"Maria", how:"typed", flag:false},
+  {id:"r9",  date:"2026-08-07", dow:"Fri", rest:"poki",  meal:"dinner", cash:19725,  card:35150, people:["tom","rey"],           by:"Rey",   how:"typed", flag:false},
+  {id:"r10", date:"2026-08-06", dow:"Thu", rest:"sushi", meal:"dinner", cash:34400,  card:56125, people:["maria","jose","ken"],  by:"Maria", how:"typed", flag:false}
+];
+
+const ACCESS_SEED = {
+  sushi:{qr:"Aug 8, 2026", pin:"Aug 8, 2026", phones:3},
+  poki: {qr:null,          pin:"Aug 8, 2026", phones:2}
+};
+
+const REST = {
+  sushi:{name:"Babytuna Sushi", short:"Sushi"},
+  poki: {name:"Babytuna Poki & Pho", short:"Poki & Pho"}
+};
+
+/* ============================================================
+   MONEY + THE SPLIT RULE
+   Per-person share = cash ÷ people, half-cent rounds UP.
+   Card never enters this function. That is the whole rule.
+   ============================================================ */
+function share(cashCents, n){
+  if(!n) return 0;
+  return Math.floor(cashCents / n + 0.5);
+}
+function money(c){
+  const neg = c < 0; c = Math.abs(c);
+  const s = (c/100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (neg ? "-$" : "$") + s;
+}
+function plain(c){ return (c/100).toFixed(2); }
+function parseMoney(str){
+  const v = parseFloat(String(str).replace(/[^0-9.\-]/g,""));
+  if(!isFinite(v) || v < 0) return null;
+  return Math.round(v*100);
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m])); }
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+function dLabel(r){ return r.dow + " " + monthName(r.date) + " " + Number(r.date.slice(8,10)); }
+function monthName(iso){
+  return ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][Number(iso.slice(5,7))-1];
+}
+function nameOf(st, id){ const p = st.staff.find(s=>s.id===id); return p ? p.name : id; }
+function namesOf(st, ids){ return ids.map(i=>nameOf(st,i)).join(", "); }
+function mealName(m){ return m === "lunch" ? "Lunch" : "Dinner"; }
+
+/* typical range for a (restaurant, meal) slot, ignoring flagged rows —
+   this is what makes the flag explainable rather than just decorative */
+function typicalRange(st, rec){
+  const peers = st.records.filter(r => r.rest===rec.rest && r.meal===rec.meal && !r.flag && r.id!==rec.id);
+  if(peers.length < 2) return null;
+  const vals = peers.map(r=>r.cash).sort((a,b)=>a-b);
+  return {lo:vals[0], hi:vals[vals.length-1]};
+}
+
+const NOSPLIT_ICON =
+  '<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">' +
+  '<circle cx="8" cy="8" r="6.4" fill="none" stroke="currentColor" stroke-width="1.6"/>' +
+  '<line x1="3.6" y1="12.4" x2="12.4" y2="3.6" stroke="currentColor" stroke-width="1.6"/></svg>';
+
+/* ============================================================
+   PER-VARIANT STATE
+   ============================================================ */
+function freshState(){
+  return {
+    staff: clone(STAFF_SEED),
+    records: clone(REC_SEED),
+    access: clone(ACCESS_SEED),
+    filters:{from:"2026-08-04", to:"2026-08-10", rest:"all", preset:"7d"},
+    ui:{}
+  };
+}
+const S = {a:freshState(), b:freshState(), c:freshState()};
+const scrollMem = {a:0,b:0,c:0};
+let current = "a";
+
+function visible(st){
+  return st.records.filter(r =>
+    r.date >= st.filters.from && r.date <= st.filters.to &&
+    (st.filters.rest === "all" || r.rest === st.filters.rest)
+  );
+}
+function totals(rows){
+  const cash = rows.reduce((a,r)=>a+r.cash,0);
+  const card = rows.reduce((a,r)=>a+r.card,0);
+  const dist = rows.reduce((a,r)=>a+share(r.cash,r.people.length)*r.people.length,0);
+  return {cash, card, dist, n:rows.length};
+}
+function byDay(rows){
+  const map = new Map();
+  rows.forEach(r => { if(!map.has(r.date)) map.set(r.date, []); map.get(r.date).push(r); });
+  return [...map.entries()].sort((a,b)=> a[0] < b[0] ? 1 : -1);
+}
+function payouts(st, rows){
+  const m = new Map();
+  rows.forEach(r => {
+    const per = share(r.cash, r.people.length);
+    r.people.forEach(pid => {
+      if(!m.has(pid)) m.set(pid, {id:pid, total:0, lines:[]});
+      const e = m.get(pid);
+      e.total += per;
+      e.lines.push({rec:r, amt:per});
+    });
+  });
+  return [...m.values()].sort((a,b)=> b.total - a.total);
+}
+
+/* ============================================================
+   TOASTS
+   ============================================================ */
+function toast(html){
+  const wrap = document.getElementById("toasts");
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.innerHTML = html;
+  wrap.appendChild(el);
+  setTimeout(()=>{ el.remove(); }, 5200);
+}
+
+/* ============================================================
+   SECRETS + QR (offline, deterministic-looking, no network)
+   ============================================================ */
+function newToken(rest){
+  const A = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for(let i=0;i<12;i++){
+    if(i && i%4===0) s += "-";
+    s += A[Math.floor(Math.random()*A.length)];
+  }
+  return "BT-" + (rest==="sushi" ? "SUS" : "PKP") + "-" + s;
+}
+function newPin(){
+  let s = "";
+  for(let i=0;i<6;i++) s += Math.floor(Math.random()*10);
+  return s;
+}
+function hashStr(s){
+  let h = 2166136261;
+  for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function qrSvg(seed, px){
+  const n = 25, q = 1, total = n + q*2;
+  let h = hashStr(seed) || 1;
+  const rnd = () => { h ^= h<<13; h>>>=0; h ^= h>>17; h ^= h<<5; h>>>=0; return h/4294967296; };
+  const grid = [];
+  for(let y=0;y<n;y++){ grid.push([]); for(let x=0;x<n;x++) grid[y].push(rnd() > 0.5 ? 1 : 0); }
+  const finder = (ox, oy) => {
+    for(let y=0;y<7;y++) for(let x=0;x<7;x++){
+      const edge = (x===0||x===6||y===0||y===6);
+      const core = (x>=2&&x<=4&&y>=2&&y<=4);
+      grid[oy+y][ox+x] = (edge||core) ? 1 : 0;
+    }
+    for(let i=0;i<8;i++){
+      if(oy+7 < n && ox+i < n) grid[oy+7][ox+i] = 0;
+      if(ox+7 < n && oy+i < n) grid[oy+i][ox+7] = 0;
+    }
+  };
+  finder(0,0); finder(n-7,0); finder(0,n-7);
+  let rects = "";
+  for(let y=0;y<n;y++) for(let x=0;x<n;x++)
+    if(grid[y][x]) rects += '<rect x="'+(x+q)+'" y="'+(y+q)+'" width="1" height="1"/>';
+  return '<svg width="'+px+'" height="'+px+'" viewBox="0 0 '+total+' '+total+'" role="img" ' +
+         'aria-label="New QR sticker code"><rect width="'+total+'" height="'+total+'" fill="#fff"/>' +
+         '<g fill="#1a1a1a" shape-rendering="crispEdges">'+rects+'</g></svg>';
+}
+
+/* ============================================================
+   CSV EXPORT — real, via data: URI, works offline
+   ============================================================ */
+function exportCsv(v){
+  const st = S[v];
+  const rows = visible(st);
+  const head = ["Business date","Restaurant","Meal","Cash pool (split)","Card (logged, not split)","People","Per person","Flagged","Closed by","Method"];
+  /* one header contains a comma — quote them all or the columns shift */
+  const lines = [head.map(h => '"' + h + '"').join(",")];
+  rows.forEach(r => {
+    lines.push([
+      dLabel(r), REST[r.rest].short, mealName(r.meal),
+      plain(r.cash), plain(r.card),
+      '"' + namesOf(st, r.people) + '"',
+      plain(share(r.cash, r.people.length)),
+      r.flag ? "FLAGGED" : "", r.by, r.how
+    ].join(","));
+  });
+  const t = totals(rows);
+  lines.push(["TOTAL","","",plain(t.cash),plain(t.card),"","","","",""].join(","));
+  const uri = "data:text/csv;charset=utf-8," + encodeURIComponent(lines.join("\n"));
+  const a = document.createElement("a");
+  a.href = uri;
+  a.download = "babytuna-tips-" + st.filters.from + "-to-" + st.filters.to + ".csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  toast("Exported <b>" + rows.length + " records</b> to CSV.");
+}
+
+/* ============================================================
+   SHARED: draft editing model
+   ============================================================ */
+function startDraft(v, recId){
+  const st = S[v];
+  const r = st.records.find(x=>x.id===recId);
+  st.ui.draft = {
+    id: r.id,
+    cash: plain(r.cash),
+    card: plain(r.card),
+    people: r.people.slice(),
+    step: 1
+  };
+}
+function draftRec(v){
+  const st = S[v];
+  return st.records.find(x=>x.id===st.ui.draft.id);
+}
+function draftNums(v){
+  const st = S[v], d = st.ui.draft;
+  const cash = parseMoney(d.cash), card = parseMoney(d.card);
+  const n = d.people.length;
+  return {
+    cash, card, n,
+    valid: cash !== null && card !== null && n > 0,
+    per: (cash !== null && n > 0) ? share(cash, n) : null
+  };
+}
+/* who gains, who loses, who drops off — the consequence of a correction */
+function deltas(v){
+  const st = S[v], d = st.ui.draft, r = draftRec(v), nm = draftNums(v);
+  const before = share(r.cash, r.people.length);
+  const out = [];
+  const all = [...new Set([...r.people, ...d.people])];
+  all.forEach(pid => {
+    const was = r.people.includes(pid) ? before : null;
+    const now = d.people.includes(pid) ? nm.per : null;
+    out.push({id:pid, name:nameOf(st,pid), was, now});
+  });
+  return out;
+}
+function commitDraft(v){
+  const st = S[v], d = st.ui.draft, r = draftRec(v), nm = draftNums(v);
+  r.cash = nm.cash; r.card = nm.card; r.people = d.people.slice();
+  const t = typicalRange(st, r);
+  r.flag = !!(t && (r.cash > t.hi * 3));
+  r.edited = true;
+  const per = share(r.cash, r.people.length);
+  st.ui.draft = null;
+  toast("Corrected <b>" + dLabel(r) + " · " + REST[r.rest].short + " " + mealName(r.meal) +
+        "</b>. Each person now gets " + money(per) + ".");
+}
+
+/* ============================================================
+   VARIANT A — LEDGER
+   ============================================================ */
+function renderA(){
+  const st = S.a, rows = visible(st), t = totals(rows), days = byDay(rows);
+  const flagged = rows.filter(r=>r.flag);
+
+  const presets = [
+    {k:"7d",  label:"Last 7 days",   from:"2026-08-04", to:"2026-08-10"},
+    {k:"14d", label:"Last 14 days",  from:"2026-07-28", to:"2026-08-10"},
+    {k:"pp",  label:"Pay period Aug 1–15", from:"2026-08-01", to:"2026-08-15"}
+  ];
+
+  let h = '<div class="a-grid">';
+
+  /* filter bar */
+  h += '<div class="a-bar">' +
+    '<div class="chips" role="group" aria-label="Date range presets">' +
+      presets.map(p => '<button class="chip" data-act="a-preset" data-k="'+p.k+'" aria-pressed="'+(st.filters.preset===p.k)+'">'+p.label+'</button>').join("") +
+    '</div>' +
+    '<div class="field"><label for="a-from">From</label><input id="a-from" type="date" value="'+st.filters.from+'" data-act="a-date" data-which="from"></div>' +
+    '<div class="field"><label for="a-to">To</label><input id="a-to" type="date" value="'+st.filters.to+'" data-act="a-date" data-which="to"></div>' +
+    '<div class="field"><label for="a-rest">Restaurant</label>' +
+      '<select id="a-rest" data-act="a-rest">' +
+        '<option value="all"'+(st.filters.rest==="all"?" selected":"")+'>Both restaurants</option>' +
+        '<option value="sushi"'+(st.filters.rest==="sushi"?" selected":"")+'>Babytuna Sushi</option>' +
+        '<option value="poki"'+(st.filters.rest==="poki"?" selected":"")+'>Babytuna Poki &amp; Pho</option>' +
+      '</select></div>' +
+    '<div style="margin-left:auto"><button class="btn" data-act="export" data-v="a">Export CSV</button></div>' +
+  '</div>';
+
+  /* totals */
+  const roundDelta = t.dist - t.cash;
+  h += '<dl class="a-totals">' +
+    '<div class="a-tot is-cash"><dt>Cash pool — split</dt><dd>'+money(t.cash)+'</dd>' +
+      '<div class="sub">Handed out in shares that night</div></div>' +
+    '<div class="a-tot is-card"><dt>Card — logged only</dt><dd>'+money(t.card)+'</dd>' +
+      '<div class="sub">Never part of a share · paid separately</div></div>' +
+    '<div class="a-tot"><dt>Records</dt><dd>'+t.n+'</dd>' +
+      '<div class="sub">'+days.length+' business days'+(flagged.length?' · <span class="never">'+flagged.length+' flagged</span>':'')+'</div></div>' +
+    '<div class="a-tot"><dt>Shares distributed</dt><dd>'+money(t.dist)+'</dd>' +
+      '<div class="sub">'+(roundDelta===0 ? "Matches the pool exactly"
+        : (roundDelta>0?"+":"")+money(roundDelta).replace("$","$")+" vs pool — half-cent round-ups")+'</div></div>' +
+  '</dl>';
+
+  /* hand-drawn cash-by-day chart, with the flagged day broken so one
+     outlier does not flatten the rest of the scale */
+  h += '<div class="card a-chart">' + chartA(days) + '</div>';
+
+  /* the ledger */
+  h += '<div class="card"><div class="a-tablewrap"><table class="ledger">' +
+    '<caption class="sr">Recorded tips for the selected range</caption>' +
+    '<thead>' +
+      '<tr class="grp">' +
+        '<th colspan="3"></th>' +
+        '<th class="zone-cash first" colspan="3" style="color:var(--accent-deep)">Cash — split evenly, paid that night</th>' +
+        '<th class="zone-card first" colspan="1">Card — logged only</th>' +
+        '<th colspan="3"></th>' +
+      '</tr>' +
+      '<tr class="cols">' +
+        '<th scope="col">Date</th><th scope="col">Meal</th><th scope="col">Restaurant</th>' +
+        '<th scope="col" class="zone-cash first">Pool</th>' +
+        '<th scope="col" class="zone-cash">People</th>' +
+        '<th scope="col" class="zone-cash">Per person</th>' +
+        '<th scope="col" class="zone-card first">Amount</th>' +
+        '<th scope="col">Split between</th>' +
+        '<th scope="col">Closed by</th>' +
+        '<th scope="col"><span class="sr">Actions</span></th>' +
+      '</tr>' +
+    '</thead><tbody>';
+
+  if(!rows.length){
+    h += '<tr><td colspan="10" style="padding:26px;text-align:center;color:var(--muted)">No records in this range.</td></tr>';
+  }
+
+  days.forEach(([date, drows]) => {
+    const dt = totals(drows);
+    const r0 = drows[0];
+    h += '<tr class="daybreak"><td colspan="10">' + dLabel(r0) +
+      '<span class="dsum">' + drows.length + ' record' + (drows.length>1?"s":"") +
+      ' · cash <b>'+money(dt.cash)+'</b> · card '+money(dt.card)+'</span></td></tr>';
+
+    drows.forEach(r => {
+      const n = r.people.length, per = share(r.cash, n);
+      const editing = st.ui.draft && st.ui.draft.id === r.id;
+      h += '<tr class="rec'+(r.flag?" flagged":"")+'">' +
+        '<td>'+dLabel(r)+'</td>' +
+        '<td>'+mealName(r.meal)+'</td>' +
+        '<td>'+REST[r.rest].short+'</td>' +
+        '<td class="zone-cash first"><span class="cash-ink">'+money(r.cash)+'</span>' +
+          (r.flag ? ' <span class="tag flag">flagged</span>' : '') +
+          (r.edited ? ' <span class="tag">edited</span>' : '') + '</td>' +
+        '<td class="zone-cash"><span class="divsign">÷</span> '+n+'</td>' +
+        '<td class="zone-cash"><span class="pp">'+money(per)+'</span></td>' +
+        '<td class="zone-card first">'+money(r.card)+'</td>' +
+        '<td class="who">'+esc(namesOf(st, r.people))+'</td>' +
+        '<td class="meta">'+esc(r.by)+' · '+r.how+'</td>' +
+        '<td style="text-align:right"><button class="btn sm" data-act="a-edit" data-id="'+r.id+'" aria-expanded="'+(editing?"true":"false")+'">'+(editing?"Close":"Correct")+'</button></td>' +
+      '</tr>';
+      if(editing) h += editRowA(r);
+    });
+  });
+
+  h += '<tr class="totals">' +
+      '<td colspan="3">Range total · '+t.n+' records</td>' +
+      '<td class="zone-cash first">'+money(t.cash)+'</td>' +
+      '<td class="zone-cash"></td>' +
+      '<td class="zone-cash" style="font-weight:600;font-size:12px;color:var(--accent-deep)">'+money(t.dist)+' out</td>' +
+      '<td class="zone-card first">'+money(t.card)+'</td>' +
+      '<td colspan="3"></td>' +
+    '</tr>';
+  h += '</tbody></table></div>' +
+    '<div style="padding:12px 16px;border-top:1px solid var(--hair)"><div class="legend">' +
+      '<span><span class="sw cash"></span>Cash — divided by head count, handed out that night</span>' +
+      '<span><span class="sw card"></span>Card — recorded for payroll, never divided</span>' +
+      '<span style="color:var(--muted)">Business day rolls over at 4am</span>' +
+    '</div></div></div>';
+
+  /* staff + access, side by side, below the ledger */
+  h += '<div class="a-two">' + staffA() + accessA() + '</div>';
+  h += '</div>';
+
+  document.getElementById("body-a").innerHTML = h;
+}
+
+function chartA(days){
+  if(!days.length) return '<figcaption>No data in range.</figcaption>';
+  const W = 100, GAP = 26, H = 96, pad = 30;
+  const data = days.slice().reverse().map(([d, rows]) => {
+    const t = totals(rows);
+    return {label: dLabel(rows[0]), cash:t.cash, flagged: rows.some(r=>r.flag)};
+  });
+  const clean = data.filter(d=>!d.flagged).map(d=>d.cash);
+  const scaleMax = Math.max(1, clean.length ? Math.max(...clean) * 1.18 : Math.max(...data.map(d=>d.cash)));
+  let bars = "", x = 0;
+  data.forEach(d => {
+    const over = d.cash > scaleMax;
+    const hgt = Math.max(3, Math.round((Math.min(d.cash, scaleMax) / scaleMax) * H));
+    const y = pad + H - hgt;
+    bars += '<g>';
+    bars += '<rect x="'+x+'" y="'+y+'" width="'+W+'" height="'+hgt+'" rx="4" fill="'+(over?"var(--accent)":"#e9c9c1")+'"/>';
+    if(over){
+      /* break marker: this bar is clipped, do not read it to scale */
+      bars += '<path d="M'+x+' '+(y+13)+' l'+(W/4)+' -7 l'+(W/4)+' 7 l'+(W/4)+' -7 l'+(W/4)+' 7 v9 h-'+W+' z" fill="var(--cream)"/>';
+      bars += '<path d="M'+x+' '+(y+13)+' l'+(W/4)+' -7 l'+(W/4)+' 7 l'+(W/4)+' -7 l'+(W/4)+' 7" fill="none" stroke="var(--accent)" stroke-width="2"/>';
+    }
+    bars += '<text x="'+(x+W/2)+'" y="'+(y-7)+'" text-anchor="middle" font-size="13" font-weight="700" fill="'+(over?"var(--accent-deep)":"#1a1a1a")+'">'+money(d.cash)+'</text>';
+    bars += '<text x="'+(x+W/2)+'" y="'+(pad+H+18)+'" text-anchor="middle" font-size="12" fill="#5f5f5f">'+d.label+'</text>';
+    bars += '</g>';
+    x += W + GAP;
+  });
+  const totalW = data.length * (W+GAP) - GAP;
+  return '<figure style="margin:0">' +
+    '<figcaption>Cash pool by business day. The Friday bar is <b>clipped</b> — it contains the flagged $3,100.00 entry and is not drawn to scale.</figcaption>' +
+    '<svg viewBox="0 0 '+totalW+' '+(pad+H+26)+'" width="100%" height="150" role="img" ' +
+    'aria-label="Cash pool by day: ' + data.map(d=>d.label+" "+money(d.cash)).join("; ") + '">' +
+    '<line x1="0" y1="'+(pad+H)+'" x2="'+totalW+'" y2="'+(pad+H)+'" stroke="rgba(0,0,0,.12)"/>' +
+    bars + '</svg></figure>';
+}
+
+function editRowA(r){
+  const st = S.a, d = st.ui.draft, nm = draftNums("a");
+  const roster = st.staff.filter(s => s.active && (s.at === "both" || s.at === r.rest));
+  const others = st.staff.filter(s => s.active && !(s.at === "both" || s.at === r.rest));
+  const chip = s => {
+    const on = d.people.includes(s.id);
+    return '<label class="chk'+(on?" on":"")+(s.at!=="both"&&s.at!==r.rest?" other":"")+'">' +
+      '<input type="checkbox" data-act="a-person" data-id="'+s.id+'"'+(on?" checked":"")+'> '+esc(s.name)+'</label>';
+  };
+  return '<tr class="editrow"><td colspan="10"><div class="edit-in">' +
+    '<div class="sec-head"><h3>Correct — '+dLabel(r)+' · '+REST[r.rest].name+' '+mealName(r.meal)+'</h3>' +
+      '<span class="hint">Originally closed by '+esc(r.by)+' ('+r.how+')</span></div>' +
+    '<div class="edit-grid">' +
+      '<div class="field"><label for="a-cash">Cash pool (split)</label>' +
+        '<div class="money-in"><span>$</span><input id="a-cash" inputmode="decimal" value="'+d.cash+'" data-act="a-cash"></div></div>' +
+      '<div class="field"><label for="a-card">Card (logged only)</label>' +
+        '<div class="money-in"><span>$</span><input id="a-card" inputmode="decimal" value="'+d.card+'" data-act="a-card"></div></div>' +
+      '<div><div class="field" style="margin-bottom:8px"><label>On the split ('+d.people.length+')</label></div>' +
+        '<div class="ppl-box">'+roster.map(chip).join("")+'</div>' +
+        (others.length ? '<div style="margin-top:9px"><div class="meta" style="margin-bottom:5px">Not normally at this restaurant</div><div class="ppl-box">'+others.map(chip).join("")+'</div></div>' : '') +
+      '</div>' +
+      '<div id="a-preview">'+previewA()+'</div>' +
+    '</div>' +
+    '<div class="btn-row" style="margin-top:14px">' +
+      '<button class="btn primary" data-act="a-apply"'+(nm.valid?"":" disabled")+'>Apply correction</button>' +
+      '<button class="btn ghost" data-act="a-cancel">Cancel</button>' +
+      '<span class="meta" style="margin-left:6px">Changes what these people are owed. No approval step — this saves immediately.</span>' +
+    '</div>' +
+  '</div></td></tr>';
+}
+
+function previewA(){
+  const st = S.a, nm = draftNums("a"), r = draftRec("a");
+  if(!nm.valid){
+    return '<div class="preview"><h4>Result</h4><p style="color:var(--accent-deep);font-weight:600;font-size:13px">' +
+      (nm.n === 0 ? "Pick at least one person." : "Enter a valid amount.") + '</p></div>';
+  }
+  const ds = deltas("a");
+  let rows = ds.map(x => {
+    const cls = x.now === null ? "gone" : (x.was === null || x.now > x.was ? "up" : (x.now < x.was ? "down" : ""));
+    let val;
+    if(x.now === null) val = '<span class="now">removed</span>';
+    else if(x.was === null) val = '<span class="now">'+money(x.now)+'</span> <span class="meta">new</span>';
+    else if(x.was === x.now) val = '<span class="now">'+money(x.now)+'</span> <span class="meta">no change</span>';
+    else val = '<span class="was">'+money(x.was)+'</span><span class="now">'+money(x.now)+'</span>';
+    return '<div class="delta '+cls+'"><span class="nm">'+esc(x.name)+'</span><span class="vals">'+val+'</span></div>';
+  }).join("");
+  const out = nm.per * nm.n, diff = out - nm.cash;
+  let h = '<div class="preview"><h4>Per person after this change</h4>' +
+    '<div style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin-bottom:9px">'+money(nm.per) +
+    ' <span style="font-size:13px;font-weight:500;color:var(--ink2)">= '+money(nm.cash)+' ÷ '+nm.n+'</span></div>' +
+    rows;
+  if(diff !== 0){
+    h += '<div class="roundnote">Shares total '+money(out)+' — ' +
+      (diff>0 ? money(diff)+" over" : money(-diff)+" under") + ' the pool after rounding. The drawer absorbs it.</div>';
+  }
+  if(nm.card !== r.card){
+    h += '<div class="roundnote"><b>Card '+money(r.card)+' → '+money(nm.card)+'.</b> Logged only — no one’s share moves.</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function staffA(){
+  const st = S.a;
+  const counts = {};
+  st.records.forEach(r => r.people.forEach(p => counts[p] = (counts[p]||0)+1));
+  const nf = st.ui.newStaff || {name:"", at:"sushi"};
+
+  let h = '<section class="card"><div style="padding:16px 16px 12px"><div class="sec-head">' +
+    '<h3>Staff</h3><span class="hint">Order here is the order the phone picker shows</span></div></div>' +
+    '<table class="staff"><caption class="sr">Staff list</caption><thead><tr>' +
+    '<th scope="col" style="width:52px">Order</th><th scope="col">Name</th><th scope="col">Works at</th>' +
+    '<th scope="col">Shifts</th><th scope="col">Status</th><th scope="col"><span class="sr">Actions</span></th>' +
+    '</tr></thead><tbody>';
+
+  /* add row is always present and always first — a new hire is the common case */
+  h += '<tr class="newrow"><td><span class="meta">new</span></td>' +
+    '<td><input id="a-newname" placeholder="Name" value="'+esc(nf.name)+'" data-act="a-newname" aria-label="New staff name" style="border:1px solid var(--hair-2);border-radius:8px;padding:5px 8px;width:100%;max-width:150px"></td>' +
+    '<td><select id="a-newat" data-act="a-newat" aria-label="New staff works at" style="border:1px solid var(--hair-2);border-radius:8px;padding:5px 8px">' +
+      '<option value="sushi"'+(nf.at==="sushi"?" selected":"")+'>Sushi</option>' +
+      '<option value="poki"'+(nf.at==="poki"?" selected":"")+'>Poki &amp; Pho</option>' +
+      '<option value="both"'+(nf.at==="both"?" selected":"")+'>Both</option></select></td>' +
+    '<td colspan="2" class="meta">Appears in the picker immediately</td>' +
+    '<td style="text-align:right"><button class="btn primary sm" data-act="a-add">Add</button></td></tr>';
+
+  st.staff.forEach((s, i) => {
+    const renaming = st.ui.renaming === s.id;
+    const n = counts[s.id] || 0;
+    h += '<tr class="'+(s.active?"":"inactive")+'">' +
+      '<td><span class="ordbtns">' +
+        '<button class="ordbtn" data-act="a-move" data-id="'+s.id+'" data-dir="-1" '+(i===0?"disabled":"")+' aria-label="Move '+esc(s.name)+' up">↑</button>' +
+        '<button class="ordbtn" data-act="a-move" data-id="'+s.id+'" data-dir="1" '+(i===st.staff.length-1?"disabled":"")+' aria-label="Move '+esc(s.name)+' down">↓</button>' +
+      '</span></td>' +
+      '<td>' + (renaming
+        ? '<input value="'+esc(s.name)+'" data-act="a-renameinput" data-id="'+s.id+'" aria-label="Rename '+esc(s.name)+'" style="border:1px solid var(--accent);border-radius:8px;padding:4px 8px;width:130px">'
+        : '<b>'+esc(s.name)+'</b>') + '</td>' +
+      '<td><select data-act="a-at" data-id="'+s.id+'" aria-label="'+esc(s.name)+' works at" style="border:1px solid var(--hair-2);border-radius:8px;padding:4px 7px;font-size:12.5px">' +
+        '<option value="sushi"'+(s.at==="sushi"?" selected":"")+'>Sushi</option>' +
+        '<option value="poki"'+(s.at==="poki"?" selected":"")+'>Poki &amp; Pho</option>' +
+        '<option value="both"'+(s.at==="both"?" selected":"")+'>Both</option></select></td>' +
+      '<td class="meta">'+(n||"—")+'</td>' +
+      '<td>'+(s.active?'<span class="tag" style="background:#e2efe9;color:#1f5c4c">active</span>':'<span class="tag off">inactive</span>')+'</td>' +
+      '<td style="text-align:right;white-space:nowrap">' +
+        (renaming
+          ? '<button class="btn sm primary" data-act="a-renamesave" data-id="'+s.id+'">Save</button> '
+          : '<button class="btn sm ghost" data-act="a-rename" data-id="'+s.id+'">Rename</button> ') +
+        '<button class="btn sm ghost" data-act="a-active" data-id="'+s.id+'">'+(s.active?"Deactivate":"Reactivate")+'</button> ' +
+        (n === 0
+          ? '<button class="btn sm danger" data-act="a-del" data-id="'+s.id+'">Delete</button>'
+          : '<button class="btn sm" disabled title="Has '+n+' recorded shifts — deactivate instead">Delete</button>') +
+      '</td></tr>';
+  });
+  h += '</tbody></table>' +
+    '<div style="padding:11px 16px;border-top:1px solid var(--hair)" class="meta">' +
+    'Deactivating keeps every past shift and share intact — the person just stops appearing in the phone picker. ' +
+    'Delete is only offered for someone with no recorded shifts.</div></section>';
+  return h;
+}
+
+function accessA(){
+  const st = S.a;
+  const rowFor = (rk, kind) => {
+    const a = st.access[rk];
+    const when = kind === "qr" ? a.qr : a.pin;
+    const pend = st.ui.pending;
+    const isPending = pend && pend.rest === rk && pend.kind === kind;
+    const rev = st.ui.reveal;
+    const isRev = rev && rev.rest === rk && rev.kind === kind;
+    let h = '<tr><td><b>'+REST[rk].short+'</b></td>' +
+      '<td>'+(kind==="qr"?"QR sticker":"Numeric PIN")+'</td>' +
+      '<td>'+(when ? when : '<span class="never">never rotated</span>')+'</td>' +
+      '<td style="text-align:right"><button class="btn sm danger" data-act="a-rotate" data-rest="'+rk+'" data-kind="'+kind+'">Rotate</button></td></tr>';
+    if(isPending){
+      h += '<tr><td colspan="4" style="padding:0 10px 12px"><div class="confirmbar">' +
+        '<p>' + (kind === "qr"
+          ? "Rotating kills the printed sticker at " + REST[rk].name + " immediately. Nobody can sign in until a new one is printed and stuck up."
+          : "Rotating means every closer at " + REST[rk].name + " needs the new number tonight. The old PIN stops working right away.") +
+        ' The new code is shown once and cannot be looked up later.</p>' +
+        '<span class="btn-row"><button class="btn primary sm" data-act="a-rotate-go" data-rest="'+rk+'" data-kind="'+kind+'">Yes, rotate now</button>' +
+        '<button class="btn ghost sm" data-act="a-rotate-cancel">Cancel</button></span></div></td></tr>';
+    }
+    if(isRev){
+      h += '<tr><td colspan="4" style="padding:0 10px 12px"><div class="reveal">' +
+        '<span class="once">' + NOSPLIT_ICON + ' Shown once — not recoverable</span>' +
+        (kind === "qr"
+          ? '<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">' + qrSvg(rev.value, 128) +
+            '<div style="flex:1;min-width:220px"><div class="secret">'+rev.value+'</div>' +
+            '<div class="meta" style="margin-top:7px">Print this and replace the sticker by the register at '+REST[rk].name+'.</div></div></div>'
+          : '<div class="secret" style="font-size:30px;letter-spacing:.3em">'+rev.value+'</div>' +
+            '<div class="meta" style="margin-top:7px">Tell tonight’s closers at '+REST[rk].name+'.</div>') +
+        '<div class="ackline">' +
+          '<label><input type="checkbox" data-act="a-ackchk"'+(st.ui.acked?" checked":"")+'> I have ' + (kind==="qr"?"printed or saved it":"written it down") + '</label>' +
+          '<button class="btn primary sm" data-act="a-ackdone"'+(st.ui.acked?"":" disabled")+'>Done</button>' +
+          '<button class="btn sm" data-act="a-copy" data-val="'+rev.value+'">Copy</button>' +
+        '</div></div></td></tr>';
+    }
+    return h;
+  };
+
+  return '<section class="card"><div style="padding:16px 16px 4px"><div class="sec-head">' +
+    '<h3>Device access</h3><span class="hint">How a phone at each register signs in</span></div></div>' +
+    '<table class="acc-t"><caption class="sr">Device access</caption><thead><tr>' +
+    '<th scope="col">Restaurant</th><th scope="col">Credential</th><th scope="col">Last rotated</th>' +
+    '<th scope="col"><span class="sr">Actions</span></th></tr></thead><tbody>' +
+    rowFor("sushi","qr") + rowFor("sushi","pin") + rowFor("poki","qr") + rowFor("poki","pin") +
+    '</tbody></table>' +
+    '<div class="danger-zone"><div class="sec-head" style="margin-bottom:8px"><h3 style="font-size:13px;color:var(--accent-deep)">Sign out every phone</h3></div>' +
+    '<p class="meta" style="margin-bottom:10px">Ends every signed-in session at a restaurant. Closers have to scan the sticker again before the next shift.</p>' +
+    '<div class="btn-row">' +
+      '<button class="btn danger sm" data-act="a-signout" data-rest="sushi">Sushi — '+st.access.sushi.phones+' phones</button>' +
+      '<button class="btn danger sm" data-act="a-signout" data-rest="poki">Poki &amp; Pho — '+st.access.poki.phones+' phones</button>' +
+    '</div></div></section>';
+}
+
+/* ============================================================
+   VARIANT B — NIGHTLY
+   ============================================================ */
+function renderB(){
+  const st = S.b, rows = visible(st), t = totals(rows), days = byDay(rows);
+
+  /* "last night" = the most recent business day that has records */
+  /* comparator must return 0 for same-date rows, otherwise the sort is
+     unstable and the shifts within a night come out in arbitrary order */
+  const all = st.records.slice().sort((a,b)=> a.date === b.date ? 0 : (a.date < b.date ? 1 : -1));
+  const lastDate = all.length ? all[0].date : null;
+  const lastRows = all.filter(r => r.date === lastDate);
+
+  let h = "";
+
+  if(lastRows.length){
+    h += '<section class="b-hero"><div class="b-hero-head">' +
+      '<h3>Last night — '+dLabel(lastRows[0])+'</h3>' +
+      '<span class="when">Recorded after close · business day ends 4am</span></div>' +
+      '<div class="b-tiles">' + lastRows.map(r => {
+        const n = r.people.length, per = share(r.cash, n);
+        return '<article class="tile">' +
+          '<div class="where"><span class="dot '+r.rest+'"></span><b>'+REST[r.rest].short+'</b>' +
+          '<span class="meal">'+mealName(r.meal)+'</span>' + (r.flag?' <span class="tag flag">flagged</span>':'') + '</div>' +
+          '<div class="pp-cap">Each person gets</div>' +
+          '<div class="pp-big">'+money(per)+'</div>' +
+          '<div class="pp-math">'+money(r.cash)+' cash ÷ '+n+'</div>' +
+          '<div class="names">'+esc(namesOf(st, r.people))+'</div>' +
+          '<div class="cardline"><span class="nosplit">'+NOSPLIT_ICON+' Card · logged, not split</span>' +
+          '<span class="amt">'+money(r.card)+'</span></div>' +
+        '</article>';
+      }).join("") + '</div></section>';
+  }
+
+  const flagged = rows.filter(r=>r.flag);
+  if(flagged.length){
+    const f = flagged[0];
+    const tr = typicalRange(st, f);
+    h += '<div class="attention"><div class="txt">' +
+      '<b>'+flagged.length+' entry needs a look.</b> ' + dLabel(f) + ' · ' + REST[f.rest].short + ' ' + mealName(f.meal) +
+      ' recorded <b>'+money(f.cash)+'</b> cash, split ' + money(share(f.cash, f.people.length)) + ' each.' +
+      '<div class="sub">' + (tr ? 'This slot normally runs '+money(tr.lo)+'–'+money(tr.hi)+'. ' : '') +
+      'Entered by '+esc(f.by)+' by '+f.how+'. It is the reason the range total reads '+money(t.cash)+'.</div></div>' +
+      '<button class="btn primary" data-act="b-open" data-id="'+f.id+'">Review this entry</button></div>';
+  }
+
+  /* range controls */
+  h += '<div class="b-controls">' +
+    '<div class="field"><label for="b-from">From</label><input id="b-from" type="date" value="'+st.filters.from+'" data-act="b-date" data-which="from"></div>' +
+    '<div class="field"><label for="b-to">To</label><input id="b-to" type="date" value="'+st.filters.to+'" data-act="b-date" data-which="to"></div>' +
+    '<div class="field"><label id="b-rl">Restaurant</label><div class="seg" role="group" aria-labelledby="b-rl">' +
+      ['all','sushi','poki'].map(k => '<button data-act="b-rest" data-k="'+k+'" aria-pressed="'+(st.filters.rest===k)+'">' +
+        (k==="all"?"Both":REST[k].short)+'</button>').join("") + '</div></div>' +
+    '<div style="margin-left:auto" class="btn-row">' +
+      '<div style="text-align:right;margin-right:8px"><div class="meta">'+t.n+' records</div>' +
+      '<div><b>'+money(t.cash)+'</b> cash · <span class="card-ink">'+money(t.card)+' card</span></div></div>' +
+      '<button class="btn" data-act="export" data-v="b">Export CSV</button></div>' +
+  '</div>';
+
+  if(!rows.length){
+    h += '<div class="card" style="padding:40px;text-align:center;color:var(--muted)">No records in this range.</div>';
+  }
+
+  days.forEach(([date, drows]) => {
+    const dt = totals(drows);
+    h += '<section class="day"><div class="day-head"><h4>'+dLabel(drows[0])+'</h4>' +
+      '<span class="meta">'+drows.length+' shift'+(drows.length>1?"s":"")+'</span>' +
+      '<div class="sum"><span>Cash pool <b>'+money(dt.cash)+'</b></span>' +
+      '<span class="card-ink">Card logged <b class="card-ink">'+money(dt.card)+'</b></span></div></div>';
+    drows.forEach(r => {
+      const n = r.people.length, per = share(r.cash, n);
+      h += '<button class="shift'+(r.flag?" flagged":"")+'" data-act="b-open" data-id="'+r.id+'">' +
+        '<span><span class="lbl">Shift</span><span style="display:flex;align-items:center;gap:8px">' +
+          '<span class="dot '+r.rest+'"></span><b>'+REST[r.rest].short+'</b> <span style="color:var(--ink2)">'+mealName(r.meal)+'</span>' +
+          (r.flag?' <span class="tag flag">flagged</span>':'') + (r.edited?' <span class="tag">edited</span>':'') + '</span>' +
+          '<span class="lbl" style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted);margin-top:3px">'+esc(r.by)+' · '+r.how+'</span></span>' +
+        '<span class="cash-cell"><span class="lbl">Cash pool ÷ '+n+'</span><span class="cash-amt">'+money(r.cash)+'</span>' +
+          '<span class="lbl" style="text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink2);margin-top:2px">'+esc(namesOf(st,r.people))+'</span></span>' +
+        '<span><span class="lbl">Each person</span><span class="pp-amt">'+money(per)+'</span></span>' +
+        '<span class="card-cell"><span class="lbl">Card · not split</span><span class="card-amt">'+money(r.card)+'</span></span>' +
+        '<span class="chev" aria-hidden="true">›</span></button>';
+    });
+    h += '</section>';
+  });
+
+  /* staff */
+  const counts = {};
+  st.records.forEach(r => r.people.forEach(p => counts[p] = (counts[p]||0)+1));
+  const adding = !!st.ui.adding;
+  const nf = st.ui.newStaff || {name:"", at:"sushi", pos:"end"};
+  const actives = st.staff.filter(s=>s.active), inactives = st.staff.filter(s=>!s.active);
+
+  h += '<section class="b-sec"><div class="sec-head"><h3>Staff</h3>' +
+    '<span class="hint">Listed in the order the phone picker shows them</span><span class="spacer"></span>' +
+    '<button class="btn primary" data-act="b-addopen">Add someone</button></div>' +
+    '<div class="card roster">';
+
+  if(adding){
+    h += '<div class="addbox"><div class="addgrid">' +
+      '<div class="field"><label for="b-nn">Name</label><input id="b-nn" value="'+esc(nf.name)+'" data-act="b-newname" placeholder="New hire" autofocus></div>' +
+      '<div class="field"><label for="b-na">Works at</label><select id="b-na" data-act="b-newat">' +
+        '<option value="sushi"'+(nf.at==="sushi"?" selected":"")+'>Sushi</option>' +
+        '<option value="poki"'+(nf.at==="poki"?" selected":"")+'>Poki &amp; Pho</option>' +
+        '<option value="both"'+(nf.at==="both"?" selected":"")+'>Both</option></select></div>' +
+      '<div class="field"><label for="b-np">Position in picker</label><select id="b-np" data-act="b-newpos">' +
+        '<option value="end"'+(nf.pos==="end"?" selected":"")+'>Last</option>' +
+        '<option value="start"'+(nf.pos==="start"?" selected":"")+'>First</option></select></div>' +
+      '<div class="btn-row"><button class="btn primary" data-act="b-add">Add</button>' +
+      '<button class="btn ghost" data-act="b-addclose">Cancel</button></div>' +
+    '</div><div class="meta" style="margin-top:9px">They can be picked on the phone straight away — no shift required first.</div></div>';
+  }
+
+  h += '<div class="grouplabel">In the picker</div>';
+  actives.forEach((s,i) => {
+    h += '<div class="rline"><span class="grip">'+(i+1)+'</span>' +
+      '<span class="nm">'+esc(s.name)+'</span>' +
+      '<span class="at">'+(s.at==="both"?"Both restaurants":REST[s.at].short)+'</span>' +
+      '<span class="meta">'+(counts[s.id]||0)+' shifts in range</span>' +
+      '<span class="rt">' +
+        '<button class="ordbtn btn sm" data-act="b-move" data-id="'+s.id+'" data-dir="-1" '+(i===0?"disabled":"")+' aria-label="Move '+esc(s.name)+' up">↑</button>' +
+        '<button class="ordbtn btn sm" data-act="b-move" data-id="'+s.id+'" data-dir="1" '+(i===actives.length-1?"disabled":"")+' aria-label="Move '+esc(s.name)+' down">↓</button>' +
+        '<button class="btn sm ghost" data-act="b-rename" data-id="'+s.id+'">Rename</button>' +
+        '<select data-act="b-at" data-id="'+s.id+'" aria-label="'+esc(s.name)+' works at" class="btn sm" style="padding:4px 6px">' +
+          '<option value="sushi"'+(s.at==="sushi"?" selected":"")+'>Sushi</option>' +
+          '<option value="poki"'+(s.at==="poki"?" selected":"")+'>Poki</option>' +
+          '<option value="both"'+(s.at==="both"?" selected":"")+'>Both</option></select>' +
+        '<button class="btn sm" data-act="b-active" data-id="'+s.id+'">Deactivate</button>' +
+      '</span></div>';
+  });
+  if(inactives.length){
+    h += '<div class="grouplabel">No longer on the picker · history kept</div>';
+    inactives.forEach(s => {
+      const n = counts[s.id]||0;
+      h += '<div class="rline inactive"><span class="grip">—</span><span class="nm">'+esc(s.name)+'</span>' +
+        '<span class="at">'+(s.at==="both"?"Both":REST[s.at].short)+'</span>' +
+        '<span class="meta">'+(n?n+" shifts kept":"never worked a shift")+'</span>' +
+        '<span class="rt"><button class="btn sm" data-act="b-active" data-id="'+s.id+'">Reactivate</button>' +
+        (n===0 ? '<button class="btn sm danger" data-act="b-del" data-id="'+s.id+'">Delete</button>'
+               : '<button class="btn sm" disabled title="Has recorded shifts">Delete</button>') +
+        '</span></div>';
+    });
+  }
+  h += '</div></section>';
+
+  /* access — deliberately last, collapsed, quiet */
+  const A = st.access;
+  h += '<section class="b-sec"><details class="access"'+(st.ui.accOpen?" open":"")+' data-act="b-accdetails">' +
+    '<summary><span class="mk">▶</span> Device access ' +
+    '<span class="sub">QR stickers, PINs, signed-in phones · rarely needs touching</span></summary>' +
+    '<div class="accbody">' +
+    ['sushi','poki'].map(rk => {
+      const a = A[rk];
+      return '<div class="accrest"><h4 style="font-size:14.5px;margin-bottom:6px">'+REST[rk].name+'</h4>' +
+        '<div class="accrow"><div class="what"><b>QR sticker</b><span>' +
+          (a.qr ? "Last rotated "+a.qr : "Never rotated — still the original sticker") + '</span></div>' +
+          '<div class="btn-row"><button class="btn danger sm" data-act="b-rotate" data-rest="'+rk+'" data-kind="qr">Rotate QR</button></div></div>' +
+        '<div class="accrow"><div class="what"><b>Numeric PIN</b><span>Last rotated '+a.pin+'</span></div>' +
+          '<div class="btn-row"><button class="btn danger sm" data-act="b-rotate" data-rest="'+rk+'" data-kind="pin">Rotate PIN</button></div></div>' +
+        '<div class="accrow"><div class="what"><b>Signed-in phones</b><span>'+a.phones+' device'+(a.phones===1?"":"s")+' currently signed in</span></div>' +
+          '<div class="btn-row"><button class="btn danger sm" data-act="b-signout" data-rest="'+rk+'">Sign out all phones</button></div></div>' +
+      '</div>';
+    }).join("") +
+    '</div></details></section>';
+
+  document.getElementById("body-b").innerHTML = h;
+}
+
+/* B drawer */
+function drawerB(){
+  const st = S.b;
+  if(!st.ui.draft) return "";
+  const r = draftRec("b"), d = st.ui.draft, nm = draftNums("b");
+  const roster = st.staff.filter(s => s.active && (s.at === "both" || s.at === r.rest));
+  const others = st.staff.filter(s => s.active && !(s.at === "both" || s.at === r.rest));
+  const tr = typicalRange(st, r);
+
+  let body = "";
+  if(d.step === 1){
+    const chip = s => {
+      const on = d.people.includes(s.id);
+      return '<label class="chk'+(on?" on":"")+'"><input type="checkbox" data-act="b-person" data-id="'+s.id+'"'+(on?" checked":"")+'> '+esc(s.name)+'</label>';
+    };
+    body =
+      (r.flag && tr ? '<div class="warnline" style="margin:0 0 14px">Flagged: this slot normally runs '+money(tr.lo)+'–'+money(tr.hi)+'.</div>' : '') +
+      '<div class="blk"><h4>Cash — this is what gets split</h4>' +
+        '<div class="money-in"><span>$</span><input id="b-cash" inputmode="decimal" value="'+d.cash+'" data-act="b-cash" aria-label="Cash pool"></div>' +
+        '<p class="meta" style="margin-top:7px">Divided evenly and handed out that night.</p></div>' +
+      '<div class="blk" style="background:var(--logged-bg);border-color:rgba(0,0,0,.1)"><h4>Card — logged only</h4>' +
+        '<div class="money-in"><span>$</span><input id="b-card" inputmode="decimal" value="'+d.card+'" data-act="b-card" aria-label="Card amount"></div>' +
+        '<p class="meta" style="margin-top:7px">Recorded for payroll. Changing it moves nobody’s share.</p></div>' +
+      '<div class="blk"><h4>On the split — '+d.people.length+' '+(d.people.length===1?"person":"people")+'</h4>' +
+        '<div class="ppl-box" style="display:flex;flex-wrap:wrap;gap:7px">'+roster.map(chip).join("")+'</div>' +
+        (others.length ? '<p class="meta" style="margin:11px 0 6px">Not normally at '+REST[r.rest].short+'</p><div style="display:flex;flex-wrap:wrap;gap:7px">'+others.map(chip).join("")+'</div>' : '') +
+      '</div>' +
+      '<div class="blk" style="border-color:var(--accent);border-width:1.5px"><h4>Result</h4>' +
+        (nm.valid
+          ? '<div style="font-size:30px;font-weight:700;letter-spacing:-.02em">'+money(nm.per)+'</div>' +
+            '<p class="meta">each · '+money(nm.cash)+' ÷ '+nm.n+'</p>'
+          : '<p style="color:var(--accent-deep);font-weight:600">'+(nm.n===0?"Pick at least one person.":"Enter a valid cash amount.")+'</p>') +
+      '</div>';
+  } else {
+    const ds = deltas("b");
+    const out = nm.per * nm.n, diff = out - nm.cash;
+    body = '<div class="blk"><h4>What you are changing</h4>' +
+      '<div class="readonly-line"><span class="k">Cash pool</span><span class="v">' +
+        (nm.cash === r.cash ? money(r.cash)+' <span class="meta">unchanged</span>' : money(r.cash)+' → '+money(nm.cash)) + '</span></div>' +
+      '<div class="readonly-line"><span class="k">Card (logged)</span><span class="v">' +
+        (nm.card === r.card ? money(r.card)+' <span class="meta">unchanged</span>' : money(r.card)+' → '+money(nm.card)) + '</span></div>' +
+      '<div class="readonly-line"><span class="k">People</span><span class="v">'+r.people.length+' → '+nm.n+'</span></div>' +
+    '</div>' +
+    '<div class="blk" style="border-color:var(--accent);border-width:1.5px"><h4>Who this pays differently</h4>' +
+      ds.map(x => {
+        const cls = x.now === null ? "gone" : (x.was === null || x.now > x.was ? "up" : (x.now < x.was ? "down" : ""));
+        let val;
+        if(x.now === null) val = '<span class="was">'+money(x.was)+'</span><span class="now">removed from split</span>';
+        else if(x.was === null) val = '<span class="now">'+money(x.now)+'</span> <span class="meta">added</span>';
+        else if(x.was === x.now) val = '<span class="now">'+money(x.now)+'</span> <span class="meta">no change</span>';
+        else val = '<span class="was">'+money(x.was)+'</span><span class="now">'+money(x.now)+'</span>';
+        return '<div class="delta '+cls+'"><span class="nm">'+esc(x.name)+'</span><span class="vals">'+val+'</span></div>';
+      }).join("") +
+      (diff !== 0 ? '<div class="roundnote">Shares add up to '+money(out)+' — '+(diff>0?money(diff)+" more than":money(-diff)+" less than")+' the '+money(nm.cash)+' pool, because shares round up at the half-cent. The drawer covers the difference.</div>' : '') +
+    '</div>' +
+    '<p class="meta">Saving takes effect immediately. There is no approval step and no undo — if this is wrong, you will have to correct it again.</p>';
+  }
+
+  return '<div class="scrim" data-act="b-close"></div>' +
+    '<aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="b-dtitle" id="b-drawer">' +
+      '<div class="drawer-head"><div style="flex:1">' +
+        '<h3 id="b-dtitle">'+(d.step===1?"Correct this shift":"Confirm the correction")+'</h3>' +
+        '<div class="sub">'+dLabel(r)+' · '+REST[r.rest].name+' · '+mealName(r.meal)+'</div></div>' +
+        '<button class="xbtn" data-act="b-close" aria-label="Close">×</button></div>' +
+      '<div class="drawer-body">'+body+'</div>' +
+      '<div class="drawer-foot"><span class="stepdots">Step '+d.step+' of 2</span><span class="spacer"></span>' +
+        (d.step === 1
+          ? '<button class="btn ghost" data-act="b-close">Cancel</button>' +
+            '<button class="btn primary" data-act="b-step2"'+(nm.valid?"":" disabled")+'>Review change</button>'
+          : '<button class="btn ghost" data-act="b-step1">Back</button>' +
+            '<button class="btn primary" data-act="b-apply">Apply correction</button>') +
+      '</div></aside>';
+}
+
+/* B rotation modal + one-time reveal */
+function modalB(){
+  const st = S.b;
+  const p = st.ui.pending, rev = st.ui.reveal;
+  if(!p && !rev) return "";
+
+  if(rev){
+    const isQr = rev.kind === "qr";
+    return '<div class="scrim"></div><div class="modal" role="dialog" aria-modal="true" aria-labelledby="b-mt">' +
+      '<div class="modal-head" style="border-color:var(--accent)"><div style="flex:1">' +
+        '<span class="tag flag">Shown once</span>' +
+        '<h3 id="b-mt" style="margin-top:8px">New '+(isQr?"QR sticker":"PIN")+' for '+REST[rev.rest].name+'</h3>' +
+        '<div class="sub">Only a hash is stored. Close this and it is gone for good — you would have to rotate again.</div>' +
+      '</div></div>' +
+      '<div class="modal-body">' +
+        (isQr
+          ? '<div class="qrbox">'+qrSvg(rev.value,168)+'<div style="flex:1;min-width:230px">' +
+            '<div class="secret">'+rev.value+'</div>' +
+            '<p class="meta" style="margin-top:9px">The old sticker at the register stopped working the moment you rotated. Nobody at '+REST[rev.rest].short+' can sign a new phone in until this one is up.</p></div></div>'
+          : '<div class="secret" style="font-size:38px;letter-spacing:.34em;text-align:center">'+rev.value+'</div>' +
+            '<p class="meta" style="margin-top:12px">The old PIN stopped working the moment you rotated. Tonight’s closers at '+REST[rev.rest].short+' need this number before they can record tips.</p>') +
+        '<div class="blk" style="margin-top:18px;margin-bottom:0"><h4>Before you close this</h4>' +
+        '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;font-weight:600">' +
+          '<input type="checkbox" data-act="b-ackchk" style="margin-top:3px;accent-color:var(--accent-deep)"'+(st.ui.acked?" checked":"")+'>' +
+          '<span>'+(isQr?"I have printed or saved this sticker":"I have written this number down")+
+          '<span style="display:block;font-weight:400;color:var(--ink2);font-size:12.5px;margin-top:2px">There is no way to see it again.</span></span></label></div>' +
+      '</div>' +
+      '<div class="modal-foot">' +
+        '<button class="btn" data-act="b-copy" data-val="'+rev.value+'">Copy '+(isQr?"code":"PIN")+'</button>' +
+        (isQr ? '<button class="btn" data-act="b-print">Print sticker sheet</button>' : '') +
+        '<span class="spacer"></span>' +
+        '<button class="btn primary" data-act="b-ackdone"'+(st.ui.acked?"":" disabled")+'>Done</button>' +
+      '</div></div>';
+  }
+
+  const isQr = p.kind === "qr";
+  const isSignout = p.kind === "signout";
+  const a = st.access[p.rest];
+  let title, lede, list, cta;
+  if(isSignout){
+    title = "Sign out every phone at " + REST[p.rest].name + "?";
+    lede = a.phones + " device" + (a.phones===1?"":"s") + " signed in right now.";
+    list = ["Every phone at this restaurant is signed out immediately.",
+            "Tonight's closer has to scan the QR sticker again before they can record anything.",
+            "Nothing already recorded is affected."];
+    cta = "Sign out " + a.phones + " phones";
+  } else if(isQr){
+    title = "Rotate the QR sticker for " + REST[p.rest].name + "?";
+    lede = a.qr ? "Last rotated " + a.qr + "." : "This sticker has never been rotated.";
+    list = ["The sticker currently by the register stops working immediately.",
+            "You have to print the new one and physically replace it.",
+            "The new code is shown once and cannot be looked up afterwards."];
+    cta = "Rotate QR sticker";
+  } else {
+    title = "Rotate the PIN for " + REST[p.rest].name + "?";
+    lede = "Last rotated " + a.pin + ".";
+    list = ["The current PIN stops working immediately.",
+            "Every closer needs the new number before their next shift.",
+            "The new PIN is shown once and cannot be looked up afterwards."];
+    cta = "Rotate PIN";
+  }
+  return '<div class="scrim" data-act="b-mclose"></div><div class="modal" role="dialog" aria-modal="true" aria-labelledby="b-mt2">' +
+    '<div class="modal-head"><div style="flex:1"><h3 id="b-mt2">'+title+'</h3><div class="sub">'+lede+'</div></div>' +
+    '<button class="xbtn" data-act="b-mclose" aria-label="Close">×</button></div>' +
+    '<div class="modal-body"><ul style="margin:0;padding-left:20px;color:var(--ink2);font-size:13.5px;line-height:1.8">' +
+      list.map(x=>'<li>'+x+'</li>').join("") + '</ul></div>' +
+    '<div class="modal-foot"><span class="spacer"></span>' +
+      '<button class="btn ghost" data-act="b-mclose">Cancel</button>' +
+      '<button class="btn primary" data-act="b-rotate-go">'+cta+'</button></div></div>';
+}
+
+/* ============================================================
+   VARIANT C — PAYOUT
+   ============================================================ */
+function renderC(){
+  const st = S.c, rows = visible(st), t = totals(rows);
+  const pays = payouts(st, rows);
+  const roundDelta = t.dist - t.cash;
+
+  let h = '<div class="c-top">' +
+    '<div class="field"><label for="c-from">From</label><input id="c-from" type="date" value="'+st.filters.from+'" data-act="c-date" data-which="from"></div>' +
+    '<div class="field"><label for="c-to">To</label><input id="c-to" type="date" value="'+st.filters.to+'" data-act="c-date" data-which="to"></div>' +
+    '<div class="field"><label id="c-rl">Restaurant</label><div class="seg" role="group" aria-labelledby="c-rl">' +
+      ['all','sushi','poki'].map(k => '<button data-act="c-rest" data-k="'+k+'" aria-pressed="'+(st.filters.rest===k)+'">' +
+        (k==="all"?"Both":REST[k].short)+'</button>').join("") + '</div></div>' +
+    '<div style="margin-left:auto" class="btn-row"><button class="btn" data-act="export" data-v="c">Export CSV</button></div>' +
+  '</div>';
+
+  h += '<div class="c-cols"><div>';
+
+  /* LEFT: people and what they are owed */
+  h += '<section class="card"><div class="payhead">' +
+    '<div class="cap">Cash to hand out · '+t.n+' shifts</div>' +
+    '<div class="big">'+money(t.dist)+'</div>' +
+    '<p class="note">Across '+pays.length+' '+(pays.length===1?"person":"people")+'. This is cash only — card tips are in the grey box and are never part of it.</p></div>';
+
+  if(!pays.length){
+    h += '<div style="padding:34px;text-align:center;color:var(--muted)">Nobody worked a recorded shift in this range.</div>';
+  }
+
+  pays.forEach(p => {
+    const s = st.staff.find(x=>x.id===p.id) || {name:p.id, at:"sushi"};
+    const open = st.ui.openPerson === p.id;
+    const flaggedIn = p.lines.some(l => l.rec.flag);
+    h += '<div class="person">' +
+      '<button class="pbtn" data-act="c-person" data-id="'+p.id+'" aria-expanded="'+open+'">' +
+        '<span class="avatar '+(s.at==="both"?"both":s.at)+'" aria-hidden="true">'+esc(s.name.slice(0,1))+'</span>' +
+        '<span><span class="pname">'+esc(s.name)+(s.active?"":' <span class="tag off">inactive</span>')+'</span>' +
+        '<span class="pmeta">'+p.lines.length+' shift'+(p.lines.length===1?"":"s")+
+        (flaggedIn?' · <span style="color:var(--accent-deep);font-weight:650">includes a flagged shift</span>':'')+'</span></span>' +
+        '<span class="pamt"><span class="n">'+money(p.total)+'</span><span class="s">'+(open?"hide":"show")+' shifts</span></span>' +
+      '</button>';
+    if(open){
+      h += '<div class="pdetail">' + p.lines.map(l =>
+        '<div class="pdrow"><span class="d">'+dLabel(l.rec)+'</span>' +
+        '<span class="m">'+REST[l.rec.rest].short+' '+mealName(l.rec.meal)+' · '+money(l.rec.cash)+' ÷ '+l.rec.people.length +
+        (l.rec.flag?' <span class="tag flag">flagged</span>':'')+'</span>' +
+        '<span class="a">'+money(l.amt)+'</span>' +
+        '<button class="btn sm ghost" data-act="c-edit" data-id="'+l.rec.id+'">Correct</button></div>'
+      ).join("") + '</div>';
+    }
+    h += '</div>';
+  });
+
+  h += '<div class="recon"><dl>' +
+    '<dt>Cash pool recorded</dt><dd>'+money(t.cash)+'</dd>' +
+    '<dt>Sum of everyone’s shares</dt><dd>'+money(t.dist)+'</dd>' +
+    '<dt>Difference</dt><dd style="color:'+(roundDelta===0?"var(--ink2)":"var(--accent-deep)")+'">'+(roundDelta>0?"+":"")+money(roundDelta)+'</dd>' +
+    '</dl>' +
+    (roundDelta === 0
+      ? 'Shares divided evenly with nothing left over.'
+      : (roundDelta > 0
+        ? 'Two shifts landed on an exact half-cent and rounded <b>up</b>, so the shares come to '+money(roundDelta)+' more than the pool. The drawer covers it.'
+        : 'Remainders of '+money(-roundDelta)+' could not be divided and stayed in the drawer.')) +
+    ' This is expected — shares are rounded to the cent per shift, not reconciled across the range.</div>';
+  h += '</section>';
+
+  /* staff, under the payouts — same people, different job */
+  const counts = {};
+  st.records.forEach(r => r.people.forEach(p => counts[p] = (counts[p]||0)+1));
+  const nf = st.ui.newStaff || {name:"", at:"sushi"};
+  h += '<section class="card" style="margin-top:20px">' +
+    '<div style="padding:18px 20px 14px;border-bottom:1px solid var(--hair)"><div class="sec-head" style="margin:0">' +
+    '<h3>Roster</h3><span class="hint">Order = the phone picker</span></div></div>' +
+    '<div style="padding:14px 20px;background:var(--accent-tint);border-bottom:1px solid var(--hair)">' +
+      '<div style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto;gap:12px;align-items:end">' +
+      '<div class="field"><label for="c-nn">Add a new hire</label><input id="c-nn" placeholder="Name" value="'+esc(nf.name)+'" data-act="c-newname"></div>' +
+      '<div class="field"><label for="c-na">Works at</label><select id="c-na" data-act="c-newat">' +
+        '<option value="sushi"'+(nf.at==="sushi"?" selected":"")+'>Sushi</option>' +
+        '<option value="poki"'+(nf.at==="poki"?" selected":"")+'>Poki &amp; Pho</option>' +
+        '<option value="both"'+(nf.at==="both"?" selected":"")+'>Both</option></select></div>' +
+      '<button class="btn primary" data-act="c-add">Add to picker</button></div></div>';
+
+  st.staff.forEach((s,i) => {
+    const n = counts[s.id]||0;
+    const renaming = st.ui.renaming === s.id;
+    h += '<div class="keyrow" style="border-bottom:1px solid var(--hair)">' +
+      '<span class="grip meta" style="width:20px">'+(s.active?i+1:"—")+'</span>' +
+      '<span class="kw" style="min-width:170px">' +
+        (renaming
+          ? '<input value="'+esc(s.name)+'" data-act="c-renameinput" data-id="'+s.id+'" aria-label="Rename '+esc(s.name)+'" style="border:1px solid var(--accent);border-radius:8px;padding:4px 8px;width:130px">'
+          : '<b>'+esc(s.name)+'</b>') +
+        '<span>'+(s.at==="both"?"Both restaurants":REST[s.at].short)+' · '+(s.active?n+" shifts":"inactive · "+n+" shifts kept")+'</span></span>' +
+      '<span class="kb">' +
+        '<button class="btn sm" data-act="c-move" data-id="'+s.id+'" data-dir="-1" '+(i===0?"disabled":"")+' aria-label="Move '+esc(s.name)+' up">↑</button>' +
+        '<button class="btn sm" data-act="c-move" data-id="'+s.id+'" data-dir="1" '+(i===st.staff.length-1?"disabled":"")+' aria-label="Move '+esc(s.name)+' down">↓</button>' +
+        (renaming ? '<button class="btn sm primary" data-act="c-renamesave" data-id="'+s.id+'">Save</button>'
+                  : '<button class="btn sm ghost" data-act="c-rename" data-id="'+s.id+'">Rename</button>') +
+        '<select data-act="c-at" data-id="'+s.id+'" aria-label="'+esc(s.name)+' works at" class="btn sm" style="padding:4px 6px">' +
+          '<option value="sushi"'+(s.at==="sushi"?" selected":"")+'>Sushi</option>' +
+          '<option value="poki"'+(s.at==="poki"?" selected":"")+'>Poki</option>' +
+          '<option value="both"'+(s.at==="both"?" selected":"")+'>Both</option></select>' +
+        '<button class="btn sm" data-act="c-active" data-id="'+s.id+'">'+(s.active?"Deactivate":"Reactivate")+'</button>' +
+        (n===0 ? '<button class="btn sm danger" data-act="c-del" data-id="'+s.id+'">Delete</button>'
+               : '<button class="btn sm" disabled title="'+n+' recorded shifts — deactivate instead">Delete</button>') +
+      '</span></div>';
+  });
+  h += '<div style="padding:12px 20px" class="meta">Deactivate keeps every share they were ever paid. Delete is only possible before someone has worked a shift.</div></section>';
+
+  h += '</div><div>';
+
+  /* RIGHT: card quarantine, then the records as evidence, then keys */
+  h += '<section class="quarantine"><div class="qh">' +
+    '<span class="nosplit">'+NOSPLIT_ICON+'</span>' +
+    '<h3>Card tips — logged, never split</h3></div>' +
+    '<p>Recorded for payroll and reporting only. No part of this number is divided among staff or handed out at the end of a shift.</p>' +
+    '<div class="qtot">'+money(t.card)+'</div>' +
+    '<div class="qbreak">' +
+      ['sushi','poki'].map(rk => {
+        const sub = rows.filter(r=>r.rest===rk);
+        return '<div><b>'+money(totals(sub).card)+'</b>'+REST[rk].short+' · '+sub.length+' shifts</div>';
+      }).join("") +
+    '</div></section>';
+
+  h += '<section class="card" style="margin-top:20px">' +
+    '<div style="padding:18px 20px 14px"><div class="sec-head" style="margin:0"><h3>The shifts behind it</h3>' +
+    '<span class="hint">'+t.n+' records</span></div></div>' +
+    '<div class="reclist"><div class="rhead"><span>Date</span><span>Shift</span><span>Cash</span><span>Each</span><span></span></div>';
+  rows.forEach(r => {
+    const n = r.people.length, per = share(r.cash, n);
+    h += '<div class="rrow'+(r.flag?" flagged":"")+'">' +
+      '<span>'+dLabel(r)+'</span>' +
+      '<span><b>'+REST[r.rest].short+'</b> '+mealName(r.meal)+(r.flag?' <span class="tag flag">flagged</span>':'')+(r.edited?' <span class="tag">edited</span>':'') +
+        '<span class="ppl" style="display:block">'+esc(namesOf(st,r.people))+' · by '+esc(r.by)+' ('+r.how+')</span></span>' +
+      '<span class="cashv">'+money(r.cash)+'<span class="ppl" style="display:block">card '+money(r.card)+'</span></span>' +
+      '<span><b>'+money(per)+'</b><span class="ppl" style="display:block">÷ '+n+'</span></span>' +
+      '<span><button class="btn sm" data-act="c-edit" data-id="'+r.id+'">Correct</button></span>' +
+    '</div>';
+  });
+  if(!rows.length) h += '<div style="padding:30px;text-align:center;color:var(--muted)">No records in this range.</div>';
+  h += '</div></section>';
+
+  /* keys — locked until deliberately unlocked */
+  const unlocked = !!st.ui.keysUnlocked;
+  h += '<section class="card keys'+(unlocked?"":" locked")+'" style="margin-top:20px">' +
+    '<div class="lockbar"><span class="lk"><b>Device access</b>' +
+    '<span>QR stickers and PINs. Rotating one takes a restaurant offline until it is replaced.</span></span>' +
+    '<button class="btn '+(unlocked?"":"danger")+'" data-act="c-unlock" aria-pressed="'+unlocked+'">' +
+      (unlocked ? "Lock controls" : "Unlock controls") + '</button></div>' +
+    '<div class="keybody"'+(unlocked?"":' aria-hidden="true"')+'>' +
+    ['sushi','poki'].map(rk => {
+      const a = st.access[rk];
+      return '<div class="keyrow"><span class="kw"><b>'+REST[rk].short+' · QR sticker</b>' +
+          '<span>'+(a.qr ? "rotated "+a.qr : '<span style="color:var(--accent-deep);font-weight:650">never rotated</span>')+'</span></span>' +
+          '<span class="kb"><button class="btn sm danger" data-act="c-rotate" data-rest="'+rk+'" data-kind="qr"'+(unlocked?"":" tabindex=\"-1\"")+'>Rotate</button></span></div>' +
+        '<div class="keyrow"><span class="kw"><b>'+REST[rk].short+' · PIN</b><span>rotated '+a.pin+'</span></span>' +
+          '<span class="kb"><button class="btn sm danger" data-act="c-rotate" data-rest="'+rk+'" data-kind="pin"'+(unlocked?"":" tabindex=\"-1\"")+'>Rotate</button></span></div>' +
+        '<div class="keyrow"><span class="kw"><b>'+REST[rk].short+' · signed-in phones</b><span>'+a.phones+' active</span></span>' +
+          '<span class="kb"><button class="btn sm danger" data-act="c-signout" data-rest="'+rk+'"'+(unlocked?"":" tabindex=\"-1\"")+'>Sign out all</button></span></div>';
+    }).join("") + '</div></section>';
+
+  h += '</div></div>';
+  document.getElementById("body-c").innerHTML = h;
+}
+
+/* C correction modal — a full before/after diff */
+function modalC(){
+  const st = S.c;
+  if(!st.ui.draft) return "";
+  const r = draftRec("c"), d = st.ui.draft, nm = draftNums("c");
+  const roster = st.staff.filter(s => s.active && (s.at === "both" || s.at === r.rest));
+  const others = st.staff.filter(s => s.active && !(s.at === "both" || s.at === r.rest));
+  const ds = deltas("c");
+  const tr = typicalRange(st, r);
+  const chip = s => {
+    const on = d.people.includes(s.id);
+    return '<label class="chk'+(on?" on":"")+'"><input type="checkbox" data-act="c-person" data-id="'+s.id+'"'+(on?" checked":"")+'> '+esc(s.name)+'</label>';
+  };
+  const out = nm.valid ? nm.per * nm.n : 0, diff = nm.valid ? out - nm.cash : 0;
+
+  return '<div class="scrim" data-act="c-close"></div>' +
+    '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="c-mt">' +
+    '<div class="modal-head"><div style="flex:1"><h3 id="c-mt">Correct a recorded shift</h3>' +
+      '<div class="sub">'+dLabel(r)+' · '+REST[r.rest].name+' · '+mealName(r.meal)+' · closed by '+esc(r.by)+' ('+r.how+')</div></div>' +
+      '<button class="xbtn" data-act="c-close" aria-label="Close">×</button></div>' +
+    '<div class="modal-body">' +
+      (r.flag && tr ? '<div class="warnline" style="margin:0 0 16px">Flagged as a possible typo — this slot normally runs '+money(tr.lo)+'–'+money(tr.hi)+'.</div>' : '') +
+      '<div class="grid2">' +
+        '<div class="blk" style="border-color:var(--accent);border-width:1.5px;margin:0">' +
+          '<h4 style="color:var(--accent-deep)">Cash — gets split</h4>' +
+          '<div class="money-in"><span>$</span><input id="c-cash" inputmode="decimal" value="'+d.cash+'" data-act="c-cash" aria-label="Cash pool"></div></div>' +
+        '<div class="blk" style="background:var(--logged-bg);border-color:rgba(0,0,0,.12);margin:0">' +
+          '<h4>Card — logged only</h4>' +
+          '<div class="money-in"><span>$</span><input id="c-card" inputmode="decimal" value="'+d.card+'" data-act="c-card" aria-label="Card amount"></div></div>' +
+      '</div>' +
+      '<div class="blk" style="margin-top:16px"><h4>On the split</h4>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:7px">'+roster.map(chip).join("")+'</div>' +
+        (others.length ? '<p class="meta" style="margin:11px 0 6px">Not normally at '+REST[r.rest].short+'</p><div style="display:flex;flex-wrap:wrap;gap:7px">'+others.map(chip).join("")+'</div>' : '') +
+      '</div>' +
+      '<h4 style="font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink2);margin:20px 0 9px">What each person gets paid</h4>' +
+      (nm.valid
+        ? '<table class="difftable"><thead><tr><th scope="col">Person</th><th scope="col">Was</th><th scope="col">Becomes</th><th scope="col">Change</th></tr></thead><tbody>' +
+          ds.map(x => {
+            const cls = x.now === null ? "" : (x.was === null || x.now > x.was ? "up" : (x.now < x.was ? "down" : ""));
+            const delta = (x.was !== null && x.now !== null) ? x.now - x.was : null;
+            return '<tr class="'+cls+'"><td><b>'+esc(x.name)+'</b></td>' +
+              '<td>'+(x.was === null ? '<span class="meta">not on this shift</span>' : '<span class="was">'+money(x.was)+'</span>')+'</td>' +
+              '<td>'+(x.now === null ? '<span class="meta">removed</span>' : '<span class="now">'+money(x.now)+'</span>')+'</td>' +
+              '<td>'+(delta === null ? '<span class="meta">'+(x.now===null?"loses "+money(x.was):"gains "+money(x.now))+'</span>'
+                    : (delta === 0 ? '<span class="meta">no change</span>' : '<b>'+(delta>0?"+":"−")+money(Math.abs(delta))+'</b>'))+'</td></tr>';
+          }).join("") + '</tbody></table>' +
+          (diff !== 0 ? '<p class="meta" style="margin-top:10px">Shares total '+money(out)+' against a '+money(nm.cash)+' pool — a '+money(Math.abs(diff))+' rounding difference the drawer absorbs.</p>' : '') +
+          (nm.card !== r.card ? '<p class="meta" style="margin-top:6px">Card moves '+money(r.card)+' → '+money(nm.card)+'. It is logged only, so no row above changes because of it.</p>' : '')
+        : '<p style="color:var(--accent-deep);font-weight:600">'+(nm.n===0?"Pick at least one person before this can be saved.":"Enter a valid cash amount.")+'</p>') +
+    '</div>' +
+    '<div class="modal-foot"><span class="meta" style="flex:1">Applies immediately. No undo.</span>' +
+      '<button class="btn ghost" data-act="c-close">Cancel</button>' +
+      '<button class="btn primary" data-act="c-apply"'+(nm.valid?"":" disabled")+'>Apply — change what '+(nm.valid?nm.n:0)+' '+(nm.n===1?"person is":"people are")+' paid</button>' +
+    '</div></div>';
+}
+
+/* C rotation: confirm modal, then a full takeover for the one-time reveal */
+function overlayC(){
+  const st = S.c;
+  if(st.ui.draft) return modalC();
+  const rev = st.ui.reveal, p = st.ui.pending;
+
+  if(rev){
+    const isQr = rev.kind === "qr";
+    const steps = isQr
+      ? [{k:"print", t:"Print the new sticker", s:"The old one by the register at "+REST[rev.rest].short+" is already dead."},
+         {k:"stick", t:"Replace the sticker tonight, before close", s:"No phone can sign in at "+REST[rev.rest].short+" until it is up."},
+         {k:"saved", t:"I have saved or printed this code", s:"Only a hash is stored. This screen is the only time it exists."}]
+      : [{k:"tell",  t:"Tell tonight's closers the new number", s:"The old PIN stopped working the moment you rotated."},
+         {k:"saved", t:"I have written this number down", s:"Only a hash is stored. This screen is the only time it exists."}];
+    const done = steps.every(x => st.ui.checks && st.ui.checks[x.k]);
+    return '<div class="takeover" role="dialog" aria-modal="true" aria-labelledby="c-tk">' +
+      '<div class="sheet">' +
+        '<span class="once">'+NOSPLIT_ICON+' Shown once · unrecoverable</span>' +
+        '<h3 id="c-tk">New '+(isQr?"QR sticker":"PIN")+' — '+REST[rev.rest].name+'</h3>' +
+        '<p class="lede">Everything else on the dashboard is hidden until you have dealt with this, because there is no second chance to read it.</p>' +
+        (isQr
+          ? '<div class="qrbox">'+qrSvg(rev.value,180)+'<div style="flex:1;min-width:220px"><div class="secret">'+rev.value+'</div>' +
+            '<div class="btn-row" style="margin-top:12px"><button class="btn" data-act="c-copy" data-val="'+rev.value+'">Copy code</button>' +
+            '<button class="btn" data-act="c-print">Print sticker sheet</button></div></div></div>'
+          : '<div style="margin-top:18px"><div class="secret" style="font-size:40px;letter-spacing:.34em;text-align:center">'+rev.value+'</div>' +
+            '<div class="btn-row" style="margin-top:12px;justify-content:center"><button class="btn" data-act="c-copy" data-val="'+rev.value+'">Copy PIN</button></div></div>') +
+        '<ul class="checklist">' + steps.map(x =>
+          '<li><label><input type="checkbox" data-act="c-check" data-k="'+x.k+'"'+((st.ui.checks&&st.ui.checks[x.k])?" checked":"")+'>' +
+          '<span>'+x.t+'<span class="sub">'+x.s+'</span></span></label></li>').join("") + '</ul>' +
+        '<div class="btn-row" style="margin-top:20px;justify-content:flex-end">' +
+          '<button class="btn primary" data-act="c-ackdone"'+(done?"":" disabled")+'>' +
+          (done ? "Done — hide this forever" : "Check every box to continue") + '</button></div>' +
+      '</div></div>';
+  }
+
+  if(p){
+    const a = st.access[p.rest];
+    let title, list, cta;
+    if(p.kind === "signout"){
+      title = "Sign out all "+a.phones+" phones at "+REST[p.rest].short+"?";
+      list = ["Every signed-in phone is ended immediately.",
+              "Tonight's closer re-scans the QR sticker to get back in.",
+              "Records already saved are untouched."];
+      cta = "Sign out "+a.phones+" phones";
+    } else if(p.kind === "qr"){
+      title = "Rotate the QR sticker at "+REST[p.rest].short+"?";
+      list = ["The printed sticker stops working the instant you confirm.",
+              "You must print and physically replace it before the next close.",
+              "The new code appears once and is never retrievable."];
+      cta = "Rotate — the current sticker dies now";
+    } else {
+      title = "Rotate the PIN at "+REST[p.rest].short+"?";
+      list = ["The current PIN stops working the instant you confirm.",
+              "Every closer needs the new number before their next shift.",
+              "The new PIN appears once and is never retrievable."];
+      cta = "Rotate — the current PIN dies now";
+    }
+    return '<div class="scrim" data-act="c-mclose"></div><div class="modal" role="dialog" aria-modal="true" aria-labelledby="c-mt2">' +
+      '<div class="modal-head"><div style="flex:1"><h3 id="c-mt2">'+title+'</h3>' +
+      '<div class="sub">Infrequent and destructive. Read the three lines below.</div></div>' +
+      '<button class="xbtn" data-act="c-mclose" aria-label="Close">×</button></div>' +
+      '<div class="modal-body"><ul style="margin:0;padding-left:20px;color:var(--ink2);font-size:13.5px;line-height:1.85">' +
+        list.map(x=>'<li>'+x+'</li>').join("")+'</ul></div>' +
+      '<div class="modal-foot"><span class="spacer"></span><button class="btn ghost" data-act="c-mclose">Cancel</button>' +
+      '<button class="btn primary" data-act="c-rotate-go">'+cta+'</button></div></div>';
+  }
+  return "";
+}
+
+/* ============================================================
+   RENDER DISPATCH
+   ============================================================ */
+function renderOverlay(){
+  let h = "";
+  if(current === "b") h = drawerB() || modalB();
+  else if(current === "c") h = overlayC();
+  const o = document.getElementById("overlay");
+  const had = o.innerHTML !== "";
+  o.innerHTML = h;
+  if(h && !had){
+    const dlg = o.querySelector('[role="dialog"]');
+    if(dlg){
+      const f = dlg.querySelector('input,button,select,[tabindex]');
+      if(f) f.focus();
+    }
+  }
+  document.body.style.overflow = h ? "hidden" : "";
+}
+function render(v){
+  if(v === "a") renderA();
+  if(v === "b") renderB();
+  if(v === "c") renderC();
+  renderOverlay();
+}
+
+/* ============================================================
+   VARIANT SWITCHING
+   ============================================================ */
+function showVariant(v, focusPanel){
+  if(v === current) return;
+  scrollMem[current] = window.scrollY;
+  ["a","b","c"].forEach(k => {
+    document.getElementById("p-"+k).hidden = (k !== v);
+    const tab = document.getElementById("t-"+k);
+    tab.setAttribute("aria-selected", String(k === v));
+    tab.tabIndex = (k === v) ? 0 : -1;
+  });
+  current = v;
+  render(v);
+  window.scrollTo({top: scrollMem[v] || 0, behavior:"instant" in window ? "auto" : "auto"});
+  if(focusPanel) document.getElementById("t-"+v).focus();
+}
+document.querySelector(".switch").addEventListener("click", e => {
+  const b = e.target.closest("button[data-v]");
+  if(b) showVariant(b.dataset.v, false);
+});
+document.querySelector(".switch").addEventListener("keydown", e => {
+  if(e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+  const order = ["a","b","c"];
+  const i = order.indexOf(current);
+  const next = order[(i + (e.key === "ArrowRight" ? 1 : order.length-1)) % order.length];
+  e.preventDefault();
+  showVariant(next, true);
+});
+
+/* ============================================================
+   EVENTS — delegated once, dispatched by data-act
+   ============================================================ */
+function setPreset(st, k){
+  const map = {"7d":["2026-08-04","2026-08-10"], "14d":["2026-07-28","2026-08-10"], "pp":["2026-08-01","2026-08-15"]};
+  st.filters.preset = k; st.filters.from = map[k][0]; st.filters.to = map[k][1];
+}
+function moveStaff(st, id, dir){
+  const i = st.staff.findIndex(s=>s.id===id);
+  const j = i + dir;
+  if(j < 0 || j >= st.staff.length) return;
+  const t = st.staff[i]; st.staff[i] = st.staff[j]; st.staff[j] = t;
+}
+function addStaff(v, atStart){
+  const st = S[v];
+  const nf = st.ui.newStaff || {};
+  const name = (nf.name || "").trim();
+  if(!name){ toast("Give the new hire a name first."); return; }
+  const id = name.toLowerCase().replace(/[^a-z0-9]/g,"") + "-" + st.staff.length;
+  const person = {id, name, at: nf.at || "sushi", active:true};
+  if(atStart) st.staff.unshift(person); else st.staff.push(person);
+  st.ui.newStaff = {name:"", at: nf.at || "sushi", pos: nf.pos || "end"};
+  st.ui.adding = false;
+  toast("<b>"+esc(name)+"</b> added — they show in the "+
+    (person.at==="both" ? "picker at both restaurants" : REST[person.at].short+" picker") + " tonight.");
+  render(v);
+}
+function doRotate(v, rest, kind){
+  const st = S[v];
+  if(kind === "signout"){
+    const n = st.access[rest].phones;
+    st.access[rest].phones = 0;
+    st.ui.pending = null;
+    toast("Signed out <b>"+n+" phone"+(n===1?"":"s")+"</b> at "+REST[rest].name+". They must scan the sticker again.");
+    render(v); return;
+  }
+  const value = kind === "qr" ? newToken(rest) : newPin();
+  st.access[rest][kind] = "Today · " + TODAY_LABEL;
+  st.ui.pending = null;
+  st.ui.reveal = {rest, kind, value};
+  st.ui.acked = false;
+  st.ui.checks = {};
+  render(v);
+}
+function copyVal(val){
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(val).then(()=>toast("Copied."), ()=>toast("Copy blocked — select it by hand."));
+  } else toast("Copy blocked here — select it by hand.");
+}
+
+document.addEventListener("click", e => {
+  const el = e.target.closest("[data-act]");
+  if(!el) return;
+  const act = el.dataset.act;
+  const st = S[current];
+
+  /* shared */
+  if(act === "export"){ exportCsv(el.dataset.v); return; }
+
+  /* ---------- variant A ---------- */
+  if(act === "a-preset"){ setPreset(S.a, el.dataset.k); render("a"); return; }
+  if(act === "a-edit"){
+    if(S.a.ui.draft && S.a.ui.draft.id === el.dataset.id) S.a.ui.draft = null;
+    else startDraft("a", el.dataset.id);
+    render("a");
+    const inp = document.getElementById("a-cash"); if(inp) inp.focus();
+    return;
+  }
+  if(act === "a-cancel"){ S.a.ui.draft = null; render("a"); return; }
+  if(act === "a-apply"){ commitDraft("a"); render("a"); return; }
+  if(act === "a-move"){ moveStaff(S.a, el.dataset.id, Number(el.dataset.dir)); render("a"); return; }
+  if(act === "a-add"){ addStaff("a", false); return; }
+  if(act === "a-rename"){ S.a.ui.renaming = el.dataset.id; render("a");
+    const i = document.querySelector('[data-act="a-renameinput"]'); if(i){i.focus(); i.select();} return; }
+  if(act === "a-renamesave"){ S.a.ui.renaming = null; render("a"); toast("Name updated."); return; }
+  if(act === "a-active"){
+    const s = S.a.staff.find(x=>x.id===el.dataset.id); s.active = !s.active;
+    toast(s.active ? "<b>"+esc(s.name)+"</b> is back in the picker."
+      : "<b>"+esc(s.name)+"</b> removed from the picker. Every past shift and share is kept.");
+    render("a"); return;
+  }
+  if(act === "a-del"){
+    const s = S.a.staff.find(x=>x.id===el.dataset.id);
+    S.a.staff = S.a.staff.filter(x=>x.id!==el.dataset.id);
+    toast("<b>"+esc(s.name)+"</b> deleted — they had no recorded shifts.");
+    render("a"); return;
+  }
+  if(act === "a-rotate"){ S.a.ui.pending = {rest:el.dataset.rest, kind:el.dataset.kind}; S.a.ui.reveal = null; render("a"); return; }
+  if(act === "a-rotate-cancel"){ S.a.ui.pending = null; render("a"); return; }
+  if(act === "a-rotate-go"){ doRotate("a", el.dataset.rest, el.dataset.kind); return; }
+  if(act === "a-ackdone"){ S.a.ui.reveal = null; S.a.ui.acked = false; toast("Rotated. The code is gone — rotate again if you lost it."); render("a"); return; }
+  if(act === "a-copy"){ copyVal(el.dataset.val); return; }
+  if(act === "a-signout"){
+    const rk = el.dataset.rest;
+    if(S.a.ui.confirmSignout === rk){ S.a.ui.confirmSignout = null; doRotate("a", rk, "signout"); }
+    else { S.a.ui.confirmSignout = rk;
+      toast("Click again to sign out all phones at <b>"+REST[rk].short+"</b> — they will need the sticker to get back in.");
+      setTimeout(()=>{ S.a.ui.confirmSignout = null; }, 6000); }
+    return;
+  }
+
+  /* ---------- variant B ---------- */
+  if(act === "b-rest"){ S.b.filters.rest = el.dataset.k; render("b"); return; }
+  if(act === "b-open"){ startDraft("b", el.dataset.id); S.b.ui.trigger = el; render("b"); return; }
+  if(act === "b-close"){ S.b.ui.draft = null; render("b"); if(S.b.ui.trigger && document.body.contains(S.b.ui.trigger)) S.b.ui.trigger.focus(); return; }
+  if(act === "b-step2"){ S.b.ui.draft.step = 2; render("b"); return; }
+  if(act === "b-step1"){ S.b.ui.draft.step = 1; render("b"); return; }
+  if(act === "b-apply"){ commitDraft("b"); render("b"); return; }
+  if(act === "b-addopen"){ S.b.ui.adding = true; render("b"); const i = document.getElementById("b-nn"); if(i) i.focus(); return; }
+  if(act === "b-addclose"){ S.b.ui.adding = false; render("b"); return; }
+  if(act === "b-add"){ addStaff("b", (S.b.ui.newStaff||{}).pos === "start"); return; }
+  if(act === "b-move"){ moveStaff(S.b, el.dataset.id, Number(el.dataset.dir)); render("b"); return; }
+  if(act === "b-rename"){
+    const s = S.b.staff.find(x=>x.id===el.dataset.id);
+    const n = window.prompt("Rename " + s.name + " to:", s.name);
+    if(n && n.trim()){ s.name = n.trim(); toast("Renamed to <b>"+esc(s.name)+"</b>. Past shifts follow the new name."); render("b"); }
+    return;
+  }
+  if(act === "b-active"){
+    const s = S.b.staff.find(x=>x.id===el.dataset.id); s.active = !s.active;
+    toast(s.active ? "<b>"+esc(s.name)+"</b> is back in the picker."
+      : "<b>"+esc(s.name)+"</b> is off the picker. Their history is untouched.");
+    render("b"); return;
+  }
+  if(act === "b-del"){
+    const s = S.b.staff.find(x=>x.id===el.dataset.id);
+    S.b.staff = S.b.staff.filter(x=>x.id!==el.dataset.id);
+    toast("<b>"+esc(s.name)+"</b> deleted."); render("b"); return;
+  }
+  if(act === "b-rotate"){ S.b.ui.pending = {rest:el.dataset.rest, kind:el.dataset.kind}; render("b"); return; }
+  if(act === "b-signout"){ S.b.ui.pending = {rest:el.dataset.rest, kind:"signout"}; render("b"); return; }
+  if(act === "b-mclose"){ S.b.ui.pending = null; render("b"); return; }
+  if(act === "b-rotate-go"){ doRotate("b", S.b.ui.pending.rest, S.b.ui.pending.kind); return; }
+  if(act === "b-ackdone"){ S.b.ui.reveal = null; S.b.ui.acked = false; toast("Done. That code cannot be shown again."); render("b"); return; }
+  if(act === "b-copy"){ copyVal(el.dataset.val); return; }
+  if(act === "b-print"){ toast("Sticker sheet sent to the printer."); return; }
+
+  /* ---------- variant C ---------- */
+  if(act === "c-rest"){ S.c.filters.rest = el.dataset.k; render("c"); return; }
+  if(act === "c-person"){ S.c.ui.openPerson = (S.c.ui.openPerson === el.dataset.id) ? null : el.dataset.id; render("c"); return; }
+  if(act === "c-edit"){ startDraft("c", el.dataset.id); render("c"); return; }
+  if(act === "c-close"){ S.c.ui.draft = null; render("c"); return; }
+  if(act === "c-apply"){ commitDraft("c"); render("c"); return; }
+  if(act === "c-add"){ addStaff("c", false); return; }
+  if(act === "c-move"){ moveStaff(S.c, el.dataset.id, Number(el.dataset.dir)); render("c"); return; }
+  if(act === "c-rename"){ S.c.ui.renaming = el.dataset.id; render("c");
+    const i = document.querySelector('[data-act="c-renameinput"]'); if(i){i.focus(); i.select();} return; }
+  if(act === "c-renamesave"){ S.c.ui.renaming = null; render("c"); toast("Name updated."); return; }
+  if(act === "c-active"){
+    const s = S.c.staff.find(x=>x.id===el.dataset.id); s.active = !s.active;
+    toast(s.active ? "<b>"+esc(s.name)+"</b> reactivated." : "<b>"+esc(s.name)+"</b> deactivated — every share they were paid is kept.");
+    render("c"); return;
+  }
+  if(act === "c-del"){
+    const s = S.c.staff.find(x=>x.id===el.dataset.id);
+    S.c.staff = S.c.staff.filter(x=>x.id!==el.dataset.id);
+    toast("<b>"+esc(s.name)+"</b> deleted."); render("c"); return;
+  }
+  if(act === "c-unlock"){ S.c.ui.keysUnlocked = !S.c.ui.keysUnlocked; render("c"); return; }
+  if(act === "c-rotate"){ S.c.ui.pending = {rest:el.dataset.rest, kind:el.dataset.kind}; render("c"); return; }
+  if(act === "c-signout"){ S.c.ui.pending = {rest:el.dataset.rest, kind:"signout"}; render("c"); return; }
+  if(act === "c-mclose"){ S.c.ui.pending = null; render("c"); return; }
+  if(act === "c-rotate-go"){ doRotate("c", S.c.ui.pending.rest, S.c.ui.pending.kind); return; }
+  if(act === "c-ackdone"){ S.c.ui.reveal = null; S.c.ui.checks = {}; S.c.ui.keysUnlocked = false;
+    toast("Rotated. Controls re-locked."); render("c"); return; }
+  if(act === "c-copy"){ copyVal(el.dataset.val); return; }
+  if(act === "c-print"){ toast("Sticker sheet sent to the printer."); return; }
+});
+
+/* live inputs — targeted updates so focus and caret survive */
+document.addEventListener("input", e => {
+  const el = e.target.closest("[data-act]");
+  if(!el) return;
+  const act = el.dataset.act;
+
+  /* A */
+  if(act === "a-date"){ S.a.filters[el.dataset.which] = el.value; S.a.filters.preset = null; render("a"); return; }
+  if(act === "a-rest"){ S.a.filters.rest = el.value; render("a"); return; }
+  if(act === "a-cash" || act === "a-card"){
+    S.a.ui.draft[act === "a-cash" ? "cash" : "card"] = el.value;
+    const p = document.getElementById("a-preview"); if(p) p.innerHTML = previewA();
+    const btn = document.querySelector('[data-act="a-apply"]'); if(btn) btn.disabled = !draftNums("a").valid;
+    return;
+  }
+  if(act === "a-person"){
+    const d = S.a.ui.draft, id = el.dataset.id;
+    if(el.checked){ if(!d.people.includes(id)) d.people.push(id); }
+    else d.people = d.people.filter(x=>x!==id);
+    el.closest("label").classList.toggle("on", el.checked);
+    const p = document.getElementById("a-preview"); if(p) p.innerHTML = previewA();
+    const btn = document.querySelector('[data-act="a-apply"]'); if(btn) btn.disabled = !draftNums("a").valid;
+    return;
+  }
+  if(act === "a-newname"){ S.a.ui.newStaff = Object.assign({at:"sushi"}, S.a.ui.newStaff, {name:el.value}); return; }
+  if(act === "a-newat"){ S.a.ui.newStaff = Object.assign({name:""}, S.a.ui.newStaff, {at:el.value}); return; }
+  if(act === "a-renameinput"){ S.a.staff.find(s=>s.id===el.dataset.id).name = el.value; return; }
+  if(act === "a-at"){ S.a.staff.find(s=>s.id===el.dataset.id).at = el.value; render("a"); return; }
+  if(act === "a-ackchk"){ S.a.ui.acked = el.checked;
+    const b = document.querySelector('[data-act="a-ackdone"]'); if(b) b.disabled = !el.checked; return; }
+
+  /* B */
+  if(act === "b-date"){ S.b.filters[el.dataset.which] = el.value; render("b"); return; }
+  if(act === "b-cash" || act === "b-card"){
+    S.b.ui.draft[act === "b-cash" ? "cash" : "card"] = el.value;
+    updateBResult(); return;
+  }
+  if(act === "b-person"){
+    const d = S.b.ui.draft, id = el.dataset.id;
+    if(el.checked){ if(!d.people.includes(id)) d.people.push(id); }
+    else d.people = d.people.filter(x=>x!==id);
+    el.closest("label").classList.toggle("on", el.checked);
+    updateBResult(); return;
+  }
+  if(act === "b-newname"){ S.b.ui.newStaff = Object.assign({at:"sushi",pos:"end"}, S.b.ui.newStaff, {name:el.value}); return; }
+  if(act === "b-newat"){ S.b.ui.newStaff = Object.assign({name:"",pos:"end"}, S.b.ui.newStaff, {at:el.value}); return; }
+  if(act === "b-newpos"){ S.b.ui.newStaff = Object.assign({name:"",at:"sushi"}, S.b.ui.newStaff, {pos:el.value}); return; }
+  if(act === "b-at"){ S.b.staff.find(s=>s.id===el.dataset.id).at = el.value; render("b"); return; }
+  if(act === "b-ackchk"){ S.b.ui.acked = el.checked;
+    const btn = document.querySelector('[data-act="b-ackdone"]'); if(btn) btn.disabled = !el.checked; return; }
+
+  /* C */
+  if(act === "c-date"){ S.c.filters[el.dataset.which] = el.value; render("c"); return; }
+  if(act === "c-cash" || act === "c-card"){
+    S.c.ui.draft[act === "c-cash" ? "cash" : "card"] = el.value;
+    rerenderCModal(); return;
+  }
+  if(act === "c-person"){
+    const d = S.c.ui.draft, id = el.dataset.id;
+    if(el.checked){ if(!d.people.includes(id)) d.people.push(id); }
+    else d.people = d.people.filter(x=>x!==id);
+    rerenderCModal(); return;
+  }
+  if(act === "c-newname"){ S.c.ui.newStaff = Object.assign({at:"sushi"}, S.c.ui.newStaff, {name:el.value}); return; }
+  if(act === "c-newat"){ S.c.ui.newStaff = Object.assign({name:""}, S.c.ui.newStaff, {at:el.value}); return; }
+  if(act === "c-renameinput"){ S.c.staff.find(s=>s.id===el.dataset.id).name = el.value; return; }
+  if(act === "c-at"){ S.c.staff.find(s=>s.id===el.dataset.id).at = el.value; render("c"); return; }
+  if(act === "c-check"){
+    /* update the gate in place — re-rendering the takeover would replace the
+       checklist under the user's cursor and drop keyboard focus */
+    S.c.ui.checks = S.c.ui.checks || {};
+    S.c.ui.checks[el.dataset.k] = el.checked;
+    const boxes = [...document.querySelectorAll('[data-act="c-check"]')];
+    const done = boxes.length > 0 && boxes.every(b => b.checked);
+    const btn = document.querySelector('[data-act="c-ackdone"]');
+    if(btn){
+      btn.disabled = !done;
+      btn.textContent = done ? "Done — hide this forever" : "Check every box to continue";
+    }
+    return;
+  }
+});
+
+/* keep caret/focus while the B result block and C diff recompute */
+function updateBResult(){
+  const nm = draftNums("b");
+  const blk = document.querySelectorAll("#b-drawer .blk");
+  const last = blk[blk.length-1];
+  if(last && last.querySelector("h4") && last.querySelector("h4").textContent === "Result"){
+    last.innerHTML = '<h4>Result</h4>' + (nm.valid
+      ? '<div style="font-size:30px;font-weight:700;letter-spacing:-.02em">'+money(nm.per)+'</div>' +
+        '<p class="meta">each · '+money(nm.cash)+' ÷ '+nm.n+'</p>'
+      : '<p style="color:var(--accent-deep);font-weight:600">'+(nm.n===0?"Pick at least one person.":"Enter a valid cash amount.")+'</p>');
+  }
+  const hdr = document.querySelectorAll("#b-drawer .blk h4");
+  hdr.forEach(x => { if(x.textContent.indexOf("On the split") === 0)
+    x.textContent = "On the split — " + nm.n + " " + (nm.n===1?"person":"people"); });
+  const btn = document.querySelector('[data-act="b-step2"]');
+  if(btn) btn.disabled = !nm.valid;
+}
+function rerenderCModal(){
+  const focusId = document.activeElement && document.activeElement.id;
+  const selStart = document.activeElement && document.activeElement.selectionStart;
+  renderOverlay();
+  if(focusId){
+    const el = document.getElementById(focusId);
+    if(el){ el.focus(); if(selStart != null && el.setSelectionRange){ try{ el.setSelectionRange(selStart, selStart); }catch(_){} } }
+  }
+}
+
+/* change events for selects that need a full re-render */
+document.addEventListener("change", e => {
+  const el = e.target.closest("[data-act]");
+  if(!el) return;
+  if(el.dataset.act === "a-rest"){ S.a.filters.rest = el.value; render("a"); }
+});
+
+/* Esc closes any overlay */
+document.addEventListener("keydown", e => {
+  if(e.key !== "Escape") return;
+  const st = S[current];
+  if(st.ui.reveal) return;            /* the one-time reveal is not Esc-dismissible */
+  if(st.ui.draft || st.ui.pending){ st.ui.draft = null; st.ui.pending = null; render(current); }
+});
+/* Enter in the add-staff name field adds */
+document.addEventListener("keydown", e => {
+  if(e.key !== "Enter") return;
+  const el = e.target.closest("[data-act]");
+  if(!el) return;
+  if(el.dataset.act === "a-newname"){ e.preventDefault(); addStaff("a", false); }
+  if(el.dataset.act === "b-newname"){ e.preventDefault(); addStaff("b", (S.b.ui.newStaff||{}).pos === "start"); }
+  if(el.dataset.act === "c-newname"){ e.preventDefault(); addStaff("c", false); }
+  if(el.dataset.act === "a-renameinput"){ e.preventDefault(); S.a.ui.renaming = null; render("a"); }
+  if(el.dataset.act === "c-renameinput"){ e.preventDefault(); S.c.ui.renaming = null; render("c"); }
+});
+/* remember whether the B access section was left open */
+document.addEventListener("toggle", e => {
+  if(e.target.matches('details.access')) S.b.ui.accOpen = e.target.open;
+}, true);
+
+/* boot */
+render("a"); render("b"); render("c");
+</script>
+</body>
+</html>
