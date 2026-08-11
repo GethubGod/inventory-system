@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -649,6 +650,35 @@ export function SimpleOrderScreen() {
               onPress={() => setLocationDropdownOpen((prev) => !prev)}
             />
             <View style={{ flex: 1 }} />
+            {/* 7a: entry point for the delivery receiving flow. Lives in the
+                header (least-cluttered spot) so the recent-orders sheet stays
+                read-only. */}
+            <TouchableOpacity
+              onPress={() => {
+                void triggerImpactHaptic(ImpactFeedbackStyle.Light);
+                router.push('/(tabs)/receive-delivery');
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Receive delivery"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: glassHairlineWidth,
+                borderColor: glassColors.controlBorder,
+                backgroundColor: colors.glassCircle,
+                marginRight: ds.spacing(8),
+              }}
+            >
+              <Ionicons
+                name="cube-outline"
+                size={ds.icon(19)}
+                color={glassColors.textPrimary}
+              />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
                 void triggerImpactHaptic(ImpactFeedbackStyle.Light);
