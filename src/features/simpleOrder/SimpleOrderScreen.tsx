@@ -656,7 +656,9 @@ export function SimpleOrderScreen() {
             <TouchableOpacity
               onPress={() => {
                 void triggerImpactHaptic(ImpactFeedbackStyle.Light);
-                router.push('/(tabs)/receive-delivery');
+                // Cast: .expo/types/router.d.ts is a stale generated artifact
+                // (last regenerated June '26); the route file exists.
+                router.push('/(tabs)/receive-delivery' as Parameters<typeof router.push>[0]);
               }}
               accessibilityRole="button"
               accessibilityLabel="Receive delivery"
