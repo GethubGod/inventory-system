@@ -1,7 +1,21 @@
 // @ts-nocheck
 import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import {
+  buildChecklistOrderDayMessage,
+  isExpoDeviceNotRegistered,
+  type ChecklistLocationGroup,
+  type ChecklistReminderMessage,
+} from './reminderDelivery.ts';
+
+export {
+  buildChecklistOrderDayMessage,
+  isExpoDeviceNotRegistered,
+  type ChecklistLocationGroup,
+  type ChecklistReminderMessage,
+} from './reminderDelivery.ts';
 
 const EXPO_PUSH_ENDPOINT = 'https://exp.host/--/api/v2/push/send';
+const EXPO_PUSH_RECEIPTS_ENDPOINT = 'https://exp.host/--/api/v2/push/getReceipts';
 
 export interface ReminderSystemSettings {
   overdueThresholdDays: number;
@@ -46,6 +60,9 @@ export interface SendEmployeeReminderResult {
     tokenCount: number;
     successCount: number;
     failureCount: number;
+    deliveryOutcome: 'accepted' | 'failed' | null;
+    receiptIds: string[];
+    errorDetail: string | null;
     details?: any;
   };
   settings: ReminderSystemSettings;
@@ -105,6 +122,53 @@ export async function getReminderSystemSettings(
     overdueThresholdDays: Math.max(1, Number(data?.overdue_threshold_days ?? 7) || 7),
     reminderRateLimitMinutes: Math.max(1, Number(data?.reminder_rate_limit_minutes ?? 15) || 15),
     recurringWindowMinutes: Math.max(1, Number(data?.recurring_window_minutes ?? 15) || 15),
+  };
+}
+
+/**
+ * Resolves the message at delivery time, rather than trusting a count supplied
+ * when the rule was created. A missing checklist is normal during rollout, so
+ * it keeps the scheduled order-day reminder useful with a generic message.
+ */
+export async function getChecklistOrderDayReminderMessage(
+  supabaseAdmin: SupabaseClient,
+  employeeId: string,
+  locationGroup: ChecklistLocationGroup
+): Promise<ChecklistReminderMessage> {
+  const { data: checklist, error: checklistError } = await supabaseAdmin
+    .from('order_checklists')
+    .select('id')
+    .eq('user_id', employeeId)
+    .eq('location_group', locationGroup)
+    .maybeSingle();
+
+  if (checklistError) {
+    throw new Error(checklistError.message || 'Unable to load the order checklist.');
+  }
+
+  if (!checklist?.id) {
+    return {
+      body: buildChecklistOrderDayMessage(locationGroup, null),
+      uncheckedDefaultItemCount: null,
+      checklistFound: false,
+    };
+  }
+
+  const { count, error: itemCountError } = await supabaseAdmin
+    .from('order_checklist_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('checklist_id', checklist.id)
+    .eq('default_checked', false);
+
+  if (itemCountError) {
+    throw new Error(itemCountError.message || 'Unable to count unchecked checklist items.');
+  }
+
+  const uncheckedDefaultItemCount = Math.max(0, Number(count ?? 0) || 0);
+  return {
+    body: buildChecklistOrderDayMessage(locationGroup, uncheckedDefaultItemCount),
+    uncheckedDefaultItemCount,
+    checklistFound: true,
   };
 }
 
@@ -229,7 +293,44 @@ async function getLastReminderTimestamp(
   return toIsoString(data?.last_reminded_at);
 }
 
+type ExpoPushDelivery = {
+  token: string;
+  status: 'accepted' | 'failed';
+  receiptStatus: 'accepted' | 'failed' | 'pending' | null;
+  receiptId: string | null;
+  errorDetail: string | null;
+};
+
+function expoErrorDetail(value: any, fallback: string): string {
+  const detail = value?.details?.error;
+  const message = value?.message;
+  if (typeof detail === 'string' && detail.trim()) return detail.trim();
+  if (typeof message === 'string' && message.trim()) {
+    return message.trim().replace(/(?:Exponent|Expo)PushToken\[[^\]]+\]/g, '[redacted Expo token]');
+  }
+  return fallback;
+}
+
+async function markExpoTokensInactive(
+  supabaseAdmin: SupabaseClient,
+  employeeId: string,
+  tokens: string[]
+): Promise<string | null> {
+  const invalidTokens = [...new Set(tokens.filter(Boolean))];
+  if (invalidTokens.length === 0) return null;
+
+  const { error } = await supabaseAdmin
+    .from('device_push_tokens')
+    .update({ active: false })
+    .eq('user_id', employeeId)
+    .in('expo_push_token', invalidTokens);
+
+  return error?.message || null;
+}
+
 async function sendExpoPush(
+  supabaseAdmin: SupabaseClient,
+  employeeId: string,
   tokens: string[],
   title: string,
   body: string,
@@ -238,11 +339,14 @@ async function sendExpoPush(
   status: 'sent' | 'partial' | 'failed';
   successCount: number;
   failureCount: number;
+  deliveryOutcome: 'accepted' | 'failed';
+  receiptIds: string[];
+  errorDetail: string | null;
   details: any[];
 }> {
-  let successCount = 0;
-  let failureCount = 0;
+  const deliveries: ExpoPushDelivery[] = [];
   const details: any[] = [];
+  const deviceNotRegisteredTokens = new Set<string>();
 
   for (const chunk of chunkArray(tokens, 100)) {
     const messages = chunk.map((token) => ({
@@ -272,39 +376,144 @@ async function sendExpoPush(
           ? [json.data]
           : [];
 
-      responseData.forEach((entry: any) => {
-        if (entry?.status === 'ok') {
-          successCount += 1;
-        } else {
-          failureCount += 1;
+      chunk.forEach((token, index) => {
+        const ticket = responseData[index];
+        if (ticket?.status === 'ok' && typeof ticket.id === 'string' && ticket.id.trim()) {
+          deliveries.push({
+            token,
+            status: 'accepted',
+            receiptStatus: 'pending',
+            receiptId: ticket.id,
+            errorDetail: null,
+          });
+          return;
         }
-      });
 
-      if (responseData.length === 0) {
-        failureCount += messages.length;
-      }
+        if (isExpoDeviceNotRegistered(ticket)) {
+          deviceNotRegisteredTokens.add(token);
+        }
+        deliveries.push({
+          token,
+          status: 'failed',
+          receiptStatus: null,
+          receiptId: null,
+          errorDetail: expoErrorDetail(ticket ?? json, 'Expo did not return a push ticket.'),
+        });
+      });
 
       details.push({
         responseStatus: response.status,
-        data: responseData,
+        tickets: responseData.map((ticket: any) => ({
+          status: ticket?.status ?? null,
+          id: typeof ticket?.id === 'string' ? ticket.id : null,
+          error: typeof ticket?.details?.error === 'string' ? ticket.details.error : null,
+        })),
         errors: json?.errors ?? null,
       });
     } catch (error: any) {
-      failureCount += messages.length;
-      details.push({
-        error: error?.message || 'Unknown push error',
+      const errorDetail = error?.message || 'Unknown push error';
+      chunk.forEach((token) => {
+        deliveries.push({
+          token,
+          status: 'failed',
+          receiptStatus: null,
+          receiptId: null,
+          errorDetail,
+        });
       });
+      details.push({ error: errorDetail });
     }
   }
 
+  const receiptIds = deliveries
+    .map((delivery) => delivery.receiptId)
+    .filter((receiptId): receiptId is string => Boolean(receiptId));
+  const deliveryByReceiptId = new Map(
+    deliveries
+      .filter((delivery) => delivery.receiptId)
+      .map((delivery) => [delivery.receiptId as string, delivery])
+  );
+
+  // Expo receipts can take several minutes to appear. This immediate pass
+  // records known failures now; absent receipts remain accepted/pending in the
+  // event details instead of being misclassified as delivery failures.
+  for (const receiptChunk of chunkArray(receiptIds, 1000)) {
+    try {
+      const response = await fetch(EXPO_PUSH_RECEIPTS_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ ids: receiptChunk }),
+      });
+      const json = await response.json().catch(() => ({}));
+      const receiptData = json?.data && typeof json.data === 'object' ? json.data : {};
+
+      receiptChunk.forEach((receiptId) => {
+        const delivery = deliveryByReceiptId.get(receiptId);
+        const receipt = receiptData[receiptId];
+        if (!delivery || !receipt) return;
+
+        if (receipt.status === 'ok') {
+          delivery.receiptStatus = 'accepted';
+          return;
+        }
+
+        delivery.status = 'failed';
+        delivery.receiptStatus = 'failed';
+        delivery.errorDetail = expoErrorDetail(receipt, 'Expo rejected the push receipt.');
+        if (isExpoDeviceNotRegistered(receipt)) {
+          deviceNotRegisteredTokens.add(delivery.token);
+        }
+      });
+
+      details.push({
+        receiptResponseStatus: response.status,
+        receipts: receiptData,
+        receiptErrors: json?.errors ?? null,
+      });
+    } catch (error: any) {
+      details.push({ receiptCheckError: error?.message || 'Unable to check Expo push receipts.' });
+    }
+  }
+
+  const inactiveTokenUpdateError = await markExpoTokensInactive(
+    supabaseAdmin,
+    employeeId,
+    [...deviceNotRegisteredTokens]
+  );
+  if (inactiveTokenUpdateError) {
+    details.push({ tokenHygieneError: inactiveTokenUpdateError });
+  }
+
+  const successCount = deliveries.filter((delivery) => delivery.status === 'accepted').length;
+  const failureCount = deliveries.length - successCount;
   const status =
     failureCount === 0
       ? 'sent'
       : successCount === 0
         ? 'failed'
         : 'partial';
+  const errorDetails = deliveries
+    .map((delivery) => delivery.errorDetail)
+    .filter((errorDetail): errorDetail is string => Boolean(errorDetail));
+  if (inactiveTokenUpdateError) errorDetails.push(`Token hygiene update failed: ${inactiveTokenUpdateError}`);
 
-  return { status, successCount, failureCount, details };
+  details.push({
+    deliveries: deliveries.map(({ token: _token, ...delivery }) => delivery),
+    deviceNotRegisteredTokenCount: deviceNotRegisteredTokens.size,
+  });
+
+  return {
+    status,
+    successCount,
+    failureCount,
+    deliveryOutcome: failureCount > 0 ? 'failed' : 'accepted',
+    receiptIds,
+    errorDetail: errorDetails.length > 0 ? errorDetails.join('; ') : null,
+    details,
+  };
 }
 
 export async function sendEmployeeReminder(
@@ -444,6 +653,9 @@ export async function sendEmployeeReminder(
     tokenCount: 0,
     successCount: 0,
     failureCount: 0,
+    deliveryOutcome: null,
+    receiptIds: [],
+    errorDetail: null,
   };
 
   if (pushChannelRequested) {
@@ -470,15 +682,25 @@ export async function sendEmployeeReminder(
       if (tokens.length === 0) {
         pushResult.status = 'no_tokens';
       } else {
-        const pushDelivery = await sendExpoPush(tokens, reminderTitle, reminderBody, {
-          type: 'employee_reminder',
-          reminder_id: reminderRow.id,
-          source: input.source ?? 'manual',
-          location_id: locationId,
-        });
+        const pushDelivery = await sendExpoPush(
+          supabaseAdmin,
+          employee.id,
+          tokens,
+          reminderTitle,
+          reminderBody,
+          {
+            type: 'employee_reminder',
+            reminder_id: reminderRow.id,
+            source: input.source ?? 'manual',
+            location_id: locationId,
+          }
+        );
         pushResult.status = pushDelivery.status;
         pushResult.successCount = pushDelivery.successCount;
         pushResult.failureCount = pushDelivery.failureCount;
+        pushResult.deliveryOutcome = pushDelivery.deliveryOutcome;
+        pushResult.receiptIds = pushDelivery.receiptIds;
+        pushResult.errorDetail = pushDelivery.errorDetail;
         pushResult.details = pushDelivery.details;
       }
     }
@@ -491,6 +713,9 @@ export async function sendEmployeeReminder(
       event_type: eventType,
       sent_at: nowIso,
       channels_attempted: channelsAttempted,
+      push_delivery_status: pushResult.deliveryOutcome,
+      expo_push_receipt_ids: pushResult.receiptIds,
+      push_error_detail: pushResult.errorDetail,
       delivery_result: {
         source: input.source ?? 'manual',
         notifications_enabled: notificationsEnabled,

@@ -81,6 +81,19 @@ function getExpoProjectId(): string | undefined {
   return fromEas || fromExpoConfig;
 }
 
+export function isPushTokenRefreshDue(
+  updatedAt: string | null | undefined,
+  nowMs = Date.now(),
+  maxAgeDays = 7
+): boolean {
+  if (!updatedAt) return true;
+  const updatedAtMs = new Date(updatedAt).getTime();
+  if (!Number.isFinite(updatedAtMs)) return true;
+
+  const maxAgeMs = Math.max(0, maxAgeDays) * 24 * 60 * 60 * 1000;
+  return nowMs - updatedAtMs > maxAgeMs;
+}
+
 export async function registerCurrentDevicePushToken(
   userId: string
 ): Promise<string | null> {
@@ -142,6 +155,38 @@ export async function registerCurrentDevicePushToken(
   }
 
   return expoPushToken;
+}
+
+/**
+ * Foreground callers can use this to renew a remote-push registration no more
+ * than once per seven days. Wiring the AppState listener is intentionally left
+ * to the frontend task.
+ */
+export async function refreshCurrentDevicePushTokenIfStale(
+  userId: string,
+  maxAgeDays = 7
+): Promise<string | null> {
+  if (!userId) return null;
+  const db = supabase as any;
+
+  const { data, error } = await db
+    .from('device_push_tokens')
+    .select('updated_at')
+    .eq('user_id', userId)
+    .eq('active', true)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message || 'Unable to check push token freshness.');
+  }
+
+  if (!isPushTokenRefreshDue(data?.updated_at, Date.now(), maxAgeDays)) {
+    return null;
+  }
+
+  return registerCurrentDevicePushToken(userId);
 }
 
 export async function deactivatePushTokensForUser(userId: string): Promise<void> {
