@@ -3,18 +3,18 @@
 
 [api]
 enabled = true
-port = 54321
+port = 54421
 schemas = ["public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
 
 [db]
-port = 54322
+port = 54422
 major_version = 15
 
 [studio]
 enabled = true
-port = 54323
+port = 54423
 
 [auth]
 enabled = true
