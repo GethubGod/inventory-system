@@ -35,6 +35,12 @@ function readString(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function readReason(value: unknown): InviteFailureReason | null {
+  return value === "used" || value === "expired" || value === "revoked" || value === "invalid"
+    ? value
+    : null;
+}
+
 function readRole(value: unknown): JoinRole | null {
   return value === "employee" || value === "manager" ? value : null;
 }
@@ -76,16 +82,21 @@ export async function validateInviteToken(
   const payload = data as
     | {
         ok?: unknown;
+        valid?: unknown;
         error?: unknown;
+        reason?: unknown;
         invitedName?: unknown;
         invited_name?: unknown;
         role?: unknown;
       }
     | null;
 
-  if (payload?.ok !== true) {
+  // Backend dry-run responds {valid, invitedName, role, reason} (see
+  // supabase/functions/accept-invite); tolerate legacy {ok} too.
+  if (payload?.ok !== true && payload?.valid !== true) {
+    const structured = readReason(payload?.reason);
     const message = readString(payload?.error) ?? "This invite link is not valid.";
-    return { ok: false, reason: classifyInviteFailure(message), message };
+    return { ok: false, reason: structured ?? classifyInviteFailure(message), message };
   }
 
   return {
