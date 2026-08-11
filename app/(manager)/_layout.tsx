@@ -6,6 +6,7 @@ import { useAuthStore } from "@/store";
 import { supabase } from "@/lib/supabase";
 import { AuthLoadingScreen } from "@/components";
 import { useProtectedAuthGuard } from "@/hooks";
+import { isOrderFulfillmentEligible } from "@/services/fulfillmentEligibility";
 import { colors } from "@/theme/design";
 import {
   TabButton,
@@ -59,10 +60,7 @@ export default function ManagerLayout() {
         (Array.isArray(data) ? data : [])
           .filter((row: any) => {
             const order = Array.isArray(row?.orders) ? row.orders[0] : row?.orders;
-            if (order?.entry_method !== "quick_order" && !order?.quick_session_id) {
-              return true;
-            }
-            return order?.manager_review_status === "approved";
+            return isOrderFulfillmentEligible(order ?? {});
           })
           .map((row: any) =>
             typeof row?.order_id === "string" ? row.order_id : null,

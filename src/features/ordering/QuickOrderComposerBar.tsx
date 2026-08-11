@@ -331,8 +331,8 @@ function QuickOrderComposerBarImpl({
   const { amplitudes, pushAmplitude, reset: resetAmplitudes } =
     useAmplitudeBuffer(BAR_COUNT);
 
-  // expo-audio reports `metering` in dBFS (~-60 floor .. 0 peak), updated every
-  // 100ms. Normalize to 0..1 with the same window the composer already used.
+  // Recorder metering is dBFS (~-60 floor .. 0 peak). Normalize to 0..1 with
+  // the same window the composer already used.
   const meterRef = useRef(0);
   useEffect(() => {
     meterRef.current =

@@ -84,7 +84,9 @@ export function validateQuickOrderSafety(input: SafetyValidationInput): SafetyVa
     ...(input.parseResponse.pending_clarifications ?? input.parseResponse.pending_actions ?? []),
   ]);
   const hasClarifications = pendingClarifications.length > 0;
-  const status = hasClarifications
+  const status = input.parseResponse.status === 'unit_unrecognized'
+    ? 'unit_unrecognized'
+    : hasClarifications
       ? 'needs_clarification'
       : input.parseResponse.status;
 

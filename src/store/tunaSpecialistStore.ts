@@ -9,17 +9,6 @@ import {
 } from '@/lib/haptics';
 import NetInfo, { NetInfoSubscription } from '@react-native-community/netinfo';
 import { supabase } from '@/lib/supabase';
-import type { EventSubscription } from 'expo-modules-core';
-
-// Lazy-load expo-speech-recognition to avoid crashing the entire app
-// when the native module isn't available (e.g. before dev client rebuild)
-let ExpoSpeechRecognitionModule: any = null;
-try {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  ExpoSpeechRecognitionModule = require('expo-speech-recognition').ExpoSpeechRecognitionModule;
-} catch {
-  // Native module not available — voice features will be disabled
-}
 
 // --- Types ---
 
@@ -138,7 +127,6 @@ function delay(ms: number) {
 }
 
 // --- Module-level subscriptions ---
-let voiceSubscriptions: EventSubscription[] = [];
 let netInfoUnsubscribe: NetInfoSubscription | null = null;
 
 const initialState = {
@@ -309,57 +297,6 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
       ...initialState,
 
       initVoice: () => {
-        // Clean up any existing listeners
-        voiceSubscriptions.forEach((s) => s.remove());
-        voiceSubscriptions = [];
-
-        if (!ExpoSpeechRecognitionModule) {
-          set({ error: 'Voice recognition not available. Rebuild the dev client.' });
-          // Still subscribe to network changes
-          if (netInfoUnsubscribe) netInfoUnsubscribe();
-          netInfoUnsubscribe = NetInfo.addEventListener((state) => {
-            set({ isOnline: !!state.isConnected });
-          });
-          return;
-        }
-
-        voiceSubscriptions.push(
-          ExpoSpeechRecognitionModule.addListener('start', () => {
-            set({ isListening: true, currentSpeaker: 'human', error: null });
-          }),
-        );
-
-        voiceSubscriptions.push(
-          ExpoSpeechRecognitionModule.addListener('end', () => {
-            set({ isListening: false });
-          }),
-        );
-
-        voiceSubscriptions.push(
-          ExpoSpeechRecognitionModule.addListener('result', (event: any) => {
-            const transcript = event.results[0]?.transcript ?? '';
-            if (event.isFinal) {
-              set({ finalTranscript: transcript, liveTranscript: '' });
-            } else {
-              set({ liveTranscript: transcript });
-            }
-          }),
-        );
-
-        voiceSubscriptions.push(
-          ExpoSpeechRecognitionModule.addListener('error', (event: any) => {
-            let message: string;
-            if (event.error === 'no-speech') {
-              message = "I didn't catch anything. Make sure to speak close to the phone.";
-            } else {
-              message = 'I had trouble hearing you. Move to a quieter spot and try again.';
-            }
-            triggerNotificationHaptic(NotificationFeedbackType.Error);
-            set({ error: message, isListening: false, currentSpeaker: null });
-          }),
-        );
-
-        // Subscribe to network changes
         if (netInfoUnsubscribe) netInfoUnsubscribe();
         netInfoUnsubscribe = NetInfo.addEventListener((state) => {
           set({ isOnline: !!state.isConnected });
@@ -367,57 +304,27 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
       },
 
       destroyVoice: () => {
-        voiceSubscriptions.forEach((s) => s.remove());
-        voiceSubscriptions = [];
         if (netInfoUnsubscribe) {
           netInfoUnsubscribe();
           netInfoUnsubscribe = null;
         }
-        if (ExpoSpeechRecognitionModule) {
-          ExpoSpeechRecognitionModule.abort();
-        }
+        set({ isListening: false, liveTranscript: '', currentSpeaker: null });
       },
 
       startListening: async () => {
-        if (get().isListening || get().isProcessing) return;
-
-        if (!ExpoSpeechRecognitionModule) {
-          set({ error: 'Voice recognition not available. Rebuild the dev client.' });
-          return;
-        }
-
-        try {
-          const netState = await NetInfo.fetch();
-          set({ isOnline: !!netState.isConnected });
-
-          const result = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-          if (!result.granted) {
-            set({ error: 'Microphone and speech recognition access needed for Tuna Intelligence.' });
-            return;
-          }
-
-          set({ liveTranscript: '', finalTranscript: null, error: null });
-          triggerImpactHaptic(ImpactFeedbackStyle.Light);
-
-          ExpoSpeechRecognitionModule.start({
-            lang: 'en-US',
-            interimResults: true,
-            continuous: false,
-            addsPunctuation: true,
-          });
-        } catch (err) {
-          set({
-            error: `Failed to start: ${err instanceof Error ? err.message : String(err)}`,
-          });
-        }
+        if (get().isProcessing) return;
+        const netState = await NetInfo.fetch();
+        set({
+          isOnline: !!netState.isConnected,
+          isListening: false,
+          liveTranscript: '',
+          finalTranscript: null,
+          currentSpeaker: null,
+          error: 'Voice ordering is unavailable in this release.',
+        });
       },
 
       stopListening: async () => {
-        try {
-          if (ExpoSpeechRecognitionModule) ExpoSpeechRecognitionModule.stop();
-        } catch {
-          // May already be stopped
-        }
         triggerImpactHaptic(ImpactFeedbackStyle.Medium);
         set({ isListening: false });
       },
@@ -526,9 +433,6 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
       },
 
       reset: () => {
-        if (get().isListening && ExpoSpeechRecognitionModule) {
-          ExpoSpeechRecognitionModule.abort();
-        }
         set({ ...initialState, hasSeenOnboarding: get().hasSeenOnboarding });
       },
     }),
@@ -543,4 +447,3 @@ export const useTunaSpecialistStore = create<TunaSpecialistState>()(
     },
   ),
 );
-

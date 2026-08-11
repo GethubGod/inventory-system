@@ -12,10 +12,31 @@
  * - Preprocess: strip qo_keywords(ignore), then apply qo_keywords(status_term).
  * - Item: qo_personalization alias, qo_items aliases, qo_items exact name,
  *   qo_items fuzzy name.
- * - Unit: qo_personalization personal_unit, qo_keywords unit_alias,
- *   qo_items.order_unit.
+ * - Unit:
+ *   - No typed unit: qo_personalization personal_unit for that employee/item,
+ *     then qo_items.order_unit.
+ *   - Typed unit: match qo_personalization personal_unit or
+ *     personal_unit_equals first. If it does not match personalization but does
+ *     match qo_items.order_unit or a qo_keywords unit_alias for that global
+ *     unit, use global ordering logic. If it matches neither, return
+ *     status="unit_unrecognized" and ask the employee to retype using a
+ *     suggested unit; do not add an item or fire a recommendation.
  * - Reorder: qo_personalization thresholds, qo_reorder_rules, qo_items
  *   target_stock, item_reorder_rules, item_order_profiles, then no order.
+ *   When the resolved stock quantity is exactly 0, skip qo_personalization
+ *   thresholds and start with qo_reorder_rules.
+ *
+ * Unit decision tree:
+ * Did the employee specify a unit?
+ * - No: use the employee personal_unit for this item when configured; otherwise
+ *   use qo_items.order_unit.
+ * - Yes, and it matches personal_unit or personal_unit_equals: use
+ *   personalization thresholds.
+ * - Yes, and it misses personalization but matches qo_items.order_unit or a
+ *   qo_keywords unit_alias for that unit: use global reorder logic and skip
+ *   personalization thresholds.
+ * - Yes, and it matches neither: return unit_unrecognized with suggested units
+ *   ordered personal unit first, then item default, then relevant aliases.
  *
  * Custom counting units: when qo_personalization has personal_unit but no
  * personal_unit_equals, the parser treats that word as employee-only stock

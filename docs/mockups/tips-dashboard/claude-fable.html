@@ -1,0 +1,1423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Babytuna Tips — Manager Dashboard · three design variants</title>
+<style>
+/* ============ shared ============ */
+*{box-sizing:border-box;margin:0;padding:0}
+html{font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;color:#1a1a1a;background:#f5f1e8;-webkit-text-size-adjust:100%}
+body{min-width:1000px}
+button{font:inherit;cursor:pointer;color:inherit}
+input,select{font:inherit;color:inherit}
+[hidden]{display:none!important}
+:focus-visible{outline:2px solid #e84d38;outline-offset:2px;border-radius:4px}
+.num{font-variant-numeric:tabular-nums}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+.topbar{position:sticky;top:0;z-index:80;background:#fff;border-bottom:1px solid rgba(0,0,0,.09);display:flex;align-items:center;gap:22px;padding:10px 26px}
+.brand{font-weight:700;font-size:15px;white-space:nowrap}
+.brand span{color:#9c9890;font-weight:400}
+.tabs{display:flex;gap:4px;background:#f0ece1;padding:4px;border-radius:10px}
+.tab{border:0;background:transparent;padding:6px 14px;border-radius:7px;color:#5f5f5f;font-weight:600;font-size:14px}
+.tab[aria-selected="true"]{background:#fff;color:#1a1a1a;box-shadow:0 1px 2px rgba(0,0,0,.10)}
+.topnote{margin-left:auto;color:#9c9890;font-size:12.5px;white-space:nowrap}
+
+.thesis{max-width:1160px;margin:24px auto 4px;padding:2px 24px 2px 21px}
+.thesis-inner{border-left:3px solid #e84d38;padding:2px 0 2px 16px}
+.thesis h2{font-size:15px;margin-bottom:2px}
+.thesis p{color:#5f5f5f;font-size:14px;max-width:78ch}
+
+#toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,12px);background:#1a1a1a;color:#fff;padding:10px 18px;border-radius:99px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:200;max-width:80ch}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+.rounding-note{color:#9c9890;font-size:12.5px;max-width:88ch;margin-top:10px}
+.qr{width:132px;height:132px;image-rendering:pixelated;border:1px solid rgba(0,0,0,.1);border-radius:6px;background:#fff}
+
+/* ============ Variant A — The Ledger ============ */
+.vA{background:#f7f5f0;padding-bottom:90px;font-size:14px}
+.vA .wrap{max-width:1160px;margin:0 auto;padding:0 24px}
+.a-bar{position:sticky;top:49px;z-index:40;background:#f7f5f0;padding:12px 0 10px;border-bottom:1px solid rgba(0,0,0,.12);display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:22px}
+.a-bar label{font-size:12px;color:#5f5f5f;display:flex;align-items:center;gap:7px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.a-bar select{border:1px solid rgba(0,0,0,.2);border-radius:8px;padding:5px 8px;background:#fff;font-size:13px}
+.seg{display:inline-flex;border:1px solid rgba(0,0,0,.2);border-radius:8px;overflow:hidden;background:#fff}
+.seg button{border:0;background:transparent;padding:5px 13px;font-size:13px;color:#5f5f5f;border-right:1px solid rgba(0,0,0,.12)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:#1a1a1a;color:#fff}
+.a-totals{margin-left:auto;display:flex;align-items:baseline;gap:18px;font-size:13px;color:#5f5f5f}
+.a-totals strong{font-size:15px;color:#1a1a1a}
+.a-flagcount{background:#fbeae7;color:#c03520;border:1px solid rgba(192,53,32,.35);border-radius:99px;padding:3px 11px;font-size:12.5px;font-weight:700}
+.a-export{border:1px solid rgba(0,0,0,.25);background:#fff;border-radius:8px;padding:5px 13px;font-size:13px;font-weight:600}
+.a-section{margin-bottom:44px}
+.a-section>h3{font-size:12.5px;text-transform:uppercase;letter-spacing:.09em;color:#5f5f5f;margin-bottom:10px;border-bottom:2px solid #1a1a1a;padding-bottom:5px}
+.a-table{width:100%;border-collapse:collapse;font-size:13.5px;background:#fff;border:1px solid rgba(0,0,0,.14)}
+.a-table th,.a-table td{padding:7px 11px;text-align:left;border-bottom:1px solid rgba(0,0,0,.07);vertical-align:top}
+.a-table thead th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#5f5f5f;background:#efece3;border-bottom:1px solid rgba(0,0,0,.16);font-weight:700}
+.a-table thead .grp{text-align:center}
+.a-table thead .grp-split{background:#f3e7d2;color:#5a4a24}
+.a-table thead .grp-card{background:#e7e9ec;color:#4b5560}
+.a-table thead .sub-split{background:#f8efe0;color:#5a4a24}
+.a-table thead .sub-card{background:#eef0f2;color:#4b5560}
+.r{text-align:right}
+td.col-split{background:#fdf8ee}
+td.col-card{background:#f3f4f6;color:#5f5f5f;border-left:1px dashed rgba(0,0,0,.18)}
+th.sub-card,td.col-card{border-left:1px dashed rgba(0,0,0,.18)}
+.a-table td.per{font-weight:700}
+.a-table .names{color:#3c3a35}
+.a-table .cnt{color:#9c9890;font-size:12px}
+.a-table .meta{color:#9c9890;font-size:12.5px;white-space:nowrap}
+.a-flagrow>td{background:#fbeae7!important}
+.a-flagrow>td:first-child{box-shadow:inset 3px 0 0 #c03520}
+.a-flagchip{display:inline-block;background:#c03520;color:#fff;border-radius:5px;font-size:11px;font-weight:700;padding:1px 7px;margin-left:7px;vertical-align:1px}
+.a-fixbtn,.a-okbtn{border:1px solid rgba(0,0,0,.22);background:#fff;border-radius:7px;padding:3px 11px;font-size:12.5px;font-weight:600}
+.a-okbtn{color:#5f5f5f;margin-left:5px}
+.a-sub th,.a-sub td{background:#efece3!important;font-weight:700;font-size:12.5px;color:#3c3a35;border-top:1px solid rgba(0,0,0,.14)}
+.a-sub th{text-align:right}
+.a-grand th,.a-grand td{background:#1a1a1a!important;color:#fff!important;font-weight:700;font-size:13px}
+.a-grand th{text-align:right}
+.a-grand td.col-card{border-left-color:rgba(255,255,255,.4)}
+.a-empty td{color:#9c9890;padding:20px;text-align:center}
+/* inline editor row */
+.a-edrow>td{background:#fffdf2;border-top:2px solid #1a1a1a;border-bottom:2px solid #1a1a1a;padding:16px 18px}
+.ed-fields{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+.ed-fields>label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#5a4a24}
+.ed-fields>label.ed-card{color:#4b5560}
+.ed-fields input[type="text"]{border:1px solid rgba(0,0,0,.3);border-radius:8px;padding:7px 10px;width:130px;font-size:15px;text-align:right;background:#fff}
+.ed-fields fieldset{border:1px solid rgba(0,0,0,.18);border-radius:10px;padding:8px 12px 10px;background:#fff}
+.ed-fields legend{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#5a4a24;padding:0 5px}
+.chk{display:inline-flex;align-items:center;gap:6px;margin-right:14px;font-size:14px;font-weight:600}
+.ed-preview{margin-top:12px;font-size:13.5px;color:#3c3a35}
+.ed-preview strong{font-size:15px}
+.ed-actions{margin-top:12px;display:flex;gap:8px;align-items:center}
+.ed-actions button,.ed-confirm button{border:1px solid rgba(0,0,0,.25);background:#fff;border-radius:8px;padding:6px 15px;font-size:13.5px;font-weight:600}
+button.primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+button.danger{background:#c03520;color:#fff;border-color:#c03520}
+.ed-confirm{margin-top:12px;background:#fbeae7;border:1px solid rgba(192,53,32,.4);border-radius:10px;padding:12px 14px;font-size:13.5px}
+.ed-confirm p{margin-bottom:10px}
+.ed-error{color:#c03520;font-weight:700}
+/* staff */
+.a-addrow{display:flex;align-items:flex-end;gap:12px;background:#fff;border:1px solid rgba(0,0,0,.14);border-bottom:0;padding:12px 14px}
+.a-addrow label{display:flex;flex-direction:column;gap:3px;font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#5f5f5f}
+.a-addrow input,.a-addrow select{border:1px solid rgba(0,0,0,.25);border-radius:8px;padding:6px 9px;font-size:14px}
+.a-addrow input{width:200px}
+.a-addrow .hint{color:#9c9890;font-size:12.5px;margin-left:auto;max-width:34ch}
+.a-ordbtn{border:1px solid rgba(0,0,0,.2);background:#fff;border-radius:6px;width:24px;height:22px;font-size:11px;line-height:1;padding:0}
+.a-ordbtn:disabled{opacity:.3;cursor:default}
+.a-inactive td{color:#9c9890}
+.a-inactive td:first-child{color:#c9c5bc}
+.a-status-on{color:#2c6e49;font-weight:700;font-size:12.5px}
+.a-status-off{color:#9c9890;font-weight:700;font-size:12.5px}
+.a-link{border:0;background:none;color:#1a1a1a;text-decoration:underline;font-size:13px;padding:2px 4px}
+.a-link.danger-link{color:#c03520;background:none;border:0}
+.a-link:disabled{color:#c9c5bc;text-decoration:none;cursor:default}
+.a-renform{display:inline-flex;gap:6px}
+.a-renform input{border:1px solid rgba(0,0,0,.3);border-radius:6px;padding:2px 8px;width:140px}
+/* access */
+.a-accessgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.a-access{background:#fff;border:1px solid rgba(0,0,0,.14);padding:16px 18px}
+.a-access h4{font-size:15px;margin-bottom:10px;border-bottom:1px solid rgba(0,0,0,.09);padding-bottom:7px}
+.a-access .row{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:13.5px;border-bottom:1px solid rgba(0,0,0,.05)}
+.a-access .row dt{font-weight:700;width:92px;flex:none}
+.a-access .row dd{color:#5f5f5f}
+.a-access .row button{margin-left:auto}
+.a-rotbtn{border:1px solid rgba(0,0,0,.25);background:#fff;border-radius:7px;padding:4px 12px;font-size:12.5px;font-weight:600}
+.a-signout{margin-top:12px;border:1px solid rgba(192,53,32,.5);color:#c03520;background:#fff;border-radius:7px;padding:5px 13px;font-size:12.5px;font-weight:700}
+.a-confirmbox{margin-top:12px;background:#fbeae7;border:1px solid rgba(192,53,32,.4);border-radius:10px;padding:12px 14px;font-size:13px}
+.a-confirmbox p{margin-bottom:9px}
+.a-confirmbox label{display:flex;align-items:center;gap:8px;font-weight:700;margin-bottom:9px}
+.a-confirmbox input{border:1px solid rgba(0,0,0,.3);border-radius:7px;padding:5px 9px;width:110px;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.a-confirmbox button{border:1px solid rgba(0,0,0,.25);background:#fff;border-radius:7px;padding:5px 13px;font-size:12.5px;font-weight:600}
+.a-confirmbox button.danger:disabled{opacity:.4;cursor:default}
+.a-reveal{margin-top:12px;background:#1a1a1a;color:#fff;border-radius:10px;padding:14px 16px;font-size:13px}
+.a-reveal .secret{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:26px;letter-spacing:.35em;display:inline-block;margin:4px 0 6px}
+.a-reveal p{color:rgba(255,255,255,.75);margin-bottom:10px}
+.a-reveal p strong{color:#fff}
+.a-reveal button{border:1px solid rgba(255,255,255,.4);background:transparent;color:#fff;border-radius:7px;padding:5px 13px;font-size:12.5px;font-weight:600;margin-right:6px}
+.a-reveal .qr{margin:6px 0 10px}
+
+/* ============ Variant B — The Daybook ============ */
+.vB{background:#f5f1e8;padding-bottom:110px}
+.b-wrap{max-width:920px;margin:0 auto;padding:0 24px}
+.b-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:20px 0 6px}
+.b-chip{border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:99px;padding:6px 16px;font-size:13.5px;font-weight:600;color:#5f5f5f}
+.b-chip[aria-pressed="true"]{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.b-controls .b-export{margin-left:auto;border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:99px;padding:6px 16px;font-size:13.5px;font-weight:600}
+.b-rangetotals{color:#5f5f5f;font-size:14px;margin:2px 4px 8px}
+.b-rangetotals strong{color:#1a1a1a}
+.b-day{margin:28px 0 34px}
+.b-dayhead{display:flex;justify-content:space-between;align-items:baseline;padding:0 6px 12px}
+.b-dayhead h4{font-size:18px;letter-spacing:-.01em}
+.b-dayhead p{color:#5f5f5f;font-size:14px}
+.b-dayhead p strong{color:#1a1a1a}
+.b-cards{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.b-card{background:#fff;border-radius:20px;padding:20px 22px;display:flex;flex-direction:column;gap:13px;border:1.5px solid transparent}
+.b-card.flagged{border-color:#e84d38}
+.b-flagbanner{background:#fbeae7;color:#c03520;border-radius:12px;padding:9px 13px;font-size:13px;font-weight:600}
+.b-cardhead{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.b-rm{font-weight:700;font-size:15px}
+.b-meta{color:#9c9890;font-size:12.5px;text-align:right}
+.b-cash{display:flex;align-items:baseline;gap:8px}
+.b-cash strong{font-size:30px;letter-spacing:-.02em}
+.b-cash span{color:#5f5f5f;font-size:14px}
+.b-splitline{font-size:14.5px;color:#5f5f5f}
+.b-splitline .b-per{background:#f5f1e8;border-radius:99px;padding:3px 13px;font-weight:700;color:#1a1a1a;font-size:15px;white-space:nowrap}
+.b-chips{list-style:none;display:flex;gap:7px;flex-wrap:wrap}
+.b-chips li{background:#f5f1e8;border-radius:99px;padding:4px 14px;font-size:13px;font-weight:600}
+.b-cardfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid rgba(0,0,0,.06);padding-top:12px;color:#9c9890;font-size:13px}
+.b-fix{background:none;border:1px solid rgba(0,0,0,.14);border-radius:99px;padding:5px 15px;font-size:13px;color:#5f5f5f;font-weight:600;flex:none}
+.b-empty{background:#fff;border-radius:20px;padding:30px;text-align:center;color:#9c9890;margin-top:20px}
+.b-h3{font-size:18px;margin:44px 0 4px;letter-spacing:-.01em}
+.b-sub{color:#9c9890;font-size:13.5px;margin-bottom:14px}
+/* staff */
+.b-staffgrid{display:flex;flex-direction:column;gap:10px}
+.b-addtile{background:#fbeae7;border:1.5px dashed rgba(232,77,56,.6);border-radius:20px;padding:16px;font-size:15px;font-weight:700;color:#c03520;text-align:left}
+.b-person{background:#fff;border-radius:20px;padding:13px 18px;display:flex;align-items:center;gap:14px}
+.b-person.inactive{opacity:.62}
+.b-ordnum{color:#9c9890;font-size:12.5px;font-weight:700;width:26px;flex:none;text-align:center}
+.b-ava{width:38px;height:38px;border-radius:50%;background:#f5f1e8;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:16px;flex:none}
+.b-pinfo{flex:1;min-width:0}
+.b-pinfo h4{font-size:15.5px}
+.b-pinfo p{color:#9c9890;font-size:13px}
+.b-porder{display:flex;flex-direction:column;gap:3px}
+.b-porder button{border:1px solid rgba(0,0,0,.12);background:#fff;border-radius:7px;width:26px;height:20px;font-size:10px;line-height:1;padding:0;color:#5f5f5f}
+.b-porder button:disabled{opacity:.3;cursor:default}
+.b-pacts{display:flex;gap:6px}
+.b-pacts button{border:1px solid rgba(0,0,0,.12);background:#fff;border-radius:99px;padding:4px 13px;font-size:12.5px;font-weight:600;color:#5f5f5f}
+.b-pacts button.danger-link{color:#c03520;border-color:rgba(192,53,32,.4)}
+.b-renform{display:flex;gap:6px}
+.b-renform input{border:1px solid rgba(0,0,0,.2);border-radius:9px;padding:4px 10px;width:150px}
+.b-renform button{border:0;background:#1a1a1a;color:#fff;border-radius:9px;padding:4px 12px;font-size:12.5px;font-weight:600}
+/* access */
+.b-accessgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.b-access{background:#fff;border-radius:20px;padding:20px 22px}
+.b-access h4{font-size:15.5px;margin-bottom:12px}
+.b-access .row{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid rgba(0,0,0,.06);font-size:13.5px}
+.b-access .row dt{font-weight:700;width:88px;flex:none}
+.b-access .row dd{color:#9c9890}
+.b-access .row button{margin-left:auto;border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:99px;padding:4px 13px;font-size:12.5px;font-weight:600;color:#5f5f5f}
+.b-signoutrow{margin-top:12px}
+.b-signoutrow button{border:1px solid rgba(192,53,32,.4);color:#c03520;background:#fff;border-radius:99px;padding:5px 14px;font-size:12.5px;font-weight:700}
+/* drawer + dialog */
+.b-scrim{position:fixed;inset:0;background:rgba(26,26,26,.38);z-index:90}
+.b-drawer{position:fixed;top:0;right:0;bottom:0;width:430px;background:#fff;z-index:91;padding:28px;overflow:auto;border-left:1px solid rgba(0,0,0,.08)}
+.b-drawer h4{font-size:18px;margin-bottom:2px}
+.b-drawer .b-dsub{color:#9c9890;font-size:13px;margin-bottom:20px}
+.b-field{display:flex;flex-direction:column;gap:5px;margin-bottom:16px}
+.b-field>span{font-size:13px;font-weight:700}
+.b-field>span small{font-weight:400;color:#9c9890}
+.b-field input[type="text"]{border:1px solid rgba(0,0,0,.18);border-radius:14px;padding:10px 13px;font-size:16px;background:#fff}
+.b-field select{border:1px solid rgba(0,0,0,.18);border-radius:14px;padding:10px 13px;font-size:15px;background:#fff}
+.b-people{display:flex;flex-wrap:wrap;gap:8px}
+.b-people label{border:1px solid rgba(0,0,0,.14);border-radius:99px;padding:6px 14px;font-size:13.5px;font-weight:600;display:inline-flex;gap:7px;align-items:center;background:#fff}
+.b-people label:has(input:checked){background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.b-dpreview{background:#f5f1e8;border-radius:14px;padding:12px 15px;font-size:14px;margin-bottom:18px}
+.b-dpreview strong{font-size:16px}
+.b-dacts{display:flex;gap:10px;justify-content:flex-end}
+.b-dacts button{border:1px solid rgba(0,0,0,.16);background:#fff;border-radius:99px;padding:9px 20px;font-size:14.5px;font-weight:600}
+.b-dacts button.primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.b-dacts button.danger{background:#c03520;color:#fff;border-color:#c03520}
+.b-delta{width:100%;border-collapse:collapse;font-size:14px;margin-bottom:18px}
+.b-delta th,.b-delta td{padding:7px 4px;border-bottom:1px solid rgba(0,0,0,.07);text-align:left}
+.b-delta thead th{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:#9c9890}
+.b-delta .r{text-align:right}
+.b-delta .chg{font-weight:700}
+.b-delta .removed{color:#9c9890;text-decoration:line-through}
+.b-consequence{background:#fbeae7;border-radius:14px;padding:12px 15px;font-size:13.5px;color:#c03520;font-weight:600;margin-bottom:18px}
+.b-close{position:absolute;top:18px;right:18px;border:0;background:#f5f1e8;border-radius:50%;width:32px;height:32px;font-size:15px;color:#5f5f5f}
+dialog.b-dialog{border:0;border-radius:20px;padding:28px;max-width:460px;width:92%}
+dialog.b-dialog::backdrop{background:rgba(26,26,26,.42)}
+.b-dialog h4{font-size:18px;margin-bottom:12px}
+.b-conseq{list-style:none;margin-bottom:16px}
+.b-conseq li{padding:8px 0 8px 24px;border-bottom:1px solid rgba(0,0,0,.06);font-size:14px;color:#3c3a35;position:relative}
+.b-conseq li::before{content:"→";position:absolute;left:2px;color:#e84d38;font-weight:700}
+.b-ack{display:flex;gap:10px;align-items:flex-start;font-size:14px;font-weight:600;margin-bottom:18px;background:#f5f1e8;padding:12px 14px;border-radius:14px}
+.b-ack input{margin-top:3px;width:16px;height:16px}
+.b-pin{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:44px;letter-spacing:.32em;text-align:center;background:#f5f1e8;border-radius:14px;padding:20px 10px 20px 20px;margin-bottom:14px}
+.b-once{background:#fbeae7;color:#c03520;border-radius:14px;padding:11px 14px;font-size:13.5px;font-weight:600;margin-bottom:18px}
+.b-qrwrap{display:flex;gap:18px;align-items:center;margin-bottom:14px}
+.b-qrwrap .qr{width:150px;height:150px}
+.b-qrwrap p{font-size:13.5px;color:#5f5f5f}
+
+/* ============ Variant C — The Morning Check ============ */
+.vC{background:#fdfcfa;padding-bottom:110px}
+.c-wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+.c-top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:22px 0 20px;border-bottom:1px solid rgba(0,0,0,.09);padding-bottom:18px}
+.c-top h3{font-size:23px;letter-spacing:-.015em}
+.c-top .c-date{color:#9c9890;font-weight:400}
+.c-actions{display:flex;gap:9px}
+.c-actions .c-add{background:#e84d38;color:#fff;border:0;border-radius:10px;padding:9px 18px;font-size:14px;font-weight:700}
+.c-actions .c-export{background:#fff;border:1px solid rgba(0,0,0,.16);border-radius:10px;padding:9px 16px;font-size:14px;font-weight:600;color:#5f5f5f}
+.c-label{font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:#9c9890;font-weight:700;margin:26px 0 10px}
+.c-reveal{background:#1a1a1a;color:#fff;border-radius:14px;padding:18px 20px;margin-bottom:12px;display:flex;align-items:center;gap:22px}
+.c-reveal h4{font-size:15px;margin-bottom:2px}
+.c-reveal .c-secret{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:30px;letter-spacing:.3em}
+.c-reveal p{color:rgba(255,255,255,.72);font-size:13px;max-width:44ch}
+.c-reveal .qr{width:96px;height:96px;flex:none}
+.c-reveal button{margin-left:auto;border:1px solid rgba(255,255,255,.45);background:transparent;color:#fff;border-radius:9px;padding:7px 15px;font-size:13px;font-weight:600;flex:none}
+.c-flag{background:#fbeae7;border:1px solid rgba(232,77,56,.55);border-radius:14px;padding:17px 20px;margin-bottom:10px}
+.c-flag h4{font-size:15.5px;color:#c03520;margin-bottom:5px}
+.c-flag p{font-size:14px;color:#3c3a35;max-width:92ch;margin-bottom:12px}
+.c-flag .c-flagacts{display:flex;gap:9px}
+.c-flag button{border-radius:9px;padding:7px 16px;font-size:13.5px;font-weight:700;border:1px solid rgba(0,0,0,.16);background:#fff}
+.c-flag button.primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.c-allclear{background:#fff;border:1px dashed rgba(0,0,0,.16);border-radius:14px;padding:16px 20px;color:#9c9890;font-size:14px;margin-bottom:10px}
+.c-tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.c-tile{background:#fff;border:1px solid rgba(0,0,0,.09);border-radius:14px;padding:15px 16px}
+.c-tile h4{font-size:13px;color:#5f5f5f;margin-bottom:8px;font-weight:700}
+.c-cashline{font-size:15px;margin-bottom:3px}
+.c-cashline strong{font-size:19px;letter-spacing:-.01em}
+.c-perline{font-size:13.5px;color:#3c3a35;margin-bottom:7px}
+.c-perline strong{color:#1a1a1a}
+.c-cardline{font-size:12.5px;color:#9c9890;border-top:1px solid rgba(0,0,0,.06);padding-top:7px}
+.c-tilemeta{font-size:11.5px;color:#c9c5bc;margin-top:5px}
+.c-tile.ghost{border-style:dashed;background:transparent;color:#9c9890;display:flex;align-items:center;justify-content:center;text-align:center;font-size:13px}
+.c-weekbar{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.c-weekbar .seg{background:#fff}
+.c-weekbar select{border:1px solid rgba(0,0,0,.18);border-radius:9px;padding:5px 9px;background:#fff;font-size:13px}
+.c-dayrow{border:1px solid rgba(0,0,0,.09);border-radius:12px;margin-bottom:8px;background:#fff;overflow:hidden}
+.c-daybtn{width:100%;display:flex;align-items:center;gap:14px;padding:13px 17px;border:0;background:none;font-weight:600;font-size:14.5px;text-align:left}
+.c-daybtn .c-dayname{width:110px;flex:none}
+.c-daybtn .c-daynums{color:#5f5f5f;font-weight:400;font-size:13.5px}
+.c-daybtn .c-daynums strong{color:#1a1a1a;font-weight:700}
+.c-dayflag{background:#c03520;color:#fff;border-radius:5px;font-size:11px;font-weight:700;padding:1px 8px}
+.c-caret{margin-left:auto;color:#9c9890;font-size:12px}
+.c-daybody{border-top:1px solid rgba(0,0,0,.07);padding:4px 17px 10px}
+.c-shift{display:flex;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid rgba(0,0,0,.05);font-size:14px}
+.c-shift:last-child{border-bottom:0}
+.c-shift .c-sname{width:150px;flex:none;font-weight:600}
+.c-shift .c-scash{width:230px;flex:none}
+.c-shift .c-scash strong{font-variant-numeric:tabular-nums}
+.c-shift .c-speople{color:#5f5f5f;flex:1;font-size:13px}
+.c-shift .c-scard{color:#9c9890;font-size:13px;width:150px;flex:none;text-align:right}
+.c-shift .c-sfix{border:0;background:none;color:#5f5f5f;text-decoration:underline;font-size:13px}
+.c-shift.flagged{background:#fbeae7;border-radius:8px;padding-left:8px;padding-right:8px;margin:0 -8px}
+.c-weektotals{color:#5f5f5f;font-size:13.5px;padding:8px 4px}
+.c-weektotals strong{color:#1a1a1a}
+details.c-panel{border:1px solid rgba(0,0,0,.09);border-radius:12px;background:#fff;margin-top:12px}
+.c-panel summary{padding:15px 17px;font-weight:700;cursor:pointer;font-size:14.5px;list-style:none;display:flex;align-items:baseline;gap:14px}
+.c-panel summary::-webkit-details-marker{display:none}
+.c-panel summary .c-sum{color:#9c9890;font-weight:400;font-size:13.5px;flex:1}
+.c-panel summary .c-caret{margin-left:0}
+.c-panel[open] summary{border-bottom:1px solid rgba(0,0,0,.07)}
+.c-panelbody{padding:8px 17px 16px}
+.c-staffrow{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid rgba(0,0,0,.05);font-size:14px}
+.c-staffrow:last-child{border-bottom:0}
+.c-staffrow .c-stord{color:#9c9890;width:24px;flex:none;font-size:12.5px;font-weight:700;text-align:center}
+.c-staffrow .c-stname{width:170px;flex:none;font-weight:600}
+.c-staffrow .c-stworks{color:#5f5f5f;flex:1;font-size:13px}
+.c-staffrow .c-stacts{display:flex;gap:5px;align-items:center}
+.c-staffrow .c-stacts button{border:1px solid rgba(0,0,0,.14);background:#fff;border-radius:7px;padding:3px 10px;font-size:12px;font-weight:600;color:#5f5f5f}
+.c-staffrow .c-stacts button.danger-link{color:#c03520;border-color:rgba(192,53,32,.4)}
+.c-staffrow.inactive{color:#9c9890}
+.c-staffrow.inactive .c-stname{font-weight:400}
+.c-unlock{display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:700;padding:12px 0;color:#5f5f5f}
+.c-unlock input{width:16px;height:16px}
+.c-accessgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.c-access{border:1px solid rgba(0,0,0,.08);border-radius:10px;padding:13px 15px}
+.c-access h5{font-size:14px;margin-bottom:8px}
+.c-access .row{display:flex;align-items:center;gap:8px;font-size:13px;padding:6px 0;border-top:1px solid rgba(0,0,0,.05)}
+.c-access .row dt{font-weight:700;width:84px;flex:none}
+.c-access .row dd{color:#9c9890}
+.c-access .row button{margin-left:auto;border:1px solid rgba(0,0,0,.16);background:#fff;border-radius:7px;padding:3px 11px;font-size:12px;font-weight:600}
+.c-access .c-signout{margin-top:9px;border:1px solid rgba(192,53,32,.4);color:#c03520;background:#fff;border-radius:7px;padding:4px 12px;font-size:12px;font-weight:700}
+.c-access button:disabled{opacity:.4;cursor:default}
+dialog.c-dialog{border:0;border-radius:16px;padding:26px;max-width:480px;width:92%;border:1px solid rgba(0,0,0,.1)}
+dialog.c-dialog::backdrop{background:rgba(26,26,26,.42)}
+.c-dialog h4{font-size:17px;margin-bottom:14px}
+.c-dialog .b-field input[type="text"],.c-dialog .b-field select{border-radius:10px}
+.c-consequence{background:#fbeae7;border-radius:10px;padding:11px 14px;font-size:13.5px;margin-bottom:16px}
+.c-consequence strong{color:#c03520}
+.c-dlgacts{display:flex;gap:9px;justify-content:flex-end}
+.c-dlgacts button{border:1px solid rgba(0,0,0,.16);background:#fff;border-radius:10px;padding:8px 17px;font-size:14px;font-weight:600}
+.c-dlgacts button.primary{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.c-dlgacts button.danger{background:#c03520;color:#fff;border-color:#c03520}
+
+@media (max-width:1120px){
+ .vA .wrap,.thesis,.c-wrap{max-width:100%}
+ .c-tiles{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <p class="brand">Babytuna <span>· tips — manager dashboard, design comparison</span></p>
+  <div class="tabs" role="tablist" aria-label="Design variants">
+    <button class="tab" id="tabA" role="tab" aria-selected="true" aria-controls="vA" data-variant="A">1 · The Ledger</button>
+    <button class="tab" id="tabB" role="tab" aria-selected="false" aria-controls="vB" data-variant="B">2 · The Daybook</button>
+    <button class="tab" id="tabC" role="tab" aria-selected="false" aria-controls="vC" data-variant="C">3 · The Morning Check</button>
+  </div>
+  <p class="topnote">static mockup · sample week of Aug 3–9, 2026</p>
+</header>
+
+<!-- ================= VARIANT A : THE LEDGER ================= -->
+<section id="vA" class="vA" role="tabpanel" aria-labelledby="tabA">
+  <div class="thesis"><div class="thesis-inner">
+    <h2>Variant 1 — The Ledger</h2>
+    <p>Optimizes for scan speed and cross-day comparison: every record, subtotal and control on one dense bookkeeping surface, with corrections made inline without ever leaving the table. It deliberately trades the phone app's warmth for column-and-hairline austerity — a tool for an owner who reads numbers, not cards.</p>
+  </div></div>
+  <div class="wrap">
+
+    <div class="a-bar">
+      <label>Range
+        <select id="aRange" aria-label="Date range">
+          <option value="all">Aug 3 – Aug 9 · this week</option>
+          <option value="weekend">Aug 8 – Aug 9 · weekend</option>
+          <option value="fri">Aug 7 · Friday only</option>
+        </select>
+      </label>
+      <div class="seg" role="group" aria-label="Restaurant filter" id="aRestSeg">
+        <button data-act="a-rest" data-v="all" aria-pressed="true">Both</button>
+        <button data-act="a-rest" data-v="sushi" aria-pressed="false">Sushi</button>
+        <button data-act="a-rest" data-v="poki" aria-pressed="false">Poki &amp; Pho</button>
+      </div>
+      <button class="a-export" data-act="a-export">Export CSV</button>
+      <div class="a-totals" id="aTotals"></div>
+    </div>
+
+    <section class="a-section" aria-labelledby="aRecH">
+      <h3 id="aRecH">Recorded tips</h3>
+      <table class="a-table" id="aTable">
+        <thead>
+          <tr>
+            <th rowspan="2" scope="col">Business date</th>
+            <th rowspan="2" scope="col">Restaurant</th>
+            <th rowspan="2" scope="col">Meal</th>
+            <th colspan="3" scope="colgroup" class="grp grp-split">Split pool — cash, handed out nightly</th>
+            <th scope="colgroup" class="grp grp-card">Logged only</th>
+            <th rowspan="2" scope="col">Entered by</th>
+            <th rowspan="2" scope="col"><span class="sr">Actions</span></th>
+          </tr>
+          <tr>
+            <th scope="col" class="r sub-split">Cash</th>
+            <th scope="col" class="sub-split">Split between</th>
+            <th scope="col" class="r sub-split">Per person</th>
+            <th scope="col" class="r sub-card">Card → payroll</th>
+          </tr>
+        </thead>
+        <tbody id="aTbody"></tbody>
+      </table>
+      <p class="rounding-note">Per-person share = cash ÷ people, rounded to the nearest cent with exact half-cents rounding up. Rounding remainders stay in the drawer, so shares don't always sum exactly to the cash pool. Card tips are logged for payroll and paid separately — they are never part of the split.</p>
+    </section>
+
+    <section class="a-section" aria-labelledby="aStaffH">
+      <h3 id="aStaffH">Staff &amp; phone-picker order</h3>
+      <form id="aAddForm" class="a-addrow">
+        <label>New hire's name <input name="name" required placeholder="e.g. Dana" autocomplete="off"></label>
+        <label>Works at
+          <select name="works">
+            <option value="sushi">Sushi</option>
+            <option value="poki">Poki &amp; Pho</option>
+            <option value="both">Both</option>
+          </select>
+        </label>
+        <button class="primary" style="border-radius:8px;padding:7px 16px;font-size:13.5px;border:0">Add to picker</button>
+        <span class="hint">New people appear on the phone picker immediately, last in the order.</span>
+      </form>
+      <table class="a-table" aria-describedby="aStaffNote">
+        <thead>
+          <tr>
+            <th scope="col">Picker order</th>
+            <th scope="col">Name</th>
+            <th scope="col">Works at</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="r">Shifts on record</th>
+            <th scope="col"><span class="sr">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="aStaffBody"></tbody>
+      </table>
+      <p class="rounding-note" id="aStaffNote">Order is what closers tap through on the phone every night. People with recorded shifts can only be deactivated — their history stays; Delete exists only for someone added by mistake.</p>
+    </section>
+
+    <section class="a-section" aria-labelledby="aAccH">
+      <h3 id="aAccH">Device access</h3>
+      <div class="a-accessgrid" id="aAccess"></div>
+      <p class="rounding-note">Rotated secrets are shown exactly once — only a hash is stored, so they can't be re-displayed later, only rotated again.</p>
+    </section>
+
+  </div>
+</section>
+
+<!-- ================= VARIANT B : THE DAYBOOK ================= -->
+<section id="vB" class="vB" role="tabpanel" aria-labelledby="tabB" hidden>
+  <div class="thesis"><div class="thesis-inner">
+    <h2>Variant 2 — The Daybook</h2>
+    <p>Reads the way the money actually moves: one card per shift, the cash pool and each person's share up front, and card tips typographically demoted to a logged footnote. It carries the phone app's warm, flat language onto the laptop, and trades density — more scrolling — for numbers the owner can trust at a glance.</p>
+  </div></div>
+  <div class="b-wrap">
+
+    <div class="b-controls" role="group" aria-label="Filters">
+      <button class="b-chip" data-act="b-rest" data-v="all" aria-pressed="true">Both restaurants</button>
+      <button class="b-chip" data-act="b-rest" data-v="sushi" aria-pressed="false">Sushi</button>
+      <button class="b-chip" data-act="b-rest" data-v="poki" aria-pressed="false">Poki &amp; Pho</button>
+      <span aria-hidden="true" style="color:#c9c5bc">·</span>
+      <button class="b-chip" data-act="b-range" data-v="all" aria-pressed="true">This week</button>
+      <button class="b-chip" data-act="b-range" data-v="weekend" aria-pressed="false">Weekend</button>
+      <button class="b-chip" data-act="b-range" data-v="custom" aria-pressed="false">Custom…</button>
+      <button class="b-export" data-act="b-export">Export CSV</button>
+    </div>
+    <p class="b-rangetotals" id="bTotals" aria-live="polite"></p>
+
+    <div id="bDays"></div>
+
+    <h3 class="b-h3">Staff</h3>
+    <p class="b-sub">Top-to-bottom is the order closers see on the phone picker every night.</p>
+    <div class="b-staffgrid" id="bStaff"></div>
+
+    <h3 class="b-h3">Device access</h3>
+    <p class="b-sub">Each restaurant signs its phone in with the QR sticker by the register plus a PIN. Rotations are rare and consequential — everything here asks twice.</p>
+    <div class="b-accessgrid" id="bAccess"></div>
+    <p class="rounding-note">A rotated QR or PIN is shown exactly once — only a hash is stored, so it can't be re-displayed, only rotated again.</p>
+
+  </div>
+
+  <div class="b-scrim" id="bScrim" hidden></div>
+  <div class="b-drawer" id="bDrawer" role="dialog" aria-modal="true" aria-labelledby="bDrawerTitle" hidden></div>
+  <dialog class="b-dialog" id="bDialog"></dialog>
+</section>
+
+<!-- ================= VARIANT C : THE MORNING CHECK ================= -->
+<section id="vC" class="vC" role="tabpanel" aria-labelledby="tabC" hidden>
+  <div class="thesis"><div class="thesis-inner">
+    <h2>Variant 3 — The Morning Check</h2>
+    <p>Built for a 90-second check-in between five other things: exceptions and last night's numbers come first, the rest of the week folds into day rows, and staff and device admin stay collapsed until summoned. It trades always-visible completeness for triage speed — on a quiet day the owner reads two lines and closes the tab.</p>
+  </div></div>
+  <div class="c-wrap">
+
+    <header class="c-top">
+      <h3>Morning check <span class="c-date">· Monday, Aug 10</span></h3>
+      <div class="c-actions">
+        <button class="c-add" data-act="c-add-open">＋ New hire</button>
+        <button class="c-export" data-act="c-export">Export week</button>
+      </div>
+    </header>
+
+    <div id="cReveal"></div>
+
+    <h4 class="c-label" id="cAttnH">Needs a look</h4>
+    <div id="cAttn" aria-labelledby="cAttnH"></div>
+
+    <h4 class="c-label">Last night — Sunday, Aug 9</h4>
+    <div class="c-tiles" id="cNight"></div>
+
+    <h4 class="c-label">This week</h4>
+    <div class="c-weekbar">
+      <div class="seg" role="group" aria-label="Restaurant filter" id="cRestSeg">
+        <button data-act="c-rest" data-v="all" aria-pressed="true">Both</button>
+        <button data-act="c-rest" data-v="sushi" aria-pressed="false">Sushi</button>
+        <button data-act="c-rest" data-v="poki" aria-pressed="false">Poki &amp; Pho</button>
+      </div>
+      <select id="cWeekSel" aria-label="Week">
+        <option value="this">Week of Aug 3 – 9</option>
+        <option value="last">Week of Jul 27 – Aug 2</option>
+      </select>
+    </div>
+    <div id="cWeek"></div>
+
+    <details class="c-panel" id="cStaffPanel">
+      <summary>Staff <span class="c-sum" id="cStaffSum"></span><span class="c-caret" aria-hidden="true">▾</span></summary>
+      <div class="c-panelbody" id="cStaffBody"></div>
+    </details>
+
+    <details class="c-panel" id="cAccessPanel">
+      <summary>Device access <span class="c-sum" id="cAccessSum"></span><span class="c-caret" aria-hidden="true">▾</span></summary>
+      <div class="c-panelbody">
+        <label class="c-unlock"><input type="checkbox" id="cUnlock"> Show rotation controls — these break signed-in phones and printed stickers</label>
+        <div class="c-accessgrid" id="cAccessBody"></div>
+        <p class="rounding-note">A new QR or PIN is shown once, pinned to the top of this page until you dismiss it. Only a hash is stored.</p>
+      </div>
+    </details>
+
+  </div>
+  <dialog class="c-dialog" id="cDialog"></dialog>
+</section>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------------- shared data ---------------- */
+var RESTS = { sushi:'Sushi', poki:'Poki & Pho' };
+var WORKS = { sushi:'Sushi', poki:'Poki & Pho', both:'Both restaurants' };
+
+var BASE_RECORDS = [
+ {id:'r1', date:'Sun Aug 9', d:9, rest:'sushi', meal:'Dinner', cash:41200,  card:68850, people:['Maria','Jose','Ken'], by:'Maria', mode:'voice', flag:false},
+ {id:'r2', date:'Sun Aug 9', d:9, rest:'sushi', meal:'Lunch',  cash:9625,   card:21000, people:['Maria','Ken'],       by:'Ken',   mode:'typed', flag:false},
+ {id:'r3', date:'Sun Aug 9', d:9, rest:'poki',  meal:'Dinner', cash:18800,  card:40275, people:['Lena','Tom'],        by:'Lena',  mode:'typed', flag:false},
+ {id:'r4', date:'Sat Aug 8', d:8, rest:'sushi', meal:'Dinner', cash:36650,  card:59400, people:['Jose','Ken','Rey'],  by:'Ken',   mode:'typed', flag:false},
+ {id:'r5', date:'Sat Aug 8', d:8, rest:'poki',  meal:'Dinner', cash:20575,  card:38800, people:['Lena','Tom','Rey'],  by:'Rey',   mode:'voice', flag:false},
+ {id:'r6', date:'Sat Aug 8', d:8, rest:'poki',  meal:'Lunch',  cash:7400,   card:16525, people:['Lena'],              by:'Lena',  mode:'typed', flag:false},
+ {id:'r7', date:'Fri Aug 7', d:7, rest:'sushi', meal:'Dinner', cash:310000, card:61000, people:['Maria','Jose'],      by:'Jose',  mode:'voice', flag:true},
+ {id:'r8', date:'Fri Aug 7', d:7, rest:'sushi', meal:'Lunch',  cash:8850,   card:17400, people:['Maria'],             by:'Maria', mode:'typed', flag:false},
+ {id:'r9', date:'Fri Aug 7', d:7, rest:'poki',  meal:'Dinner', cash:19725,  card:35150, people:['Tom','Rey'],         by:'Tom',   mode:'typed', flag:false},
+ {id:'r10',date:'Thu Aug 6', d:6, rest:'sushi', meal:'Dinner', cash:34400,  card:56125, people:['Maria','Jose','Ken'],by:'Maria', mode:'typed', flag:false}
+];
+var BASE_STAFF = [
+ {id:'maria', name:'Maria', works:'sushi', active:true,  shifts:5},
+ {id:'jose',  name:'Jose',  works:'sushi', active:true,  shifts:4},
+ {id:'ken',   name:'Ken',   works:'both',  active:true,  shifts:4},
+ {id:'rey',   name:'Rey',   works:'both',  active:true,  shifts:3},
+ {id:'lena',  name:'Lena',  works:'poki',  active:true,  shifts:3},
+ {id:'tom',   name:'Tom',   works:'poki',  active:true,  shifts:3},
+ {id:'aiko',  name:'Aiko',  works:'sushi', active:false, shifts:112}
+];
+function freshState(){
+  return {
+    records: BASE_RECORDS.map(function(r){ var c={}; for(var k in r) c[k]=r[k]; c.people=r.people.slice(); return c; }),
+    staff:   BASE_STAFF.map(function(s){ var c={}; for(var k in s) c[k]=s[k]; return c; }),
+    access:  { sushi:{qr:'Aug 8, 2026', pin:'Aug 8, 2026'}, poki:{qr:null, pin:'Aug 8, 2026'} },
+    restFilter:'all'
+  };
+}
+
+/* ---------------- shared utils ---------------- */
+function $(sel,el){ return (el||document).querySelector(sel); }
+function $all(sel,el){ return Array.prototype.slice.call((el||document).querySelectorAll(sel)); }
+function esc(s){ return String(s).replace(/[&<>"']/g,function(m){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m];}); }
+function money(c){ return '$'+(c/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function perShare(r){ return Math.round(r.cash/r.people.length); }
+function parseMoney(v){ var n=parseFloat(String(v).replace(/[$,\s]/g,'')); return (isFinite(n)&&n>=0)?Math.round(n*100):null; }
+function sum(arr,f){ return arr.reduce(function(t,x){return t+f(x);},0); }
+function groupByDay(recs){
+  var days=[]; recs.forEach(function(r){ if(days.indexOf(r.date)<0) days.push(r.date); });
+  return days.map(function(d){ return {date:d, recs:recs.filter(function(r){return r.date===d;})}; });
+}
+var toastT;
+function toast(msg){
+  var t=$('#toast'); t.textContent=msg; t.classList.add('on');
+  clearTimeout(toastT); toastT=setTimeout(function(){t.classList.remove('on');},3200);
+}
+function newPin(){ return String(Math.floor(1000+Math.random()*9000)); }
+function qrSVG(seed){
+  var s=(seed>>>0)||1;
+  function rnd(){ s=(Math.imul(s,1664525)+1013904223)>>>0; return s/4294967296; }
+  var cells='';
+  for(var y=0;y<21;y++)for(var x=0;x<21;x++){
+    var inF=(x<8&&y<8)||(x>=13&&y<8)||(x<8&&y>=13);
+    if(!inF&&rnd()<0.45) cells+='<rect x="'+x+'" y="'+y+'" width="1" height="1"/>';
+  }
+  function finder(x,y){ return '<rect x="'+x+'" y="'+y+'" width="7" height="7"/><rect x="'+(x+1)+'" y="'+(y+1)+'" width="5" height="5" fill="#fff"/><rect x="'+(x+2)+'" y="'+(y+2)+'" width="3" height="3"/>'; }
+  return '<svg class="qr" viewBox="-1.5 -1.5 24 24" role="img" aria-label="Preview of the new QR sticker" xmlns="http://www.w3.org/2000/svg"><rect x="-1.5" y="-1.5" width="24" height="24" fill="#fff"/><g fill="#1a1a1a">'+cells+finder(0,0)+finder(14,0)+finder(0,14)+'</g></svg>';
+}
+function copyText(txt){
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){toast('Copied.');},function(){toast('Copy unavailable here — write it down.');});
+  } else toast('Copy unavailable here — write it down.');
+}
+function downloadCSV(recs,label){
+  var rows=['Business date,Restaurant,Meal,Cash (split pool),Card (logged only),People on split,Names,Per-person share,Flagged,Entered by,Entry method'];
+  recs.forEach(function(r){
+    rows.push([r.date,RESTS[r.rest],r.meal,(r.cash/100).toFixed(2),(r.card/100).toFixed(2),r.people.length,'"'+r.people.join('; ')+'"',(perShare(r)/100).toFixed(2),r.flag?'yes':'no',r.by,r.mode].join(','));
+  });
+  var blob=new Blob([rows.join('\n')],{type:'text/csv'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='babytuna-tips-'+label+'.csv'; document.body.appendChild(a); a.click(); a.remove();
+  toast('Exported '+recs.length+' record'+(recs.length===1?'':'s')+' to CSV.');
+}
+function applyFix(st,id,next){
+  var r=st.records.find(function(x){return x.id===id;});
+  r.cash=next.cash; r.card=next.card; r.people=next.people.slice(); r.flag=false;
+  return r;
+}
+function eligibleNames(st,rec){
+  var names=st.staff.filter(function(s){return s.active&&(s.works===rec.rest||s.works==='both');}).map(function(s){return s.name;});
+  rec.people.forEach(function(n){ if(names.indexOf(n)<0) names.push(n); });
+  return names;
+}
+function moveStaff(st,id,dir){
+  var i=st.staff.findIndex(function(s){return s.id===id;});
+  var j=i+dir; if(j<0||j>=st.staff.length) return;
+  var tmp=st.staff[i]; st.staff[i]=st.staff[j]; st.staff[j]=tmp;
+}
+function deactivate(st,id){
+  var i=st.staff.findIndex(function(s){return s.id===id;});
+  var s=st.staff.splice(i,1)[0]; s.active=false; st.staff.push(s);
+}
+function reactivate(st,id){
+  var i=st.staff.findIndex(function(s){return s.id===id;});
+  var s=st.staff.splice(i,1)[0]; s.active=true;
+  var firstInactive=st.staff.findIndex(function(x){return !x.active;});
+  if(firstInactive<0) st.staff.push(s); else st.staff.splice(firstInactive,0,s);
+}
+function deleteStaff(st,id){
+  var i=st.staff.findIndex(function(s){return s.id===id;});
+  st.staff.splice(i,1);
+}
+var hireSeq=1;
+function addStaff(st,name,works){
+  st.staff.splice(st.staff.filter(function(s){return s.active;}).length,0,
+    {id:'new'+(hireSeq++), name:name, works:works, active:true, shifts:0});
+}
+function activeStaff(st){ return st.staff.filter(function(s){return s.active;}); }
+
+/* ---------------- variant switching ---------------- */
+var cur='A', scrolls={A:0,B:0,C:0};
+$all('.tab').forEach(function(t){
+  t.addEventListener('click',function(){
+    var k=t.dataset.variant; if(k===cur) return;
+    scrolls[cur]=window.scrollY;
+    $('#v'+cur).hidden=true; $('#v'+k).hidden=false;
+    $all('.tab').forEach(function(x){ x.setAttribute('aria-selected', x.dataset.variant===k ? 'true':'false'); });
+    cur=k; window.scrollTo(0,scrolls[k]||0);
+  });
+});
+
+/* ================================================================
+   VARIANT A — THE LEDGER
+================================================================ */
+var stA=freshState();
+stA.range='all'; stA.editing=null; stA.pending=null; stA.renaming=null;
+stA.rotConfirm=null;   /* {rest,kind} */
+stA.reveal=null;       /* {rest,kind,secret} */
+
+function aVisible(){
+  return stA.records.filter(function(r){
+    if(stA.restFilter!=='all'&&r.rest!==stA.restFilter) return false;
+    if(stA.range==='weekend'&&r.d<8) return false;
+    if(stA.range==='fri'&&r.d!==7) return false;
+    return true;
+  });
+}
+function aRenderTotals(){
+  var recs=aVisible();
+  var flags=recs.filter(function(r){return r.flag;}).length;
+  $('#aTotals').innerHTML=
+    (flags?'<button class="a-flagcount" data-act="a-jumpflag">⚑ '+flags+' flagged</button>':'')+
+    '<span>Cash pool <strong class="num">'+money(sum(recs,function(r){return r.cash;}))+'</strong></span>'+
+    '<span>Card logged <strong class="num">'+money(sum(recs,function(r){return r.card;}))+'</strong></span>'+
+    '<span>'+recs.length+' records</span>';
+}
+function aEdPreview(cashC,n){
+  if(n===0) return '<span class="ed-error">Select at least one person to split between.</span>';
+  if(cashC===null) return '<span class="ed-error">Cash amount doesn’t parse.</span>';
+  return 'New per-person share: <strong class="num">'+money(Math.round(cashC/n))+'</strong> each — cash ÷ '+n+'. Card is logged only and stays out of this number.';
+}
+function aEditorRow(r){
+  var names=eligibleNames(stA,r);
+  return '<tr class="a-edrow"><td colspan="9">'+
+    '<form class="a-edform" data-id="'+r.id+'">'+
+      '<div class="ed-fields">'+
+        '<label>Cash pool — split ($)<input type="text" class="num" name="cash" inputmode="decimal" value="'+(r.cash/100).toFixed(2)+'"></label>'+
+        '<label class="ed-card">Card — logged only ($)<input type="text" class="num" name="card" inputmode="decimal" value="'+(r.card/100).toFixed(2)+'"></label>'+
+        '<fieldset><legend>Split between</legend>'+names.map(function(n){
+          return '<label class="chk"><input type="checkbox" name="p" value="'+esc(n)+'"'+(r.people.indexOf(n)>=0?' checked':'')+'>'+esc(n)+'</label>';
+        }).join('')+'</fieldset>'+
+      '</div>'+
+      '<p class="ed-preview" data-role="preview">'+aEdPreview(r.cash,r.people.length)+'</p>'+
+      '<div class="ed-actions" data-role="actions">'+
+        '<button type="button" data-act="a-cancel">Cancel</button>'+
+        '<button type="submit" class="primary">Save correction…</button>'+
+      '</div>'+
+    '</form>'+
+  '</td></tr>';
+}
+function aRenderTable(){
+  var recs=aVisible(), days=groupByDay(recs), html='';
+  days.forEach(function(g){
+    g.recs.forEach(function(r){
+      var per=perShare(r);
+      html+='<tr'+(r.flag?' class="a-flagrow" id="aFlagRow"':'')+'>'+
+        '<td>'+r.date+'</td><td>'+RESTS[r.rest]+'</td><td>'+r.meal+'</td>'+
+        '<td class="r num col-split">'+money(r.cash)+(r.flag?'<span class="a-flagchip" title="Far outside the usual range for this shift">⚑ check</span>':'')+'</td>'+
+        '<td class="col-split names">'+r.people.map(esc).join(', ')+' <span class="cnt">· '+r.people.length+'</span></td>'+
+        '<td class="r num col-split per">'+money(per)+'</td>'+
+        '<td class="r num col-card">'+money(r.card)+'</td>'+
+        '<td class="meta">'+esc(r.by)+' · '+(r.mode==='voice'?'dictated':'typed')+'</td>'+
+        '<td><button class="a-fixbtn" data-act="a-edit" data-id="'+r.id+'">Fix</button>'+
+            (r.flag?'<button class="a-okbtn" data-act="a-clearflag" data-id="'+r.id+'" title="Keep the amount and clear the flag">Verify</button>':'')+'</td>'+
+      '</tr>';
+      if(stA.editing===r.id) html+=aEditorRow(r);
+    });
+    html+='<tr class="a-sub"><th scope="row" colspan="3">'+g.date+' — day total</th>'+
+      '<td class="r num col-split">'+money(sum(g.recs,function(r){return r.cash;}))+'</td><td class="col-split"></td><td class="col-split"></td>'+
+      '<td class="r num col-card">'+money(sum(g.recs,function(r){return r.card;}))+'</td><td colspan="2"></td></tr>';
+  });
+  if(!recs.length) html='<tr class="a-empty"><td colspan="9">No records in this range.</td></tr>';
+  else html+='<tr class="a-grand"><th scope="row" colspan="3">Range total — '+recs.length+' records</th>'+
+    '<td class="r num col-split">'+money(sum(recs,function(r){return r.cash;}))+'</td><td class="col-split"></td><td class="col-split"></td>'+
+    '<td class="r num col-card">'+money(sum(recs,function(r){return r.card;}))+'</td><td colspan="2"></td></tr>';
+  $('#aTbody').innerHTML=html;
+  aRenderTotals();
+}
+function aRenderStaff(){
+  var order=0;
+  $('#aStaffBody').innerHTML=stA.staff.map(function(s,i){
+    var ord = s.active ? (++order) : null;
+    var actives=activeStaff(stA);
+    var ai=actives.indexOf(s);
+    var nameCell = stA.renaming===s.id
+      ? '<form class="a-renform" data-id="'+s.id+'"><input name="nm" value="'+esc(s.name)+'" aria-label="New name for '+esc(s.name)+'"><button class="primary" style="border:0;border-radius:6px;padding:2px 10px;font-size:12px">Save</button></form>'
+      : '<strong>'+esc(s.name)+'</strong>';
+    return '<tr'+(s.active?'':' class="a-inactive"')+'>'+
+      '<td>'+(s.active
+          ? '#'+ord+' <button class="a-ordbtn" data-act="a-up" data-id="'+s.id+'"'+(ai===0?' disabled':'')+' aria-label="Move '+esc(s.name)+' earlier in picker order">▲</button>'+
+            '<button class="a-ordbtn" data-act="a-down" data-id="'+s.id+'"'+(ai===actives.length-1?' disabled':'')+' aria-label="Move '+esc(s.name)+' later in picker order">▼</button>'
+          : '—')+'</td>'+
+      '<td>'+nameCell+'</td>'+
+      '<td>'+WORKS[s.works]+'</td>'+
+      '<td>'+(s.active?'<span class="a-status-on">active</span>':'<span class="a-status-off">inactive · history kept</span>')+'</td>'+
+      '<td class="r num">'+s.shifts+'</td>'+
+      '<td>'+
+        '<button class="a-link" data-act="a-rename" data-id="'+s.id+'">Rename</button> '+
+        (s.active
+          ? '<button class="a-link" data-act="a-deact" data-id="'+s.id+'">Deactivate</button> '
+          : '<button class="a-link" data-act="a-react" data-id="'+s.id+'">Reactivate</button> ')+
+        (s.shifts===0
+          ? '<button class="a-link danger-link" data-act="a-del" data-id="'+s.id+'">Delete</button>'
+          : '<button class="a-link" disabled title="Has recorded shifts — deactivate instead">Delete</button>')+
+      '</td></tr>';
+  }).join('');
+}
+function aAccessPanel(k){
+  var a=stA.access[k], name=RESTS[k];
+  var word=(k==='sushi')?'SUSHI':'POKI';
+  var html='<div class="a-access"><h4>'+name+'</h4><dl>'+
+    '<div class="row"><dt>QR sticker</dt><dd>'+(a.qr?'rotated '+a.qr:'never rotated — original from setup')+'</dd>'+
+      '<button class="a-rotbtn" data-act="a-rot" data-rest="'+k+'" data-kind="qr">Rotate…</button></div>'+
+    '<div class="row"><dt>PIN</dt><dd>rotated '+a.pin+'</dd>'+
+      '<button class="a-rotbtn" data-act="a-rot" data-rest="'+k+'" data-kind="pin">Rotate…</button></div>'+
+    '</dl>'+
+    '<button class="a-signout" data-act="a-rot" data-rest="'+k+'" data-kind="signout">Sign out every phone at '+name+'…</button>';
+  if(stA.rotConfirm&&stA.rotConfirm.rest===k){
+    var kind=stA.rotConfirm.kind;
+    var msg = kind==='qr' ? 'The printed sticker by the register stops working the moment you rotate. You’ll need to print and stick the new one.'
+            : kind==='pin' ? 'The old PIN stops working immediately — tonight’s closers need the new number.'
+            : 'Every signed-in phone at '+name+' is signed out and will need the QR sticker and PIN to get back in.';
+    html+='<div class="a-confirmbox"><p><strong>'+(kind==='qr'?'Rotate QR sticker':kind==='pin'?'Rotate PIN':'Sign out all phones')+' — '+name+'.</strong> '+msg+'</p>'+
+      '<label>Type '+word+' to confirm <input type="text" data-role="a-typeconf" autocomplete="off" autocapitalize="characters"></label>'+
+      '<button class="danger" data-act="a-rot-go" disabled>'+(kind==='signout'?'Sign everyone out':'Rotate now')+'</button> '+
+      '<button data-act="a-rot-cancel">Cancel</button></div>';
+  }
+  if(stA.reveal&&stA.reveal.rest===k){
+    var rv=stA.reveal;
+    if(rv.kind==='pin'){
+      html+='<div class="a-reveal"><p><strong>New PIN — shown once, then gone.</strong> Only a hash is stored; write it down or copy it now.</p>'+
+        '<span class="secret">'+rv.secret+'</span><br>'+
+        '<button data-act="a-copy" data-secret="'+rv.secret+'">Copy</button>'+
+        '<button data-act="a-hide" >I’ve saved it — hide forever</button></div>';
+    } else {
+      html+='<div class="a-reveal"><p><strong>New QR sticker — this preview is shown once.</strong> Print it and replace the sticker by the register before tonight; the old one already stopped working.</p>'+
+        qrSVG(rv.seed)+'<br>'+
+        '<button data-act="a-print">Print sticker</button>'+
+        '<button data-act="a-hide">Done — sticker printed</button></div>';
+    }
+  }
+  return html+'</div>';
+}
+function aRenderAccess(){ $('#aAccess').innerHTML=aAccessPanel('sushi')+aAccessPanel('poki'); }
+function renderA(){ aRenderTable(); aRenderStaff(); aRenderAccess(); }
+
+$('#aRange').addEventListener('change',function(){ stA.range=this.value; stA.editing=null; stA.pending=null; aRenderTable(); });
+
+$('#vA').addEventListener('click',function(e){
+  var b=e.target.closest('[data-act]'); if(!b) return;
+  var act=b.dataset.act, id=b.dataset.id;
+  if(act==='a-rest'){
+    stA.restFilter=b.dataset.v; stA.editing=null; stA.pending=null;
+    $all('#aRestSeg button').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});
+    aRenderTable();
+  }
+  else if(act==='a-export'){ downloadCSV(aVisible(),'ledger'); }
+  else if(act==='a-jumpflag'){ var row=$('#aFlagRow'); if(row) row.scrollIntoView({block:'center'}); }
+  else if(act==='a-edit'){ stA.editing=(stA.editing===id?null:id); stA.pending=null; aRenderTable(); var f=$('.a-edform input'); if(f) f.focus(); }
+  else if(act==='a-cancel'){ stA.editing=null; stA.pending=null; aRenderTable(); }
+  else if(act==='a-back'){
+    stA.pending=null;
+    var acts=$('.a-edform [data-role="actions"]');
+    if(acts) acts.innerHTML='<button type="button" data-act="a-cancel">Cancel</button><button type="submit" class="primary">Save correction…</button>';
+  }
+  else if(act==='a-confirm'){
+    var r=applyFix(stA,id,stA.pending);
+    stA.editing=null; stA.pending=null; aRenderTable();
+    toast('Correction saved — '+r.date+' '+RESTS[r.rest]+' '+r.meal.toLowerCase()+' now splits '+money(perShare(r))+' each.');
+  }
+  else if(act==='a-clearflag'){
+    var rec=stA.records.find(function(x){return x.id===id;});
+    if(!b.dataset.armed){ b.dataset.armed='1'; b.textContent='Really verify?'; return; }
+    rec.flag=false; aRenderTable();
+    toast(rec.date+' '+RESTS[rec.rest]+' dinner: flag cleared, amount kept as entered.');
+  }
+  else if(act==='a-up'){ moveStaff(stA,id,-1); aRenderStaff(); }
+  else if(act==='a-down'){ moveStaff(stA,id,1); aRenderStaff(); }
+  else if(act==='a-deact'){ deactivate(stA,id); aRenderStaff(); toast('Deactivated — removed from the phone picker; history stays.'); }
+  else if(act==='a-react'){ reactivate(stA,id); aRenderStaff(); toast('Reactivated — back on the phone picker.'); }
+  else if(act==='a-del'){
+    if(!b.dataset.armed){ b.dataset.armed='1'; b.textContent='Really delete?'; return; }
+    deleteStaff(stA,id); aRenderStaff(); toast('Deleted. (Only possible because they had no recorded shifts.)');
+  }
+  else if(act==='a-rename'){ stA.renaming=id; aRenderStaff(); var inp=$('.a-renform input'); if(inp){inp.focus(); inp.select();} }
+  else if(act==='a-rot'){ stA.rotConfirm={rest:b.dataset.rest,kind:b.dataset.kind}; stA.reveal=null; aRenderAccess(); var ti=$('[data-role="a-typeconf"]'); if(ti) ti.focus(); }
+  else if(act==='a-rot-cancel'){ stA.rotConfirm=null; aRenderAccess(); }
+  else if(act==='a-rot-go'){
+    var rc=stA.rotConfirm, acc=stA.access[rc.rest];
+    if(rc.kind==='signout'){ stA.rotConfirm=null; aRenderAccess(); toast('All phones at '+RESTS[rc.rest]+' signed out. They’ll need the QR sticker and PIN to get back in.'); }
+    else{
+      if(rc.kind==='qr') acc.qr='just now (Aug 10)'; else acc.pin='just now (Aug 10)';
+      stA.reveal={rest:rc.rest,kind:rc.kind,secret:newPin(),seed:Math.floor(Math.random()*1e9)};
+      stA.rotConfirm=null; aRenderAccess();
+    }
+  }
+  else if(act==='a-copy'){ copyText(b.dataset.secret); }
+  else if(act==='a-print'){ toast('Printing is inert in this mockup — in the real app this opens the print dialog.'); }
+  else if(act==='a-hide'){
+    stA.reveal=null; aRenderAccess();
+    toast('Hidden. It can’t be shown again — only rotated again.');
+  }
+});
+$('#vA').addEventListener('input',function(e){
+  var form=e.target.closest('.a-edform');
+  if(form){
+    var cash=parseMoney(form.cash.value);
+    var n=$all('input[name="p"]:checked',form).length;
+    $('[data-role="preview"]',form).innerHTML=aEdPreview(cash,n);
+    return;
+  }
+  if(e.target.matches('[data-role="a-typeconf"]')){
+    var want=(stA.rotConfirm.rest==='sushi')?'SUSHI':'POKI';
+    var go=$('.a-confirmbox .danger');
+    if(go) go.disabled=(e.target.value.trim().toUpperCase()!==want);
+  }
+});
+$('#vA').addEventListener('submit',function(e){
+  var f=e.target;
+  if(f.id==='aAddForm'){
+    e.preventDefault();
+    var nm=f.name.value.trim(); if(!nm) return;
+    addStaff(stA,nm,f.works.value); f.reset(); aRenderStaff();
+    toast(nm+' added — they’re on the phone picker now, last in the order.');
+  }
+  else if(f.classList.contains('a-renform')){
+    e.preventDefault();
+    var s=stA.staff.find(function(x){return x.id===f.dataset.id;});
+    var nm2=f.nm.value.trim(); if(nm2) s.name=nm2;
+    stA.renaming=null; aRenderStaff();
+  }
+  else if(f.classList.contains('a-edform')){
+    e.preventDefault();
+    var cash=parseMoney(f.cash.value), card=parseMoney(f.card.value);
+    var people=$all('input[name="p"]:checked',f).map(function(i){return i.value;});
+    if(cash===null||card===null||!people.length){
+      $('[data-role="preview"]',f).innerHTML=aEdPreview(cash, people.length); return;
+    }
+    var r=stA.records.find(function(x){return x.id===f.dataset.id;});
+    stA.pending={cash:cash,card:card,people:people};
+    var oldPer=perShare(r), newPer=Math.round(cash/people.length);
+    $('[data-role="actions"]',f).innerHTML='<div class="ed-confirm">'+
+      '<p><strong>Check it:</strong> cash '+money(r.cash)+' → <strong class="num">'+money(cash)+'</strong> · card '+money(r.card)+' → '+money(card)+
+      ' · per-person '+money(oldPer)+' → <strong class="num">'+money(newPer)+'</strong> for '+people.map(esc).join(', ')+
+      '. This changes what people are owed'+(r.flag?' and clears the flag':'')+'.</p>'+
+      '<button type="button" data-act="a-back">Back</button> '+
+      '<button type="button" class="danger" data-act="a-confirm" data-id="'+r.id+'">Confirm correction</button></div>';
+  }
+});
+
+/* ================================================================
+   VARIANT B — THE DAYBOOK
+================================================================ */
+var stB=freshState();
+stB.range='all'; stB.renaming=null;
+stB.drawer=null;   /* {mode:'fix'|'add', id, step} */
+stB.dlg=null;      /* {rest,kind} */
+var bDrawerEl=$('#bDrawer'), bScrimEl=$('#bScrim'), bDialogEl=$('#bDialog');
+var bLastFocus=null;
+
+function bVisible(){
+  return stB.records.filter(function(r){
+    if(stB.restFilter!=='all'&&r.rest!==stB.restFilter) return false;
+    if(stB.range==='weekend'&&r.d<8) return false;
+    return true;
+  });
+}
+function bCard(r){
+  var per=perShare(r), n=r.people.length;
+  return '<article class="b-card'+(r.flag?' flagged':'')+'">'+
+    (r.flag?'<p class="b-flagbanner">⚑ Way above the usual $150–$350 for this shift — check it before payday</p>':'')+
+    '<header class="b-cardhead"><span class="b-rm">'+RESTS[r.rest]+' · '+r.meal+'</span>'+
+      '<span class="b-meta">closed by '+esc(r.by)+'<br>'+(r.mode==='voice'?'dictated':'typed')+'</span></header>'+
+    '<div class="b-cash"><strong class="num">'+money(r.cash)+'</strong><span>cash pool — handed out tonight</span></div>'+
+    '<p class="b-splitline">'+(n===1?'one person, kept whole':'split '+n+' ways')+' → <span class="b-per num">'+money(per)+' each</span></p>'+
+    '<ul class="b-chips">'+r.people.map(function(p){return '<li>'+esc(p)+'</li>';}).join('')+'</ul>'+
+    '<footer class="b-cardfoot"><span>+ <span class="num">'+money(r.card)+'</span> card — logged for payroll, never split</span>'+
+      '<button class="b-fix" data-act="b-fix" data-id="'+r.id+'">Fix this shift</button></footer>'+
+  '</article>';
+}
+function bRenderDays(){
+  var recs=bVisible(), days=groupByDay(recs);
+  $('#bTotals').innerHTML = recs.length
+    ? (stB.range==='weekend'?'Aug 8–9':'Aug 3–9')+' · '+recs.length+' records · cash split <strong class="num">'+money(sum(recs,function(r){return r.cash;}))+'</strong> · card logged <span class="num">'+money(sum(recs,function(r){return r.card;}))+'</span>'
+    : 'No records match.';
+  $('#bDays').innerHTML = days.length ? days.map(function(g){
+    return '<section class="b-day"><header class="b-dayhead"><h4>'+g.date+'</h4>'+
+      '<p><strong class="num">'+money(sum(g.recs,function(r){return r.cash;}))+'</strong> cash split · <span class="num">'+money(sum(g.recs,function(r){return r.card;}))+'</span> card logged</p></header>'+
+      '<div class="b-cards">'+g.recs.map(bCard).join('')+'</div></section>';
+  }).join('') : '<div class="b-empty">Nothing recorded in this range.</div>';
+}
+function bRenderStaff(){
+  var order=0;
+  $('#bStaff').innerHTML='<button class="b-addtile" data-act="b-add-open">＋ Add a new hire — 30 seconds, they’re on the picker tonight</button>'+
+    stB.staff.map(function(s){
+      var ord=s.active?(++order):null;
+      var actives=activeStaff(stB), ai=actives.indexOf(s);
+      var nameHtml = stB.renaming===s.id
+        ? '<form class="b-renform" data-id="'+s.id+'"><input name="nm" value="'+esc(s.name)+'" aria-label="New name"><button>Save</button></form>'
+        : '<h4>'+esc(s.name)+'</h4>';
+      return '<article class="b-person'+(s.active?'':' inactive')+'">'+
+        '<span class="b-ordnum">'+(s.active?'#'+ord:'—')+'</span>'+
+        '<span class="b-ava" aria-hidden="true">'+esc(s.name.charAt(0))+'</span>'+
+        '<div class="b-pinfo">'+nameHtml+'<p>'+WORKS[s.works]+(s.active?'':' · inactive — history kept')+(s.shifts===0?' · no shifts yet':'')+'</p></div>'+
+        (s.active?'<div class="b-porder">'+
+          '<button data-act="b-up" data-id="'+s.id+'"'+(ai===0?' disabled':'')+' aria-label="Move '+esc(s.name)+' earlier in picker order">▲</button>'+
+          '<button data-act="b-down" data-id="'+s.id+'"'+(ai===actives.length-1?' disabled':'')+' aria-label="Move '+esc(s.name)+' later in picker order">▼</button></div>':'')+
+        '<div class="b-pacts">'+
+          '<button data-act="b-rename" data-id="'+s.id+'">Rename</button>'+
+          (s.active?'<button data-act="b-deact" data-id="'+s.id+'">Deactivate</button>'
+                   :'<button data-act="b-react" data-id="'+s.id+'">Reactivate</button>')+
+          (s.shifts===0?'<button class="danger-link" data-act="b-del" data-id="'+s.id+'">Delete</button>':'')+
+        '</div></article>';
+    }).join('');
+}
+function bRenderAccess(){
+  $('#bAccess').innerHTML=['sushi','poki'].map(function(k){
+    var a=stB.access[k];
+    return '<article class="b-access"><h4>'+RESTS[k]+'</h4><dl>'+
+      '<div class="row"><dt>QR sticker</dt><dd>'+(a.qr?'rotated '+a.qr:'never rotated')+'</dd>'+
+        '<button data-act="b-rot" data-rest="'+k+'" data-kind="qr">Rotate…</button></div>'+
+      '<div class="row"><dt>PIN</dt><dd>rotated '+a.pin+'</dd>'+
+        '<button data-act="b-rot" data-rest="'+k+'" data-kind="pin">Rotate…</button></div></dl>'+
+      '<div class="b-signoutrow"><button data-act="b-rot" data-rest="'+k+'" data-kind="signout">Sign out every phone…</button></div>'+
+    '</article>';
+  }).join('');
+}
+function renderB(){ bRenderDays(); bRenderStaff(); bRenderAccess(); }
+
+function bOpenDrawer(html){
+  bLastFocus=document.activeElement;
+  bDrawerEl.innerHTML='<button class="b-close" data-act="b-drawer-close" aria-label="Close">✕</button>'+html;
+  bScrimEl.hidden=false; bDrawerEl.hidden=false;
+  var f=$('input,select,button:not(.b-close)',bDrawerEl); if(f) f.focus();
+}
+function bCloseDrawer(){
+  stB.drawer=null; bScrimEl.hidden=true; bDrawerEl.hidden=true; bDrawerEl.innerHTML='';
+  if(bLastFocus&&bLastFocus.focus) bLastFocus.focus();
+}
+function bFixFormHTML(r){
+  var names=eligibleNames(stB,r);
+  return '<h4 id="bDrawerTitle">Fix '+r.date+' — '+RESTS[r.rest]+' '+r.meal.toLowerCase()+'</h4>'+
+    '<p class="b-dsub">Entered by '+esc(r.by)+' ('+(r.mode==='voice'?'dictated':'typed')+'). Corrections change what people get paid — you’ll see exactly who changes before anything saves.</p>'+
+    '<form data-role="b-fixform" data-id="'+r.id+'">'+
+      '<label class="b-field"><span>Cash pool <small>— split among the shift, handed out nightly</small></span>'+
+        '<input type="text" class="num" name="cash" inputmode="decimal" value="'+(r.cash/100).toFixed(2)+'"></label>'+
+      '<label class="b-field"><span>Card tips <small>— logged for payroll, never split</small></span>'+
+        '<input type="text" class="num" name="card" inputmode="decimal" value="'+(r.card/100).toFixed(2)+'"></label>'+
+      '<div class="b-field"><span>Who was on the split</span><div class="b-people">'+names.map(function(n){
+        return '<label><input type="checkbox" name="p" value="'+esc(n)+'"'+(r.people.indexOf(n)>=0?' checked':'')+' class="sr">'+esc(n)+'</label>';
+      }).join('')+'</div></div>'+
+      '<p class="b-dpreview" data-role="preview">'+bFixPreview(r.cash,r.people.length)+'</p>'+
+      '<div class="b-dacts"><button type="button" data-act="b-drawer-close">Cancel</button>'+
+        '<button type="submit" class="primary">Review change…</button></div>'+
+    '</form>';
+}
+function bFixPreview(cashC,n){
+  if(n===0) return '<span style="color:#c03520;font-weight:700">Pick at least one person.</span>';
+  if(cashC===null) return '<span style="color:#c03520;font-weight:700">Cash amount doesn’t parse.</span>';
+  return 'Per-person share becomes <strong class="num">'+money(Math.round(cashC/n))+'</strong> — cash ÷ '+n+', card excluded.';
+}
+function bDeltaHTML(r,next){
+  var oldPer=perShare(r), newPer=Math.round(next.cash/next.people.length);
+  var names=r.people.slice();
+  next.people.forEach(function(n){ if(names.indexOf(n)<0) names.push(n); });
+  var rows=names.map(function(n){
+    var was=r.people.indexOf(n)>=0, is=next.people.indexOf(n)>=0;
+    var before=was?money(oldPer):'—', after=is?money(newPer):'removed';
+    var cls = (!is)?'removed':((!was||oldPer!==newPer)?'chg':'');
+    return '<tr><td>'+esc(n)+'</td><td class="r num">'+before+'</td><td class="r num '+cls+'">'+after+'</td></tr>';
+  }).join('');
+  return '<table class="b-delta"><thead><tr><th scope="col">Person</th><th scope="col" class="r">Gets now</th><th scope="col" class="r">Would get</th></tr></thead>'+
+    '<tbody>'+rows+
+    '<tr><td>Cash pool</td><td class="r num">'+money(r.cash)+'</td><td class="r num'+(r.cash!==next.cash?' chg':'')+'">'+money(next.cash)+'</td></tr>'+
+    '<tr><td>Card (logged only)</td><td class="r num">'+money(r.card)+'</td><td class="r num'+(r.card!==next.card?' chg':'')+'">'+money(next.card)+'</td></tr>'+
+    '</tbody></table>';
+}
+function bAddFormHTML(){
+  return '<h4 id="bDrawerTitle">Add a new hire</h4>'+
+    '<p class="b-dsub">They’ll show up on the phone picker immediately, last in the order — move them up any time.</p>'+
+    '<form data-role="b-addform">'+
+      '<label class="b-field"><span>Name</span><input type="text" name="name" required placeholder="e.g. Dana" autocomplete="off"></label>'+
+      '<label class="b-field"><span>Works at</span><select name="works">'+
+        '<option value="sushi">Sushi</option><option value="poki">Poki &amp; Pho</option><option value="both">Both</option></select></label>'+
+      '<div class="b-dacts"><button type="button" data-act="b-drawer-close">Cancel</button>'+
+        '<button type="submit" class="primary">Add to picker</button></div></form>';
+}
+function bOpenRotate(rest,kind){
+  stB.dlg={rest:rest,kind:kind};
+  var name=RESTS[rest];
+  var title,points,ack,go;
+  if(kind==='qr'){ title='Rotate the QR sticker — '+name;
+    points=['The printed sticker by the register stops working the moment you confirm.','You’ll see the new code once, to print a new sticker.','Phones already signed in stay signed in.'];
+    ack='the old sticker becomes useless'; go='Rotate QR code'; }
+  else if(kind==='pin'){ title='Rotate the PIN — '+name;
+    points=['The old PIN stops working immediately.','The new PIN is shown once — tonight’s closers need it from you.','Phones already signed in stay signed in.'];
+    ack='closers can’t sign in until I tell them the new PIN'; go='Rotate PIN'; }
+  else { title='Sign out every phone — '+name;
+    points=['Every signed-in phone at '+name+' is signed out right now.','Each phone needs the QR sticker + PIN to get back in.','Nothing recorded is lost.'];
+    ack='closers will have to sign in again tonight'; go='Sign everyone out'; }
+  bDialogEl.innerHTML='<h4>'+title+'</h4><ul class="b-conseq">'+points.map(function(p){return '<li>'+p+'</li>';}).join('')+'</ul>'+
+    '<label class="b-ack"><input type="checkbox" data-role="b-ack"> I understand — '+ack+'.</label>'+
+    '<div class="b-dacts"><button data-act="b-dlg-cancel">Cancel</button>'+
+      '<button class="danger" data-act="b-dlg-go" disabled>'+go+'</button></div>';
+  bDialogEl.showModal();
+}
+function bShowReveal(rest,kind){
+  var name=RESTS[rest];
+  if(kind==='pin'){
+    var pin=newPin();
+    bDialogEl.innerHTML='<h4>New PIN — '+name+'</h4>'+
+      '<p class="b-pin">'+pin.split('').join(' ')+'</p>'+
+      '<p class="b-once">This is the only time it will ever be shown — only a scrambled version is stored. Tell tonight’s closers before you close this.</p>'+
+      '<div class="b-dacts"><button data-act="b-copy" data-secret="'+pin+'">Copy</button>'+
+        '<button class="primary" data-act="b-reveal-done" data-msg="'+name+' PIN rotated — the old PIN stopped working.">I’ve written it down</button></div>';
+  } else {
+    bDialogEl.innerHTML='<h4>New QR sticker — '+name+'</h4>'+
+      '<div class="b-qrwrap">'+qrSVG(Math.floor(Math.random()*1e9))+
+      '<p>Print this and replace the sticker by the register before tonight’s close. The old sticker already stopped working.</p></div>'+
+      '<p class="b-once">Shown once — it can’t be re-displayed later, only rotated again.</p>'+
+      '<div class="b-dacts"><button data-act="b-print">Print sticker</button>'+
+        '<button class="primary" data-act="b-reveal-done" data-msg="'+name+' QR rotated — old sticker is dead until the new one is up.">Done — I’ve printed it</button></div>';
+  }
+}
+$('#vB').addEventListener('click',function(e){
+  var b=e.target.closest('[data-act]'); if(!b) return;
+  var act=b.dataset.act, id=b.dataset.id;
+  if(act==='b-rest'||act==='b-range'){
+    if(act==='b-range'&&b.dataset.v==='custom'){ toast('Custom date pickers are inert in this mockup.'); return; }
+    if(act==='b-rest') stB.restFilter=b.dataset.v; else stB.range=b.dataset.v;
+    $all('.b-chip[data-act="'+act+'"]').forEach(function(x){ x.setAttribute('aria-pressed', x===b?'true':'false'); });
+    bRenderDays();
+  }
+  else if(act==='b-export'){ downloadCSV(bVisible(),'daybook'); }
+  else if(act==='b-fix'){ var r=stB.records.find(function(x){return x.id===id;}); stB.drawer={mode:'fix',id:id}; bOpenDrawer(bFixFormHTML(r)); }
+  else if(act==='b-add-open'){ stB.drawer={mode:'add'}; bOpenDrawer(bAddFormHTML()); }
+  else if(act==='b-drawer-close'){ bCloseDrawer(); }
+  else if(act==='b-fix-back'){ var r2=stB.records.find(function(x){return x.id===stB.drawer.id;}); bOpenDrawer(bFixFormHTML(r2)); }
+  else if(act==='b-fix-confirm'){
+    var r3=applyFix(stB,stB.drawer.id,stB.pendingFix);
+    bCloseDrawer(); bRenderDays();
+    toast('Saved — '+r3.date+' '+RESTS[r3.rest]+' '+r3.meal.toLowerCase()+' now splits '+money(perShare(r3))+' each.');
+  }
+  else if(act==='b-up'){ moveStaff(stB,id,-1); bRenderStaff(); }
+  else if(act==='b-down'){ moveStaff(stB,id,1); bRenderStaff(); }
+  else if(act==='b-rename'){ stB.renaming=id; bRenderStaff(); var i2=$('.b-renform input'); if(i2){i2.focus(); i2.select();} }
+  else if(act==='b-deact'){ deactivate(stB,id); bRenderStaff(); toast('Deactivated — off the picker, history kept.'); }
+  else if(act==='b-react'){ reactivate(stB,id); bRenderStaff(); toast('Reactivated — back on the picker.'); }
+  else if(act==='b-del'){
+    if(!b.dataset.armed){ b.dataset.armed='1'; b.textContent='Really delete?'; return; }
+    deleteStaff(stB,id); bRenderStaff(); toast('Deleted — they had no recorded shifts.');
+  }
+  else if(act==='b-rot'){ bOpenRotate(b.dataset.rest,b.dataset.kind); }
+  else if(act==='b-dlg-cancel'){ bDialogEl.close(); }
+  else if(act==='b-dlg-go'){
+    var d=stB.dlg, acc=stB.access[d.rest];
+    if(d.kind==='signout'){ bDialogEl.close(); toast('All phones at '+RESTS[d.rest]+' signed out.'); }
+    else{
+      if(d.kind==='qr') acc.qr='just now (Aug 10)'; else acc.pin='just now (Aug 10)';
+      bRenderAccess(); bShowReveal(d.rest,d.kind);
+    }
+  }
+  else if(act==='b-copy'){ copyText(b.dataset.secret); }
+  else if(act==='b-print'){ toast('Printing is inert in this mockup.'); }
+  else if(act==='b-reveal-done'){ bDialogEl.close(); toast(b.dataset.msg); }
+});
+$('#vB').addEventListener('change',function(e){
+  if(e.target.matches('[data-role="b-ack"]')){
+    var go=$('[data-act="b-dlg-go"]',bDialogEl); if(go) go.disabled=!e.target.checked;
+  }
+});
+$('#vB').addEventListener('input',function(e){
+  var form=e.target.closest('[data-role="b-fixform"]');
+  if(form){
+    var cash=parseMoney(form.cash.value);
+    var n=$all('input[name="p"]:checked',form).length;
+    $('[data-role="preview"]',form).innerHTML=bFixPreview(cash,n);
+  }
+});
+$('#vB').addEventListener('submit',function(e){
+  var f=e.target;
+  if(f.matches('[data-role="b-fixform"]')){
+    e.preventDefault();
+    var cash=parseMoney(f.cash.value), card=parseMoney(f.card.value);
+    var people=$all('input[name="p"]:checked',f).map(function(i){return i.value;});
+    if(cash===null||card===null||!people.length){ $('[data-role="preview"]',f).innerHTML=bFixPreview(cash,people.length); return; }
+    var r=stB.records.find(function(x){return x.id===f.dataset.id;});
+    stB.pendingFix={cash:cash,card:card,people:people};
+    bOpenDrawer('<h4 id="bDrawerTitle">Before you save</h4>'+
+      '<p class="b-dsub">'+r.date+' — '+RESTS[r.rest]+' '+r.meal.toLowerCase()+'. Here’s exactly who this changes:</p>'+
+      bDeltaHTML(r,stB.pendingFix)+
+      '<p class="b-consequence">This changes what people are owed'+(r.flag?' and clears the flag on this record':'')+'.</p>'+
+      '<div class="b-dacts"><button type="button" data-act="b-fix-back">Back</button>'+
+        '<button type="button" class="danger" data-act="b-fix-confirm">Save the correction</button></div>');
+  }
+  else if(f.matches('[data-role="b-addform"]')){
+    e.preventDefault();
+    var nm=f.name.value.trim(); if(!nm) return;
+    addStaff(stB,nm,f.works.value); bCloseDrawer(); bRenderStaff();
+    toast(nm+' added — on the phone picker now, last in the order.');
+  }
+  else if(f.classList.contains('b-renform')){
+    e.preventDefault();
+    var s=stB.staff.find(function(x){return x.id===f.dataset.id;});
+    var nm2=f.nm.value.trim(); if(nm2) s.name=nm2;
+    stB.renaming=null; bRenderStaff();
+  }
+});
+document.addEventListener('keydown',function(e){
+  if(e.key==='Escape'&&!bDrawerEl.hidden) bCloseDrawer();
+});
+bScrimEl.addEventListener('click',bCloseDrawer);
+
+/* ================================================================
+   VARIANT C — THE MORNING CHECK
+================================================================ */
+var stC=freshState();
+stC.week='this'; stC.openDays={'Sun Aug 9':true}; stC.renaming=null; stC.reveals=[];
+var cDialogEl=$('#cDialog');
+
+function cVisible(){
+  if(stC.week==='last') return [];
+  return stC.records.filter(function(r){ return stC.restFilter==='all'||r.rest===stC.restFilter; });
+}
+function cRenderNight(){
+  var recs=cVisible().filter(function(r){return r.d===9;});
+  var html=recs.map(function(r){
+    return '<article class="c-tile"><h4>'+RESTS[r.rest]+' · '+r.meal+'</h4>'+
+      '<p class="c-cashline"><strong class="num">'+money(r.cash)+'</strong> cash</p>'+
+      '<p class="c-perline">→ <strong class="num">'+money(perShare(r))+'</strong> × '+r.people.length+' ('+r.people.map(esc).join(', ')+')</p>'+
+      '<p class="c-cardline"><span class="num">'+money(r.card)+'</span> card — logged, not split</p>'+
+      '<p class="c-tilemeta">closed by '+esc(r.by)+' · '+(r.mode==='voice'?'dictated':'typed')+'</p></article>';
+  }).join('');
+  var pokiLunchMissing = stC.week==='this' && (stC.restFilter==='all'||stC.restFilter==='poki') &&
+    !stC.records.some(function(r){return r.d===9&&r.rest==='poki'&&r.meal==='Lunch';});
+  if(pokiLunchMissing) html+='<article class="c-tile ghost">Poki &amp; Pho lunch — nothing recorded</article>';
+  $('#cNight').innerHTML=html||'<article class="c-tile ghost">Nothing recorded last night for this filter.</article>';
+}
+function cRenderAttn(){
+  var flags=stC.records.filter(function(r){return r.flag;});
+  $('#cAttn').innerHTML = flags.length ? flags.map(function(r){
+    return '<article class="c-flag"><h4>⚑ '+r.date+' — '+RESTS[r.rest]+' '+r.meal.toLowerCase()+' cash reads '+money(r.cash)+'</h4>'+
+      '<p>'+(r.mode==='voice'?'Dictated':'Typed')+' by '+esc(r.by)+' at close. This slot normally lands between $150 and $350, so it was saved but flagged. '+
+      'As entered, it splits to <strong class="num">'+money(perShare(r))+'</strong> each for '+r.people.map(esc).join(' and ')+' — worth a look before payday.</p>'+
+      '<div class="c-flagacts"><button class="primary" data-act="c-fix-open" data-id="'+r.id+'">Fix the amount</button>'+
+      '<button data-act="c-keep" data-id="'+r.id+'">It’s correct — keep it</button></div></article>';
+  }).join('') : '<p class="c-allclear">Nothing needs attention. All of this week’s records look like their usual selves.</p>';
+}
+function cRenderWeek(){
+  var recs=cVisible();
+  if(stC.week==='last'){ $('#cWeek').innerHTML='<p class="c-allclear">No records — the tips app wasn’t live yet that week.</p>'; return; }
+  var days=groupByDay(recs);
+  var html=days.map(function(g){
+    var open=!!stC.openDays[g.date];
+    var flagged=g.recs.some(function(r){return r.flag;});
+    return '<div class="c-dayrow">'+
+      '<button class="c-daybtn" data-act="c-day" data-date="'+g.date+'" aria-expanded="'+open+'">'+
+        '<span class="c-dayname">'+g.date+'</span>'+
+        '<span class="c-daynums num"><strong>'+money(sum(g.recs,function(r){return r.cash;}))+'</strong> cash · '+money(sum(g.recs,function(r){return r.card;}))+' card · '+g.recs.length+' shift'+(g.recs.length===1?'':'s')+'</span>'+
+        (flagged?'<span class="c-dayflag">⚑ flagged</span>':'')+
+        '<span class="c-caret" aria-hidden="true">'+(open?'▲':'▼')+'</span></button>'+
+      '<div class="c-daybody"'+(open?'':' hidden')+'>'+g.recs.map(function(r){
+        return '<div class="c-shift'+(r.flag?' flagged':'')+'">'+
+          '<span class="c-sname">'+RESTS[r.rest]+' · '+r.meal+(r.flag?' ⚑':'')+'</span>'+
+          '<span class="c-scash num"><strong>'+money(r.cash)+'</strong> cash → '+money(perShare(r))+' each</span>'+
+          '<span class="c-speople">'+r.people.map(esc).join(', ')+'</span>'+
+          '<span class="c-scard num">'+money(r.card)+' card logged</span>'+
+          '<button class="c-sfix" data-act="c-fix-open" data-id="'+r.id+'">fix</button></div>';
+      }).join('')+'</div></div>';
+  }).join('');
+  html+='<p class="c-weektotals num">Week totals — cash split <strong>'+money(sum(recs,function(r){return r.cash;}))+'</strong> · card logged <strong>'+money(sum(recs,function(r){return r.card;}))+'</strong> · '+recs.length+' records. Cash is handed out nightly; card goes through payroll.</p>';
+  $('#cWeek').innerHTML=html;
+}
+function cRenderStaff(){
+  var actives=activeStaff(stC), inactives=stC.staff.filter(function(s){return !s.active;});
+  $('#cStaffSum').textContent=actives.length+' active · '+inactives.length+' inactive — picker order: '+actives.map(function(s){return s.name;}).join(', ');
+  var order=0;
+  $('#cStaffBody').innerHTML=stC.staff.map(function(s){
+    var ord=s.active?(++order):null, ai=actives.indexOf(s);
+    var nameHtml = stC.renaming===s.id
+      ? '<form class="b-renform" data-role="c-renform" data-id="'+s.id+'" style="display:inline-flex"><input name="nm" value="'+esc(s.name)+'" aria-label="New name"><button>Save</button></form>'
+      : esc(s.name);
+    return '<div class="c-staffrow'+(s.active?'':' inactive')+'">'+
+      '<span class="c-stord">'+(s.active?'#'+ord:'—')+'</span>'+
+      '<span class="c-stname">'+nameHtml+'</span>'+
+      '<span class="c-stworks">'+WORKS[s.works]+(s.active?'':' · inactive, history kept')+(s.shifts===0?' · no shifts yet':'')+'</span>'+
+      '<span class="c-stacts">'+
+        (s.active?'<button data-act="c-up" data-id="'+s.id+'"'+(ai===0?' disabled':'')+' aria-label="Move '+esc(s.name)+' earlier">▲</button>'+
+                  '<button data-act="c-down" data-id="'+s.id+'"'+(ai===actives.length-1?' disabled':'')+' aria-label="Move '+esc(s.name)+' later">▼</button>':'')+
+        '<button data-act="c-rename" data-id="'+s.id+'">Rename</button>'+
+        (s.active?'<button data-act="c-deact" data-id="'+s.id+'">Deactivate</button>'
+                 :'<button data-act="c-react" data-id="'+s.id+'">Reactivate</button>')+
+        (s.shifts===0?'<button class="danger-link" data-act="c-del" data-id="'+s.id+'">Delete</button>':'')+
+      '</span></div>';
+  }).join('');
+}
+function cRenderAccess(){
+  var a=stC.access;
+  $('#cAccessSum').textContent='Sushi rotated '+(a.sushi.qr||'never')+' · Poki sticker '+(a.poki.qr?'rotated '+a.poki.qr:'never rotated');
+  var unlocked=$('#cUnlock').checked;
+  $('#cAccessBody').innerHTML=['sushi','poki'].map(function(k){
+    var x=a[k];
+    return '<div class="c-access"><h5>'+RESTS[k]+'</h5><dl>'+
+      '<div class="row"><dt>QR sticker</dt><dd>'+(x.qr?'rotated '+x.qr:'never rotated')+'</dd>'+
+        '<button data-act="c-rot" data-rest="'+k+'" data-kind="qr"'+(unlocked?'':' disabled')+'>Rotate…</button></div>'+
+      '<div class="row"><dt>PIN</dt><dd>rotated '+x.pin+'</dd>'+
+        '<button data-act="c-rot" data-rest="'+k+'" data-kind="pin"'+(unlocked?'':' disabled')+'>Rotate…</button></div></dl>'+
+      '<button class="c-signout" data-act="c-rot" data-rest="'+k+'" data-kind="signout"'+(unlocked?'':' disabled')+'>Sign out every phone…</button>'+
+    '</div>';
+  }).join('');
+}
+function cRenderReveals(){
+  $('#cReveal').innerHTML=stC.reveals.map(function(rv,i){
+    var inner = rv.kind==='pin'
+      ? '<div><h4>New PIN — '+RESTS[rv.rest]+'</h4><p>Shown once — only a hash is stored. Tell tonight’s closers, then dismiss.</p></div><span class="c-secret">'+rv.secret.split('').join(' ')+'</span>'
+      : qrSVG(rv.seed)+'<div><h4>New QR sticker — '+RESTS[rv.rest]+'</h4><p>Print and replace the register sticker before tonight — the old one already stopped working. This preview can’t be re-shown.</p></div>';
+    return '<article class="c-reveal">'+inner+
+      '<button data-act="c-dismiss" data-i="'+i+'">I’ve recorded it — dismiss</button></article>';
+  }).join('');
+}
+function renderC(){ cRenderReveals(); cRenderAttn(); cRenderNight(); cRenderWeek(); cRenderStaff(); cRenderAccess(); }
+
+function cFixDialog(r){
+  var names=eligibleNames(stC,r);
+  cDialogEl.innerHTML='<h4>Correct '+r.date+' — '+RESTS[r.rest]+' '+r.meal.toLowerCase()+'</h4>'+
+    '<form data-role="c-fixform" data-id="'+r.id+'">'+
+      '<label class="b-field"><span>Cash pool <small>— gets split</small></span><input type="text" class="num" name="cash" inputmode="decimal" value="'+(r.cash/100).toFixed(2)+'"></label>'+
+      '<label class="b-field"><span>Card <small>— logged only, never split</small></span><input type="text" class="num" name="card" inputmode="decimal" value="'+(r.card/100).toFixed(2)+'"></label>'+
+      '<div class="b-field"><span>On the split</span><div class="b-people">'+names.map(function(n){
+        return '<label><input type="checkbox" name="p" value="'+esc(n)+'"'+(r.people.indexOf(n)>=0?' checked':'')+' class="sr">'+esc(n)+'</label>';
+      }).join('')+'</div></div>'+
+      '<p class="c-consequence" data-role="preview">'+cFixPreview(r,r.cash,r.people)+'</p>'+
+      '<div class="c-dlgacts"><button type="button" data-act="c-dlg-cancel">Cancel</button>'+
+        '<button type="submit" class="danger">Save correction</button></div></form>';
+  cDialogEl.showModal();
+}
+function cFixPreview(r,cashC,people){
+  if(!people.length) return '<strong>Pick at least one person.</strong>';
+  if(cashC===null) return '<strong>Cash amount doesn’t parse.</strong>';
+  var newPer=Math.round(cashC/people.length);
+  return 'This changes payouts: per-person goes <strong class="num">'+money(perShare(r))+' → '+money(newPer)+'</strong> for '+people.map(esc).join(', ')+'. Saving clears the flag.';
+}
+$('#vC').addEventListener('click',function(e){
+  var b=e.target.closest('[data-act]'); if(!b) return;
+  var act=b.dataset.act, id=b.dataset.id;
+  if(act==='c-rest'){
+    stC.restFilter=b.dataset.v;
+    $all('#cRestSeg button').forEach(function(x){x.setAttribute('aria-pressed',x===b?'true':'false');});
+    cRenderNight(); cRenderWeek();
+  }
+  else if(act==='c-export'){ downloadCSV(cVisible(),'week-aug3-9'); }
+  else if(act==='c-day'){
+    var d=b.dataset.date;
+    if(stC.openDays[d]) delete stC.openDays[d]; else stC.openDays[d]=true;
+    cRenderWeek();
+  }
+  else if(act==='c-fix-open'){ cFixDialog(stC.records.find(function(x){return x.id===id;})); }
+  else if(act==='c-keep'){
+    if(!b.dataset.armed){ b.dataset.armed='1'; b.textContent='Confirm — keep '+'the amount'; return; }
+    stC.records.find(function(x){return x.id===id;}).flag=false;
+    cRenderAttn(); cRenderWeek();
+    toast('Flag cleared — amount kept as entered.');
+  }
+  else if(act==='c-dlg-cancel'){ cDialogEl.close(); }
+  else if(act==='c-add-open'){
+    cDialogEl.innerHTML='<h4>Add a new hire</h4>'+
+      '<form data-role="c-addform">'+
+      '<label class="b-field"><span>Name</span><input type="text" name="name" required placeholder="e.g. Dana" autocomplete="off"></label>'+
+      '<label class="b-field"><span>Works at</span><select name="works"><option value="sushi">Sushi</option><option value="poki">Poki &amp; Pho</option><option value="both">Both</option></select></label>'+
+      '<p class="c-consequence" style="background:#f5f1e8">They’ll appear on the phone picker immediately, last in the order.</p>'+
+      '<div class="c-dlgacts"><button type="button" data-act="c-dlg-cancel">Cancel</button>'+
+      '<button type="submit" class="primary">Add to picker</button></div></form>';
+    cDialogEl.showModal();
+    $('input',cDialogEl).focus();
+  }
+  else if(act==='c-up'){ moveStaff(stC,id,-1); cRenderStaff(); }
+  else if(act==='c-down'){ moveStaff(stC,id,1); cRenderStaff(); }
+  else if(act==='c-rename'){ stC.renaming=id; cRenderStaff(); var i3=$('[data-role="c-renform"] input'); if(i3){i3.focus(); i3.select();} }
+  else if(act==='c-deact'){ deactivate(stC,id); cRenderStaff(); toast('Deactivated — off the picker, history kept.'); }
+  else if(act==='c-react'){ reactivate(stC,id); cRenderStaff(); toast('Reactivated.'); }
+  else if(act==='c-del'){
+    if(!b.dataset.armed){ b.dataset.armed='1'; b.textContent='Really?'; return; }
+    deleteStaff(stC,id); cRenderStaff(); toast('Deleted — no recorded shifts, so nothing was lost.');
+  }
+  else if(act==='c-rot'){
+    var rest=b.dataset.rest, kind=b.dataset.kind, nm=RESTS[rest];
+    var msg = kind==='qr' ? 'The printed sticker at '+nm+' stops working immediately. The new code appears once, pinned to the top of this page until you dismiss it.'
+            : kind==='pin' ? 'The old PIN at '+nm+' stops working immediately. The new PIN appears once, pinned to the top of this page until you dismiss it.'
+            : 'Every signed-in phone at '+nm+' is signed out right now and needs the QR + PIN to get back in.';
+    cDialogEl.innerHTML='<h4>'+(kind==='qr'?'Rotate QR sticker':kind==='pin'?'Rotate PIN':'Sign out every phone')+' — '+nm+'</h4>'+
+      '<p class="c-consequence"><strong>This is disruptive.</strong> '+msg+'</p>'+
+      '<div class="c-dlgacts"><button data-act="c-dlg-cancel">Cancel</button>'+
+      '<button class="danger" data-act="c-rot-go" data-rest="'+rest+'" data-kind="'+kind+'">'+(kind==='signout'?'Sign everyone out':'Rotate now')+'</button></div>';
+    cDialogEl.showModal();
+  }
+  else if(act==='c-rot-go'){
+    var rest2=b.dataset.rest, kind2=b.dataset.kind;
+    cDialogEl.close();
+    if(kind2==='signout'){ toast('All phones at '+RESTS[rest2]+' signed out.'); return; }
+    if(kind2==='qr') stC.access[rest2].qr='just now (Aug 10)'; else stC.access[rest2].pin='just now (Aug 10)';
+    stC.reveals.unshift({rest:rest2,kind:kind2,secret:newPin(),seed:Math.floor(Math.random()*1e9)});
+    cRenderAccess(); cRenderReveals();
+    $('#cReveal').scrollIntoView({block:'center'});
+    toast('Rotated — the new '+(kind2==='qr'?'sticker':'PIN')+' is pinned at the top until you dismiss it.');
+  }
+  else if(act==='c-dismiss'){
+    if(!b.dataset.armed){ b.dataset.armed='1'; b.textContent='Click again — hides it forever'; return; }
+    stC.reveals.splice(Number(b.dataset.i),1); cRenderReveals();
+    toast('Hidden forever — only a hash is stored now.');
+  }
+});
+$('#cWeekSel').addEventListener('change',function(){ stC.week=this.value; cRenderNight(); cRenderWeek(); });
+$('#cUnlock').addEventListener('change',cRenderAccess);
+$('#vC').addEventListener('input',function(e){
+  var form=e.target.closest('[data-role="c-fixform"]');
+  if(form){
+    var r=stC.records.find(function(x){return x.id===form.dataset.id;});
+    var cash=parseMoney(form.cash.value);
+    var people=$all('input[name="p"]:checked',form).map(function(i){return i.value;});
+    $('[data-role="preview"]',form).innerHTML=cFixPreview(r,cash,people);
+  }
+});
+$('#vC').addEventListener('submit',function(e){
+  var f=e.target;
+  if(f.matches('[data-role="c-fixform"]')){
+    e.preventDefault();
+    var cash=parseMoney(f.cash.value), card=parseMoney(f.card.value);
+    var people=$all('input[name="p"]:checked',f).map(function(i){return i.value;});
+    if(cash===null||card===null||!people.length) return;
+    var r=applyFix(stC,f.dataset.id,{cash:cash,card:card,people:people});
+    cDialogEl.close(); cRenderAttn(); cRenderNight(); cRenderWeek();
+    toast('Corrected — '+r.date+' '+RESTS[r.rest]+' '+r.meal.toLowerCase()+' now splits '+money(perShare(r))+' each.');
+  }
+  else if(f.matches('[data-role="c-addform"]')){
+    e.preventDefault();
+    var nm=f.name.value.trim(); if(!nm) return;
+    addStaff(stC,nm,f.works.value); cDialogEl.close(); cRenderStaff();
+    $('#cStaffPanel').open=true;
+    toast(nm+' added — on the phone picker now, last in the order.');
+  }
+  else if(f.matches('[data-role="c-renform"]')){
+    e.preventDefault();
+    var s=stC.staff.find(function(x){return x.id===f.dataset.id;});
+    var nm2=f.nm.value.trim(); if(nm2) s.name=nm2;
+    stC.renaming=null; cRenderStaff();
+  }
+});
+
+/* ---------------- boot ---------------- */
+renderA(); renderB(); renderC();
+})();
+</script>
+</body>
+</html>

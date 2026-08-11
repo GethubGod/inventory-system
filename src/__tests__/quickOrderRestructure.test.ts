@@ -16,8 +16,29 @@ const catalog: CatalogItem[] = [
   { id: 'tamago-id', name: 'Tamago', aliases: [], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
   { id: 'salmon-id', name: 'Salmon', aliases: [], default_unit: 'case', order_unit: 'case', base_unit: 'case', pack_unit: 'case', target_stock: 3 },
   { id: 'albacore-id', name: 'Albacore', aliases: [], default_unit: 'case', order_unit: 'case', base_unit: 'case', pack_unit: 'case' },
+  { id: 'squid-id', name: 'Squid (Ika)', aliases: ['squid sushi', 'squid'], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
   { id: 'wakame-id', name: 'Wakame', aliases: [], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
   { id: 'edamame-poki-id', name: 'Edamame', aliases: [], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack', location_id: 'poki-location' },
+];
+
+const sushiInventoryCatalog: CatalogItem[] = [
+  { id: 'tuna-loin-id', name: 'Tuna Loin', aliases: ['tuna loin'], default_unit: 'case', order_unit: 'case', base_unit: 'case', pack_unit: 'case' },
+  { id: 'ground-tuna-id', name: 'Ground Tuna', aliases: ['ground tuna'], default_unit: 'case', order_unit: 'case', base_unit: 'case', pack_unit: 'case' },
+  { id: 'yellowtail-id', name: 'Yellowtail (Hamachi)', aliases: ['yellowtail', 'hamachi'], default_unit: 'case', order_unit: 'case', base_unit: 'case', pack_unit: 'case' },
+  { id: 'albacore-id', name: 'Albacore', aliases: [], default_unit: 'case', order_unit: 'case', base_unit: 'case', pack_unit: 'case' },
+  { id: 'ebi-id', name: 'Ebi (Cooked Shrimp)', aliases: ['shrimp'], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
+  { id: 'salmon-id', name: 'Salmon', aliases: [], default_unit: 'piece', order_unit: 'piece', base_unit: 'piece', pack_unit: 'piece' },
+  { id: 'white-fish-id', name: 'White Fish (Izumidai)', aliases: ['white fish'], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
+  { id: 'octopus-id', name: 'Tako (Octopus)', aliases: ['octopus'], default_unit: 'piece', order_unit: 'piece', base_unit: 'piece', pack_unit: 'piece' },
+  { id: 'escolar-id', name: 'Escolar (White Tuna)', aliases: ['escolar'], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
+  { id: 'masago-id', name: 'Masago (Capelin Roe)', aliases: ['masago outside', 'masago'], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
+  { id: 'crawfish-id', name: 'Crawfish', aliases: ['langostino'], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
+  { id: 'squid-id', name: 'Squid (Ika)', aliases: ['squid sushi', 'squid'], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
+  { id: 'red-clam-id', name: 'Canadian Clam', aliases: ['red clam'], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
+  { id: 'scallop-id', name: 'Hotate (Sea Scallop)', aliases: ['japanese scallop'], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
+  { id: 'mackerel-id', name: 'Mackerel', aliases: [], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
+  { id: 'crab-id', name: 'Kanikama Stick', aliases: ['crab sushi'], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
+  { id: 'tamago-id', name: 'Tamago', aliases: [], default_unit: 'pack', order_unit: 'pack', base_unit: 'pack', pack_unit: 'pack' },
 ];
 
 const parserSettings = {
@@ -89,6 +110,14 @@ const nateTamagoUnit: QuickOrderUnitRule = {
   tracking_unit: 'order',
 };
 
+const nateTamagoTypedUnit: QuickOrderUnitRule = {
+  ...nateTamagoUnit,
+  id: 'nate-tamago-order',
+  from_unit: 'order',
+  is_default_when_missing: false,
+  mode_scope: 'both',
+};
+
 const nateTamagoRule: QuickOrderReorderRule = {
   item_id: 'tamago-id',
   scope_type: 'employee',
@@ -104,15 +133,71 @@ const nateTamagoRule: QuickOrderReorderRule = {
   active: true,
 };
 
+const nateSquidOrderUnit: QuickOrderUnitRule = {
+  item_id: 'squid-id',
+  from_unit: 'order',
+  to_unit: 'order',
+  multiplier: 1,
+  scope_type: 'employee',
+  employee_name: 'Nate',
+  employee_name_key: 'nate',
+  mode_scope: 'both',
+  active: true,
+  is_custom_counting_unit: true,
+  tracking_unit: 'order',
+};
+
+const nateSquidRule: QuickOrderReorderRule = {
+  item_id: 'squid-id',
+  scope_type: 'employee',
+  employee_name: 'Nate',
+  employee_name_key: 'nate',
+  mode_scope: 'inventory',
+  counted_unit: 'order',
+  trigger_type: 'at_or_below',
+  trigger_qty_min: 3,
+  action_type: 'fixed_order_qty',
+  order_qty: 1,
+  order_unit: 'pack',
+  active: true,
+};
+
 const srirachaRule: QuickOrderReorderRule = {
   item_id: 'sriracha-id',
   scope_type: 'global',
   mode_scope: 'inventory',
   counted_unit: 'case',
   trigger_type: 'at_or_below',
-  trigger_qty_min: 0.5,
+  trigger_qty_min: 1,
   action_type: 'fixed_order_qty',
   order_qty: 1,
+  order_unit: 'case',
+  active: true,
+};
+
+const nateSrirachaBoxUnit: QuickOrderUnitRule = {
+  item_id: 'sriracha-id',
+  from_unit: 'box',
+  to_unit: 'case',
+  multiplier: 1,
+  scope_type: 'employee',
+  employee_name: 'Nate',
+  employee_name_key: 'nate',
+  mode_scope: 'both',
+  active: true,
+};
+
+const nateSrirachaCaseRule: QuickOrderReorderRule = {
+  item_id: 'sriracha-id',
+  scope_type: 'employee',
+  employee_name: 'Nate',
+  employee_name_key: 'nate',
+  mode_scope: 'inventory',
+  counted_unit: 'case',
+  trigger_type: 'at_or_below',
+  trigger_qty_min: 1,
+  action_type: 'fixed_order_qty',
+  order_qty: 2,
   order_unit: 'case',
   active: true,
 };
@@ -146,6 +231,292 @@ describe('qo restructure parser contract', () => {
     expect(result.stock_updates[0]).toMatchObject({ item_id: 'tamago-id', unit: 'order', tracking_unit: 'order' });
     expect(result.recommendations).toHaveLength(expected);
     if (expected) expect(result.recommendations[0]).toMatchObject({ suggested_quantity: 1, unit: 'pack' });
+  });
+
+  test('zero quantity bypasses Nate Tamago personalization and falls through to no recommendation', async () => {
+    const result = await brain('Tamago 0 order', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateTamagoUnit, nateTamagoTypedUnit],
+      quickOrderReorderRules: [nateTamagoRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result.stock_updates[0]).toMatchObject({ item_id: 'tamago-id', quantity: 0, unit: 'order' });
+    expect(result.recommendations).toHaveLength(0);
+  });
+
+  test('zero status term bypasses Nate Tamago personalization and falls through to no recommendation', async () => {
+    const statusTerms: InventoryStatusTerm[] = [{
+      phrase: 'no more',
+      phrase_key: 'no more',
+      status: 'zero',
+      remaining_qty: 0,
+      remaining_unit_behavior: 'item_default_unit',
+      recommendation_action: 'check_reorder_rule',
+      active: true,
+    }];
+    const result = await brain('no more Tamago', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateTamagoUnit, nateTamagoTypedUnit],
+      quickOrderReorderRules: [nateTamagoRule],
+      inventoryStatusTerms: statusTerms,
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result.stock_updates[0]).toMatchObject({ item_id: 'tamago-id', quantity: 0 });
+    expect(result.recommendations).toHaveLength(0);
+  });
+
+  test('zero quantity bypasses Devin Sriracha personalization and uses global reorder rules', async () => {
+    const devinPersonalNoOrder: QuickOrderReorderRule = {
+      ...srirachaRule,
+      scope_type: 'employee',
+      employee_name: 'Devin',
+      employee_name_key: 'devin',
+      trigger_qty_min: -1,
+      order_qty: 9,
+    };
+    const result = await brain('Sriracha 0 case', {
+      employeeNameKeys: ['devin'],
+      quickOrderReorderRules: [devinPersonalNoOrder, srirachaRule],
+      request: { mode: 'inventory', employee_name: 'Devin' } as any,
+    });
+    expect(result.recommendations).toHaveLength(1);
+    expect(result.recommendations[0]).toMatchObject({ item_id: 'sriracha-id', suggested_quantity: 1, unit: 'case' });
+  });
+
+  test('non-zero quantity still lets Nate Tamago personalization win', async () => {
+    const result = await brain('Tamago 4 order', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateTamagoUnit, nateTamagoTypedUnit],
+      quickOrderReorderRules: [nateTamagoRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result.recommendations).toHaveLength(1);
+    expect(result.recommendations[0]).toMatchObject({ item_id: 'tamago-id', suggested_quantity: 1, unit: 'pack' });
+  });
+
+  test('leading personal unit recognizes Nate Squid sushi inventory without hardcoded item text', async () => {
+    const result = await brain('order squid sushi 8', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateSquidOrderUnit],
+      quickOrderReorderRules: [nateSquidRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result.stock_updates[0]).toMatchObject({
+      item_id: 'squid-id',
+      item_name: 'Squid (Ika)',
+      quantity: 8,
+      unit: 'order',
+      tracking_unit: 'order',
+    });
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.recommendations).toHaveLength(0);
+  });
+
+  test('plural leading personal unit defaults Nate Tamago and applies personalization threshold', async () => {
+    const result = await brain('orders tamago 2', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateTamagoUnit, nateTamagoTypedUnit],
+      quickOrderReorderRules: [nateTamagoRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result.stock_updates[0]).toMatchObject({
+      item_id: 'tamago-id',
+      quantity: 2,
+      unit: 'order',
+      tracking_unit: 'order',
+    });
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.recommendations[0]).toMatchObject({ item_id: 'tamago-id', suggested_quantity: 1, unit: 'pack' });
+  });
+
+  test('quantity-first personal unit recognizes Nate Squid sushi inventory without hardcoded item text', async () => {
+    const result = await brain('8 order squid sushi', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateSquidOrderUnit],
+      quickOrderReorderRules: [nateSquidRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result.stock_updates[0]).toMatchObject({
+      item_id: 'squid-id',
+      item_name: 'Squid (Ika)',
+      quantity: 8,
+      unit: 'order',
+      tracking_unit: 'order',
+    });
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.recommendations).toHaveLength(0);
+  });
+
+  test('quantity-first plural personal unit defaults Nate Tamago and applies personalization threshold', async () => {
+    const result = await brain('2 orders tamago', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateTamagoUnit, nateTamagoTypedUnit],
+      quickOrderReorderRules: [nateTamagoRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result.stock_updates[0]).toMatchObject({
+      item_id: 'tamago-id',
+      quantity: 2,
+      unit: 'order',
+      tracking_unit: 'order',
+    });
+    expect(result.parsed_items).toHaveLength(0);
+    expect(result.recommendations[0]).toMatchObject({ item_id: 'tamago-id', suggested_quantity: 1, unit: 'pack' });
+  });
+
+  test('full sushi inventory paste accepts quantity-first personalized Squid and Tamago lines', async () => {
+    const message = [
+      '1 tuna loin',
+      '3 box ground tuna',
+      'A lot yellowtail',
+      '1 albacore',
+      '6 shrimp',
+      '2pc salmon',
+      '5 white fish',
+      '3 octopus',
+      '7 escolar',
+      '1 box masago outside',
+      '3 langostino',
+      '8 order squid sushi',
+      'A lot red clam',
+      'A lot japanese scallop',
+      '3 mackerel',
+      'A lot crab sushi',
+      '2 orders tamago',
+    ].join('\n');
+    const result = await brain(message, {
+      catalog: sushiInventoryCatalog,
+      globalCatalog: sushiInventoryCatalog,
+      employeeNameKeys: ['nate'],
+      unitRules: [nateSquidOrderUnit, nateTamagoUnit, nateTamagoTypedUnit],
+      quickOrderReorderRules: [nateSquidRule, nateTamagoRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result.stock_updates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        item_id: 'squid-id',
+        quantity: 8,
+        unit: 'order',
+        tracking_unit: 'order',
+      }),
+      expect.objectContaining({
+        item_id: 'tamago-id',
+        quantity: 2,
+        unit: 'order',
+        tracking_unit: 'order',
+      }),
+    ]));
+    expect(result.recommendations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ item_id: 'tamago-id', suggested_quantity: 1, unit: 'pack' }),
+    ]));
+    expect(result.recommendations.some((recommendation) => recommendation.item_id === 'squid-id')).toBe(false);
+    expect(result.parsed_items.some((item) => /squid|tamago/i.test([
+      item.item_name,
+      item.display_name,
+      item.item_text,
+      item.raw_text,
+      item.source_text,
+      item.raw_token,
+    ].filter(Boolean).join(' ')))).toBe(false);
+  });
+
+  test('no typed unit uses Nate Tamago personal unit', async () => {
+    const result = await brain('Tamago 10', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateTamagoUnit, nateTamagoTypedUnit],
+      quickOrderReorderRules: [nateTamagoRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result.stock_updates[0]).toMatchObject({ item_id: 'tamago-id', quantity: 10, unit: 'order', tracking_unit: 'order' });
+  });
+
+  test('no typed unit without personalization uses qo_items order unit', async () => {
+    const result = await brain('Sriracha 1', {
+      request: { mode: 'inventory', employee_name: 'Alex' } as any,
+    });
+    expect(result.stock_updates[0]).toMatchObject({ item_id: 'sriracha-id', quantity: 1, unit: 'case', unit_inferred: true });
+  });
+
+  test('typed unit matching personalization applies personalization thresholds', async () => {
+    const result = await brain('Tamago 4 order', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateTamagoUnit, nateTamagoTypedUnit],
+      quickOrderReorderRules: [nateTamagoRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result.stock_updates[0]).toMatchObject({ tracking_unit: 'order' });
+    expect(result.recommendations[0]).toMatchObject({ suggested_quantity: 1, unit: 'pack' });
+  });
+
+  test('typed global unit that does not match personalization skips personalization thresholds', async () => {
+    const result = await brain('Tamago 2 pack', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateTamagoUnit, nateTamagoTypedUnit],
+      quickOrderReorderRules: [nateTamagoRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result.stock_updates[0]).toMatchObject({ item_id: 'tamago-id', quantity: 2, unit: 'pack', tracking_unit: null });
+    expect(result.recommendations).toHaveLength(0);
+  });
+
+  test('unrecognized typed unit returns unit_unrecognized and suggestions without stock or recommendations', async () => {
+    const result = await brain('Tamago 3 buckets', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateTamagoUnit, nateTamagoTypedUnit],
+      quickOrderReorderRules: [nateTamagoRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+    expect(result).toMatchObject({
+      status: 'unit_unrecognized',
+      item: 'Tamago',
+      quantity: 3,
+      unit_typed: 'buckets',
+      suggested_units: ['order', 'pack'],
+    });
+    expect(result.assistant_message).toBe("I don't recognize 'buckets' as a unit for Tamago. Did you mean 'order' or 'pack'?");
+    expect(result.stock_updates).toHaveLength(0);
+    expect(result.recommendations).toHaveLength(0);
+    expect(result.pending_clarifications?.[0]).toMatchObject({ type: 'unit_unrecognized' });
+  });
+
+  test('unrecognized unit suggestions omit equivalent abbreviations and plurals', async () => {
+    const result = await brain('Tamago 3 buckets', {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateTamagoUnit, nateTamagoTypedUnit],
+      quickOrderReorderRules: [nateTamagoRule],
+      unitSynonyms: [
+        { from_unit: 'pk', to_unit: 'pack' },
+        { from_unit: 'packs', to_unit: 'pack' },
+      ],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    });
+
+    expect(result.suggested_units).toEqual(['order', 'pack']);
+    expect(result.assistant_message).toBe("I don't recognize 'buckets' as a unit for Tamago. Did you mean 'order' or 'pack'?");
+    expect(result.pending_clarifications?.[0]?.actions.map((action) => action.unit)).toEqual(['order', 'pack']);
+  });
+
+  test('unit aliases resolve before unit_unrecognized errors', async () => {
+    const result = await brain('Sriracha 1 cs', {
+      quickOrderReorderRules: [srirachaRule],
+      request: { mode: 'inventory', employee_name: 'Alex' } as any,
+    });
+    expect(result.status).not.toBe('unit_unrecognized');
+    expect(result.stock_updates[0]).toMatchObject({ item_id: 'sriracha-id', quantity: 1, unit: 'cs' });
+    expect(result.recommendations[0]).toMatchObject({ item_id: 'sriracha-id', suggested_quantity: 1 });
+  });
+
+  test('personal_unit_equals lets Nate Sriracha box and case both use personalization', async () => {
+    const shared = {
+      employeeNameKeys: ['nate'],
+      unitRules: [nateSrirachaBoxUnit],
+      quickOrderReorderRules: [nateSrirachaCaseRule, srirachaRule],
+      request: { mode: 'inventory', employee_name: 'Nate' } as any,
+    };
+    const box = await brain('Sriracha 1 box', shared);
+    const caseUnit = await brain('Sriracha 1 case', shared);
+    expect(box.recommendations[0]).toMatchObject({ suggested_quantity: 2, unit: 'case' });
+    expect(caseUnit.recommendations[0]).toMatchObject({ suggested_quantity: 2, unit: 'case' });
   });
 
   test('global threshold reorder rule fires', async () => {

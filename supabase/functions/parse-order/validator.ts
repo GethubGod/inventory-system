@@ -42,7 +42,11 @@ export function validateParsedLine(input: {
   const rawUnit = candidate.unit_raw ?? candidate.unit;
   const normalizedUnit = normalizeUnit(candidate.unit, unitAliases);
   let unit = normalizedUnit ?? rawUnit?.trim().toLowerCase() ?? null;
-  const unitResolution = catalogItem && input.unitRules?.length && input.resolverContext
+  const shouldUseConfiguredMissingUnitDefault =
+    !unit &&
+    input.resolverContext?.mode === 'order' &&
+    input.resolverContext.settings?.order_mode_missing_unit_strategy === 'item_default_order_unit';
+  const unitResolution = catalogItem && input.resolverContext && (input.unitRules?.length || shouldUseConfiguredMissingUnitDefault)
     ? (unit
         ? resolveUnit({ item: catalogItem, typedUnit: unit, unitRules: input.unitRules, unitAliases, context: input.resolverContext })
         : resolveMissingUnit({ item: catalogItem, unitRules: input.unitRules, unitAliases, context: input.resolverContext }))

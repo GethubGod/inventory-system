@@ -119,6 +119,7 @@ export type PendingQuickOrderClarification = {
     | 'quantity_safety'
     | 'manager_approval_required'
     | 'low_confidence_match'
+    | 'unit_unrecognized'
     | 'remove_ambiguous';
   item_id: string | null;
   item_name: string;
@@ -426,15 +427,6 @@ export function mergeQuickOrderParsedItemsDetailed(
       rejectedReasons.push('empty_item');
       continue;
     }
-    if (!item.item_id && (item.status === 'no_match' || item.status === 'ambiguous' || item.unresolved)) {
-      rejectedReasons.push('non_cart_item_issue');
-      continue;
-    }
-    if (item.item_id && item.status === 'invalid_unit') {
-      rejectedReasons.push('invalid_unit_not_added');
-      continue;
-    }
-
     const existingKey = item.existing_item_key;
     if (item.merge_behavior === 'add_to_existing' && existingKey) {
       let changed = false;
@@ -816,6 +808,75 @@ export function applyQuickOrderClarificationAction(
   return items;
 }
 
+export function buildQuickOrderUnitCorrectionText(
+  clarification: PendingQuickOrderClarification,
+  action: QuickOrderClarificationAction,
+  options?: { sourceText?: string | null },
+): string | null {
+  const replacementUnit = (action.unit ?? action.label).trim();
+  if (!replacementUnit) return null;
+
+  const incoming = clarification.incoming_item;
+  const rawLine = (incoming?.raw_text ?? incoming?.raw_token ?? '').trim();
+  const typedUnit = (incoming?.unit ?? '').trim();
+  const compoundLine = rawLine && !typedUnit
+    ? appendCompoundMissingUnit(rawLine, incoming?.quantity, replacementUnit)
+    : null;
+  const sourceText = options?.sourceText?.trim();
+  if (sourceText && compoundLine && rawLine) {
+    const correctedSource = replaceFirstTextOccurrence(sourceText, rawLine, compoundLine);
+    if (correctedSource) return correctedSource;
+  }
+  if (compoundLine) return compoundLine;
+
+  const correctedLine = rawLine && typedUnit
+    ? replaceUnitToken(rawLine, typedUnit, replacementUnit)
+    : null;
+
+  if (sourceText && correctedLine && rawLine) {
+    const correctedSource = replaceFirstTextOccurrence(sourceText, rawLine, correctedLine);
+    if (correctedSource) return correctedSource;
+  }
+
+  if (sourceText && typedUnit && countUnitTokenMatches(sourceText, typedUnit) === 1) {
+    const correctedSource = replaceUnitToken(sourceText, typedUnit, replacementUnit);
+    if (correctedSource) return correctedSource;
+  }
+
+  if (correctedLine) return correctedLine;
+
+  const itemName =
+    incoming?.item_name ??
+    incoming?.display_name ??
+    incoming?.item_text ??
+    clarification.item_name;
+  const quantity = incoming?.quantity;
+  if (itemName && quantity != null && Number.isFinite(quantity)) {
+    return `${itemName} ${quantity} ${replacementUnit}`;
+  }
+  return rawLine || null;
+}
+
+function appendCompoundMissingUnit(
+  rawLine: string,
+  quantity: number | null | undefined,
+  unit: string,
+): string | null {
+  const qty = typeof quantity === 'number' && Number.isFinite(quantity) ? quantity : null;
+  if (qty != null) {
+    const escaped = String(qty).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const exact = new RegExp(`(\\+\\s*)${escaped}(\\s*)$`, 'i');
+    if (exact.test(rawLine)) return rawLine.replace(exact, `$1${qty} ${unit}$2`);
+  }
+  const trailingQuantity = /(\+\s*)(\d+\s+\d+\s*\/\s*\d+|\d+\s*\/\s*\d+|\d+(?:\.\d+)?|\.\d+)(\s*)$/i;
+  if (trailingQuantity.test(rawLine)) {
+    return rawLine.replace(trailingQuantity, (_, prefix: string, value: string, suffix: string) =>
+      `${prefix}${value} ${unit}${suffix}`
+    );
+  }
+  return null;
+}
+
 /**
  * Canonicalises a free-text unit string ("cases" → "cs", "pounds" → "lb", …).
  * Returns `null` for empty/whitespace input. Shared by row keying, the cart
@@ -951,6 +1012,44 @@ function areParsedItemsEquivalent(a: ParsedQuickOrderItem, b: ParsedQuickOrderIt
 function sameQuantity(a: ParsedQuickOrderItem, b: ParsedQuickOrderItem): boolean {
   if (a.quantity == null || b.quantity == null) return a.quantity == null && b.quantity == null;
   return Math.abs(a.quantity - b.quantity) < 0.000001;
+}
+
+function replaceFirstTextOccurrence(
+  sourceText: string,
+  searchText: string,
+  replacementText: string,
+): string | null {
+  const exactIndex = sourceText.indexOf(searchText);
+  if (exactIndex >= 0) {
+    return `${sourceText.slice(0, exactIndex)}${replacementText}${sourceText.slice(exactIndex + searchText.length)}`;
+  }
+
+  const pattern = new RegExp(escapeRegExp(searchText), 'i');
+  if (!pattern.test(sourceText)) return null;
+  return sourceText.replace(pattern, replacementText);
+}
+
+function replaceUnitToken(
+  text: string,
+  typedUnit: string,
+  replacementUnit: string,
+): string | null {
+  const pattern = unitTokenPattern(typedUnit);
+  if (!pattern.test(text)) return null;
+  return text.replace(pattern, (_match, prefix: string) => `${prefix}${replacementUnit}`);
+}
+
+function countUnitTokenMatches(text: string, typedUnit: string): number {
+  const matches = text.match(unitTokenPattern(typedUnit, 'giu'));
+  return matches?.length ?? 0;
+}
+
+function unitTokenPattern(typedUnit: string, flags = 'iu'): RegExp {
+  return new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(typedUnit)}(?=$|[^\\p{L}\\p{N}])`, flags);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /**

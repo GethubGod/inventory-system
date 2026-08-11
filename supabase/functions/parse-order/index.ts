@@ -17,7 +17,13 @@ import {
   type MissingItemSuggestion,
   type MissingItemTimeRange,
 } from './missing-items-engine.ts';
+import {
+  buildCatalogFromInventoryItemRows as buildCatalogFromInventoryItemRowsImpl,
+  buildGlobalCatalogFromQoItemRows as buildGlobalCatalogFromQoItemRowsImpl,
+  mergeCatalogWithInventoryFallback as mergeCatalogWithInventoryFallbackImpl,
+} from './catalog-builder.ts';
 import { buildUnitAliases, normalizeUnitForComparison, type UnitAliasMap } from './units.ts';
+import { stripIgnoredQuickOrderPhrases } from './text-normalization.ts';
 import type {
   CatalogItem,
   EmployeeQuickOrderAlias,
@@ -194,10 +200,6 @@ function chooseProvider(): Provider | null {
   return null;
 }
 
-function getDefaultInventoryUnit(row: Record<string, unknown>): string | null {
-  return asNullableString(row.base_unit) ?? asNullableString(row.pack_unit);
-}
-
 async function getAuthenticatedUser(req: Request) {
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
@@ -235,11 +237,12 @@ async function getAuthenticatedUser(req: Request) {
     .maybeSingle();
 
   const metadata = isRecord(user.user_metadata) ? user.user_metadata : {};
-  // Collect every place the human's name might live. Quick Order aliases are
-  // linked purely by name (see fetchEmployeeQuickOrderAliases), so we must match
-  // against ALL known variants — `profiles.full_name` and `users.name` can differ
-  // (e.g. `users.name` defaults to the literal 'User' while `full_name` is null),
-  // and the alias sheet could be keyed to either one.
+  // Collect every place the human's name might live. Quick Order personalization
+  // (qo_personalization, see fetchQoPersonalization) is keyed by employee name
+  // when employee_user_id is unset, so we must match against ALL known variants —
+  // `profiles.full_name` and `users.name` can differ (e.g. `users.name` defaults
+  // to the literal 'User' while `full_name` is null), and a sheet row may be
+  // keyed to either one until employee_user_id is filled in.
   const rawNames = [
     asNullableString(profile?.full_name),
     asNullableString(legacyUser?.name),
@@ -282,6 +285,7 @@ async function fetchGlobalCatalog(locationId?: string | null): Promise<CatalogIt
       target_stock,
       supplier_id,
       location_id,
+      location_scope,
       active,
       inventory_items (
         id,
@@ -301,45 +305,62 @@ async function fetchGlobalCatalog(locationId?: string | null): Promise<CatalogIt
 
   const { data, error } = await query;
 
+  const inventoryFallback = await fetchInventoryCatalogFallback(locationId);
+  const qoItems = error
+    ? []
+    : buildGlobalCatalogFromQoItemRowsImpl((data ?? []) as Record<string, unknown>[]);
   if (error) {
-    console.warn('parse-order active inventory catalog fetch failed', error);
-    return [];
+    console.warn('parse-order qo_items catalog fetch failed; using inventory_items fallback', error);
   }
-
-  const items = ((data ?? []) as Record<string, unknown>[])
-    .map((row): CatalogItem | null => {
-      const inventoryRow = isRecord(row.inventory_items) ? row.inventory_items : {};
-      const id = asTrimmedString(row.inventory_item_id) ?? asTrimmedString(inventoryRow.id);
-      const name = asTrimmedString(row.name);
-      if (!id || !name) return null;
-      return {
-        id,
-        qo_item_id: asTrimmedString(row.id),
-        name,
-        aliases: typeof row.aliases === 'string'
-          ? row.aliases.split(',').map((alias) => alias.trim()).filter(Boolean)
-          : [],
-        default_unit: asNullableString(row.order_unit) ?? getDefaultInventoryUnit(inventoryRow),
-        order_unit: asNullableString(row.order_unit),
-        base_unit: asNullableString(inventoryRow.base_unit),
-        pack_unit: asNullableString(inventoryRow.pack_unit),
-        supplier_id: asNullableString(row.supplier_id) ?? asNullableString(inventoryRow.supplier_id),
-        location_id: asNullableString(row.location_id),
-        allowed_units: Array.isArray(inventoryRow.allowed_units)
-          ? inventoryRow.allowed_units.filter((unit): unit is string => typeof unit === 'string')
-          : null,
-        hard_cap: null,
-        soft_cap: null,
-        safety_stock: null,
-        target_stock: row.target_stock != null ? Number(row.target_stock) : null,
-        default_order_unit: asNullableString(row.order_unit) ?? asNullableString(inventoryRow.default_order_unit),
-      };
-    })
-    .filter((item): item is CatalogItem => Boolean(item))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const items = mergeCatalogWithInventoryFallbackImpl(qoItems, inventoryFallback);
 
   globalCatalogCache.set(cacheKey, { expiresAt: Date.now() + CATALOG_CACHE_MS, items });
   return items;
+}
+
+async function fetchInventoryCatalogFallback(locationId?: string | null): Promise<CatalogItem[]> {
+  const runQuery = async (select: string) => {
+    let query = supabaseAdmin
+      .from('inventory_items')
+      .select(select)
+      .eq('active', true)
+      .limit(5000);
+
+    if (locationId) {
+      query = query.or(`location_id.is.null,location_id.eq.${locationId}`);
+    }
+
+    return query;
+  };
+
+  const { data, error } = await runQuery(`
+    id,
+    name,
+    aliases,
+    base_unit,
+    pack_unit,
+    allowed_units,
+    supplier_id,
+    location_id,
+    default_order_unit,
+    hard_cap,
+    soft_cap,
+    safety_stock,
+    target_stock,
+    active
+  `);
+  if (!error) {
+    return buildCatalogFromInventoryItemRowsImpl((data ?? []) as Record<string, unknown>[]);
+  }
+
+  const minimal = await runQuery('id,name,aliases,base_unit,pack_unit,supplier_id,location_id,active');
+  if (!minimal.error) {
+    console.warn('parse-order inventory_items full fallback catalog fetch failed; using minimal fallback', error);
+    return buildCatalogFromInventoryItemRowsImpl((minimal.data ?? []) as Record<string, unknown>[]);
+  }
+
+  console.warn('parse-order inventory_items fallback catalog fetch failed', minimal.error);
+  return [];
 }
 
 async function fetchSessionContext(
@@ -602,7 +623,8 @@ async function fetchQoKeywords(): Promise<{
     }
     if (row.meaning_type === 'status_term') {
       const status = asNullableString(row.status) as InventoryStatusTerm['status'] | null;
-      const action = asNullableString(row.action) as InventoryStatusTerm['recommendation_action'] | null;
+      const rawAction = asNullableString(row.action);
+      const action = rawAction as InventoryStatusTerm['recommendation_action'] | null;
       if (!status || !action) continue;
       statusTerms.push({
         phrase,
@@ -610,7 +632,7 @@ async function fetchQoKeywords(): Promise<{
         status,
         remaining_qty: asNumber(row.remaining_qty),
         remaining_unit_behavior: row.remaining_qty == null ? 'none' : 'item_default_unit',
-        recommendation_action: action === 'strip_and_continue' ? 'check_reorder_rule' : action,
+        recommendation_action: rawAction === 'strip_and_continue' ? 'check_reorder_rule' : action,
         active: true,
         notes: asNullableString(row.notes),
         source: 'qo_keywords',
@@ -713,7 +735,11 @@ async function persistCurrentStockSnapshots(input: {
   }[];
 }): Promise<{ ok: boolean; error?: string }> {
   if (input.updates.length === 0) return { ok: true };
-  const { error } = await supabaseAdmin.from('current_stock_snapshots').insert(
+  // Re-counts of the same (employee, item, location, tracking_unit) must
+  // overwrite the prior snapshot rather than append. The unique index for this
+  // is supplied by the qo restructure fix-up migration; see
+  // current_stock_snapshots_user_item_location_tracking_unit_idx.
+  const { error } = await supabaseAdmin.from('current_stock_snapshots').upsert(
     input.updates.map((update) => ({
       location_id: input.locationId,
       item_id: update.item_id,
@@ -726,6 +752,10 @@ async function persistCurrentStockSnapshots(input: {
       confidence: update.confidence,
       quick_order_session_id: sessionIdOrNull(input.sessionId),
     })),
+    {
+      onConflict: 'entered_by_user_id,item_id,location_id,tracking_unit_key',
+      ignoreDuplicates: false,
+    },
   );
   if (error) {
     console.warn('parse-order current_stock_snapshots insert failed', error);
@@ -1416,19 +1446,6 @@ function normalizeEmployeeNameKey(value: string | null): string | null {
   return value.normalize('NFKC').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function stripIgnoredQuickOrderPhrases(message: string, phrases: string[]): string {
-  let result = message;
-  for (const phrase of phrases) {
-    const trimmed = phrase.trim();
-    if (!trimmed) continue;
-    result = result.replace(new RegExp(`\\b${escapeRegExp(trimmed)}\\b`, 'gi'), ' ');
-  }
-  return result.replace(/\s+/g, ' ').trim();
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
 
 function buildHistoryImportDatePreview(value: unknown, now = new Date()): HistoryImportDatePreview {
   const text = asNullableString(value) ?? '';
@@ -2644,7 +2661,7 @@ Deno.serve(async (req) => {
       items_unresolved: result.parsed_items.filter((item) => item.unresolved).length,
     });
 
-    if (result.diagnostics?.llm_intent_intent === 'check_missing_items') {
+    if ((result.diagnostics as Record<string, unknown> | undefined)?.llm_intent_intent === 'check_missing_items') {
       const missing = await runMissingItemCheck({
         locationId,
         userId: authenticatedUserId,

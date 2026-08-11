@@ -122,6 +122,7 @@ export function resolveUnit(input: {
         reason_codes: ['typed_unit_used'],
         resolution_trace: [`Used typed unit ${normalizedTyped}.`],
         unit_source: 'typed',
+        unit_resolution_scope: 'global',
         confidence: 0.9,
         user_visible_note: null,
       },
@@ -144,6 +145,7 @@ export function resolveUnit(input: {
       reason_codes: [employee ? 'employee_unit_rule' : 'global_unit_rule'],
       resolution_trace: [`${normalizedTyped} -> ${unit} x${matchingRule.multiplier ?? 1}`],
       unit_source: employee ? 'employee_rule' : 'global_rule',
+      unit_resolution_scope: employee ? 'employee' : 'global',
       confidence: 0.96,
       user_visible_note: note,
     },
@@ -175,6 +177,7 @@ export function resolveMissingUnit(input: {
         reason_codes: [employee ? 'employee_missing_unit_default' : 'global_missing_unit_default'],
         resolution_trace: [`Missing unit default -> ${unit}`],
         unit_source: employee ? 'employee_rule' : 'global_rule',
+        unit_resolution_scope: employee ? 'employee' : 'global',
         confidence: 0.95,
         user_visible_note: `Used ${unit} because ${input.item.name}'s default order unit is ${unit}.`,
       },
@@ -183,7 +186,7 @@ export function resolveMissingUnit(input: {
 
   const fallback = input.context.mode === 'order'
     ? input.item.default_order_unit ?? input.item.order_unit ?? input.item.default_unit ?? input.item.pack_unit ?? input.item.base_unit ?? null
-    : input.item.default_unit ?? input.item.base_unit ?? input.item.pack_unit ?? input.item.default_order_unit ?? null;
+    : input.item.order_unit ?? input.item.default_order_unit ?? input.item.default_unit ?? input.item.base_unit ?? input.item.pack_unit ?? null;
   const unit = normalizeUnitForComparison(fallback, input.unitAliases) ?? fallback;
   return {
     unit,
@@ -194,6 +197,7 @@ export function resolveMissingUnit(input: {
       reason_codes: unit ? ['item_default_unit'] : ['missing_unit_unresolved'],
       resolution_trace: unit ? [`Item default -> ${unit}`] : ['No item default unit found.'],
       unit_source: 'item_default',
+      unit_resolution_scope: 'item_default',
       confidence: unit ? 0.86 : 0.2,
       user_visible_note: unit ? `Used ${unit} because ${input.item.name}'s default order unit is ${unit}.` : null,
     },
@@ -231,10 +235,50 @@ export function resolveStatusTerm(input: {
   };
 }
 
+export function normalizeTrackingUnitKey(value: string | null | undefined): string | null {
+  const normalized = normalizeRuleKey(value ?? '');
+  return normalized || null;
+}
+
+export function expectedTrackingUnitForRule(
+  rule: QuickOrderReorderRule,
+  unitRules: QuickOrderUnitRule[],
+  context: RuleResolverContext,
+): string | null {
+  const countedUnit = rule.counted_unit
+    ? (normalizeUnitForComparison(rule.counted_unit) ?? normalizeRuleKey(rule.counted_unit))
+    : null;
+  if (!countedUnit) return null;
+
+  const customUnitRule = unitRules.find((unitRule) =>
+    unitRule.active !== false &&
+    unitRule.item_id === rule.item_id &&
+    unitRule.is_custom_counting_unit === true &&
+    modeMatches(unitRule.mode_scope, context.mode) &&
+    locationMatches(unitRule.location_id, context.locationId) &&
+    (unitRule.scope_type === 'global' || employeeMatches(unitRule, context)) &&
+    (
+      normalizeTrackingUnitKey(unitRule.tracking_unit) === countedUnit ||
+      normalizeRuleKey(unitRule.to_unit ?? '') === countedUnit ||
+      normalizeRuleKey(unitRule.from_unit ?? '') === countedUnit
+    )
+  );
+
+  if (customUnitRule) {
+    return normalizeTrackingUnitKey(customUnitRule.tracking_unit ?? customUnitRule.to_unit ?? countedUnit);
+  }
+  return null;
+}
+
 export function resolveReorderRecommendation(input: {
   item: CatalogItem;
   remainingQty: number | null;
   remainingUnit: string | null;
+  remainingUnitInferred?: boolean;
+  remainingTrackingUnit?: string | null;
+  fromStatusPhrase?: boolean;
+  zeroQuantityFallback?: boolean;
+  ruleScope?: 'employee' | 'global';
   rules?: QuickOrderReorderRule[];
   unitRules?: QuickOrderUnitRule[];
   unitAliases?: UnitAliasMap;
@@ -248,7 +292,7 @@ export function resolveReorderRecommendation(input: {
     };
   }
 
-  const candidates = scopedRules(input.rules ?? [], input.item.id, input.context);
+  const candidates = scopedRules(input.rules ?? [], input.item.id, input.context, input.ruleScope);
   if (candidates.length === 0) {
     return {
       status: 'no_matching_rule',
@@ -257,16 +301,20 @@ export function resolveReorderRecommendation(input: {
     };
   }
 
+  let cannotEvaluate: { rule: QuickOrderReorderRule; reason: string } | null = null;
+  let trackingUnitMismatch: { rule: QuickOrderReorderRule; reason: string } | null = null;
   for (const rule of candidates) {
     const comparison = compareRule(rule, input);
     if (comparison.status !== 'ok') {
-      if (comparison.status === 'cannot_evaluate') {
-        return {
-          status: 'cannot_evaluate',
-          rule,
-          reason: comparison.reason,
-          metadata: metadataForReorder(rule, comparison.reason, 0.35),
-        };
+      if (comparison.status === 'tracking_unit_mismatch') {
+        if (!trackingUnitMismatch) trackingUnitMismatch = { rule, reason: comparison.reason };
+        continue;
+      }
+      if (comparison.status === 'cannot_evaluate' && !cannotEvaluate) {
+        // Remember the first cannot_evaluate but keep trying lower-priority
+        // candidates so a unit-mismatch on the top rule does not block a
+        // valid global rule or `target_stock` fallback.
+        cannotEvaluate = { rule, reason: comparison.reason };
       }
       continue;
     }
@@ -321,7 +369,14 @@ export function resolveReorderRecommendation(input: {
       const reason = `${input.item.name} matched a fixed order rule, but order quantity or unit is missing.`;
       return { status: 'cannot_evaluate', rule, reason, metadata: metadataForReorder(rule, reason, 0.3) };
     }
-    const reason = rule.notes || `Suggested ${formatQuantity(orderQty, rule.order_unit)} of ${input.item.name} because ${formatQuantity(comparison.remainingQty ?? 0, rule.counted_unit ?? input.remainingUnit)} remain.`;
+    const reason = rule.notes || (input.fromStatusPhrase
+      ? `Suggested ${formatQuantity(orderQty, rule.order_unit)} of ${input.item.name} because "${input.item.name}" was reported as running low.`
+      : `Suggested ${formatQuantity(orderQty, rule.order_unit)} of ${input.item.name} because ${formatQuantity(comparison.remainingQty ?? 0, rule.counted_unit ?? input.remainingUnit)} remain.`);
+    const metadata = metadataForReorder(rule, reason, 0.94);
+    if (input.fromStatusPhrase) {
+      metadata.reason_codes = [...(metadata.reason_codes ?? []), 'status_phrase_reorder'];
+      metadata.user_visible_note = metadata.user_visible_note ?? `Recommended based on a low-stock status phrase for ${input.item.name}.`;
+    }
     return {
       status: 'recommend',
       rule,
@@ -329,10 +384,30 @@ export function resolveReorderRecommendation(input: {
       unit: rule.order_unit,
       reason,
       convertedRemainingQty: comparison.remainingQty,
-      metadata: metadataForReorder(rule, reason, 0.94),
+      metadata,
     };
   }
 
+  if (trackingUnitMismatch && !cannotEvaluate) {
+    return {
+      status: 'cannot_evaluate',
+      rule: trackingUnitMismatch.rule,
+      reason: trackingUnitMismatch.reason,
+      metadata: {
+        ...metadataForReorder(trackingUnitMismatch.rule, trackingUnitMismatch.reason, 0.35),
+        reason_codes: ['tracking_unit_mismatch'],
+      },
+    };
+  }
+
+  if (cannotEvaluate) {
+    return {
+      status: 'cannot_evaluate',
+      rule: cannotEvaluate.rule,
+      reason: cannotEvaluate.reason,
+      metadata: metadataForReorder(cannotEvaluate.rule, cannotEvaluate.reason, 0.35),
+    };
+  }
   const best = candidates[0];
   const reason = best
     ? `${input.item.name} did not match the active ${best.scope_type === 'employee' ? 'employee' : 'global'} reorder rule.`
@@ -426,6 +501,7 @@ function scopedRules(
   rules: QuickOrderReorderRule[],
   itemId: string,
   context: RuleResolverContext,
+  ruleScope?: 'employee' | 'global',
 ): QuickOrderReorderRule[] {
   const matches = rules
     .filter((rule) =>
@@ -441,6 +517,8 @@ function scopedRules(
       return (a.priority ?? 100) - (b.priority ?? 100);
     });
 
+  if (ruleScope === 'employee') return matches.filter((rule) => rule.scope_type === 'employee');
+  if (ruleScope === 'global') return matches.filter((rule) => rule.scope_type === 'global');
   const hasEmployee = matches.some((rule) => rule.scope_type === 'employee');
   return hasEmployee ? matches.filter((rule) => rule.scope_type === 'employee') : matches.filter((rule) => rule.scope_type === 'global');
 }
@@ -450,12 +528,34 @@ function compareRule(
   input: {
     remainingQty: number | null;
     remainingUnit: string | null;
+    remainingUnitInferred?: boolean;
+    remainingTrackingUnit?: string | null;
+    fromStatusPhrase?: boolean;
+    zeroQuantityFallback?: boolean;
     unitRules?: QuickOrderUnitRule[];
     unitAliases?: UnitAliasMap;
     context: RuleResolverContext;
   },
-): { status: 'ok'; matches: boolean; remainingQty: number | null; reason: string } | { status: 'cannot_evaluate'; reason: string } {
+): { status: 'ok'; matches: boolean; remainingQty: number | null; reason: string } | { status: 'cannot_evaluate' | 'tracking_unit_mismatch'; reason: string } {
+  const expectedTracking = expectedTrackingUnitForRule(rule, input.unitRules ?? [], input.context);
+  const actualTracking = normalizeTrackingUnitKey(input.remainingTrackingUnit);
+  if (expectedTracking !== actualTracking && !(input.zeroQuantityFallback && input.remainingQty === 0)) {
+    const space = expectedTracking ?? 'default unit';
+    const snapshotSpace = actualTracking ?? 'default unit';
+    return {
+      status: 'tracking_unit_mismatch',
+      reason: `${rule.scope_type === 'employee' ? 'Employee' : 'Global'} reorder rule for ${rule.counted_unit ?? 'this item'} expects a ${space} count, but the available snapshot is in ${snapshotSpace} space.`,
+    };
+  }
+
   if (rule.trigger_type === 'status') return { status: 'ok', matches: true, remainingQty: input.remainingQty, reason: 'Status rule matched.' };
+
+  if (input.fromStatusPhrase && input.remainingQty == null) {
+    if (rule.action_type === 'fixed_order_qty' || rule.action_type === 'top_up_to_target') {
+      return { status: 'ok', matches: true, remainingQty: null, reason: 'Status phrase indicates low stock.' };
+    }
+  }
+
   if (input.remainingQty == null) return { status: 'cannot_evaluate', reason: 'Remaining quantity is missing.' };
 
   let remainingQty = input.remainingQty;
@@ -469,10 +569,19 @@ function compareRule(
       context: input.context,
       defaultOnly: false,
     });
-    if (!conversion || normalizeRuleKey(conversion.to_unit) !== targetUnit) {
+    if (conversion && normalizeRuleKey(conversion.to_unit) === targetUnit) {
+      remainingQty = remainingQty * Number(conversion.multiplier ?? 1);
+    } else if (input.zeroQuantityFallback && input.remainingQty === 0) {
+      remainingQty = 0;
+    } else if (input.remainingUnitInferred) {
+      // The employee never typed a unit — the parser guessed `remainingUnit`.
+      // A configured reorder rule's unit is the stronger signal of how this item
+      // is actually counted, so adopt the rule's unit (no conversion) instead of
+      // blocking on a mismatch the employee never actually stated.
+      remainingQty = input.remainingQty;
+    } else {
       return { status: 'cannot_evaluate', reason: `Cannot compare ${remainingUnit} remaining to ${targetUnit} rule for this item.` };
     }
-    remainingQty = remainingQty * Number(conversion.multiplier ?? 1);
   }
 
   const min = numberOrNull(rule.trigger_qty_min);

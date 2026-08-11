@@ -13,16 +13,25 @@
     "preview": {
       "distribution": "internal",
       "channel": "preview",
-      "environment": "preview"
+      "environment": "preview",
+      "android": {
+        "buildType": "apk"
+      }
     },
     "production": {
       "autoIncrement": true,
       "channel": "production",
-      "environment": "production"
+      "environment": "production",
+      "android": {
+        "buildType": "app-bundle"
+      }
     }
   },
   "submit": {
     "production": {
+      "android": {
+        "track": "production"
+      },
       "ios": {
         "appleId": "babytuna1688@yahoo.com",
         "ascAppId": "6759226573",
