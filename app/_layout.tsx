@@ -13,6 +13,7 @@ import { StatusBar } from "expo-status-bar";
 import { useAuthStore, useDisplayStore } from "@/store";
 import { useInventorySubscription, useOrderSubscription } from "@/hooks";
 import { supabase, supabaseConfigError } from "@/lib/supabase";
+import { refreshCurrentDevicePushTokenIfStale } from "@/services/notificationService";
 import { colors } from "@/theme/design";
 import "../global.css";
 
@@ -59,9 +60,20 @@ export default function RootLayout() {
   useEffect(() => {
     if (supabaseConfigError) return;
 
+    // 5c push reliability: renew the device push token registration when the
+    // app foregrounds. Fire-and-forget — must never block UI or surface errors.
+    const refreshPushTokenInBackground = () => {
+      const userId = useAuthStore.getState().session?.user?.id;
+      if (!userId) return;
+      refreshCurrentDevicePushTokenIfStale(userId).catch((error) => {
+        console.warn("[push] Stale token refresh failed", error);
+      });
+    };
+
     const onAppStateChange = (nextState: AppStateStatus) => {
       if (nextState === "active") {
         supabase.auth.startAutoRefresh();
+        refreshPushTokenInBackground();
       } else {
         supabase.auth.stopAutoRefresh();
       }
@@ -69,6 +81,7 @@ export default function RootLayout() {
 
     if (AppState.currentState === "active") {
       supabase.auth.startAutoRefresh();
+      refreshPushTokenInBackground();
     }
 
     const subscription = AppState.addEventListener("change", onAppStateChange);
