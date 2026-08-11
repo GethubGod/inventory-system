@@ -200,6 +200,16 @@ export function buildSettingsGroups({
             ),
         }),
         makeItem('management', {
+          key: 'supplier-contacts',
+          icon: 'call-outline',
+          title: 'Supplier Contacts',
+          subtitle: 'Phone numbers and send channels for Send All',
+          onPress: () =>
+            onNavigate(
+              routeFor(view, '/(manager)/manager-settings/supplier-contacts'),
+            ),
+        }),
+        makeItem('management', {
           key: 'user-management',
           icon: 'people-outline',
           title: 'User Management',
