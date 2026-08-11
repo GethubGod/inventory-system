@@ -27,10 +27,20 @@ interface InviteRow {
   id: string;
   invited_name: string;
   role: string;
+  module_preset: unknown;
+  created_by: string;
   expires_at: string;
   used_at: string | null;
   revoked_at: string | null;
 }
+
+const MODULE_KEYS = new Set([
+  "ordering_simple",
+  "ordering_advanced",
+  "stock_check",
+  "tips",
+  "fulfillment",
+]);
 
 function jsonResponse(
   req: Request,
@@ -83,7 +93,9 @@ async function findInvite(
 ): Promise<{ invite: InviteRow | null; failed: boolean }> {
   const { data, error } = await supabaseAdmin
     .from("invites")
-    .select("id, invited_name, role, expires_at, used_at, revoked_at")
+    .select(
+      "id, invited_name, role, module_preset, created_by, expires_at, used_at, revoked_at",
+    )
     .eq("token", token)
     .maybeSingle();
 
@@ -93,6 +105,45 @@ async function findInvite(
   }
 
   return { invite: (data as InviteRow | null) ?? null, failed: false };
+}
+
+function isModulePreset(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+async function applyInviteModulePreset(
+  invite: InviteRow,
+  userId: string,
+): Promise<boolean> {
+  if (!isModulePreset(invite.module_preset)) return true;
+
+  const rows = Object.entries(invite.module_preset).flatMap(
+    ([moduleKey, enabled]) => {
+      if (!MODULE_KEYS.has(moduleKey) || typeof enabled !== "boolean") {
+        return [];
+      }
+
+      return [{
+        user_id: userId,
+        module_key: moduleKey,
+        enabled,
+        updated_by: invite.created_by,
+      }];
+    },
+  );
+
+  if (rows.length === 0) return true;
+
+  const { error } = await supabaseAdmin
+    .from("user_modules")
+    .upsert(rows, { onConflict: "user_id,module_key" });
+
+  if (error) {
+    console.error("Unable to apply invite module preset", error);
+    return false;
+  }
+
+  return true;
 }
 
 async function removeUnclaimedUser(userId: string): Promise<void> {
@@ -227,6 +278,15 @@ Deno.serve(async (req) => {
     role: validity.role,
   });
   if (!identityWritten) {
+    await removeUnclaimedUser(invitedUserId);
+    return jsonResponse(
+      req,
+      { error: "Unable to prepare invited account" },
+      500,
+    );
+  }
+
+  if (!await applyInviteModulePreset(lookup.invite, invitedUserId)) {
     await removeUnclaimedUser(invitedUserId);
     return jsonResponse(
       req,
