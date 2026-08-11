@@ -2,6 +2,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
 import { corsHeaders } from '../_shared/cors.ts';
 import {
+  getChecklistOrderDayReminderMessage,
   ReminderRateLimitError,
   getReminderSystemSettings,
   getRequesterFromToken,
@@ -304,6 +305,26 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      let checklistMessage: string | undefined;
+      if (rule.rule_kind === 'checklist_order_day') {
+        try {
+          const locationGroup = rule.location_group === 'poki' ? 'poki' : 'sushi';
+          const checklistContext = await getChecklistOrderDayReminderMessage(
+            supabaseAdmin,
+            employee.id,
+            locationGroup
+          );
+          checklistMessage = checklistContext.body;
+        } catch (error: any) {
+          errors.push({
+            ruleId: rule.id,
+            employeeId: employee.id,
+            message: error?.message || 'Failed to resolve checklist reminder context',
+          });
+          continue;
+        }
+      }
+
       if (dryRun) {
         remindersSent += 1;
         continue;
@@ -329,6 +350,7 @@ Deno.serve(async (req) => {
           managerId: rule.created_by || actorUserId,
           locationId: rule.scope === 'location' ? rule.location_id : employee.default_location_id,
           source: 'recurring',
+          message: checklistMessage,
           overrideRateLimit: false,
           channels: channelConfig,
         });
