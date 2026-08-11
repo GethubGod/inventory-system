@@ -15,6 +15,10 @@ is pushed to production by agents).
       ("Tips entry speaker and QR" / "tips dashboard variants") are merged to main.
       Phase 4 is frozen until then and builds on top of their edge-fn rewrites.
 
+## Small decisions
+- [ ] Phase 2b: real App Store link for the `/join/[token]` page (currently a
+      `TODO-DAVID` placeholder pointing at https://apps.apple.com/)
+
 ## Real-world verification (build is done with fixtures; these prove it)
 - [ ] Phase 1: send a real order-day Send All run from a physical iPhone
       (`sms:` deep-link recipient+body quirks can only be proven on-device)

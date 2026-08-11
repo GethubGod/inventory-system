@@ -9,3 +9,4 @@ export * from './seedStations';
 export * from './supplierResolver';
 export * from './unitConversion';
 export * from './userManagement';
+export * from './userModules';

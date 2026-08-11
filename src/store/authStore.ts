@@ -1102,6 +1102,7 @@ export const useAuthStore = create<AuthState>()(
             notifications_enabled: true,
             last_active_at: new Date().toISOString(),
             last_order_at: null,
+            order_send_mode: 'review',
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           };
