@@ -166,10 +166,12 @@ export default function ManagerLayout() {
       {/* Browse (hidden — accessed from Home) */}
       <Tabs.Screen name="browse" options={{ href: null }} />
 
-      {/* Quick Order */}
+      {/* Quick Order — gated by the ordering_advanced module (managers
+          default all-on). */}
       <Tabs.Screen
         name="quick-order"
         options={{
+          href: modules.ordering_advanced ? undefined : null,
           title: "Quick",
           tabBarIcon: ({ color, size, focused }) => (
             <TabButton name="flash-outline" label="Quick" size={size} color={color} focused={focused} />

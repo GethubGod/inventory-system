@@ -53,6 +53,16 @@ export interface SendAllRemainingItem {
   note: string | null;
 }
 
+/**
+ * Section heading rendered above each location group in the items text.
+ * Exported so consumers that need heading-free output (e.g. the direct-send
+ * message builder) can strip exactly what this module emits instead of
+ * hardcoding the format.
+ */
+export function buildLocationGroupHeading(group: SendAllLocationGroup): string {
+  return `--- ${LOCATION_GROUP_LABELS[group].toUpperCase()} ---`;
+}
+
 export function formatSendAllQuantity(value: number): string {
   if (!Number.isFinite(value)) return '0';
   return Number.isInteger(value)
@@ -185,7 +195,7 @@ export function buildSendAllItemsText(
         .filter((entry): entry is string => Boolean(entry));
 
       if (lines.length === 0) return null;
-      return `--- ${LOCATION_GROUP_LABELS[group].toUpperCase()} ---\n${lines.join('\n')}`;
+      return `${buildLocationGroupHeading(group)}\n${lines.join('\n')}`;
     })
     .filter(Boolean)
     .join('\n\n');

@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import {
   triggerImpactHaptic,
   triggerNotificationHaptic,
@@ -19,6 +19,7 @@ import { useAuthStore, useDraftStore, useOrderStore, DraftItem } from '@/store';
 import { colors } from '@/constants';
 import { Location } from '@/types';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
+import { useModuleAccessGuard } from '@/hooks';
 
 // Category emoji mapping
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -33,7 +34,24 @@ const CATEGORY_EMOJI: Record<string, string> = {
   packaging: '📦',
 };
 
-export default function DraftScreen() {
+export default function DraftRoute() {
+  // Phase 3: drafts are part of the Advanced ordering surface — same
+  // ordering_advanced gate as quick-order, so deep links to a disabled module
+  // redirect home.
+  const guard = useModuleAccessGuard('ordering_advanced');
+
+  if (guard.isChecking) {
+    return null;
+  }
+
+  if (guard.redirectTo) {
+    return <Redirect href={guard.redirectTo} />;
+  }
+
+  return <DraftScreen />;
+}
+
+function DraftScreen() {
   const ds = useScaledStyles();
   const { locations } = useAuthStore();
   const {

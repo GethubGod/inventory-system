@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Platform, ScrollView, Share, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { Redirect, router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
@@ -9,13 +9,30 @@ import { colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { useAuthStore, useOrderStore } from '@/store';
 import { supabase } from '@/lib/supabase';
+import { useModuleAccessGuard } from '@/hooks';
 
 function formatQuantity(value: number): string {
   if (!Number.isFinite(value)) return '0';
   return Number.isInteger(value) ? `${value}` : `${value}`.replace(/(\.\d*?[1-9])0+$/, '$1').replace(/\.0+$/, '');
 }
 
-export default function FulfillmentHistoryDetailScreen() {
+export default function FulfillmentHistoryDetailRoute() {
+  // Phase 3: same fulfillment-module gate as the parent fulfillment tab —
+  // deep links to a disabled module redirect to manager home.
+  const guard = useModuleAccessGuard('fulfillment', '/(manager)');
+
+  if (guard.isChecking) {
+    return null;
+  }
+
+  if (guard.redirectTo) {
+    return <Redirect href={guard.redirectTo} />;
+  }
+
+  return <FulfillmentHistoryDetailScreen />;
+}
+
+function FulfillmentHistoryDetailScreen() {
   const params = useLocalSearchParams<{ id?: string }>();
   const { user, locations } = useAuthStore();
   const { fetchPastOrderById, fetchPendingFulfillmentOrders } = useOrderStore();

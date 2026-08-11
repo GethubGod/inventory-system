@@ -1,4 +1,5 @@
 import {
+  buildLocationGroupHeading,
   buildSendAllFinalizePayload,
   buildSendAllItemsText,
   buildSendAllMessage,
@@ -73,6 +74,18 @@ describe('countUnresolvedRemaining', () => {
         makeRemaining({ decidedQuantity: 4 }),
       ])
     ).toBe(2);
+  });
+});
+
+describe('buildLocationGroupHeading', () => {
+  test('pins the heading format and matches what buildSendAllItemsText emits', () => {
+    // Consumers (direct-send message builder) strip exactly this heading, so
+    // the exported builder and the section output must stay in lockstep.
+    expect(buildLocationGroupHeading('sushi')).toBe('--- SUSHI ---');
+    expect(buildLocationGroupHeading('poki')).toBe('--- POKI ---');
+
+    const text = buildSendAllItemsText([makeRegular()], []);
+    expect(text.startsWith(`${buildLocationGroupHeading('sushi')}\n`)).toBe(true);
   });
 });
 

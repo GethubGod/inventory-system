@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import {
+  buildLocationGroupHeading,
   buildSendAllMessage,
   type InventoryUnitInfo,
   type SendAllRegularItem,
@@ -45,6 +46,12 @@ export interface DirectSendGroup {
   contact: SupplierContact | null;
   lines: ChecklistSendLine[];
   messageText: string;
+  /**
+   * Location group of the checklist the send originated from. Optional for
+   * backward compatibility; when present it is archived on the history rows
+   * so generate_order_checklist can see direct-send orders (F4).
+   */
+  locationGroup?: Checklist['locationGroup'] | null;
 }
 
 type LocationGroup = Checklist['locationGroup'];
@@ -295,7 +302,10 @@ function buildDirectSendMessage(params: {
     unitInfoById,
   });
 
-  return message.replace('--- SUSHI ---\n', '');
+  // Strip the builder's single synthetic group heading using the exported
+  // heading format, so a heading change upstream cannot silently leave a
+  // bogus section header in direct-send messages.
+  return message.replace(`${buildLocationGroupHeading('sushi')}\n`, '');
 }
 
 /**
@@ -304,7 +314,10 @@ function buildDirectSendMessage(params: {
  * supplierResolver used by fulfillment; unresolved mappings intentionally
  * become the share-sheet-only Unassigned card.
  */
-export async function prepareDirectSend(lines: ChecklistSendLine[]): Promise<DirectSendGroup[]> {
+export async function prepareDirectSend(
+  lines: ChecklistSendLine[],
+  locationGroup?: LocationGroup,
+): Promise<DirectSendGroup[]> {
   const normalizedLines = normalizeDirectSendLines(lines);
   const itemIds = Array.from(
     new Set(
@@ -370,6 +383,7 @@ export async function prepareDirectSend(lines: ChecklistSendLine[]): Promise<Dir
       supplierName,
       contact: supplierId ? contactBySupplierId.get(supplierId) ?? null : null,
       lines: [line],
+      locationGroup: locationGroup ?? null,
     });
   });
 
@@ -487,7 +501,9 @@ export async function archiveDirectSend(
       quantity: line.quantity,
       location_id: null,
       location_name: null,
-      location_group: null,
+      // generate_order_checklist filters history on location_group, so
+      // direct-send rows must carry it for the 5a feedback loop to see them.
+      location_group: group.locationGroup ?? null,
       unit_type: inventoryItem ? unitTypeForLine(line, inventoryItem) : null,
       ordered_at: orderedAt,
       note: null,
