@@ -2,7 +2,7 @@ import { Redirect, Tabs, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useOrderStore } from "@/store";
 import { AuthLoadingScreen } from "@/components";
-import { useProtectedAuthGuard } from "@/hooks";
+import { useMyModules, useProtectedAuthGuard } from "@/hooks";
 import { colors } from "@/theme/design";
 import {
   TabButton,
@@ -18,6 +18,11 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const tabBarBottomInset = getTabBarBottomInset(insets.bottom);
   const guard = useProtectedAuthGuard();
+  // Phase 3: tabs render from per-user module state (rpc get_effective_modules,
+  // kept live via the user_modules realtime channel — a manager flipping a
+  // toggle adds/removes tabs here without re-login). Falls back to role
+  // defaults if the fetch fails so nobody gets locked out.
+  const { modules } = useMyModules(guard.resolvedRole);
   const pathname = usePathname();
   const isBrowseRoute = pathname.includes("inventory-browse");
 
@@ -48,13 +53,28 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Quick Order */}
+      {/* Simple ordering checklist (Phase 5a surface, ordering_simple module) */}
+      <Tabs.Screen
+        name="simple-order"
+        options={{
+          href: modules.ordering_simple ? undefined : null,
+          title: "Order",
+          tabBarIcon: ({ color, size, focused }) => (
+            <TabButton name="list-outline" label="Order" size={size} color={color} focused={focused} />
+          ),
+        }}
+      />
+
+      {/* Advanced ordering (Beta) — the former Quick Order surface, gated by
+          ordering_advanced. Tab label is the space-constrained "Advanced";
+          the full "Advanced ordering (Beta)" hint lives on the screen header. */}
       <Tabs.Screen
         name="quick-order"
         options={{
-          title: "Quick",
+          href: modules.ordering_advanced ? undefined : null,
+          title: "Advanced",
           tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="flash-outline" label="Quick" size={size} color={color} focused={focused} />
+            <TabButton name="flash-outline" label="Advanced" size={size} color={color} focused={focused} />
           ),
         }}
       />
@@ -72,8 +92,13 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Stock Check — opened from Settings, not the tab bar */}
+      {/* Stock Check — opened from Settings, not the tab bar. The stock_check
+          module gates the screens themselves via useModuleAccessGuard. */}
       <Tabs.Screen name="stock-check" options={{ href: null }} />
+
+      {/* TODO-PHASE4: render the tips tab here once the tips surface ships.
+          The `tips` module gate already exists (modules.tips) but must never
+          show a broken screen, so no tab is rendered yet. */}
 
       <Tabs.Screen
         name="voice"

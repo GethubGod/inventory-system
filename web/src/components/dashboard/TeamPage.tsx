@@ -2,15 +2,24 @@
 
 // Team roster: list-users edge fn, role/suspended badges, suspend/unsuspend
 // via set-user-suspended with confirm dialog. Optimistic flip with rollback
-// on error.
+// on error. Phase 3 adds a per-user module toggle row (expandable under each
+// user) backed by rpc get_effective_modules + user_modules upserts.
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import {
   fetchTeam,
   setUserSuspended,
   type TeamUser,
 } from "@/lib/dashboard/team";
+import {
+  fetchModulesForUser,
+  moduleKeysForRole,
+  MODULE_LABELS,
+  setUserModule,
+  type ModuleKey,
+  type ModuleMap,
+} from "@/lib/dashboard/modules";
 import ConfirmDialog from "@/components/dashboard/ConfirmDialog";
 import InviteCreateModal from "@/components/dashboard/InviteCreateModal";
 import InvitesSection, {
@@ -46,6 +55,13 @@ function RoleBadge({ role }: { role: TeamUser["role"] }) {
   );
 }
 
+type ModuleRowState = {
+  loading: boolean;
+  error: string | null;
+  modules: ModuleMap | null;
+  pendingKey: ModuleKey | null;
+};
+
 export default function TeamPage() {
   const [users, setUsers] = useState<TeamUser[] | null>(null);
   const [selfId, setSelfId] = useState<string | null>(null);
@@ -54,6 +70,12 @@ export default function TeamPage() {
   const [confirming, setConfirming] = useState<TeamUser | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
+  const [expandedModulesId, setExpandedModulesId] = useState<string | null>(
+    null,
+  );
+  const [moduleRows, setModuleRows] = useState<Record<string, ModuleRowState>>(
+    {},
+  );
   const invitesRef = useRef<InvitesSectionHandle>(null);
 
   useEffect(() => {
@@ -115,6 +137,89 @@ export default function TeamPage() {
     }
   }
 
+  async function loadModules(target: TeamUser) {
+    setModuleRows((prev) => ({
+      ...prev,
+      [target.id]: {
+        loading: true,
+        error: null,
+        modules: prev[target.id]?.modules ?? null,
+        pendingKey: null,
+      },
+    }));
+    try {
+      const modules = await fetchModulesForUser(target.id, target.role);
+      setModuleRows((prev) => ({
+        ...prev,
+        [target.id]: { loading: false, error: null, modules, pendingKey: null },
+      }));
+    } catch (err: unknown) {
+      setModuleRows((prev) => ({
+        ...prev,
+        [target.id]: {
+          loading: false,
+          error:
+            err instanceof Error ? err.message : "Unable to load modules",
+          modules: prev[target.id]?.modules ?? null,
+          pendingKey: null,
+        },
+      }));
+    }
+  }
+
+  function toggleModulesRow(target: TeamUser) {
+    const expanding = expandedModulesId !== target.id;
+    setExpandedModulesId(expanding ? target.id : null);
+    const existing = moduleRows[target.id];
+    if (expanding && !existing?.modules && !existing?.loading) {
+      void loadModules(target);
+    }
+  }
+
+  async function applyModuleToggle(target: TeamUser, key: ModuleKey) {
+    const row = moduleRows[target.id];
+    if (!row?.modules || row.pendingKey) return;
+    const previousModules = row.modules;
+    const nextEnabled = !previousModules[key];
+    setActionError(null);
+    // Optimistic flip.
+    setModuleRows((prev) => ({
+      ...prev,
+      [target.id]: {
+        ...row,
+        modules: { ...previousModules, [key]: nextEnabled },
+        pendingKey: key,
+      },
+    }));
+    try {
+      await setUserModule(target.id, key, nextEnabled);
+      setModuleRows((prev) => {
+        const current = prev[target.id];
+        if (!current) return prev;
+        return { ...prev, [target.id]: { ...current, pendingKey: null } };
+      });
+    } catch (err: unknown) {
+      // Rollback.
+      setModuleRows((prev) => {
+        const current = prev[target.id];
+        if (!current) return prev;
+        return {
+          ...prev,
+          [target.id]: {
+            ...current,
+            modules: previousModules,
+            pendingKey: null,
+          },
+        };
+      });
+      setActionError(
+        err instanceof Error
+          ? `Couldn't update ${MODULE_LABELS[key]} for ${displayName(target)}: ${err.message}`
+          : `Couldn't update ${MODULE_LABELS[key]} for ${displayName(target)}`,
+      );
+    }
+  }
+
   return (
     <div>
       <div className="flex items-start justify-between gap-3 mb-1">
@@ -163,10 +268,17 @@ export default function TeamPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
+              {users.map((user) => {
+                const moduleRow = moduleRows[user.id];
+                const modulesExpanded = expandedModulesId === user.id;
+                return (
+                <Fragment key={user.id}>
                 <tr
-                  key={user.id}
-                  className="border-b border-hairline last:border-b-0"
+                  className={
+                    modulesExpanded
+                      ? ""
+                      : "border-b border-hairline last:border-b-0"
+                  }
                 >
                   <td className="px-5 py-3.5">
                     <p
@@ -198,29 +310,94 @@ export default function TeamPage() {
                     {formatDate(user.created_at)}
                   </td>
                   <td className="px-5 py-3.5 text-right">
-                    {user.role === "employee" && user.id !== selfId ? (
+                    <span className="inline-flex items-center gap-2">
                       <button
                         type="button"
-                        disabled={pendingId === user.id}
-                        onClick={() => setConfirming(user)}
+                        onClick={() => toggleModulesRow(user)}
+                        aria-expanded={modulesExpanded}
                         className={`rounded-full px-4 py-1.5 text-xs font-semibold ${
-                          pendingId === user.id
-                            ? "bg-disabled text-white"
-                            : user.is_suspended
-                              ? "bg-accent text-white"
-                              : "bg-well text-ink2"
+                          modulesExpanded
+                            ? "bg-tint text-accent"
+                            : "bg-well text-ink2"
                         }`}
                       >
-                        {pendingId === user.id
-                          ? "Saving…"
-                          : user.is_suspended
-                            ? "Unsuspend"
-                            : "Suspend"}
+                        Modules
                       </button>
-                    ) : null}
+                      {user.role === "employee" && user.id !== selfId ? (
+                        <button
+                          type="button"
+                          disabled={pendingId === user.id}
+                          onClick={() => setConfirming(user)}
+                          className={`rounded-full px-4 py-1.5 text-xs font-semibold ${
+                            pendingId === user.id
+                              ? "bg-disabled text-white"
+                              : user.is_suspended
+                                ? "bg-accent text-white"
+                                : "bg-well text-ink2"
+                          }`}
+                        >
+                          {pendingId === user.id
+                            ? "Saving…"
+                            : user.is_suspended
+                              ? "Unsuspend"
+                              : "Suspend"}
+                        </button>
+                      ) : null}
+                    </span>
                   </td>
                 </tr>
-              ))}
+                {modulesExpanded ? (
+                  <tr className="border-b border-hairline last:border-b-0">
+                    <td colSpan={5} className="px-5 pb-4 pt-0">
+                      {moduleRow?.loading && !moduleRow.modules ? (
+                        <p className="text-ink3 text-xs">Loading modules…</p>
+                      ) : moduleRow?.error && !moduleRow.modules ? (
+                        <p className="text-alert text-xs">
+                          {moduleRow.error}{" "}
+                          <button
+                            type="button"
+                            onClick={() => void loadModules(user)}
+                            className="font-semibold underline"
+                          >
+                            Retry
+                          </button>
+                        </p>
+                      ) : moduleRow?.modules ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          {moduleKeysForRole(user.role).map((key) => {
+                            const enabled = moduleRow.modules?.[key] ?? false;
+                            const saving = moduleRow.pendingKey === key;
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                disabled={moduleRow.pendingKey !== null}
+                                onClick={() =>
+                                  void applyModuleToggle(user, key)
+                                }
+                                aria-pressed={enabled}
+                                className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${
+                                  saving
+                                    ? "bg-disabled text-white"
+                                    : enabled
+                                      ? "bg-accent text-white"
+                                      : "bg-well text-ink2"
+                                }`}
+                              >
+                                {saving
+                                  ? "Saving…"
+                                  : `${MODULE_LABELS[key]}: ${enabled ? "On" : "Off"}`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </td>
+                  </tr>
+                ) : null}
+                </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
