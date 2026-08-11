@@ -7,5 +7,6 @@ export { useOrderSubscription } from './useOrderSubscription';
 export { useResolvedActiveLocation } from './useResolvedActiveLocation';
 export { useScaledStyles } from './useScaledStyles';
 export { useAuthScreenGuard, useProtectedAuthGuard } from './useAuthGuard';
+export { useMyModules, useModuleAccessGuard } from './useMyModules';
 export { useSettingsBackRoute } from './useSettingsBackRoute';
 export { useStockNetworkStatus } from './useStockNetworkStatus';

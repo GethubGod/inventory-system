@@ -6,6 +6,7 @@ import {
   Platform,
   RefreshControl,
   ScrollView,
+  Switch,
   Text,
   TextInput,
   ToastAndroid,
@@ -28,8 +29,22 @@ import {
   glassSpacing,
 } from '@/theme/design';
 import { ManagedUser, listManagedUsers, setManagedUserSuspended } from '@/services/userManagement';
+import { getModulesForUser, setUserModule, type ModuleKey } from '@/services/userModules';
+import {
+  getManageableModuleKeys,
+  MODULE_LABELS,
+  resolveEffectiveModules,
+  type EffectiveModules,
+} from '@/store/moduleStore.helpers';
 
 type UserFilter = 'all' | 'employees' | 'managers' | 'active' | 'inactive' | 'suspended';
+
+type ModuleRowState = {
+  isLoading: boolean;
+  error: string | null;
+  modules: EffectiveModules | null;
+  pendingKey: ModuleKey | null;
+};
 
 const FILTER_OPTIONS: { key: UserFilter; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -126,6 +141,11 @@ export default function UserManagementScreen() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<UserFilter>('all');
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+
+  // Phase 3 in-app mirror of the dashboard module matrix: per-user module
+  // toggles, lazily loaded when a row's "Modules" section is expanded.
+  const [expandedModulesUserId, setExpandedModulesUserId] = useState<string | null>(null);
+  const [modulesByUser, setModulesByUser] = useState<Record<string, ModuleRowState>>({});
 
   const redirectedForManagerGuardRef = useRef(false);
 
@@ -301,9 +321,114 @@ export default function UserManagementScreen() {
     [applySuspensionUpdate]
   );
 
+  const loadModulesForUser = useCallback(async (targetUser: ManagedUser) => {
+    setModulesByUser((previous) => ({
+      ...previous,
+      [targetUser.id]: {
+        isLoading: true,
+        error: null,
+        modules: previous[targetUser.id]?.modules ?? null,
+        pendingKey: null,
+      },
+    }));
+
+    try {
+      const states = await getModulesForUser(targetUser.id);
+      setModulesByUser((previous) => ({
+        ...previous,
+        [targetUser.id]: {
+          isLoading: false,
+          error: null,
+          modules: resolveEffectiveModules(targetUser.role, states),
+          pendingKey: null,
+        },
+      }));
+    } catch (error: any) {
+      console.error('Failed to load user modules', error);
+      setModulesByUser((previous) => ({
+        ...previous,
+        [targetUser.id]: {
+          isLoading: false,
+          error: error?.message || 'Unable to load modules.',
+          modules: previous[targetUser.id]?.modules ?? null,
+          pendingKey: null,
+        },
+      }));
+    }
+  }, []);
+
+  const handleModulesTogglePress = useCallback(
+    (targetUser: ManagedUser) => {
+      setExpandedModulesUserId((previous) => {
+        const next = previous === targetUser.id ? null : targetUser.id;
+        return next;
+      });
+
+      const existing = modulesByUser[targetUser.id];
+      if (expandedModulesUserId !== targetUser.id && !existing?.modules && !existing?.isLoading) {
+        void loadModulesForUser(targetUser);
+      }
+    },
+    [expandedModulesUserId, loadModulesForUser, modulesByUser]
+  );
+
+  const handleModuleValueChange = useCallback(
+    async (targetUser: ManagedUser, moduleKey: ModuleKey, nextEnabled: boolean) => {
+      const current = modulesByUser[targetUser.id];
+      if (!current?.modules || current.pendingKey) return;
+
+      const previousModules = current.modules;
+
+      // Optimistic flip with rollback on error, mirroring the dashboard matrix.
+      setModulesByUser((previous) => ({
+        ...previous,
+        [targetUser.id]: {
+          ...current,
+          modules: { ...previousModules, [moduleKey]: nextEnabled },
+          pendingKey: moduleKey,
+        },
+      }));
+
+      try {
+        await setUserModule(targetUser.id, moduleKey, nextEnabled);
+        setModulesByUser((previous) => {
+          const row = previous[targetUser.id];
+          if (!row) return previous;
+          return {
+            ...previous,
+            [targetUser.id]: { ...row, pendingKey: null },
+          };
+        });
+        setNoticeMessage(
+          `${MODULE_LABELS[moduleKey]} ${nextEnabled ? 'enabled' : 'disabled'}.`
+        );
+      } catch (error: any) {
+        console.error('Failed to change module state', error);
+        setModulesByUser((previous) => {
+          const row = previous[targetUser.id];
+          if (!row) return previous;
+          return {
+            ...previous,
+            [targetUser.id]: {
+              ...row,
+              modules: previousModules,
+              pendingKey: null,
+            },
+          };
+        });
+        Alert.alert('Update failed', error?.message || 'Unable to update the module.');
+      }
+    },
+    [modulesByUser]
+  );
+
   const renderRow = ({ item }: { item: ManagedUser }) => {
     const isUpdating = updatingUserId === item.id;
     const inactive = isInactive30d(item);
+    const moduleRow = modulesByUser[item.id];
+    const loadedModules = moduleRow?.modules ?? null;
+    const isModulesExpanded = expandedModulesUserId === item.id;
+    const manageableKeys = getManageableModuleKeys(item.role);
 
     const roleStyle =
       item.role === 'manager'
@@ -435,6 +560,101 @@ export default function UserManagementScreen() {
             </Text>
           </View>
         )}
+
+        {/* Phase 3: per-user module toggles (in-app mirror of the dashboard matrix). */}
+        <TouchableOpacity
+          onPress={() => handleModulesTogglePress(item)}
+          activeOpacity={0.82}
+          style={{
+            marginTop: ds.spacing(10),
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            borderRadius: glassRadii.button,
+            minHeight: Math.max(38, ds.buttonH - ds.spacing(10)),
+            paddingHorizontal: ds.spacing(12),
+            borderWidth: glassHairlineWidth,
+            borderColor: glassColors.controlBorder,
+            backgroundColor: glassColors.mediumFill,
+          }}
+        >
+          <Text style={{ fontSize: ds.fontSize(13), fontWeight: '700', color: glassColors.textPrimary }}>
+            Modules
+          </Text>
+          <Ionicons
+            name={isModulesExpanded ? 'chevron-up' : 'chevron-down'}
+            size={ds.icon(16)}
+            color={glassColors.textSecondary}
+          />
+        </TouchableOpacity>
+
+        {isModulesExpanded ? (
+          <View
+            style={{
+              marginTop: ds.spacing(8),
+              borderRadius: glassRadii.button,
+              paddingHorizontal: ds.spacing(12),
+              paddingVertical: ds.spacing(6),
+              borderWidth: glassHairlineWidth,
+              borderColor: glassColors.cardBorder,
+              backgroundColor: glassColors.subtleFill,
+            }}
+          >
+            {moduleRow?.isLoading && !loadedModules ? (
+              <View style={{ paddingVertical: ds.spacing(10), alignItems: 'center' }}>
+                <ActivityIndicator size="small" color={glassColors.accent} />
+              </View>
+            ) : moduleRow?.error && !loadedModules ? (
+              <View style={{ paddingVertical: ds.spacing(8) }}>
+                <Text style={{ fontSize: ds.fontSize(13), color: glassColors.dangerText }}>
+                  {moduleRow.error}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => void loadModulesForUser(item)}
+                  style={{ marginTop: ds.spacing(6) }}
+                >
+                  <Text style={{ fontSize: ds.fontSize(13), fontWeight: '700', color: glassColors.dangerText }}>
+                    Retry
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : loadedModules ? (
+              manageableKeys.map((moduleKey, index) => (
+                <View
+                  key={moduleKey}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingVertical: ds.spacing(6),
+                    borderTopWidth: index === 0 ? 0 : glassHairlineWidth,
+                    borderTopColor: glassColors.cardBorder,
+                  }}
+                >
+                  <Text
+                    style={{
+                      flex: 1,
+                      paddingRight: ds.spacing(8),
+                      fontSize: ds.fontSize(14),
+                      fontWeight: '600',
+                      color: glassColors.textPrimary,
+                    }}
+                  >
+                    {MODULE_LABELS[moduleKey]}
+                  </Text>
+                  <Switch
+                    value={loadedModules[moduleKey]}
+                    disabled={moduleRow?.pendingKey != null}
+                    onValueChange={(nextEnabled) =>
+                      void handleModuleValueChange(item, moduleKey, nextEnabled)
+                    }
+                    trackColor={{ true: colors.primary[500] }}
+                  />
+                </View>
+              ))
+            ) : null}
+          </View>
+        ) : null}
       </View>
     );
   };

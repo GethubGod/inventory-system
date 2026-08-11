@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthStore } from "@/store";
 import { supabase } from "@/lib/supabase";
 import { AuthLoadingScreen } from "@/components";
-import { useProtectedAuthGuard } from "@/hooks";
+import { useMyModules, useProtectedAuthGuard } from "@/hooks";
 import { isOrderFulfillmentEligible } from "@/services/fulfillmentEligibility";
 import { colors } from "@/theme/design";
 import {
@@ -25,6 +25,10 @@ export default function ManagerLayout() {
   const badgeChannelRef = useRef<RealtimeChannel | null>(null);
   const guard = useProtectedAuthGuard({ requireManager: true });
   const resolvedRole = guard.resolvedRole;
+  // Phase 3: managers default to every module on; the fulfillment module can
+  // still be toggled off per user. Subscription-driven, so a live flip
+  // adds/removes the tab without re-login.
+  const { modules } = useMyModules(resolvedRole);
   const tabBarBottomInset = getTabBarBottomInset(insets.bottom);
   const pathname = usePathname();
   const isBrowseRoute = pathname.includes("browse");
@@ -173,10 +177,12 @@ export default function ManagerLayout() {
         }}
       />
 
-      {/* Fulfillment (replaces Cart in manager mode) */}
+      {/* Fulfillment (replaces Cart in manager mode) — gated by the
+          fulfillment module (managers default all-on). */}
       <Tabs.Screen
         name="fulfillment"
         options={{
+          href: modules.fulfillment ? undefined : null,
           title: "Fulfillment",
           tabBarIcon: ({ color, size, focused }) => (
             <TabButton name="clipboard-outline" label="Fulfillment" size={size} color={color} focused={focused} />

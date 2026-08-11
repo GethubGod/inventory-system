@@ -85,12 +85,15 @@ export async function createInvite(input: {
   invitedName: string;
   role: InviteRole;
   expiresInHours: number;
+  /** Phase 3: {module_key: boolean} applied to user_modules on accept. */
+  modulePreset?: Record<string, boolean>;
 }): Promise<CreatedInvite> {
   const { data, error } = await getSupabase().functions.invoke("create-invite", {
     body: {
       invitedName: input.invitedName,
       role: input.role,
       expiresInHours: input.expiresInHours,
+      ...(input.modulePreset ? { modulePreset: input.modulePreset } : {}),
     },
   });
   if (error) throw new Error(await describeFunctionsError(error));
