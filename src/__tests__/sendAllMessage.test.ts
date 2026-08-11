@@ -4,9 +4,20 @@ import {
   buildSendAllMessage,
   countUnresolvedRemaining,
   formatSendAllQuantity,
+  type InventoryUnitInfo,
   type SendAllRegularItem,
   type SendAllRemainingItem,
 } from '../features/fulfillment/sendAll/sendAllMessage';
+
+function makeUnitInfo(overrides: Partial<InventoryUnitInfo> = {}): InventoryUnitInfo {
+  return {
+    id: 'item-1',
+    base_unit: 'pc',
+    pack_unit: 'case',
+    pack_size: 12,
+    ...overrides,
+  };
+}
 
 function makeRegular(overrides: Partial<SendAllRegularItem> = {}): SendAllRegularItem {
   return {
@@ -116,6 +127,86 @@ describe('buildSendAllItemsText', () => {
       []
     );
     expect(text).toBe('--- SUSHI ---\n- Ginger: 3 case\n- Wasabi: 3 case');
+  });
+
+  // F1 regression: the confirmation screen resolves printed unit labels through
+  // resolveUnitSelectorProps, where inventory base_unit/pack_unit override the
+  // order item's stored label. Send All must print the same resolved label.
+  test('inventory canonical unit label overrides the order-item label (F1)', () => {
+    const text = buildSendAllItemsText(
+      [makeRegular({ unitType: 'pack', unitLabel: 'case' })],
+      [],
+      { 'item-1': makeUnitInfo({ pack_unit: 'cases' }) }
+    );
+    expect(text).toBe('--- SUSHI ---\n- Salmon: 3 cases');
+  });
+
+  test('lines merge on the inventory canonical label even when order-item labels differ (F1)', () => {
+    const text = buildSendAllItemsText(
+      [
+        makeRegular({ id: 'a', quantity: 2, unitType: 'base', unitLabel: 'pc' }),
+        makeRegular({ id: 'b', quantity: 3, unitType: 'base', unitLabel: 'pcs' }),
+      ],
+      [],
+      { 'item-1': makeUnitInfo({ base_unit: 'pcs' }) }
+    );
+    expect(text).toBe('--- SUSHI ---\n- Salmon: 5 pcs');
+  });
+
+  test('remaining items also print the inventory canonical label (F1)', () => {
+    const text = buildSendAllItemsText(
+      [],
+      [makeRemaining({ unitType: 'base', unitLabel: 'pack' })],
+      { 'item-9': makeUnitInfo({ id: 'item-9', base_unit: 'sheets' }) }
+    );
+    expect(text).toBe('--- POKI ---\n- Nori: 4 sheets');
+  });
+
+  test('without inventory unit info the order-item label is kept', () => {
+    const text = buildSendAllItemsText([makeRegular()], []);
+    expect(text).toBe('--- SUSHI ---\n- Salmon: 3 case');
+  });
+
+  test('blank unit labels fall back to unit/pack like the confirmation screen (F4)', () => {
+    const text = buildSendAllItemsText(
+      [
+        makeRegular({ id: 'a', name: 'Ginger', inventoryItemId: 'g-1', unitType: 'base', unitLabel: '' }),
+        makeRegular({ id: 'b', name: 'Wasabi', inventoryItemId: 'w-1', unitType: 'pack', unitLabel: ' ' }),
+      ],
+      []
+    );
+    expect(text).toBe('--- SUSHI ---\n- Ginger: 3 unit\n- Wasabi: 3 pack');
+  });
+
+  test('[set qty] placeholder uses the resolved unit label (F4)', () => {
+    const text = buildSendAllItemsText(
+      [],
+      [makeRemaining({ decidedQuantity: null })],
+      { 'item-9': makeUnitInfo({ id: 'item-9', base_unit: 'sheets' }) }
+    );
+    expect(text).toBe('--- POKI ---\n- Nori: [set qty] sheets');
+  });
+
+  test('same-name regular items tie-break by inventoryItemId like the confirmation screen (F4)', () => {
+    const text = buildSendAllItemsText(
+      [
+        makeRegular({ id: 'x', inventoryItemId: 'item-2', quantity: 2, unitLabel: 'case' }),
+        makeRegular({ id: 'y', inventoryItemId: 'item-1', quantity: 7, unitLabel: 'box' }),
+      ],
+      []
+    );
+    expect(text).toBe('--- SUSHI ---\n- Salmon: 7 box\n- Salmon: 2 case');
+  });
+
+  test('remaining items keep source order (confirmation screen does not sort them)', () => {
+    const text = buildSendAllItemsText(
+      [],
+      [
+        makeRemaining({ orderItemId: 'oi-b', inventoryItemId: 'item-b', name: 'Wakame', decidedQuantity: 2 }),
+        makeRemaining({ orderItemId: 'oi-a', inventoryItemId: 'item-a', name: 'Furikake', decidedQuantity: 5 }),
+      ]
+    );
+    expect(text).toBe('--- POKI ---\n- Wakame: 2 pack\n- Furikake: 5 pack');
   });
 });
 

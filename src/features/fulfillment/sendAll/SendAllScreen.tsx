@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   AppState,
+  Platform,
   ScrollView,
   Share,
   Text,
@@ -30,6 +31,9 @@ import {
   type SupplierContactChannel,
 } from '@/services/supplierContacts';
 import { buildSupplierSendUrl } from '@/services/supplierSendLink';
+import { findStaleConsumedOrderItemIds } from '@/services/orderItemFreshness';
+import { supabase } from '@/lib/supabase';
+import type { InventoryUnitInfo } from '../unitLabels';
 import {
   ImpactFeedbackStyle,
   NotificationFeedbackType,
@@ -139,6 +143,8 @@ export function SendAllScreen() {
   const [contactsById, setContactsById] = useState<Record<string, SupplierContact>>({});
   const [queue, setQueue] = useState<SendAllQueueState | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [unitInfoById, setUnitInfoById] = useState<Record<string, InventoryUnitInfo>>({});
+  const [staleSupplierIds, setStaleSupplierIds] = useState<Set<string>>(new Set());
 
   const queueRef = useRef<SendAllQueueState | null>(null);
   queueRef.current = queue;
@@ -223,39 +229,90 @@ export function SendAllScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reload card data and reconcile the queue. Cards that no longer have pending
+  // items were archived elsewhere — mark them completed. A successful refresh
+  // clears any staleness errors: the data on screen is fresh again.
+  const refreshCards = useCallback(async () => {
+    if (refreshInFlightRef.current) return;
+    refreshInFlightRef.current = true;
+    try {
+      const cards = await loadCards();
+      if (!cards) return;
+      setCardsById((prev) => {
+        const merged: Record<string, SendAllCard> = { ...prev };
+        Object.keys(prev).forEach((id) => {
+          if (cards[id]) merged[id] = cards[id];
+        });
+        return merged;
+      });
+      setStaleSupplierIds((prev) => (prev.size > 0 ? new Set<string>() : prev));
+      const latestQueue = queueRef.current;
+      if (latestQueue) {
+        latestQueue.order.forEach((id) => {
+          if (latestQueue.statuses[id] === 'pending' && !cards[id]) {
+            dispatchQueue({ type: 'send-completed', id });
+          }
+        });
+      }
+    } finally {
+      refreshInFlightRef.current = false;
+    }
+  }, [dispatchQueue, loadCards]);
+
   // Refresh card data when returning to this screen (e.g. after resolving
-  // remaining quantities in the confirmation screen). Cards that no longer have
-  // pending items were archived elsewhere — mark them completed.
+  // remaining quantities in the confirmation screen).
   useFocusEffect(
     useCallback(() => {
-      const currentQueue = queueRef.current;
-      if (!currentQueue || refreshInFlightRef.current) return;
-      refreshInFlightRef.current = true;
-      void (async () => {
-        try {
-          const cards = await loadCards();
-          if (!cards) return;
-          setCardsById((prev) => {
-            const merged: Record<string, SendAllCard> = { ...prev };
-            Object.keys(prev).forEach((id) => {
-              if (cards[id]) merged[id] = cards[id];
-            });
-            return merged;
-          });
-          const latestQueue = queueRef.current;
-          if (latestQueue) {
-            latestQueue.order.forEach((id) => {
-              if (latestQueue.statuses[id] === 'pending' && !cards[id]) {
-                dispatchQueue({ type: 'send-completed', id });
-              }
-            });
-          }
-        } finally {
-          refreshInFlightRef.current = false;
-        }
-      })();
-    }, [dispatchQueue, loadCards])
+      if (!queueRef.current) return;
+      void refreshCards();
+    }, [refreshCards])
   );
+
+  // Batch-load inventory unit info so message text resolves the same canonical
+  // unit labels the confirmation screen prints (inventory base_unit/pack_unit
+  // take precedence over the order item's stored label).
+  const inventoryItemIdSignature = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          Object.values(cardsById)
+            .flatMap((card) => [
+              ...card.regularItems.map((item) => item.inventoryItemId),
+              ...card.remainingItems.map((item) => item.inventoryItemId),
+            ])
+            .map((id) => (typeof id === 'string' ? id.trim() : ''))
+            .filter((id) => id.length > 0)
+        )
+      )
+        .sort()
+        .join('|'),
+    [cardsById]
+  );
+
+  useEffect(() => {
+    const ids = inventoryItemIdSignature
+      ? inventoryItemIdSignature.split('|').filter((id) => id.length > 0)
+      : [];
+    if (ids.length === 0) return;
+
+    let active = true;
+    (supabase as any)
+      .from('inventory_items')
+      .select('id, base_unit, pack_unit, pack_size')
+      .in('id', ids)
+      .then(({ data }: { data: InventoryUnitInfo[] | null }) => {
+        if (!active || !data) return;
+        const map: Record<string, InventoryUnitInfo> = {};
+        data.forEach((row) => {
+          map[row.id] = row;
+        });
+        setUnitInfoById(map);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [inventoryItemIdSignature]);
 
   const messagesById = useMemo(() => {
     const next: Record<string, string> = {};
@@ -265,12 +322,13 @@ export function SendAllScreen() {
         supplierLabel: card.supplierName,
         regularItems: card.regularItems,
         remainingItems: card.remainingItems,
+        unitInfoById,
       });
       assertNoReportedInSendAllMessage(message);
       next[card.supplierId] = message;
     });
     return next;
-  }, [cardsById, exportFormat.template]);
+  }, [cardsById, exportFormat.template, unitInfoById]);
 
   const finalizeCard = useCallback(
     async (card: SendAllCard, shareMethod: 'share' | 'copy'): Promise<boolean> => {
@@ -291,6 +349,29 @@ export function SendAllScreen() {
             'No source links were found for these items. Go back to Fulfillment, refresh, and try again.'
           );
           return false;
+        }
+
+        // Same best-effort staleness pre-check the confirmation screen runs
+        // before archiving: if another device already processed any of these
+        // items, mark the card errored instead of double-archiving.
+        try {
+          const staleIds = await findStaleConsumedOrderItemIds(payload.consumedOrderItemIds);
+          if (staleIds.length > 0) {
+            setStaleSupplierIds((prev) => {
+              const next = new Set(prev);
+              next.add(card.supplierId);
+              return next;
+            });
+            void triggerNotificationHaptic(NotificationFeedbackType.Error);
+            return false;
+          }
+        } catch (validationError) {
+          if (__DEV__) {
+            console.warn(
+              '[Fulfillment:SendAll] unable to validate item freshness before finalize.',
+              validationError
+            );
+          }
         }
 
         await finalizeSupplierOrder({
@@ -430,6 +511,26 @@ export function SendAllScreen() {
               dispatchQueue({ type: 'send-cancelled', id: card.supplierId });
               return;
             }
+            if (Platform.OS === 'android' && result === 'unknown') {
+              // Android reports 'unknown' for both cancel and send, so confirm
+              // with the user before archiving. iOS reports cancel correctly
+              // and is unaffected.
+              const wasSent = await new Promise<boolean>((resolve) => {
+                Alert.alert(
+                  'Confirm Send',
+                  `Was the message sent to ${card.supplierName}?`,
+                  [
+                    { text: 'Not sent', style: 'cancel', onPress: () => resolve(false) },
+                    { text: 'Send', onPress: () => resolve(true) },
+                  ],
+                  { cancelable: false }
+                );
+              });
+              if (!wasSent) {
+                dispatchQueue({ type: 'send-cancelled', id: card.supplierId });
+                return;
+              }
+            }
             await completeSend(card, 'share');
             return;
           }
@@ -532,6 +633,12 @@ export function SendAllScreen() {
     ? countUnresolvedRemaining(activeCard.remainingItems)
     : 0;
   const isSendingActive = Boolean(activeCard && sendingId === activeCard.supplierId);
+  const isActiveStale = Boolean(activeCard && staleSupplierIds.has(activeCard.supplierId));
+
+  const handleRefreshRetry = useCallback(() => {
+    void triggerSelectionHaptic();
+    void refreshCards();
+  }, [refreshCards]);
 
   const renderFallbackButton = (
     label: string,
@@ -768,7 +875,66 @@ export function SendAllScreen() {
                 </View>
               ) : null}
 
-              {activeUnresolvedCount > 0 ? (
+              {isActiveStale ? (
+                <>
+                  <View
+                    style={{
+                      marginTop: ds.spacing(12),
+                      borderRadius: glassRadii.button,
+                      backgroundColor: glassColors.dangerSoft,
+                      borderWidth: glassHairlineWidth,
+                      borderColor: glassColors.dangerText,
+                      paddingHorizontal: ds.spacing(12),
+                      paddingVertical: ds.spacing(10),
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: ds.fontSize(13),
+                        fontWeight: '600',
+                        color: glassColors.dangerText,
+                      }}
+                    >
+                      Order changed on another device
+                    </Text>
+                    <Text
+                      style={{
+                        marginTop: ds.spacing(3),
+                        fontSize: ds.fontSize(12),
+                        color: glassColors.textSecondary,
+                      }}
+                    >
+                      Some items were already processed elsewhere. Nothing was archived. Refresh to
+                      load the latest order before sending.
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={handleRefreshRetry}
+                    activeOpacity={0.82}
+                    style={{
+                      marginTop: ds.spacing(14),
+                      minHeight: Math.max(48, ds.buttonH),
+                      borderRadius: glassRadii.button,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'row',
+                      backgroundColor: glassColors.accent,
+                    }}
+                  >
+                    <Ionicons name="refresh-outline" size={ds.icon(18)} color={glassColors.textOnPrimary} />
+                    <Text
+                      style={{
+                        marginLeft: ds.spacing(8),
+                        fontSize: ds.fontSize(15),
+                        fontWeight: '700',
+                        color: glassColors.textOnPrimary,
+                      }}
+                    >
+                      Refresh & retry
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : activeUnresolvedCount > 0 ? (
                 <TouchableOpacity
                   onPress={() => handleReviewPress(activeCard)}
                   activeOpacity={0.82}
@@ -830,13 +996,13 @@ export function SendAllScreen() {
                   'Copy',
                   'copy-outline',
                   () => void handleCopyPress(activeCard),
-                  isSendingActive || activeUnresolvedCount > 0
+                  isSendingActive || activeUnresolvedCount > 0 || isActiveStale
                 )}
                 {renderFallbackButton(
                   'Share',
                   'share-outline',
                   () => void handleSharePress(activeCard),
-                  isSendingActive || activeUnresolvedCount > 0
+                  isSendingActive || activeUnresolvedCount > 0 || isActiveStale
                 )}
                 {renderFallbackButton(
                   'Skip',
