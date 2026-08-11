@@ -24,7 +24,7 @@ export interface SubmitOrderRequest {
   userId: string;
   status: 'submitted' | 'draft';
   items: OrderItemPayload[];
-  entryMethod?: 'manual' | 'quick_order' | 'voice_order' | 'suggested_order';
+  entryMethod?: 'manual' | 'quick_order' | 'voice_order' | 'suggested_order' | 'simple_checklist';
   quickSessionId?: string | null;
 }
 

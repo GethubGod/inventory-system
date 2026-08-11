@@ -51,6 +51,26 @@ Run `git fetch origin main` first if it might be stale.
    `SELECT set_config('request.jwt.claim.sub', '<some-uuid>', false);` then
    `SET ROLE authenticated;` (the stub's `auth.uid()` reads that GUC).
 
+### Phase 5a checklist fixture
+
+The Phase 5a fixture seeds nine observed Sushi item-order days for one fake
+user, with a frequent item (6/9 days), an occasional item (2/9), and a rare
+item (one occurrence).
+It runs `generate_order_checklist` as that user and prints the generated rows.
+
+```sh
+scripts/local-db/verify-migrations.sh --keep
+# Copy the container name printed after `--keep`, then:
+docker exec -i <container-name> psql -U postgres -d postgres \
+  -v ON_ERROR_STOP=1 < scripts/local-db/phase5a_checklist_fixture.sql
+docker rm -f <container-name>
+```
+
+The expected result has `Frequent Tuna` / `frequent` / `4.5`, `Occasional
+Salmon` / `occasional` / `10`, and `Rare Nori` / `rare` / `1`, in that sort
+order. The fixture is intentionally separate from the general migration
+harness so the harness remains data-free for every phase.
+
 ## What this does NOT prove
 
 - **No gotrue / real auth.** `auth` is a stub: only `auth.users(id, email,
