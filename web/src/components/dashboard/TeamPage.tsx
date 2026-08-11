@@ -4,7 +4,7 @@
 // via set-user-suspended with confirm dialog. Optimistic flip with rollback
 // on error.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import {
   fetchTeam,
@@ -12,6 +12,10 @@ import {
   type TeamUser,
 } from "@/lib/dashboard/team";
 import ConfirmDialog from "@/components/dashboard/ConfirmDialog";
+import InviteCreateModal from "@/components/dashboard/InviteCreateModal";
+import InvitesSection, {
+  type InvitesSectionHandle,
+} from "@/components/dashboard/InvitesSection";
 
 function displayName(user: TeamUser): string {
   return user.full_name?.trim() || user.email || "Unknown user";
@@ -49,6 +53,8 @@ export default function TeamPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<TeamUser | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [inviting, setInviting] = useState(false);
+  const invitesRef = useRef<InvitesSectionHandle>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,7 +117,16 @@ export default function TeamPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold text-ink mb-1">Team</h1>
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <h1 className="text-xl font-bold text-ink">Team</h1>
+        <button
+          type="button"
+          onClick={() => setInviting(true)}
+          className="rounded-full px-5 py-2 text-sm font-semibold bg-accent text-white"
+        >
+          Invite
+        </button>
+      </div>
       <p className="text-ink2 text-sm mb-5">
         Everyone with a Babytuna account. Suspending an employee blocks the app
         until you lift it.
@@ -210,6 +225,15 @@ export default function TeamPage() {
           </table>
         </div>
       )}
+
+      <InvitesSection ref={invitesRef} />
+
+      {inviting ? (
+        <InviteCreateModal
+          onCreated={() => invitesRef.current?.refresh()}
+          onClose={() => setInviting(false)}
+        />
+      ) : null}
 
       {confirming ? (
         <ConfirmDialog
