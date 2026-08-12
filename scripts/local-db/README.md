@@ -71,6 +71,22 @@ Salmon` / `occasional` / `10`, and `Rare Nori` / `rare` / `1`, in that sort
 order. The fixture is intentionally separate from the general migration
 harness so the harness remains data-free for every phase.
 
+### Phase 6c holiday-template fixture
+
+After a kept migration run, execute the Phase 6c fixture to prove that holiday
+templates are a non-destructive checklist overlay:
+
+```sh
+docker exec -i <container-name> psql -U postgres -d postgres \
+  -v ON_ERROR_STOP=1 < scripts/local-db/phase6c_holiday_templates_fixture.sql
+```
+
+It creates a `Fixture New Year` window from 2026-12-24 through 2026-12-26.
+Its date probe prints zero rows on 2026-12-23 and 2026-12-27, and three rows
+inside the window: Tuna `scale 1.5`, Salmon `set_qty 8`, and Nori `add 3`.
+The fixture also asserts that Tuna's stored generated quantity remains `4` and
+that the additive Nori line was never inserted into `order_checklist_items`.
+
 ## What this does NOT prove
 
 - **No gotrue / real auth.** `auth` is a stub: only `auth.users(id, email,
