@@ -519,10 +519,11 @@ function totals(records){
   };
 }
 
+function csvField(v){v=String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
 function toCSV(records){
   var rows=['Business date,Restaurant,Meal,Cash (split pool),Card (logged only),People on split,Names,Per-person share,Flagged,Entered by,Entry method'];
   records.forEach(function(r){
-    rows.push([fmtDay(r.t)+' 2026',RESTS[r.rest],r.meal,(r.cash/100).toFixed(2),(r.card/100).toFixed(2),r.people.length,'"'+r.people.join('; ')+'"',(perShare(r.cash,r.people.length)/100).toFixed(2),r.flag?'yes':'no',r.by,r.mode].join(','));
+    rows.push([fmtDay(r.t)+' '+new Date(r.t).getFullYear(),RESTS[r.rest],r.meal,(r.cash/100).toFixed(2),(r.card/100).toFixed(2),r.people.length,'"'+r.people.join('; ').replace(/"/g,'""')+'"',(perShare(r.cash,r.people.length)/100).toFixed(2),r.flag?'yes':'no',csvField(r.by),r.mode].join(','));
   });
   return rows.join('\n');
 }
@@ -642,7 +643,7 @@ function renderTotals(recs){
 function edPreview(cashC,n){
   if(n===0)return '<span class="ed-error">Select at least one person to split between.</span>';
   if(cashC===null)return '<span class="ed-error">Cash amount doesn’t parse.</span>';
-  return 'New per-person share: <strong class="num">'+money(Math.round(cashC/n))+'</strong> each — cash ÷ '+n+'. Card is logged only and stays out of this number.';
+  return 'New per-person share: <strong class="num">'+money(TipsCore.perShare(cashC,n))+'</strong> each — cash ÷ '+n+'. Card is logged only and stays out of this number.';
 }
 function eligibleNames(rec){
   var names=staff.filter(function(s){return s.active&&(s.works===rec.rest||s.works==='both');}).map(function(s){return s.name;});
@@ -1016,7 +1017,7 @@ document.addEventListener('submit',function(e){
     }
     var r=records.find(function(x){return x.id===f.dataset.id;});
     st.pending={cash:cash,card:card,people:people};
-    var newPer=Math.round(cash/people.length);
+    var newPer=TipsCore.perShare(cash,people.length);
     $('[data-role="actions"]',f).innerHTML='<div class="ed-confirm">'+
       '<p><strong>Check it:</strong> cash '+money(r.cash)+' → <strong class="num">'+money(cash)+'</strong> · card '+money(r.card)+' → '+money(card)+
       ' · per-person '+money(perShare(r))+' → <strong class="num">'+money(newPer)+'</strong> for '+people.map(esc).join(', ')+

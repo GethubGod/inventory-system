@@ -87,6 +87,14 @@ check(
   'known real CSV row'
 );
 
+check(TipsCore.money(123456),'$1,234.56','format money with thousands separator');
+check(TipsCore.money(7400),'$74.00','format money pads cents');
+check(
+  TipsCore.toCSV([{t:new Date(2025,0,15).getTime(),rest:'sushi',meal:'Lunch',cash:200,card:0,people:['O"Brien'],by:'Smith, John',mode:'typed',flag:false}]).split('\n')[1],
+  'Wed Jan 15 2025,Sushi,Lunch,2.00,0.00,1,"O""Brien",2.00,no,"Smith, John",typed',
+  'CSV derives year from record and escapes quotes/commas'
+);
+
 check(TipsCore.parseMoney('$1,234.56'),123456,'parse formatted money');
 check(TipsCore.parseMoney('12'),1200,'parse whole dollars');
 check(TipsCore.parseMoney('-5'),null,'reject negative money');

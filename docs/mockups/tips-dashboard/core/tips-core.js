@@ -156,10 +156,11 @@ function totals(records){
   };
 }
 
+function csvField(v){v=String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
 function toCSV(records){
   var rows=['Business date,Restaurant,Meal,Cash (split pool),Card (logged only),People on split,Names,Per-person share,Flagged,Entered by,Entry method'];
   records.forEach(function(r){
-    rows.push([fmtDay(r.t)+' 2026',RESTS[r.rest],r.meal,(r.cash/100).toFixed(2),(r.card/100).toFixed(2),r.people.length,'"'+r.people.join('; ')+'"',(perShare(r.cash,r.people.length)/100).toFixed(2),r.flag?'yes':'no',r.by,r.mode].join(','));
+    rows.push([fmtDay(r.t)+' '+new Date(r.t).getFullYear(),RESTS[r.rest],r.meal,(r.cash/100).toFixed(2),(r.card/100).toFixed(2),r.people.length,'"'+r.people.join('; ').replace(/"/g,'""')+'"',(perShare(r.cash,r.people.length)/100).toFixed(2),r.flag?'yes':'no',csvField(r.by),r.mode].join(','));
   });
   return rows.join('\n');
 }
