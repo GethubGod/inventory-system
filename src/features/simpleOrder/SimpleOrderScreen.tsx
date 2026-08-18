@@ -45,7 +45,7 @@ import {
 } from '@/services/employeeReminders';
 import { findMyChecklistOrderDayRule } from './orderDayReminder';
 import type { SendAllQueueProgress } from '@/features/fulfillment/sendAll/sendAllQueue';
-import { useAuthStore, useInventoryStore } from '@/store';
+import { useAuthStore, useInventoryStore, useSettingsStore } from '@/store';
 import {
   colors,
   glassColors,
@@ -56,6 +56,7 @@ import {
 import type { InventoryItem, Location } from '@/types';
 import { LocationSwitcherDropdown } from '@/features/stock-check/components/LocationSwitcherDropdown';
 import {
+  addedLineKey,
   buildSendLines,
   EMPTY_SELECTION_STATE,
   getCheckedLines,
@@ -65,12 +66,15 @@ import {
   type SelectionLine,
 } from './checklistSelection';
 import { buildDirectSendLines } from './directSendFlow';
-import { AddItemsSheet } from './components/AddItemsSheet';
+import { filterCatalogItems, type VoiceAddition } from './catalogSearch';
 import { ChecklistItemRow } from './components/ChecklistItemRow';
+import { ChecklistSettingsSheet } from './components/ChecklistSettingsSheet';
 import { ConfirmOrderSheet } from './components/ConfirmOrderSheet';
 import { DirectSendQueue } from './components/DirectSendQueue';
 import { OrderDayReminderSheet } from './components/OrderDayReminderSheet';
+import { PinnedOrderBar } from './components/PinnedOrderBar';
 import { RecentOrdersSheet } from './components/RecentOrdersSheet';
+import { VoiceAddSheet } from './components/VoiceAddSheet';
 
 interface ChecklistSection {
   key: 'frequent' | 'occasional' | 'added' | 'rare';
@@ -87,11 +91,16 @@ export function SimpleOrderScreen() {
 
   const { location, locations, setLocation } = useResolvedActiveLocation();
   const fetchLocations = useAuthStore((state) => state.fetchLocations);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
   const { items: inventoryItems, fetchItems } = useInventoryStore(
     useShallow((state) => ({
       items: state.items,
       fetchItems: state.fetchItems,
     })),
+  );
+  const density = useSettingsStore((state) => state.simpleOrderDensity);
+  const setSimpleOrderDensity = useSettingsStore(
+    (state) => state.setSimpleOrderDensity,
   );
 
   const locationGroup = useMemo(
@@ -106,7 +115,10 @@ export function SimpleOrderScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [rareExpanded, setRareExpanded] = useState(false);
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
-  const [addSheetVisible, setAddSheetVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [voiceVisible, setVoiceVisible] = useState(false);
+  const [orderBarHeight, setOrderBarHeight] = useState(48);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -240,6 +252,30 @@ export function SimpleOrderScreen() {
         .filter((item) => !item.location_id || item.location_id === location?.id)
         .sort((left, right) => left.name.localeCompare(right.name)),
     [inventoryItems, location?.id],
+  );
+
+  const searchResults = useMemo(
+    () => filterCatalogItems(searchableItems, searchQuery),
+    [searchQuery, searchableItems],
+  );
+
+  const handleVoiceApply = useCallback(
+    (additions: VoiceAddition[]) => {
+      for (const addition of additions) {
+        dispatch({ type: 'addInventoryItem', item: addition.item });
+        if (addition.quantity !== null) {
+          const existing = selection.lines.find(
+            (line) => line.itemId === addition.item.id,
+          );
+          dispatch({
+            type: 'setQuantity',
+            key: existing ? existing.key : addedLineKey(addition.item.id),
+            quantity: addition.quantity,
+          });
+        }
+      }
+    },
+    [selection.lines],
   );
 
   const checkedLines = useMemo(() => getCheckedLines(selection), [selection]);
@@ -379,12 +415,13 @@ export function SimpleOrderScreen() {
       <ChecklistItemRow
         line={item}
         isLast={index === section.data.length - 1}
+        density={density}
         onToggle={handleToggleLine}
         onAdjustQuantity={handleAdjustQuantity}
         onSetQuantity={handleSetQuantity}
       />
     ),
-    [handleAdjustQuantity, handleSetQuantity, handleToggleLine],
+    [density, handleAdjustQuantity, handleSetQuantity, handleToggleLine],
   );
 
   const renderSectionHeader = useCallback(
@@ -458,56 +495,10 @@ export function SimpleOrderScreen() {
     [ds, rareExpanded],
   );
 
-  const renderSectionFooter = useCallback(
-    ({ section }: { section: ChecklistSection }) => {
-      if (section.key !== 'added') return null;
-      return (
-        <TouchableOpacity
-          onPress={() => {
-            void triggerImpactHaptic(ImpactFeedbackStyle.Light);
-            setAddSheetVisible(true);
-          }}
-          activeOpacity={0.7}
-          accessibilityRole="button"
-          accessibilityLabel="Add more items"
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: 52,
-            marginTop: ds.spacing(12),
-            borderRadius: glassRadii.button,
-            borderWidth: glassHairlineWidth,
-            borderColor: glassColors.accentBorder,
-            backgroundColor: colors.primaryPale,
-          }}
-        >
-          <Ionicons
-            name="add-circle-outline"
-            size={ds.icon(20)}
-            color={glassColors.accent}
-            style={{ marginRight: ds.spacing(8) }}
-          />
-          <Text
-            style={{
-              fontSize: ds.fontSize(16),
-              fontWeight: '700',
-              color: glassColors.accent,
-            }}
-          >
-            Add more items
-          </Text>
-        </TouchableOpacity>
-      );
-    },
-    [ds],
-  );
-
   const tabBarBottomOffset =
     TAB_BAR_CLEARANCE + Math.max(insets.bottom, glassSpacing.tabBarBottom);
-  const sendButtonHeight = Math.max(56, ds.buttonH);
   const listBottomPadding =
-    tabBarBottomOffset + sendButtonHeight + ds.spacing(32);
+    tabBarBottomOffset + orderBarHeight + ds.spacing(24);
 
   const locationLabel = location?.name ?? 'Choose location';
 
@@ -600,9 +591,7 @@ export function SimpleOrderScreen() {
         <EmptyStateCard
           icon="clipboard-outline"
           title="No checklist yet"
-          message="Once you have order history here, your usual items appear automatically. You can still add items below."
-          actionLabel="Add items"
-          onPressAction={() => setAddSheetVisible(true)}
+          message="Once you have order history here, your usual items appear automatically. Use the search bar below to add items."
         />
       </View>
     );
@@ -613,7 +602,6 @@ export function SimpleOrderScreen() {
         keyExtractor={(item) => item.key}
         renderItem={renderItem}
         renderSectionHeader={renderSectionHeader}
-        renderSectionFooter={renderSectionFooter}
         stickySectionHeadersEnabled={false}
         keyboardShouldPersistTaps="handled"
         onScrollBeginDrag={() => setLocationDropdownOpen(false)}
@@ -650,6 +638,32 @@ export function SimpleOrderScreen() {
               onPress={() => setLocationDropdownOpen((prev) => !prev)}
             />
             <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              onPress={() => {
+                void triggerImpactHaptic(ImpactFeedbackStyle.Light);
+                setSettingsVisible(true);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Checklist settings"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: glassHairlineWidth,
+                borderColor: glassColors.controlBorder,
+                backgroundColor: colors.glassCircle,
+                marginRight: ds.spacing(8),
+              }}
+            >
+              <Ionicons
+                name="options-outline"
+                size={ds.icon(19)}
+                color={glassColors.textPrimary}
+              />
+            </TouchableOpacity>
             {/* 7a: entry point for the delivery receiving flow. Lives in the
                 header (least-cluttered spot) so the recent-orders sheet stays
                 read-only. */}
@@ -766,53 +780,36 @@ export function SimpleOrderScreen() {
       {directSendGroups === null &&
       sentItemCount === null &&
       !isLoading &&
-      !loadError &&
-      checkedCount > 0 ? (
-        <View
-          style={{
-            position: 'absolute',
-            left: glassSpacing.screen,
-            right: glassSpacing.screen,
-            bottom: tabBarBottomOffset + ds.spacing(8),
-          }}
-        >
-          <TouchableOpacity
-            onPress={handleOpenConfirm}
-            activeOpacity={0.85}
-            accessibilityRole="button"
-            accessibilityLabel={`Send order with ${checkedCount} items`}
-            style={{
-              minHeight: sendButtonHeight,
-              borderRadius: glassRadii.submitButton,
-              backgroundColor: colors.primary,
-              alignItems: 'center',
-              justifyContent: 'center',
-              shadowColor: colors.black,
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.12,
-              shadowRadius: 12,
-              elevation: 4,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: ds.fontSize(17),
-                fontWeight: '700',
-                color: colors.white,
-              }}
-            >
-              Send Order ({checkedCount})
-            </Text>
-          </TouchableOpacity>
-        </View>
+      !loadError ? (
+        <PinnedOrderBar
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          results={searchResults}
+          selectedItemIds={selectedItemIds}
+          onAddItem={handleAddInventoryItem}
+          checkedCount={checkedCount}
+          onPressSend={handleOpenConfirm}
+          voiceAvailable
+          onPressMic={() => setVoiceVisible(true)}
+          restingBottom={tabBarBottomOffset + ds.spacing(8)}
+          onHeightChange={setOrderBarHeight}
+        />
       ) : null}
 
-      <AddItemsSheet
-        visible={addSheetVisible}
-        items={searchableItems}
-        selectedItemIds={selectedItemIds}
-        onAddItem={handleAddInventoryItem}
-        onClose={() => setAddSheetVisible(false)}
+      <ChecklistSettingsSheet
+        visible={settingsVisible}
+        density={density}
+        onSelectDensity={setSimpleOrderDensity}
+        onClose={() => setSettingsVisible(false)}
+      />
+
+      <VoiceAddSheet
+        visible={voiceVisible}
+        locationId={location?.id ?? null}
+        userId={userId}
+        inventoryItems={searchableItems}
+        onApply={handleVoiceApply}
+        onClose={() => setVoiceVisible(false)}
       />
 
       <ConfirmOrderSheet

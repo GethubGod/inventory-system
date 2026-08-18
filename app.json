@@ -24,7 +24,8 @@
       },
       "infoPlist": {
         "NSCameraUsageDescription": "Camera access is required to scan QR codes.",
-        "NSPhotoLibraryUsageDescription": "Photo library access is needed to update your profile photo."
+        "NSPhotoLibraryUsageDescription": "Photo library access is needed to update your profile photo.",
+        "NSMicrophoneUsageDescription": "Microphone access lets you add order items by voice."
       }
     },
     "android": {
@@ -35,10 +36,10 @@
       "package": "com.babytuna.systems",
       "versionCode": 20,
       "permissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ],
       "blockedPermissions": [
-        "android.permission.RECORD_AUDIO",
         "android.permission.FOREGROUND_SERVICE_MICROPHONE"
       ]
     },

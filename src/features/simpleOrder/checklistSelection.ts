@@ -132,7 +132,9 @@ export function selectionReducer(
     case 'setQuantity': {
       const quantity = clampQuantity(action.quantity);
       return updateLine(state, action.key, (line) =>
-        line.quantity === quantity ? line : { ...line, quantity },
+        line.quantity === quantity && line.checked
+          ? line
+          : { ...line, quantity, checked: true },
       );
     }
 
@@ -145,7 +147,10 @@ export function selectionReducer(
             ? Math.floor(line.quantity) + action.delta
             : Math.ceil(line.quantity) + action.delta;
         const quantity = clampQuantity(Math.max(1, stepped));
-        return line.quantity === quantity ? line : { ...line, quantity };
+        // Stepping an unchecked row is an intent to order it: check it too,
+        // so the always-visible steppers can activate rows in one tap.
+        if (line.quantity === quantity && line.checked) return line;
+        return { ...line, quantity, checked: true };
       });
 
     case 'addInventoryItem': {
