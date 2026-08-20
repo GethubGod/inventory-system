@@ -105,7 +105,7 @@ export default function ManagerApp() {
   return (
     <div className="w-full max-w-6xl mx-auto px-5 py-6">
       <header className="flex items-center justify-between gap-3 mb-5">
-        <h1 className="text-xl font-bold text-ink">Tips — Manager</h1>
+        <h1 className="text-xl font-bold text-ink">Tip Dashboard</h1>
         <button
           type="button"
           onClick={signOut}
