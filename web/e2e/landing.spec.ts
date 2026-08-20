@@ -18,11 +18,18 @@ test.describe("scan landing", () => {
   }) => {
     await page.goto("/");
     // Variant A carousel: three slides, dots, Next → Next → done.
+    const currentSlide = () =>
+      page.getByLabel("Tutorial slides").evaluate((track) =>
+        Math.round(track.scrollLeft / track.clientWidth),
+      );
+
     await expect(page.getByText("Scan to start")).toBeVisible();
-    await page.getByRole("button", { name: "Next" }).click();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect.poll(currentSlide).toBe(1);
     await expect(page.getByText("Speak it in")).toBeVisible();
-    await page.getByRole("button", { name: "Next" }).click();
-    await page.getByRole("button", { name: /let.s go/i }).click();
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect.poll(currentSlide).toBe(2);
+    await page.getByRole("button", { name: "Got it", exact: true }).click();
 
     await expect(
       page.getByRole("heading", { name: "Scan to enter" }),

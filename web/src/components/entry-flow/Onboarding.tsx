@@ -21,17 +21,17 @@ interface Slide {
 const SLIDES: Slide[] = [
   {
     title: "Scan to start",
-    body: "The sticker by the register is your sign-in. Scan it with your camera — or tap Scan here — and you're in. No PIN, nothing to remember.",
+    body: "Scan the sticker by the register with your camera, or tap Scan here. No PIN needed.",
     icon: "scan",
   },
   {
     title: "Speak it in",
-    body: "Say the shift, the cash, the card, and who's splitting — any order, any accent. Tap any row to type it instead.",
+    body: "Say the shift, cash, card, and who's splitting. Any order or accent works. You can also tap a row to type.",
     icon: "mic",
   },
   {
     title: "Save and go",
-    body: "Check the numbers, hit Save. You'll see a quick confirmation and the app resets for the next shift.",
+    body: "Check the numbers and tap Save. You'll see a quick confirmation, then the app resets for the next shift.",
     icon: "check",
   },
 ];
@@ -132,6 +132,7 @@ function CardsOnboarding({ onDone }: { onDone: () => void }) {
         <div
           ref={trackRef}
           onScroll={handleScroll}
+          aria-label="Tutorial slides"
           className="mt-6 flex flex-1 snap-x snap-mandatory overflow-x-auto"
           style={{ scrollbarWidth: "none" }}
         >
@@ -170,7 +171,7 @@ function CardsOnboarding({ onDone }: { onDone: () => void }) {
             onClick={() => (index === last ? onDone() : goTo(index + 1))}
             className="w-full rounded-full bg-accent py-4 font-semibold text-white active:opacity-90"
           >
-            {index === last ? "Got it — let's go" : "Next"}
+            {index === last ? "Got it" : "Next"}
           </button>
         </div>
       </div>
@@ -246,7 +247,7 @@ function StoryOnboarding({ onDone }: { onDone: () => void }) {
             onClick={advance}
             className="rounded-full bg-white px-8 py-3.5 font-semibold text-accent active:opacity-90"
           >
-            {index === last ? "Let's go" : "Next"}
+            {index === last ? "Got it" : "Next"}
           </button>
         </div>
       </div>
