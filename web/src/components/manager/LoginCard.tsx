@@ -29,7 +29,7 @@ export default function LoginCard() {
     <div className="w-full max-w-md mx-auto mt-16 px-5">
       <div className="bg-card rounded-card p-6">
         <p className="section-label mb-1">Babytuna</p>
-        <h1 className="text-xl font-bold text-ink mb-5">Tips — Manager</h1>
+        <h1 className="text-xl font-bold text-ink mb-5">Tip Dashboard</h1>
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1">
             <span className="section-label">Email</span>
