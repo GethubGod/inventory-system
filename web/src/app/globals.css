@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
-/* Babytuna design language — warm cream, white cards, accent red. Flat: no
+/* Babytuna design language (web) — neutral white page, white cards, accent red. Flat: no
    gradients, no shadows, no decorative emoji. */
 @theme {
-  --color-cream: #f5f1e8;
+  --color-cream: #f5f5f4;
   --color-card: #ffffff;
-  --color-well: #f5f1e8;
+  --color-well: #ededec;
   --color-accent: #e84d38;
   --color-tint: #fbeae7;
   --color-alert: #c03520;
