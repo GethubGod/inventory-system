@@ -13,11 +13,15 @@ import { normalizeLoginName } from "../_shared/loginNames.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+const anonKey = Deno.env.get("SUPABASE_ANON_KEY")?.trim() ?? "";
+const publishableKeys = [
+  Deno.env.get("SUPABASE_PUBLISHABLE_KEY"),
+  ...(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") ?? "").split(","),
+].map((key) => key?.trim()).filter((key): key is string => Boolean(key));
 
-if (!supabaseUrl || !serviceRoleKey || !anonKey) {
+if (!supabaseUrl || !serviceRoleKey || (!anonKey && publishableKeys.length === 0)) {
   throw new Error(
-    "Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or SUPABASE_ANON_KEY",
+    "Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or a public API key",
   );
 }
 
@@ -44,7 +48,10 @@ function jsonResponse(
 function hasAnonKey(req: Request): boolean {
   const apiKey = req.headers.get("apikey")?.trim();
   const authorization = req.headers.get("Authorization")?.trim();
-  return apiKey === anonKey || authorization === `Bearer ${anonKey}`;
+  if (apiKey && (apiKey === anonKey || publishableKeys.includes(apiKey))) {
+    return true;
+  }
+  return Boolean(anonKey && authorization === `Bearer ${anonKey}`);
 }
 
 function getClientIp(req: Request): string {
@@ -111,7 +118,7 @@ Deno.serve(async (req) => {
   if (!normalizeLoginName(name) || secret.length === 0) {
     return jsonResponse(req, { error: "Name and PIN or password are required" }, 400);
   }
-  if (secret.length > 200) {
+  if (secret.length > 256) {
     return jsonResponse(req, { error: "Invalid credential" }, 400);
   }
 

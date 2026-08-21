@@ -6,7 +6,7 @@
 // role's defaults and are written as modulePreset ({module_key: boolean}),
 // applied to user_modules when the invite is accepted (Phase 3).
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createInvite,
   DEFAULT_EXPIRY_HOURS,
@@ -44,6 +44,8 @@ export default function InviteCreateModal({
     getRoleDefaultModules("employee"),
   );
   const [presetTouched, setPresetTouched] = useState(false);
+  const presetTouchedRef = useRef(false);
+  const roleRef = useRef<InviteRole>("employee");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedInvite | null>(null);
@@ -53,7 +55,11 @@ export default function InviteCreateModal({
     let cancelled = false;
     fetchEmployeeInviteDefaults()
       .then((overrides) => {
-        if (cancelled) return;
+        if (
+          cancelled ||
+          presetTouchedRef.current ||
+          roleRef.current !== "employee"
+        ) return;
         setPreset((prev) => {
           // Never clobber a preset the manager already customized.
           return { ...prev, ...overrides };
@@ -65,13 +71,13 @@ export default function InviteCreateModal({
     return () => {
       cancelled = true;
     };
-    // Mount-only: applies before any manual preset interaction.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Mount-only; refs prevent late responses from overwriting user choices.
   }, []);
 
   const canSubmit = invitedName.trim().length > 0 && !busy;
 
   function handleRoleChange(nextRole: InviteRole) {
+    roleRef.current = nextRole;
     setRole(nextRole);
     // Until the manager customizes the preset, keep it at the role defaults.
     if (!presetTouched) {
@@ -84,6 +90,7 @@ export default function InviteCreateModal({
   }
 
   function handlePresetToggle(key: keyof ModuleMap) {
+    presetTouchedRef.current = true;
     setPresetTouched(true);
     setPreset((prev) => ({ ...prev, [key]: !prev[key] }));
   }

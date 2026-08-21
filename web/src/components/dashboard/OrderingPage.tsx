@@ -8,7 +8,7 @@
 // style follows SuppliersPage: optimistic updates with rollback, text fields
 // save on blur, toggles save immediately.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ConfirmDialog from "./ConfirmDialog";
 import { fetchTeam, type TeamUser } from "@/lib/dashboard/team";
 import {
@@ -74,11 +74,6 @@ function ChecklistItemEditorRow({
   const [qtyText, setQtyText] = useState(
     item.recommendedQty === null ? "" : String(item.recommendedQty),
   );
-
-  // Re-sync when a rollback or server response changes the stored value.
-  useEffect(() => {
-    setQtyText(item.recommendedQty === null ? "" : String(item.recommendedQty));
-  }, [item.recommendedQty]);
 
   return (
     <tr className="border-b border-hairline last:border-b-0">
@@ -146,6 +141,7 @@ export default function OrderingPage() {
   const [checklist, setChecklist] = useState<ChecklistRecord | null>(null);
   const [checklistLoading, setChecklistLoading] = useState(false);
   const [checklistError, setChecklistError] = useState<string | null>(null);
+  const checklistRequestRef = useRef(0);
 
   const [sendMode, setSendMode] = useState<OrderSendMode | null>(null);
   const [sendModeError, setSendModeError] = useState<string | null>(null);
@@ -189,33 +185,46 @@ export default function OrderingPage() {
 
   const loadChecklist = useCallback(async () => {
     if (!selectedUserId) return;
-    setChecklistLoading(true);
-    setChecklistError(null);
-    setActionError(null);
+    const requestId = ++checklistRequestRef.current;
     try {
       const record = await fetchChecklistFor(selectedUserId, group);
-      setChecklist(record);
+      if (requestId === checklistRequestRef.current) setChecklist(record);
     } catch (error) {
-      setChecklist(null);
-      setChecklistError(
-        error instanceof Error ? error.message : "Could not load the checklist.",
-      );
+      if (requestId === checklistRequestRef.current) {
+        setChecklist(null);
+        setChecklistError(
+          error instanceof Error ? error.message : "Could not load the checklist.",
+        );
+      }
     } finally {
-      setChecklistLoading(false);
+      if (requestId === checklistRequestRef.current) {
+        setChecklistLoading(false);
+      }
     }
   }, [group, selectedUserId]);
 
   useEffect(() => {
-    setChecklist(null);
-    setSearchQuery("");
-    setSearchResults(null);
     if (!selectedUserId) return;
-    void loadChecklist();
-  }, [loadChecklist, selectedUserId]);
+    const requestId = ++checklistRequestRef.current;
+    fetchChecklistFor(selectedUserId, group)
+      .then((record) => {
+        if (requestId === checklistRequestRef.current) setChecklist(record);
+      })
+      .catch((error: unknown) => {
+        if (requestId !== checklistRequestRef.current) return;
+        setChecklist(null);
+        setChecklistError(
+          error instanceof Error ? error.message : "Could not load the checklist.",
+        );
+      })
+      .finally(() => {
+        if (requestId === checklistRequestRef.current) {
+          setChecklistLoading(false);
+        }
+      });
+  }, [group, selectedUserId]);
 
   useEffect(() => {
-    setSendMode(null);
-    setSendModeError(null);
     if (!selectedUserId) return;
     let cancelled = false;
     fetchSendMode(selectedUserId)
@@ -239,10 +248,7 @@ export default function OrderingPage() {
   // Debounced inventory search for the add-item box.
   useEffect(() => {
     const query = searchQuery.trim();
-    if (query.length === 0) {
-      setSearchResults(null);
-      return;
-    }
+    if (query.length === 0) return;
     let cancelled = false;
     const timer = setTimeout(() => {
       searchInventoryItems(query)
@@ -258,6 +264,36 @@ export default function OrderingPage() {
       clearTimeout(timer);
     };
   }, [searchQuery]);
+
+  function handleEmployeeChange(nextUserId: string) {
+    checklistRequestRef.current += 1;
+    setSelectedUserId(nextUserId);
+    setChecklist(null);
+    setChecklistLoading(Boolean(nextUserId));
+    setChecklistError(null);
+    setSendMode(null);
+    setSendModeError(null);
+    setSearchQuery("");
+    setSearchResults(null);
+    setActionError(null);
+  }
+
+  function handleGroupChange(nextGroup: LocationGroup) {
+    if (nextGroup === group) return;
+    checklistRequestRef.current += 1;
+    setGroup(nextGroup);
+    setChecklist(null);
+    setChecklistLoading(Boolean(selectedUserId));
+    setChecklistError(null);
+    setSearchQuery("");
+    setSearchResults(null);
+    setActionError(null);
+  }
+
+  function handleSearchQueryChange(nextQuery: string) {
+    setSearchQuery(nextQuery);
+    setSearchResults(null);
+  }
 
   function patchItems(
     updater: (items: ChecklistItemRecord[]) => ChecklistItemRecord[],
@@ -390,6 +426,8 @@ export default function OrderingPage() {
     try {
       await regenerateChecklist(selectedUserId, group);
       setRegenConfirmOpen(false);
+      setChecklistLoading(true);
+      setChecklistError(null);
       await loadChecklist();
     } catch (error) {
       setActionError(
@@ -426,7 +464,7 @@ export default function OrderingPage() {
           <div className="flex flex-wrap items-center gap-3 mb-5">
             <select
               value={selectedUserId}
-              onChange={(e) => setSelectedUserId(e.target.value)}
+              onChange={(e) => handleEmployeeChange(e.target.value)}
               aria-label="Employee"
               className={`${inputClasses} appearance-none max-w-72`}
             >
@@ -446,7 +484,7 @@ export default function OrderingPage() {
                   type="button"
                   role="tab"
                   aria-selected={group === option.value}
-                  onClick={() => setGroup(option.value)}
+                  onClick={() => handleGroupChange(option.value)}
                   className={`rounded-full px-4 py-1.5 text-sm font-semibold ${
                     group === option.value
                       ? "bg-card text-ink shadow-sm"
@@ -577,7 +615,7 @@ export default function OrderingPage() {
                           ) : (
                             checklist.items.map((item) => (
                               <ChecklistItemEditorRow
-                                key={item.id}
+                                key={`${item.id}:${item.recommendedQty ?? "none"}`}
                                 item={item}
                                 onToggleChecked={(row) =>
                                   void handleToggleChecked(row)
@@ -597,7 +635,7 @@ export default function OrderingPage() {
                       <input
                         type="text"
                         value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onChange={(e) => handleSearchQueryChange(e.target.value)}
                         placeholder="Add item — search inventory…"
                         aria-label="Search inventory to add an item"
                         className={inputClasses}

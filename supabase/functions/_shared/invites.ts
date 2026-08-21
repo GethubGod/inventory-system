@@ -16,16 +16,19 @@ export interface CreateInviteInput {
 }
 
 export type AcceptInviteMode = "credentials" | "onboarding";
+export type OnboardingCredentialKind = "pin" | "password";
 
 export interface AcceptInviteInput {
   token: string;
   validateOnly: boolean;
-  /** onboarding = invited setup flow: no email/password; the server mints a
-   * synthetic account and returns a one-shot session token hash. */
+  /** onboarding = invited setup flow: the server mints a synthetic account,
+   * installs the chosen app credential, then returns a one-shot session hash. */
   mode: AcceptInviteMode;
   email: string | null;
   password: string | null;
   name: string | null;
+  credentialKind: OnboardingCredentialKind | null;
+  credentialSecret: string | null;
 }
 
 export interface InviteState {
@@ -225,6 +228,8 @@ export function parseAcceptInviteInput(
         email: null,
         password: null,
         name: null,
+        credentialKind: null,
+        credentialSecret: null,
       },
     };
   }
@@ -234,6 +239,24 @@ export function parseAcceptInviteInput(
   }
 
   if (payload.mode === "onboarding") {
+    const credentialKind = payload.credentialKind;
+    if (credentialKind !== "pin" && credentialKind !== "password") {
+      return { ok: false, error: "credentialKind must be pin or password" };
+    }
+
+    const credentialSecret = typeof payload.credentialSecret === "string"
+      ? payload.credentialSecret
+      : null;
+    if (credentialKind === "pin" && !/^[0-9]{4}$/.test(credentialSecret ?? "")) {
+      return { ok: false, error: "PIN must be exactly 4 digits" };
+    }
+    if (
+      credentialKind === "password" &&
+      (credentialSecret === null || credentialSecret.length < 8 || credentialSecret.length > 256)
+    ) {
+      return { ok: false, error: "Password must be between 8 and 256 characters" };
+    }
+
     return {
       ok: true,
       value: {
@@ -243,6 +266,8 @@ export function parseAcceptInviteInput(
         email: null,
         password: null,
         name: null,
+        credentialKind,
+        credentialSecret,
       },
     };
   }
@@ -264,7 +289,16 @@ export function parseAcceptInviteInput(
 
   return {
     ok: true,
-    value: { token, validateOnly: false, mode: "credentials", email, password, name },
+    value: {
+      token,
+      validateOnly: false,
+      mode: "credentials",
+      email,
+      password,
+      name,
+      credentialKind: null,
+      credentialSecret: null,
+    },
   };
 }
 

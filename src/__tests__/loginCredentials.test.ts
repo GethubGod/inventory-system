@@ -46,13 +46,14 @@ describe('credential validation', () => {
   it('requires at least 8 characters for a password', () => {
     expect(isValidPassword('12345678')).toBe(true);
     expect(isValidPassword('1234567')).toBe(false);
+    expect(isValidPassword('x'.repeat(257))).toBe(false);
   });
 });
 
 describe('setMyCredential', () => {
   it('rejects malformed secrets before calling the server', async () => {
     await expect(setMyCredential('pin', '12345')).rejects.toThrow('4 digits');
-    await expect(setMyCredential('password', 'short')).rejects.toThrow('8 characters');
+    await expect(setMyCredential('password', 'short')).rejects.toThrow('between 8 and 256');
     expect(rpc).not.toHaveBeenCalled();
   });
 

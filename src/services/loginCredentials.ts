@@ -17,6 +17,7 @@ export type LoginFailureCode = 'invalid' | 'rate_limited' | 'suspended';
 
 export const PIN_LENGTH = 4;
 export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_PASSWORD_LENGTH = 256;
 
 const LOGIN_FAILURE_MESSAGES: Record<LoginFailureCode, string> = {
   invalid: "That name and PIN or password don't match",
@@ -42,7 +43,7 @@ export function isValidPin(secret: string): boolean {
 }
 
 export function isValidPassword(secret: string): boolean {
-  return secret.length >= MIN_PASSWORD_LENGTH;
+  return secret.length >= MIN_PASSWORD_LENGTH && secret.length <= MAX_PASSWORD_LENGTH;
 }
 
 function readFailureCode(value: unknown): LoginFailureCode | null {
@@ -114,7 +115,9 @@ export async function setMyCredential(kind: CredentialKind, secret: string): Pro
     throw new Error('PIN must be exactly 4 digits');
   }
   if (kind === 'password' && !isValidPassword(secret)) {
-    throw new Error(`Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+    throw new Error(
+      `Password must be between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters`,
+    );
   }
 
   const { error } = await supabase.rpc('set_my_login_credential', {

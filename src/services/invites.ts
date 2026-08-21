@@ -223,12 +223,16 @@ export async function acceptInvite(input: AcceptInviteInput): Promise<{ role: Us
  * The caller exchanges it with supabase.auth.verifyOtp, then stores the chosen
  * credential via setMyCredential.
  */
-export async function acceptInviteOnboarding(token: string): Promise<OnboardingAcceptResult> {
+export async function acceptInviteOnboarding(
+  token: string,
+  credentialKind: 'pin' | 'password',
+  credentialSecret: string,
+): Promise<OnboardingAcceptResult> {
   const trimmed = token.trim();
   if (!trimmed) throw new InviteError('invalid');
 
   const { data, error } = await supabase.functions.invoke('accept-invite', {
-    body: { token: trimmed, mode: 'onboarding' },
+    body: { token: trimmed, mode: 'onboarding', credentialKind, credentialSecret },
   });
 
   if (error) {

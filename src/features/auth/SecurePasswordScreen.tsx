@@ -7,7 +7,10 @@ import { useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import { triggerNotificationHaptic, NotificationFeedbackType } from '@/lib/haptics';
-import { MIN_PASSWORD_LENGTH } from '@/services/loginCredentials';
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+} from '@/services/loginCredentials';
 import { authTheme } from '@/theme/design';
 import { AuthPrimaryButton } from './components/AuthPrimaryButton';
 import { AuthScreenShell } from './components/AuthScreenShell';
@@ -30,8 +33,13 @@ export default function SecurePasswordScreen() {
   const tooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
 
   const handleSave = async () => {
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      setError(`Use at least ${MIN_PASSWORD_LENGTH} characters`);
+    if (
+      password.length < MIN_PASSWORD_LENGTH ||
+      password.length > MAX_PASSWORD_LENGTH
+    ) {
+      setError(
+        `Use between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters`,
+      );
       return;
     }
     setSubmitting(true);
@@ -92,7 +100,8 @@ export default function SecurePasswordScreen() {
           autoComplete="new-password"
           autoCapitalize="none"
           autoCorrect={false}
-          passwordRules={`minlength: ${MIN_PASSWORD_LENGTH};`}
+          maxLength={MAX_PASSWORD_LENGTH}
+          passwordRules={`minlength: ${MIN_PASSWORD_LENGTH}; maxlength: ${MAX_PASSWORD_LENGTH};`}
           returnKeyType="done"
           onSubmitEditing={handleSave}
           editable={!submitting}

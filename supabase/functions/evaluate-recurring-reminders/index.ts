@@ -8,6 +8,10 @@ import {
   getRequesterFromToken,
   sendEmployeeReminder,
 } from '../_shared/reminders.ts';
+import {
+  selectLatestOrderForReminder,
+  type ReminderLocationGroup,
+} from '../_shared/recurringReminderScope.ts';
 
 const WEEKDAY_MAP: Record<string, number> = {
   Sun: 0,
@@ -211,7 +215,24 @@ Deno.serve(async (req) => {
   });
 
   const targetEmployeeIds = employees.map((employee: any) => employee.id);
-  const latestOrderByEmployeeId = new Map<string, any>();
+  const ordersByEmployeeId = new Map<string, any[]>();
+  const locationGroupById = new Map<string, ReminderLocationGroup>();
+
+  if (enabledRules.some((rule: any) => rule.rule_kind === 'checklist_order_day')) {
+    const { data: locations, error: locationsError } = await supabaseAdmin
+      .from('locations')
+      .select('id, short_code');
+    if (locationsError) {
+      return jsonResponse({ error: locationsError.message || 'Unable to load reminder locations' }, 500);
+    }
+    (locations ?? []).forEach((location: any) => {
+      const prefix = typeof location.short_code === 'string'
+        ? location.short_code.trim().toLowerCase().charAt(0)
+        : '';
+      if (prefix === 's') locationGroupById.set(location.id, 'sushi');
+      if (prefix === 'p') locationGroupById.set(location.id, 'poki');
+    });
+  }
 
   if (targetEmployeeIds.length > 0) {
     const { data: recentOrders } = await supabaseAdmin
@@ -222,9 +243,9 @@ Deno.serve(async (req) => {
       .order('created_at', { ascending: false });
 
     (recentOrders ?? []).forEach((order: any) => {
-      if (!latestOrderByEmployeeId.has(order.user_id)) {
-        latestOrderByEmployeeId.set(order.user_id, order);
-      }
+      const employeeOrders = ordersByEmployeeId.get(order.user_id) ?? [];
+      employeeOrders.push(order);
+      ordersByEmployeeId.set(order.user_id, employeeOrders);
     });
   }
 
@@ -284,7 +305,11 @@ Deno.serve(async (req) => {
     for (const employee of candidateEmployees) {
       if (!employee) continue;
 
-      const latestOrder = latestOrderByEmployeeId.get(employee.id) ?? null;
+      const latestOrder = selectLatestOrderForReminder(
+        ordersByEmployeeId.get(employee.id) ?? [],
+        rule,
+        locationGroupById,
+      );
       const lastOrderDateKey = toDateKeyInTimezone(latestOrder?.created_at, timezone);
 
       let conditionMet = false;

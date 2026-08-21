@@ -81,13 +81,14 @@ docker exec -i <container-name> psql -U postgres -d postgres \
   -v ON_ERROR_STOP=1 < scripts/local-db/onboarding_auth_fixture.sql
 ```
 
-It prints twelve `ok:` notices covering: the `ordering_simple` employee
+It prints fourteen `ok:` notices covering: the `ordering_simple` employee
 default flip in `get_effective_modules` (and that explicit `user_modules`
 rows still override it), `set_my_login_credential` normalization + bcrypt
 hashing + format validation + duplicate-name refusal,
 `verify_login_credential` success/invalid/rate-limit (6 failures per name in
 10 minutes) and suspended-account refusal, `reset_login_credential`
-manager gating + PIN rotation + suspended-target refusal, the seeded
+manager gating + PIN rotation + suspended-target refusal, atomic onboarding
+credential creation, invite-safe account deletion, the seeded
 `employee_invite_module_defaults` app_config row and its manager-gated
 validated writes, and `set_user_default_location` gating with `null`
 meaning "both". It ends with

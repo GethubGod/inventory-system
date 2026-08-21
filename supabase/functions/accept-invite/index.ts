@@ -14,11 +14,15 @@ import {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
+const anonKey = Deno.env.get("SUPABASE_ANON_KEY")?.trim() ?? "";
+const publishableKeys = [
+  Deno.env.get("SUPABASE_PUBLISHABLE_KEY"),
+  ...(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") ?? "").split(","),
+].map((key) => key?.trim()).filter((key): key is string => Boolean(key));
 
-if (!supabaseUrl || !serviceRoleKey || !anonKey) {
+if (!supabaseUrl || !serviceRoleKey || (!anonKey && publishableKeys.length === 0)) {
   throw new Error(
-    "Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or SUPABASE_ANON_KEY",
+    "Missing SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, or a public API key",
   );
 }
 
@@ -31,7 +35,7 @@ interface InviteRow {
   invited_name: string;
   role: string;
   module_preset: unknown;
-  created_by: string;
+  created_by: string | null;
   expires_at: string;
   used_at: string | null;
   revoked_at: string | null;
@@ -64,7 +68,13 @@ function hasAnonKey(req: Request): boolean {
   const apiKey = req.headers.get("apikey")?.trim();
   const authorization = req.headers.get("Authorization")?.trim();
 
-  return apiKey === anonKey || authorization === `Bearer ${anonKey}`;
+  if (apiKey && (apiKey === anonKey || publishableKeys.includes(apiKey))) {
+    return true;
+  }
+
+  // Legacy anon JWTs may be bearer tokens. Publishable keys are not JWTs and
+  // are deliberately accepted only through the apikey header.
+  return Boolean(anonKey && authorization === `Bearer ${anonKey}`);
 }
 
 function inviteStateFromRow(invite: InviteRow | null): InviteState | null {
@@ -150,6 +160,27 @@ async function applyInviteModulePreset(
     return false;
   }
 
+  return true;
+}
+
+async function installOnboardingCredential(input: {
+  userId: string;
+  kind: "pin" | "password";
+  secret: string;
+}): Promise<boolean> {
+  const { error } = await supabaseAdmin.rpc(
+    "set_onboarding_login_credential",
+    {
+      p_user_id: input.userId,
+      p_kind: input.kind,
+      p_secret: input.secret,
+    },
+  );
+
+  if (error) {
+    console.error("Unable to install onboarding credential", error);
+    return false;
+  }
   return true;
 }
 
@@ -362,6 +393,22 @@ Deno.serve(async (req) => {
     return jsonResponse(
       req,
       { error: "Unable to prepare invited account" },
+      500,
+    );
+  }
+
+  if (
+    onboarding &&
+    !await installOnboardingCredential({
+      userId: invitedUserId,
+      kind: parsed.value.credentialKind!,
+      secret: parsed.value.credentialSecret!,
+    })
+  ) {
+    await removeUnclaimedUser(invitedUserId);
+    return jsonResponse(
+      req,
+      { error: "Unable to save sign-in details for this account" },
       500,
     );
   }

@@ -90,6 +90,8 @@ async function prepareSelfDelete(userId: string) {
   await nullUserReference('area_items', 'last_updated_by', userId);
   await nullUserReference('inventory_items', 'created_by', userId);
   await nullUserReference('org_settings', 'updated_by', userId);
+  await nullUserReference('invites', 'created_by', userId);
+  await nullUserReference('invites', 'used_by', userId);
 }
 
 Deno.serve(async (req) => {

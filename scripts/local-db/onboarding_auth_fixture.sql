@@ -2,7 +2,7 @@
 -- Run only after scripts/local-db/verify-migrations.sh --keep:
 --   docker exec -i <container> psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
 --     < scripts/local-db/onboarding_auth_fixture.sql
--- Expected output: nine "ok: ..." notices followed by
+-- Expected output: fourteen "ok: ..." notices followed by
 --   "PASS: onboarding auth fixture assertions all held" and a ROLLBACK.
 -- Everything runs in one transaction and rolls back — the container stays clean.
 
@@ -14,17 +14,23 @@ begin;
 insert into auth.users (id, email) values
   ('aaaaaaaa-0000-4000-8000-000000000001', 'onboarding-employee@example.test'),
   ('aaaaaaaa-0000-4000-8000-000000000002', 'onboarding-manager@example.test'),
-  ('aaaaaaaa-0000-4000-8000-000000000003', 'onboarding-dupe@example.test');
+  ('aaaaaaaa-0000-4000-8000-000000000003', 'onboarding-dupe@example.test'),
+  ('aaaaaaaa-0000-4000-8000-000000000004', 'onboarding-atomic@example.test'),
+  ('aaaaaaaa-0000-4000-8000-000000000005', 'onboarding-invite-creator@example.test');
 
 insert into public.users (id, email, name, role) values
   ('aaaaaaaa-0000-4000-8000-000000000001', 'onboarding-employee@example.test', 'Nate Fixture', 'employee'),
   ('aaaaaaaa-0000-4000-8000-000000000002', 'onboarding-manager@example.test', 'Manager Fixture', 'manager'),
-  ('aaaaaaaa-0000-4000-8000-000000000003', 'onboarding-dupe@example.test', '  NATE   fixture ', 'employee');
+  ('aaaaaaaa-0000-4000-8000-000000000003', 'onboarding-dupe@example.test', '  NATE   fixture ', 'employee'),
+  ('aaaaaaaa-0000-4000-8000-000000000004', 'onboarding-atomic@example.test', 'Atomic Invitee', 'employee'),
+  ('aaaaaaaa-0000-4000-8000-000000000005', 'onboarding-invite-creator@example.test', 'Invite Creator', 'manager');
 
 insert into public.profiles (id, email, full_name, role, profile_completed) values
   ('aaaaaaaa-0000-4000-8000-000000000001', 'onboarding-employee@example.test', 'Nate Fixture', 'employee', true),
   ('aaaaaaaa-0000-4000-8000-000000000002', 'onboarding-manager@example.test', 'Manager Fixture', 'manager', true),
-  ('aaaaaaaa-0000-4000-8000-000000000003', 'onboarding-dupe@example.test', 'Nate Fixture', 'employee', true)
+  ('aaaaaaaa-0000-4000-8000-000000000003', 'onboarding-dupe@example.test', 'Nate Fixture', 'employee', true),
+  ('aaaaaaaa-0000-4000-8000-000000000004', 'onboarding-atomic@example.test', 'Atomic Invitee', 'employee', true),
+  ('aaaaaaaa-0000-4000-8000-000000000005', 'onboarding-invite-creator@example.test', 'Invite Creator', 'manager', true)
 on conflict (id) do update
   set role = excluded.role, profile_completed = excluded.profile_completed;
 
@@ -326,6 +332,64 @@ begin
     if sqlerrm like 'FAIL:%' then raise; end if;
   end;
   raise notice 'ok: set_user_default_location manager gate, both->null, unknown location';
+end;
+$$;
+
+-- ── 7. onboarding credential is installed before invite consumption ────────
+select set_config('request.jwt.claim.sub', '', false);
+select public.set_onboarding_login_credential(
+  'aaaaaaaa-0000-4000-8000-000000000004',
+  'password',
+  'durable-password'
+);
+
+do $$
+declare
+  r record;
+begin
+  select * into r from public.login_identities
+  where user_id = 'aaaaaaaa-0000-4000-8000-000000000004';
+  if r.login_name <> 'atomic invitee' or r.credential_kind <> 'password' then
+    raise exception 'FAIL: onboarding credential metadata is wrong: %', r;
+  end if;
+  if r.secret_hash = 'durable-password'
+     or r.secret_hash <> extensions.crypt('durable-password', r.secret_hash) then
+    raise exception 'FAIL: onboarding password was not hashed correctly';
+  end if;
+  raise notice 'ok: service-only onboarding credential is durable and bcrypt-hashed';
+end;
+$$;
+
+-- ── 8. invite audit rows do not block account deletion ─────────────────────
+insert into public.invites (
+  token, invited_name, role, expires_at, created_by, used_at, used_by
+) values (
+  'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+  'Atomic Invitee',
+  'employee',
+  now() + interval '1 day',
+  'aaaaaaaa-0000-4000-8000-000000000005',
+  now(),
+  'aaaaaaaa-0000-4000-8000-000000000004'
+);
+
+delete from auth.users
+where id in (
+  'aaaaaaaa-0000-4000-8000-000000000004',
+  'aaaaaaaa-0000-4000-8000-000000000005'
+);
+
+do $$
+declare
+  r record;
+begin
+  select used_at, used_by, created_by into r
+  from public.invites
+  where token = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  if r.used_at is null or r.used_by is not null or r.created_by is not null then
+    raise exception 'FAIL: invite audit row did not detach deleted users: %', r;
+  end if;
+  raise notice 'ok: account deletion preserves consumed state and clears invite user references';
 end;
 $$;
 

@@ -60,17 +60,35 @@ Deno.test("parseCreateInviteInput validates locationGroup", () => {
   }
 });
 
-Deno.test("parseAcceptInviteInput supports onboarding mode without credentials", () => {
+Deno.test("parseAcceptInviteInput validates the onboarding credential", () => {
   const token = "A".repeat(INVITE_TOKEN_LENGTH);
-  const onboarding = parseAcceptInviteInput({ token, mode: "onboarding" });
+  const onboarding = parseAcceptInviteInput({
+    token,
+    mode: "onboarding",
+    credentialKind: "pin",
+    credentialSecret: "1234",
+  });
   if (
     !onboarding.ok ||
     onboarding.value.mode !== "onboarding" ||
     onboarding.value.email !== null ||
-    onboarding.value.password !== null
+    onboarding.value.password !== null ||
+    onboarding.value.credentialKind !== "pin" ||
+    onboarding.value.credentialSecret !== "1234"
   ) {
-    throw new Error("Expected onboarding mode without credentials");
+    throw new Error("Expected onboarding mode with an app credential");
   }
+
+  const missing = parseAcceptInviteInput({ token, mode: "onboarding" });
+  if (missing.ok) throw new Error("Expected a missing onboarding credential to be rejected");
+
+  const weakPassword = parseAcceptInviteInput({
+    token,
+    mode: "onboarding",
+    credentialKind: "password",
+    credentialSecret: "short",
+  });
+  if (weakPassword.ok) throw new Error("Expected a weak onboarding password to be rejected");
 
   const bogus = parseAcceptInviteInput({ token, mode: "magic" });
   if (bogus.ok) throw new Error("Expected an unknown mode to be rejected");
