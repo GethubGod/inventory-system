@@ -16,6 +16,15 @@
   --color-hairline: rgba(0, 0, 0, 0.06);
   --color-dim: rgba(20, 18, 14, 0.45);
 
+  /* Tip Dashboard (manager) additions — from the approved mockup's v2 theme. */
+  --color-line: rgba(0, 0, 0, 0.08);
+  --color-flagtint: #fdecea;
+  --color-poki: #2563eb;
+  --color-okgreen: #1f7a4d;
+  --color-warnamber: #b7791f;
+  --color-cashcol: rgba(216, 144, 32, 0.06);
+  --color-cardcol: rgba(37, 99, 235, 0.055);
+
   --radius-card: 20px;
   --radius-well: 14px;
   --radius-sheet: 28px;

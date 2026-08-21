@@ -14,6 +14,7 @@ import {
   businessDateFor,
   clientIdentifier,
   defaultMealPeriod,
+  fetchScheduledIds,
   randomToken,
   sha256Hex,
   validateTipSession,
@@ -94,7 +95,17 @@ async function mintSession(locationId: string) {
 }
 
 async function sessionPayload(locationId: string, locationName: string, closerId: string | null) {
-  const [roster, today] = await Promise.all([fetchRoster(locationId), fetchToday(locationId)]);
+  const today = await fetchToday(locationId);
+  // Scheduled = has a manager-set schedule row for today's default meal; the
+  // entry form pre-selects these people and floats them to the top.
+  const [bareRoster, scheduledIds] = await Promise.all([
+    fetchRoster(locationId),
+    fetchScheduledIds(supabaseAdmin, locationId, today.businessDate, today.defaultMeal),
+  ]);
+  const roster = bareRoster.map((row: { id: string; name: string }) => ({
+    ...row,
+    scheduled: scheduledIds.has(row.id),
+  }));
   const closer = closerId ? roster.find((r: { id: string }) => r.id === closerId) ?? null : null;
   return {
     location: { id: locationId, name: locationName },
