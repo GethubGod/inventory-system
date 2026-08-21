@@ -89,6 +89,31 @@ export async function fetchModulesForUser(
   return toModuleMap(data, role);
 }
 
+/**
+ * Org-wide "new employee defaults" (app_config key
+ * employee_invite_module_defaults) used to seed employee invite presets.
+ * Missing row or malformed entries just mean "no overrides".
+ */
+export async function fetchEmployeeInviteDefaults(): Promise<Partial<ModuleMap>> {
+  const { data, error } = await getSupabase()
+    .from("app_config")
+    .select("value")
+    .eq("key", "employee_invite_module_defaults")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+
+  const overrides: Partial<ModuleMap> = {};
+  const value: unknown = data?.value;
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      if (isModuleKey(key) && typeof entry === "boolean") {
+        overrides[key] = entry;
+      }
+    }
+  }
+  return overrides;
+}
+
 /** Upsert one per-user module override, recording who changed it. */
 export async function setUserModule(
   userId: string,

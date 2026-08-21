@@ -6,16 +6,19 @@
 // role's defaults and are written as modulePreset ({module_key: boolean}),
 // applied to user_modules when the invite is accepted (Phase 3).
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   createInvite,
   DEFAULT_EXPIRY_HOURS,
   EXPIRY_OPTIONS,
+  LOCATION_GROUP_LABELS,
   type CreatedInvite,
+  type InviteLocationGroup,
   type InviteRole,
 } from "@/lib/dashboard/invites";
 import {
   buildModulePreset,
+  fetchEmployeeInviteDefaults,
   getRoleDefaultModules,
   moduleKeysForRole,
   MODULE_LABELS,
@@ -33,6 +36,9 @@ export default function InviteCreateModal({
 }) {
   const [invitedName, setInvitedName] = useState("");
   const [role, setRole] = useState<InviteRole>("employee");
+  const [locationGroup, setLocationGroup] =
+    useState<InviteLocationGroup>("sushi");
+  const [groupTouched, setGroupTouched] = useState(false);
   const [expiresInHours, setExpiresInHours] = useState(DEFAULT_EXPIRY_HOURS);
   const [preset, setPreset] = useState<ModuleMap>(() =>
     getRoleDefaultModules("employee"),
@@ -42,6 +48,27 @@ export default function InviteCreateModal({
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedInvite | null>(null);
 
+  // Seed employee presets from the org-wide "new employee defaults" row.
+  useEffect(() => {
+    let cancelled = false;
+    fetchEmployeeInviteDefaults()
+      .then((overrides) => {
+        if (cancelled) return;
+        setPreset((prev) => {
+          // Never clobber a preset the manager already customized.
+          return { ...prev, ...overrides };
+        });
+      })
+      .catch(() => {
+        // Role defaults stay in place.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Mount-only: applies before any manual preset interaction.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const canSubmit = invitedName.trim().length > 0 && !busy;
 
   function handleRoleChange(nextRole: InviteRole) {
@@ -49,6 +76,10 @@ export default function InviteCreateModal({
     // Until the manager customizes the preset, keep it at the role defaults.
     if (!presetTouched) {
       setPreset(getRoleDefaultModules(nextRole));
+    }
+    // Managers usually cover both stores; keep an untouched works-at in sync.
+    if (!groupTouched) {
+      setLocationGroup(nextRole === "manager" ? "both" : "sushi");
     }
   }
 
@@ -67,6 +98,7 @@ export default function InviteCreateModal({
         role,
         expiresInHours,
         modulePreset: buildModulePreset(role, preset),
+        locationGroup,
       });
       setCreated(invite);
       onCreated();
@@ -148,6 +180,29 @@ export default function InviteCreateModal({
                     }`}
                   >
                     {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="section-label">Works at</span>
+              <div className="flex gap-2">
+                {(["sushi", "poki", "both"] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => {
+                      setGroupTouched(true);
+                      setLocationGroup(option);
+                    }}
+                    className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                      locationGroup === option
+                        ? "bg-accent text-white"
+                        : "bg-well text-ink2"
+                    }`}
+                  >
+                    {LOCATION_GROUP_LABELS[option]}
                   </button>
                 ))}
               </div>

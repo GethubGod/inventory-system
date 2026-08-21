@@ -7,6 +7,14 @@ import { getSupabase } from "@/lib/supabase";
 
 export type InviteRole = "employee" | "manager";
 
+export type InviteLocationGroup = "sushi" | "poki" | "both";
+
+export const LOCATION_GROUP_LABELS: Record<InviteLocationGroup, string> = {
+  sushi: "Sushi",
+  poki: "Poki & Pho",
+  both: "Both",
+};
+
 export type InviteStatus = "pending" | "used" | "expired" | "revoked";
 
 /** Row shape of the `invites` table (see the 2b migration in the contract). */
@@ -87,6 +95,8 @@ export async function createInvite(input: {
   expiresInHours: number;
   /** Phase 3: {module_key: boolean} applied to user_modules on accept. */
   modulePreset?: Record<string, boolean>;
+  /** Works-at group; accept-invite resolves it to users.default_location_id. */
+  locationGroup?: InviteLocationGroup;
 }): Promise<CreatedInvite> {
   const { data, error } = await getSupabase().functions.invoke("create-invite", {
     body: {
@@ -94,6 +104,7 @@ export async function createInvite(input: {
       role: input.role,
       expiresInHours: input.expiresInHours,
       ...(input.modulePreset ? { modulePreset: input.modulePreset } : {}),
+      ...(input.locationGroup ? { locationGroup: input.locationGroup } : {}),
     },
   });
   if (error) throw new Error(await describeFunctionsError(error));
