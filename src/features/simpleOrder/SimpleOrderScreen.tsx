@@ -768,13 +768,21 @@ export function SimpleOrderScreen() {
               <Ionicons name="chevron-down" size={ds.icon(13)} color={tipsTheme.ink2} />
             </TouchableOpacity>
           </View>
-          <LocationSwitcherDropdown
-            isOpen={locationDropdownOpen}
-            locations={locations}
-            selectedLocationId={location?.id ?? null}
-            onSelect={handleSelectLocation}
-            onRequestClose={() => setLocationDropdownOpen(false)}
-          />
+          {/* Absolute wrapper: the dropdown always occupies layout space (it
+              animates opacity/scale), so anchoring it like Browse does keeps
+              the header tight — no dead band above the list. */}
+          <View
+            pointerEvents="box-none"
+            style={{ position: 'absolute', top: 44, left: 0, right: 0, zIndex: 30 }}
+          >
+            <LocationSwitcherDropdown
+              isOpen={locationDropdownOpen}
+              locations={locations}
+              selectedLocationId={location?.id ?? null}
+              onSelect={handleSelectLocation}
+              onRequestClose={() => setLocationDropdownOpen(false)}
+            />
+          </View>
         </View>
 
         {content}
