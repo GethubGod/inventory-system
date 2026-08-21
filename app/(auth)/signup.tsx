@@ -19,6 +19,7 @@ import { useAuthScreenGuard } from '@/hooks';
 import { validatePassword } from '@/lib';
 import { fetchInvitePreview, type InvitePreview } from '@/services/invites';
 import { colors } from '@/constants';
+import { LegalFooter } from '@/features/auth/components/LegalFooter';
 
 const ACCESS_CODE_REGEX = /^\d{4}$/;
 const AUTH_SCREEN_BACKGROUND = '#000000';
@@ -490,6 +491,7 @@ export default function SignUpScreen() {
             </View>
           </View>
         </ScrollView>
+        <LegalFooter />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

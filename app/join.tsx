@@ -1,9 +1,10 @@
 // Deep-link entry for invite links: babytunasystems://join?token=<token>
 // (see web /join/[token]). Thin route — normalizes the token and forwards
-// into the signup screen's invite mode. Already-authenticated users are
-// bounced home by the signup screen's auth guard.
+// into the invited onboarding flow (Hello -> Secure your app -> Ready).
+// Already-authenticated users are bounced home by that screen's auth guard.
 
 import { Redirect, useLocalSearchParams } from 'expo-router';
+import type { Href } from 'expo-router';
 import { parseJoinToken } from '@/services/inviteLinks';
 
 export default function JoinDeepLink() {
@@ -16,13 +17,13 @@ export default function JoinDeepLink() {
     : trimmed;
 
   if (!token) {
-    // No token — fall back to the normal signup (access-code) flow.
-    return <Redirect href="/(auth)/signup" />;
+    // No token — land on the welcome screen (invite link or sign in).
+    return <Redirect href={'/(auth)/welcome' as Href} />;
   }
 
   return (
     <Redirect
-      href={{ pathname: '/(auth)/signup', params: { inviteToken: token } }}
+      href={{ pathname: '/(auth)/invite-hello', params: { token } } as unknown as Href}
     />
   );
 }

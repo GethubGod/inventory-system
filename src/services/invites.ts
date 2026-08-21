@@ -18,9 +18,12 @@ export {
   type InviteFailureReason,
 } from '@/services/inviteLinks';
 
+export type InviteLocationGroup = 'sushi' | 'poki' | 'both';
+
 export interface InvitePreview {
   invitedName: string | null;
   role: UserRole | null;
+  locationGroup: InviteLocationGroup;
 }
 
 export interface AcceptInviteInput {
@@ -28,6 +31,28 @@ export interface AcceptInviteInput {
   email: string;
   password: string;
   name: string;
+}
+
+export interface CreateInviteInput {
+  invitedName: string;
+  role: 'employee' | 'manager';
+  expiresInHours: number;
+  modulePreset: Record<string, boolean>;
+  locationGroup: InviteLocationGroup;
+}
+
+export interface CreatedInvite {
+  inviteId: string;
+  token: string;
+  joinUrl: string;
+  locationGroup: InviteLocationGroup;
+}
+
+export interface OnboardingAcceptResult {
+  role: UserRole;
+  locationGroup: InviteLocationGroup;
+  /** One-shot magiclink token hash; exchange via auth.verifyOtp for a session. */
+  tokenHash: string;
 }
 
 interface FunctionErrorDetails {
@@ -87,6 +112,10 @@ function readName(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function readLocationGroup(value: unknown): InviteLocationGroup {
+  return value === 'sushi' || value === 'poki' || value === 'both' ? value : 'both';
+}
+
 class InviteError extends Error {
   reason: InviteFailureReason;
 
@@ -126,6 +155,7 @@ export async function fetchInvitePreview(token: string): Promise<InvitePreview> 
         invitedName?: unknown;
         invited_name?: unknown;
         role?: unknown;
+        locationGroup?: unknown;
       }
     | null;
 
@@ -139,6 +169,7 @@ export async function fetchInvitePreview(token: string): Promise<InvitePreview> 
   return {
     invitedName: readName(payload.invitedName) ?? readName(payload.invited_name),
     role: readRole(payload.role),
+    locationGroup: readLocationGroup(payload.locationGroup),
   };
 }
 
@@ -184,4 +215,105 @@ export async function acceptInvite(input: AcceptInviteInput): Promise<{ role: Us
   }
 
   return { role };
+}
+
+/**
+ * Onboarding accept ({token, mode: 'onboarding'}): the edge function mints the
+ * account without email/password and returns a one-shot session token hash.
+ * The caller exchanges it with supabase.auth.verifyOtp, then stores the chosen
+ * credential via setMyCredential.
+ */
+export async function acceptInviteOnboarding(token: string): Promise<OnboardingAcceptResult> {
+  const trimmed = token.trim();
+  if (!trimmed) throw new InviteError('invalid');
+
+  const { data, error } = await supabase.functions.invoke('accept-invite', {
+    body: { token: trimmed, mode: 'onboarding' },
+  });
+
+  if (error) {
+    const { message, reason: structuredReason } = await getFunctionErrorDetails(error);
+    if (message || structuredReason) {
+      const reason = structuredReason ?? classifyInviteFailure(message);
+      if (reason !== 'invalid' || structuredReason === 'invalid') {
+        throw new InviteError(reason, message ?? undefined);
+      }
+      throw new Error(message ?? describeInviteFailure(reason));
+    }
+    throw new Error('Unable to accept the invite. Check your connection and try again.');
+  }
+
+  const payload = data as
+    | { ok?: unknown; role?: unknown; locationGroup?: unknown; tokenHash?: unknown; error?: unknown }
+    | null;
+  if (payload?.ok !== true) {
+    const message = typeof payload?.error === 'string' ? payload.error : null;
+    throw new Error(message ?? 'Unable to accept the invite. Try again.');
+  }
+
+  const role = readRole(payload.role);
+  const tokenHash = typeof payload.tokenHash === 'string' && payload.tokenHash ? payload.tokenHash : null;
+  if (!role || !tokenHash) {
+    throw new Error('Unexpected response from accept-invite.');
+  }
+
+  return { role, locationGroup: readLocationGroup(payload.locationGroup), tokenHash };
+}
+
+/**
+ * Manager-side invite creation (mirrors web/src/lib/dashboard/invites.ts).
+ * Duplicate sign-in names come back as a 409 with a clear message.
+ */
+export async function createInvite(input: CreateInviteInput): Promise<CreatedInvite> {
+  const { data, error } = await supabase.functions.invoke('create-invite', {
+    body: {
+      invitedName: input.invitedName.trim(),
+      role: input.role,
+      expiresInHours: input.expiresInHours,
+      modulePreset: input.modulePreset,
+      locationGroup: input.locationGroup,
+    },
+  });
+
+  if (error) {
+    const { message } = await getFunctionErrorDetails(error);
+    throw new Error(message ?? 'Unable to create the invite. Try again.');
+  }
+
+  const payload = data as
+    | { inviteId?: unknown; token?: unknown; joinUrl?: unknown; locationGroup?: unknown; error?: unknown }
+    | null;
+  if (
+    typeof payload?.inviteId !== 'string' ||
+    typeof payload?.token !== 'string' ||
+    typeof payload?.joinUrl !== 'string'
+  ) {
+    const message = typeof payload?.error === 'string' ? payload.error : null;
+    throw new Error(message ?? 'Unexpected response from create-invite.');
+  }
+
+  return {
+    inviteId: payload.inviteId,
+    token: payload.token,
+    joinUrl: payload.joinUrl,
+    locationGroup: readLocationGroup(payload.locationGroup),
+  };
+}
+
+/** Manager-side revoke (mirrors the dashboard's revokeInvite). */
+export async function revokeInvite(inviteId: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('revoke-invite', {
+    body: { inviteId },
+  });
+
+  if (error) {
+    const { message } = await getFunctionErrorDetails(error);
+    throw new Error(message ?? 'Unable to revoke the invite.');
+  }
+
+  const payload = data as { ok?: unknown; error?: unknown } | null;
+  if (payload?.ok !== true) {
+    const message = typeof payload?.error === 'string' ? payload.error : null;
+    throw new Error(message ?? 'Unable to revoke the invite.');
+  }
 }
