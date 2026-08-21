@@ -6,7 +6,6 @@
 // time, missing scheduled shifts in red on top, and on-time KPIs.
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { TIPS_TIMEZONE } from "@/lib/tips/businessDate";
 import {
@@ -76,7 +75,6 @@ function timingDot(timing: EntryTiming): string {
 
 function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInfo }) {
   const toast = useToast();
-  const router = useRouter();
   const [confirming, setConfirming] = useState<"rotate" | "signout" | null>(null);
   const [working, setWorking] = useState(false);
   const [freshToken, setFreshToken] = useState<string | null>(null);
@@ -124,7 +122,10 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
 
   function openQrPage(withToken: string | null) {
     const base = `/manager/qr?location=${location.id}&name=${encodeURIComponent(location.name)}`;
-    router.push(withToken ? `${base}#t=${encodeURIComponent(withToken)}` : base);
+    // Full-page load, not router.push: the QR page reads the #t= fragment on
+    // its very first render, before a client-side navigation has updated
+    // window.location.
+    window.location.assign(withToken ? `${base}#t=${encodeURIComponent(withToken)}` : base);
   }
 
   return (
