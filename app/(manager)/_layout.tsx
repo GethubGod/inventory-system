@@ -235,6 +235,12 @@ export default function ManagerLayout() {
       <Tabs.Screen name="manager-settings/access-codes" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="manager-settings/quick-order-config" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="manager-settings/supplier-contacts" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team-invite" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team-invite-link" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team-member" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team-preview" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team-defaults" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders-recurring" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders-settings" options={{ href: null, tabBarStyle: { display: "none" } }} />

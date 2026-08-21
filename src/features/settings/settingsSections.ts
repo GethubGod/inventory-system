@@ -190,6 +190,14 @@ export function buildSettingsGroups({
       key: 'management',
       items: [
         makeItem('management', {
+          key: 'team',
+          icon: 'person-add-outline',
+          title: 'Team',
+          subtitle: 'Invites, features, and sign-in resets',
+          onPress: () =>
+            onNavigate(routeFor(view, '/(manager)/manager-settings/team')),
+        }),
+        makeItem('management', {
           key: 'access-codes',
           icon: 'key-outline',
           title: 'Access Codes',
