@@ -24,6 +24,11 @@ test.describe("scan landing", () => {
       );
 
     await expect(page.getByText("Scan to start")).toBeVisible();
+    await expect(page.locator("[data-onboarding-icon]")).toHaveCount(3);
+    await expect(
+      page.locator(".onboarding-kinetic-tile").first(),
+    ).toHaveCSS("animation-iteration-count", "infinite");
+    await expect(page.locator(".onboarding-kinetic-eq > span")).toHaveCount(5);
     await page.getByRole("button", { name: "Next", exact: true }).click();
     await expect.poll(currentSlide).toBe(1);
     await expect(page.getByText("Speak it in")).toBeVisible();

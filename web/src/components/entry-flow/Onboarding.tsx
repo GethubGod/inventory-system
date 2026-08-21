@@ -36,7 +36,14 @@ const SLIDES: Slide[] = [
   },
 ];
 
-function SlideIcon({ icon, size = 44 }: { icon: Slide["icon"]; size?: number }) {
+function SlideIcon({
+  icon,
+  variant,
+}: {
+  icon: Slide["icon"];
+  variant: OnboardingVariant;
+}) {
+  const size = variant === "story" ? 52 : 44;
   const common = {
     width: size,
     height: size,
@@ -46,29 +53,55 @@ function SlideIcon({ icon, size = 44 }: { icon: Slide["icon"]; size?: number }) 
     strokeWidth: 1.8,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
-    "aria-hidden": true,
+    className: "onboarding-kinetic-graphic",
   };
-  if (icon === "scan") {
+
+  const graphic = (() => {
+    if (icon === "scan") {
+      return (
+        <svg {...common}>
+          <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
+          <rect x="8" y="8" width="8" height="8" rx="1.5" />
+          <path className="onboarding-kinetic-scan-beam" d="M5 12h14" />
+        </svg>
+      );
+    }
+
+    if (icon === "mic") {
+      return (
+        <span className="onboarding-kinetic-eq">
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+        </span>
+      );
+    }
+
     return (
-      <svg {...common}>
-        <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
-        <rect x="8" y="8" width="8" height="8" rx="1.5" />
-      </svg>
+      <>
+        <span className="onboarding-kinetic-glint" />
+        <svg {...common} className="onboarding-kinetic-graphic onboarding-kinetic-check">
+          <path d="M20 6L9 17l-5-5" />
+        </svg>
+      </>
     );
-  }
-  if (icon === "mic") {
-    return (
-      <svg {...common}>
-        <rect x="9" y="2" width="6" height="12" rx="3" />
-        <path d="M5 10v1a7 7 0 0 0 14 0v-1" />
-        <path d="M12 18v4" />
-      </svg>
-    );
-  }
+  })();
+
+  const sizeClasses = variant === "story" ? "h-28 w-28" : "h-24 w-24";
+  const colorClass = variant === "story" ? "text-white" : "text-accent";
+
   return (
-    <svg {...common}>
-      <path d="M20 6L9 17l-5-5" />
-    </svg>
+    <span
+      aria-hidden="true"
+      data-onboarding-icon={icon}
+      data-onboarding-variant={variant}
+      className={`onboarding-kinetic-stage flex items-center justify-center ${sizeClasses} ${colorClass}`}
+    >
+      <span className="onboarding-kinetic-tile" />
+      {graphic}
+    </span>
   );
 }
 
@@ -142,9 +175,7 @@ function CardsOnboarding({ onDone }: { onDone: () => void }) {
               className="flex w-full shrink-0 snap-center flex-col px-5"
             >
               <div className="flex flex-1 flex-col items-center justify-center rounded-card bg-card p-8 text-center">
-                <span className="flex h-24 w-24 items-center justify-center rounded-full bg-tint text-accent">
-                  <SlideIcon icon={slide.icon} />
-                </span>
+                <SlideIcon icon={slide.icon} variant="cards" />
                 <h2 className="mt-6 text-2xl font-bold text-ink">
                   {slide.title}
                 </h2>
@@ -219,9 +250,7 @@ function StoryOnboarding({ onDone }: { onDone: () => void }) {
           onClick={advance}
           className="flex flex-1 flex-col items-center justify-center text-center"
         >
-          <span className="flex h-28 w-28 items-center justify-center rounded-full bg-white/15">
-            <SlideIcon icon={slide.icon} size={52} />
-          </span>
+          <SlideIcon icon={slide.icon} variant="story" />
           <h2 className="mt-8 text-3xl font-bold">{slide.title}</h2>
           <p className="mt-4 max-w-xs text-white/85">{slide.body}</p>
         </button>
