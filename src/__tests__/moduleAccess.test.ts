@@ -85,12 +85,11 @@ describe('resolveEffectiveModules', () => {
   });
 });
 
-describe('employee tab list', () => {
-  it('includes the Order tab for default employees (ordering_simple on by default)', () => {
+describe('employee tab list (floating pill)', () => {
+  it('is checklist-first for default employees: Order / History / Settings', () => {
     expect(getVisibleEmployeeTabs(getRoleDefaultModules('employee'))).toEqual([
-      'index',
       'simple-order',
-      'cart',
+      'history',
       'settings',
     ]);
   });
@@ -98,39 +97,44 @@ describe('employee tab list', () => {
   it('drops the Order tab when ordering_simple is switched off', () => {
     const modules = { ...getRoleDefaultModules('employee'), ordering_simple: false };
     expect(getVisibleEmployeeTabs(modules)).toEqual([
-      'index',
-      'cart',
+      'history',
       'settings',
     ]);
   });
 
-  it('adds the Advanced ordering tab when ordering_advanced is on', () => {
+  it('adds Advanced and Cart when ordering_advanced is on', () => {
     const modules = {
       ...getRoleDefaultModules('employee'),
       ordering_simple: false,
       ordering_advanced: true,
     };
     expect(getVisibleEmployeeTabs(modules)).toEqual([
-      'index',
       'quick-order',
       'cart',
+      'history',
       'settings',
     ]);
   });
 
-  it('orders simple before advanced when both are on', () => {
+  it('widens the pill to Order / Advanced / Cart / History / Settings when both are on', () => {
     const modules = {
       ...getRoleDefaultModules('employee'),
       ordering_simple: true,
       ordering_advanced: true,
     };
     expect(getVisibleEmployeeTabs(modules)).toEqual([
-      'index',
       'simple-order',
       'quick-order',
       'cart',
+      'history',
       'settings',
     ]);
+  });
+
+  it('never shows Home or Cart to a checklist-only employee', () => {
+    const tabs = getVisibleEmployeeTabs(getRoleDefaultModules('employee'));
+    expect(tabs).not.toContain('index');
+    expect(tabs).not.toContain('cart');
   });
 
   it('never renders a tips tab yet, even when the module is enabled (Phase 4 ships the surface)', () => {

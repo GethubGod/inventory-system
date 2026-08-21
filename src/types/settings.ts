@@ -96,6 +96,9 @@ export const DEFAULT_INVENTORY_VIEW: InventoryView = 'list';
 
 export const DEFAULT_SIMPLE_ORDER_DENSITY: SimpleOrderDensity = 'comfort';
 
+// Checklist "Show categories" toggle: grouped under category labels vs one flat list.
+export const DEFAULT_SIMPLE_ORDER_SHOW_CATEGORIES = true;
+
 export const DEFAULT_STOCK_SETTINGS: StockSettings = {
   flagUnusualQuantities: true,
   resumeReminders: true,

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import type { ReorderItem } from './checklistSelection';
 
 /**
  * Lightweight self-only view over past_orders for the checklist screen's
@@ -13,6 +14,8 @@ export interface RecentOrder {
   createdAt: string;
   itemCount: number | null;
   messageText: string;
+  /** Lines that can be loaded back into today's checklist via Reorder. */
+  reorderItems: ReorderItem[];
 }
 
 type RecentOrderRow = {
@@ -56,6 +59,7 @@ export function mapRecentOrderRow(row: RecentOrderRow): RecentOrder {
     createdAt: row.created_at ?? '',
     itemCount: countItemsInPayload(row.payload),
     messageText: row.message_text ?? '',
+    reorderItems: buildReorderItemsFromPayload(row.payload),
   };
 }
 
@@ -81,6 +85,57 @@ export function formatRecentOrderDate(iso: string, now: Date = new Date()): stri
     return `${monthDay}, ${date.getFullYear()}`;
   }
   return monthDay;
+}
+
+/** "9:14 AM" for the history card's "N items · sent 9:14 AM" line. */
+export function formatSentTime(iso: string): string {
+  const date = new Date(iso);
+  if (!iso || Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+function isLikelyInventoryId(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+  );
+}
+
+/**
+ * Turns an archived past_orders payload back into reorderable checklist
+ * lines. Both fulfillment finalization and direct-send archives write
+ * regularItems with inventoryItemId/name/quantity/unitLabel; anything that
+ * doesn't parse cleanly is skipped rather than guessed.
+ */
+export function buildReorderItemsFromPayload(payload: unknown): ReorderItem[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const record = payload as Record<string, unknown>;
+  const rawItems = ([] as unknown[]).concat(
+    Array.isArray(record.regularItems) ? record.regularItems : [],
+    Array.isArray(record.remainingItems) ? record.remainingItems : [],
+  );
+
+  const items: ReorderItem[] = [];
+  for (const raw of rawItems) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+    const quantity = typeof entry.quantity === 'number' ? entry.quantity : Number(entry.quantity);
+    if (!name || !Number.isFinite(quantity) || quantity <= 0) continue;
+
+    items.push({
+      itemId: isLikelyInventoryId(entry.inventoryItemId) ? entry.inventoryItemId : null,
+      itemName: name,
+      unit: typeof entry.unitLabel === 'string' && entry.unitLabel.trim().length > 0
+        ? entry.unitLabel.trim()
+        : null,
+      quantity,
+    });
+  }
+  return items;
 }
 
 export async function listMyRecentOrders(limit = 20): Promise<RecentOrder[]> {
