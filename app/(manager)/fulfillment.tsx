@@ -625,6 +625,22 @@ function FulfillmentScreen() {
     return (orders as OrderWithDetails[]).filter((order) => order.status === 'submitted');
   }, [orders]);
 
+  // Employee order notes (checklist sends can attach one). Items aggregate
+  // across orders by supplier, so order-level notes surface as their own
+  // banner above the supplier cards instead of on any single line.
+  const pendingOrderNotes = useMemo(
+    () =>
+      pendingOrders
+        .filter((order) => typeof order.notes === 'string' && order.notes.trim().length > 0)
+        .map((order) => ({
+          orderId: order.id,
+          note: (order.notes as string).trim(),
+          employeeName: order.user?.name || 'Unknown',
+          locationShortCode: order.location?.short_code || null,
+        })),
+    [pendingOrders]
+  );
+
   const supplierOptionById = useMemo(() => {
     const map = new Map<string, SupplierOption>();
     supplierOptions.forEach((supplier) => {
@@ -2461,6 +2477,56 @@ function FulfillmentScreen() {
           }
         >
           <FulfillmentHeader onHistoryPress={() => router.push('/(manager)/fulfillment-history')} />
+
+          {pendingOrderNotes.length > 0 ? (
+            <GlassSurface
+              intensity="subtle"
+              style={{
+                borderRadius: glassRadii.surface,
+                paddingHorizontal: ds.spacing(16),
+                paddingVertical: ds.spacing(12),
+                marginTop: ds.spacing(8),
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: ds.spacing(6) }}>
+                <Ionicons
+                  name="document-text-outline"
+                  size={ds.icon(16)}
+                  color={glassColors.accent}
+                  style={{ marginRight: ds.spacing(6) }}
+                />
+                <Text
+                  style={{
+                    fontSize: ds.fontSize(12),
+                    fontWeight: '700',
+                    letterSpacing: 0.6,
+                    textTransform: 'uppercase',
+                    color: glassColors.textSecondary,
+                  }}
+                >
+                  Order notes
+                </Text>
+              </View>
+              {pendingOrderNotes.map((entry, index) => (
+                <View
+                  key={entry.orderId}
+                  style={{
+                    paddingVertical: ds.spacing(6),
+                    borderTopWidth: index === 0 ? 0 : glassHairlineWidth,
+                    borderTopColor: glassColors.divider,
+                  }}
+                >
+                  <Text style={{ fontSize: ds.fontSize(12), fontWeight: '700', color: glassColors.textPrimary }}>
+                    {entry.employeeName}
+                    {entry.locationShortCode ? ` · ${entry.locationShortCode}` : ''}
+                  </Text>
+                  <Text style={{ fontSize: ds.fontSize(13), color: glassColors.textPrimary, marginTop: 1 }}>
+                    {entry.note}
+                  </Text>
+                </View>
+              ))}
+            </GlassSurface>
+          ) : null}
 
           {/* Employee reminders banner removed by user request */}
           <View style={{ marginTop: ds.spacing(8) }}>

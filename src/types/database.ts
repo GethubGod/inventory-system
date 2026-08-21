@@ -273,6 +273,8 @@ export interface OrderItem {
   decided_by: string | null;
   decided_at: string | null;
   note: string | null;
+  /** Employee-chosen unit when it differs from the item's base/pack unit (display-only). */
+  unit_label?: string | null;
   status?: string | null;
   supplier_override_id?: string | null;
   was_suggested?: boolean;
