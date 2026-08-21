@@ -4,17 +4,25 @@ export const MAX_INVITE_EXPIRY_HOURS = 24 * 365;
 
 export type InviteRole = "employee" | "manager";
 export type InviteInvalidReason = "invalid" | "used" | "expired" | "revoked";
+export type InviteLocationGroup = "sushi" | "poki" | "both";
 
 export interface CreateInviteInput {
   invitedName: string;
   role: InviteRole;
-  modulePreset: Record<string, unknown>;
+  /** null = caller did not supply one; employee invites then seed from app_config. */
+  modulePreset: Record<string, unknown> | null;
   expiresInHours: number;
+  locationGroup: InviteLocationGroup;
 }
+
+export type AcceptInviteMode = "credentials" | "onboarding";
 
 export interface AcceptInviteInput {
   token: string;
   validateOnly: boolean;
+  /** onboarding = invited setup flow: no email/password; the server mints a
+   * synthetic account and returns a one-shot session token hash. */
+  mode: AcceptInviteMode;
   email: string | null;
   password: string | null;
   name: string | null;
@@ -23,6 +31,7 @@ export interface AcceptInviteInput {
 export interface InviteState {
   invitedName: string;
   role: InviteRole;
+  locationGroup: InviteLocationGroup;
   expiresAt: string;
   usedAt: string | null;
   revokedAt: string | null;
@@ -34,7 +43,12 @@ export type ParseResult<T> = { ok: true; value: T } | {
 };
 
 export type InviteValidity =
-  | { valid: true; invitedName: string; role: InviteRole }
+  | {
+    valid: true;
+    invitedName: string;
+    role: InviteRole;
+    locationGroup: InviteLocationGroup;
+  }
   | { valid: false; reason: InviteInvalidReason };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -49,6 +63,61 @@ function optionalTrimmedString(value: unknown): string | null {
 
 export function isInviteRole(value: unknown): value is InviteRole {
   return value === "employee" || value === "manager";
+}
+
+export function isInviteLocationGroup(
+  value: unknown,
+): value is InviteLocationGroup {
+  return value === "sushi" || value === "poki" || value === "both";
+}
+
+/**
+ * Resolves a works-at group to a location id using the same short_code
+ * convention the schema derives location groups from
+ * (20260205090000_stock_management.sql: s% -> sushi, p% -> poki).
+ * 'both' (and an unmatched group) resolve to null = all locations.
+ */
+export function resolveLocationGroupToLocationId(
+  group: InviteLocationGroup,
+  locations: Array<{ id: string; short_code: string | null }>,
+): string | null {
+  if (group === "both") return null;
+  const prefix = group === "sushi" ? "s" : "p";
+  const match = locations.find((location) =>
+    (location.short_code ?? "").trim().toLowerCase().startsWith(prefix)
+  );
+  return match?.id ?? null;
+}
+
+/**
+ * The module preset a new invite starts from: the caller's explicit preset
+ * when given, otherwise the org-wide employee defaults (employee invites
+ * only — manager invites fall through to role defaults, i.e. everything on).
+ */
+export function mergeInviteModulePreset(
+  role: InviteRole,
+  explicitPreset: Record<string, unknown> | null,
+  employeeDefaults: unknown,
+): Record<string, unknown> {
+  if (explicitPreset !== null) return explicitPreset;
+  if (role !== "employee") return {};
+  if (
+    employeeDefaults === null ||
+    typeof employeeDefaults !== "object" ||
+    Array.isArray(employeeDefaults)
+  ) {
+    return {};
+  }
+
+  const defaults: Record<string, unknown> = {};
+  for (
+    const [key, value] of Object.entries(
+      employeeDefaults as Record<string, unknown>,
+    )
+  ) {
+    if (typeof value === "boolean") defaults[key] = value;
+  }
+  return defaults;
 }
 
 /** Generates 24 random bytes, encoded as exactly 32 URL-safe Base64 characters (192 bits). */
@@ -87,11 +156,19 @@ export function parseCreateInviteInput(
     return { ok: false, error: "role must be employee or manager" };
   }
 
-  const modulePreset = payload.modulePreset === undefined
-    ? {}
+  const modulePreset = payload.modulePreset === undefined ||
+      payload.modulePreset === null
+    ? null
     : payload.modulePreset;
-  if (!isRecord(modulePreset)) {
+  if (modulePreset !== null && !isRecord(modulePreset)) {
     return { ok: false, error: "modulePreset must be an object" };
+  }
+
+  const locationGroup = payload.locationGroup === undefined
+    ? "both"
+    : payload.locationGroup;
+  if (!isInviteLocationGroup(locationGroup)) {
+    return { ok: false, error: "locationGroup must be sushi, poki, or both" };
   }
 
   const expiresInHours = payload.expiresInHours ?? DEFAULT_INVITE_EXPIRY_HOURS;
@@ -115,6 +192,7 @@ export function parseCreateInviteInput(
       role: payload.role,
       modulePreset,
       expiresInHours,
+      locationGroup,
     },
   };
 }
@@ -143,6 +221,25 @@ export function parseAcceptInviteInput(
       value: {
         token,
         validateOnly: true,
+        mode: "credentials",
+        email: null,
+        password: null,
+        name: null,
+      },
+    };
+  }
+
+  if (payload.mode !== undefined && payload.mode !== "credentials" && payload.mode !== "onboarding") {
+    return { ok: false, error: "mode must be credentials or onboarding" };
+  }
+
+  if (payload.mode === "onboarding") {
+    return {
+      ok: true,
+      value: {
+        token,
+        validateOnly: false,
+        mode: "onboarding",
         email: null,
         password: null,
         name: null,
@@ -167,7 +264,7 @@ export function parseAcceptInviteInput(
 
   return {
     ok: true,
-    value: { token, validateOnly: false, email, password, name },
+    value: { token, validateOnly: false, mode: "credentials", email, password, name },
   };
 }
 
@@ -185,5 +282,10 @@ export function inspectInviteState(
     return { valid: false, reason: "expired" };
   }
 
-  return { valid: true, invitedName: invite.invitedName, role: invite.role };
+  return {
+    valid: true,
+    invitedName: invite.invitedName,
+    role: invite.role,
+    locationGroup: invite.locationGroup,
+  };
 }

@@ -87,6 +87,28 @@ inside the window: Tuna `scale 1.5`, Salmon `set_qty 8`, and Nori `add 3`.
 The fixture also asserts that Tuna's stored generated quantity remains `4` and
 that the additive Nori line was never inserted into `order_checklist_items`.
 
+### Onboarding/auth fixture
+
+After a kept migration run, execute the onboarding/auth fixture to prove the
+login-credential and invite-defaults backend:
+
+```sh
+docker exec -i <container-name> psql -U postgres -d postgres \
+  -v ON_ERROR_STOP=1 < scripts/local-db/onboarding_auth_fixture.sql
+```
+
+It prints twelve `ok:` notices covering: the `ordering_simple` employee
+default flip in `get_effective_modules` (and that explicit `user_modules`
+rows still override it), `set_my_login_credential` normalization + bcrypt
+hashing + format validation + duplicate-name refusal,
+`verify_login_credential` success/invalid/rate-limit (6 failures per name in
+10 minutes) and suspended-account refusal, `reset_login_credential`
+manager gating + PIN rotation + suspended-target refusal, the seeded
+`employee_invite_module_defaults` app_config row and its manager-gated
+validated writes, and `set_user_default_location` gating with `null`
+meaning "both". It ends with
+`PASS: onboarding auth fixture assertions all held` and rolls back.
+
 ## What this does NOT prove
 
 - **No gotrue / real auth.** `auth` is a stub: only `auth.users(id, email,

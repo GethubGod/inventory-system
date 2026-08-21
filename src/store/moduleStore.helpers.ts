@@ -1,6 +1,6 @@
 // Phase 3 — pure module-access logic. Role defaults here MUST mirror the SQL
-// defaults in get_effective_modules (supabase/migrations/20260812110000_user_modules.sql):
-// employee → ordering_simple=false, ordering_advanced=false, stock_check=true,
+// defaults in get_effective_modules (supabase/migrations/20260820121000_ordering_simple_default_on.sql):
+// employee → ordering_simple=true, ordering_advanced=false, stock_check=true,
 // tips=false, fulfillment=false; manager → all true. They exist client-side only
 // as the fallback when the RPC cannot be reached, so nobody gets locked out of
 // the tab bar by a network failure.
@@ -39,7 +39,7 @@ export function getManageableModuleKeys(role: UserRole): ModuleKey[] {
 export function getRoleDefaultModules(role: UserRole | null): EffectiveModules {
   const isManager = role === 'manager';
   return {
-    ordering_simple: isManager,
+    ordering_simple: true,
     ordering_advanced: isManager,
     stock_check: true,
     tips: isManager,
