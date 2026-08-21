@@ -16,6 +16,7 @@
       "**/*"
     ],
     "ios": {
+      "associatedDomains": ["webcredentials:tips.babytunasystems.com"],
       "supportsTablet": false,
       "bundleIdentifier": "com.babytuna.systems",
       "buildNumber": "20",

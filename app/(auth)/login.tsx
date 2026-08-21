@@ -19,6 +19,7 @@ import { AuthLoadingScreen, AuthLogoHeader, LoadingIndicator } from '@/component
 import { useAuthScreenGuard } from '@/hooks';
 import { supabase } from '@/lib';
 import { colors } from '@/constants';
+import { LegalFooter } from '@/features/auth/components/LegalFooter';
 
 const SIGN_IN_PASSWORD_HELPER =
   'If you recently created your password, it should be at least 8 characters and include letters and numbers.';
@@ -289,6 +290,7 @@ export default function LoginScreen() {
             </Link>
           </View>
         </Pressable>
+        <LegalFooter />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

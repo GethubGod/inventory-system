@@ -480,6 +480,12 @@ interface AuthState {
   fetchProfile: () => Promise<Profile | null>;
   fetchLocations: () => Promise<Location[]>;
   signIn: (email: string, password: string) => Promise<User | null>;
+  /**
+   * Hydrates the store from a session established outside the store's own
+   * sign-in actions (e.g. name + PIN/password via verifyOtp in
+   * services/loginCredentials, or the invited onboarding accept flow).
+   */
+  adoptExternalSession: (session: Session) => Promise<User | null>;
   signInWithOAuth: (provider: OAuthProvider) => Promise<void>;
   signUp: (
     email: string,
@@ -1396,6 +1402,22 @@ export const useAuthStore = create<AuthState>()(
 
           return await hydrateAuthenticatedSession(data.session, {
             bootstrapInput: { email: normalizedEmail, profileCompleted: true },
+            repairIfNeeded: true,
+            shouldThrowOnSuspended: true,
+          });
+        } catch (error) {
+          throw new Error(getAuthErrorMessage(error, 'Unable to sign in. Please try again.'));
+        } finally {
+          set({ isLoading: false });
+        }
+      },
+
+      adoptExternalSession: async (session) => {
+        beginAuthTransition();
+        set({ isLoading: true });
+        try {
+          return await hydrateAuthenticatedSession(session, {
+            bootstrapInput: { profileCompleted: true },
             repairIfNeeded: true,
             shouldThrowOnSuspended: true,
           });
