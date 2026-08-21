@@ -42,6 +42,10 @@ test.describe("scan landing", () => {
     await expect(
       page.getByRole("button", { name: "Scan the sticker" }),
     ).toBeVisible();
+    await expect(
+      page.getByText("Use your camera app or scan it here."),
+    ).toBeVisible();
+    await expect(page.getByText(/One scan per entry/)).toHaveCount(0);
     // PIN entry is gone from the product.
     await expect(page.getByText(/PIN/)).toHaveCount(0);
 
