@@ -89,12 +89,28 @@ iOS `webcredentials:tips.babytunasystems.com` associated domain added to app.jso
 - Lint: no new errors (remaining errors are pre-existing in
   `docs/mockups/tips-dashboard/*` — another live session's files — and
   `supabase/functions/tip-voice-parse`, both out of scope).
-- **Production E2E invite accept: PROVEN.** One test invite (SQL-inserted, id
-  `b7a4666c-79cc-4b49-8ea5-68776aaa4c93`) accepted through the deployed
-  accept-invite function → manager test user
-  `onboarding-test-20260820@babytunasystems.com` created with completed profile.
-  Cleanup status: see below.
-- Simulator demo: see `docs/phases/onboarding-auth-demo/` (screenshots).
+- **Production E2E invite accept: PROVEN.** One test invite (SQL-inserted)
+  accepted through the deployed accept-invite function → manager test account
+  created with a completed profile, signed into the app on the simulator, and
+  used to drive every manager screen against live production data (roster,
+  per-user effective modules, a real user_modules toggle round-trip verified
+  server-side, and a real invite created from the Invite screen).
+- **Simulator demo: 29 screenshots in `docs/phases/onboarding-auth-demo/`** —
+  every auth screen (welcome, clipboard-assisted paste incl. the iOS paste
+  notice and the inline validation error, Hello via both the paste path and the
+  join deep link, secure step, PIN pad with dots/confirm-by-re-entry, password
+  entry, ready, name sign-in with inline error) and every manager screen
+  (roster, invite with the live preview card flipping on toggle and works-at
+  changes incl. the red no-ordering warning, link-ready with a real link,
+  member detail, Reset PIN modal, preview-as with the dark exit bar, defaults
+  with the tint note). Two flows could not complete end-to-end against prod
+  because the new backend is not deployed yet, and failed exactly as designed:
+  onboarding accept (05a) shows the retry state with the old function's
+  "email is required", and name sign-in shows the inline connection error.
+  The ready screen (06) was reached by deep link for the same reason.
+- **Test-data cleanup: DONE.** Both test invites deleted, the test account
+  removed via its own delete-self call, and a verification query confirms zero
+  remaining rows (auth user, users, profiles, user_modules, invites).
 
 ## Needs David
 1. **Deploy order matters**: apply the 4 migrations BEFORE (or together with)
@@ -122,12 +138,16 @@ iOS `webcredentials:tips.babytunasystems.com` associated domain added to app.jso
    refers to the register PIN the manager gives out. Unifying with a future tips
    credential is mechanical (same hashing) but there is currently nothing to
    unify with.
-7. **Test-data cleanup** (if not already done by the session — see handback
-   addendum below): revoke/remove invite `b7a4666c-…`, delete test user
-   `onboarding-test-20260820@…`, and any invite created from the Team screen
-   during the demo.
+7. **Pre-existing bug found during cleanup: delete-self fails for invited
+   users.** `invites.used_by`/`created_by` reference auth.users with no ON
+   DELETE handling and `prepareSelfDelete` doesn't clear them, so any account
+   created through an invite cannot delete itself ("Database error deleting
+   user") until the invite row is removed. Verified in production. This blocks
+   the App Store-required account deletion for invited employees — a task chip
+   was raised for it.
 8. The dev simulator (iPhone 17 Pro) was signed out of your session
-   (davidp@gmail…) to demonstrate the auth flow — sign back in when you next use it.
+   (davidp@gmail…) to demonstrate the auth flow — sign back in when you next
+   use it. The installed dev-client build now points at Metro on port 8081.
 
 ## Consciously left out / notes
 - Manager-role invites from the native Invite screen (web modal still does both
