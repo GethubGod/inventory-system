@@ -41,6 +41,191 @@ body {
   color: var(--color-ink3);
 }
 
+/* Always-on kinetic tutorial icons. The loops include quiet pauses so the
+   onboarding stays lively without turning into constant visual noise. */
+.onboarding-kinetic-stage {
+  position: relative;
+  isolation: isolate;
+}
+
+.onboarding-kinetic-tile {
+  position: absolute;
+  inset: 8px;
+  z-index: 0;
+  border-radius: 24px;
+  background: var(--color-tint);
+  animation: onboarding-tile-loop 4.8s ease-in-out infinite;
+}
+
+.onboarding-kinetic-stage[data-onboarding-variant="story"]
+  .onboarding-kinetic-tile {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.onboarding-kinetic-graphic {
+  position: relative;
+  z-index: 1;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.onboarding-kinetic-scan-beam {
+  opacity: 0;
+  animation: onboarding-scan-loop 3.2s cubic-bezier(0.45, 0, 0.2, 1)
+    infinite;
+}
+
+.onboarding-kinetic-eq {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  height: 38px;
+  align-items: center;
+  gap: 4px;
+}
+
+.onboarding-kinetic-eq > span {
+  width: 4px;
+  height: 26px;
+  border-radius: 999px;
+  background: currentColor;
+  transform-origin: center;
+  animation: onboarding-eq-loop 1.4s ease-in-out infinite alternate;
+}
+
+.onboarding-kinetic-eq > span:nth-child(2),
+.onboarding-kinetic-eq > span:nth-child(4) {
+  height: 30px;
+  animation-delay: -0.72s;
+}
+
+.onboarding-kinetic-eq > span:nth-child(3) {
+  height: 34px;
+  animation-delay: -1.08s;
+}
+
+.onboarding-kinetic-check {
+  animation: onboarding-check-loop 3.6s cubic-bezier(0.2, 0.8, 0.2, 1)
+    infinite;
+}
+
+.onboarding-kinetic-glint {
+  position: absolute;
+  top: 19px;
+  right: 20px;
+  z-index: 2;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 0 5px color-mix(in srgb, currentColor 18%, transparent);
+  animation: onboarding-glint-loop 3.6s ease-in-out infinite;
+}
+
+.onboarding-kinetic-stage[data-onboarding-variant="story"]
+  .onboarding-kinetic-glint {
+  top: 27px;
+  right: 28px;
+}
+
+@keyframes onboarding-tile-loop {
+  0%,
+  30%,
+  100% {
+    transform: scale(1);
+  }
+  38% {
+    transform: scale(1.035);
+  }
+  48% {
+    transform: scale(0.992);
+  }
+}
+
+@keyframes onboarding-scan-loop {
+  0%,
+  12% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  20% {
+    opacity: 0.9;
+  }
+  52% {
+    opacity: 0.9;
+    transform: translateY(4px);
+  }
+  60%,
+  100% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes onboarding-eq-loop {
+  0% {
+    opacity: 0.65;
+    transform: scaleY(0.38);
+  }
+  45% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+  100% {
+    opacity: 0.82;
+    transform: scaleY(0.58);
+  }
+}
+
+@keyframes onboarding-check-loop {
+  0%,
+  22%,
+  100% {
+    transform: scale(1);
+  }
+  32% {
+    transform: scale(1.08);
+  }
+  42% {
+    transform: scale(0.98);
+  }
+}
+
+@keyframes onboarding-glint-loop {
+  0%,
+  20%,
+  55%,
+  100% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  42% {
+    opacity: 0;
+    transform: translate(5px, -5px) scale(0.5);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-kinetic-tile,
+  .onboarding-kinetic-scan-beam,
+  .onboarding-kinetic-eq > span,
+  .onboarding-kinetic-check,
+  .onboarding-kinetic-glint {
+    animation: none;
+  }
+
+  .onboarding-kinetic-scan-beam,
+  .onboarding-kinetic-glint {
+    display: none;
+  }
+}
+
 @media print {
   .no-print {
     display: none !important;

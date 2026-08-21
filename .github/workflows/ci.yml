@@ -5,8 +5,69 @@ on:
     branches: [main, master]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  quality:
+  changes:
+    name: Detect affected projects
+    runs-on: ubuntu-latest
+    outputs:
+      mobile: ${{ steps.filter.outputs.mobile }}
+      web: ${{ steps.filter.outputs.web }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed files
+        id: filter
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            base_sha="$PR_BASE_SHA"
+          else
+            base_sha="$PUSH_BASE_SHA"
+          fi
+
+          mobile=false
+          web=false
+
+          while IFS= read -r file; do
+            case "$file" in
+              web/*)
+                web=true
+                ;;
+              app/*|assets/*|scripts/*|src/*|supabase/*|.env.example|.env.local.example|app.json|babel.config.js|dump.sql|eas.json|eslint.config.js|global.css|jest.config.js|metro.config.js|nativewind-env.d.ts|package.json|package-lock.json|tailwind.config.js|tsconfig.json)
+                mobile=true
+                ;;
+              .github/actions/*)
+                mobile=true
+                web=true
+                ;;
+            esac
+          done < <(
+            if [[ -z "$base_sha" || "$base_sha" =~ ^0+$ ]]; then
+              git ls-tree -r --name-only "$HEAD_SHA"
+            else
+              git diff --name-only "$base_sha" "$HEAD_SHA"
+            fi
+          )
+
+          echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
+          echo "web=$web" >> "$GITHUB_OUTPUT"
+
+  mobile-quality:
+    name: Mobile quality
+    needs: changes
+    if: needs.changes.outputs.mobile == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,3 +94,41 @@ jobs:
 
       - name: Production dependency audit
         run: npm run audit:prod
+
+  web-quality:
+    name: Web quality
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm run test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npx next build --webpack
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=critical
+
+      # The Playwright suite intentionally writes to the live tips database,
+      # so it remains an explicit, opt-in verification rather than a CI step.
