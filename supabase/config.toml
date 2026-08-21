@@ -41,6 +41,12 @@ verify_jwt = false
 [functions.accept-invite]
 verify_jwt = false
 
+# Name + PIN/password sign-in also happens before a session exists. The
+# function requires the anon key and verifies the credential in Postgres
+# (bcrypt + rate limits) via a service-role-only RPC.
+[functions.login-with-name]
+verify_jwt = false
+
 # Tips web app entry endpoints use their own session-token auth (entry devices
 # have no Supabase JWT beyond the anon key). The HTTP functions still require
 # the anon key as bearer; the WebSocket stream cannot send headers at all.

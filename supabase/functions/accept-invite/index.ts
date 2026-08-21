@@ -3,10 +3,13 @@ import { corsHeadersForRequest } from "../_shared/cors.ts";
 import {
   inspectInviteState,
   type InviteInvalidReason,
+  type InviteLocationGroup,
   type InviteRole,
   type InviteState,
+  isInviteLocationGroup,
   isInviteRole,
   parseAcceptInviteInput,
+  resolveLocationGroupToLocationId,
 } from "../_shared/invites.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -32,6 +35,7 @@ interface InviteRow {
   expires_at: string;
   used_at: string | null;
   revoked_at: string | null;
+  location_group: string | null;
 }
 
 const MODULE_KEYS = new Set([
@@ -69,6 +73,9 @@ function inviteStateFromRow(invite: InviteRow | null): InviteState | null {
   return {
     invitedName: invite.invited_name,
     role: invite.role,
+    locationGroup: isInviteLocationGroup(invite.location_group)
+      ? invite.location_group
+      : "both",
     expiresAt: invite.expires_at,
     usedAt: invite.used_at,
     revokedAt: invite.revoked_at,
@@ -94,7 +101,7 @@ async function findInvite(
   const { data, error } = await supabaseAdmin
     .from("invites")
     .select(
-      "id, invited_name, role, module_preset, created_by, expires_at, used_at, revoked_at",
+      "id, invited_name, role, module_preset, created_by, expires_at, used_at, revoked_at, location_group",
     )
     .eq("token", token)
     .maybeSingle();
@@ -144,6 +151,54 @@ async function applyInviteModulePreset(
   }
 
   return true;
+}
+
+/** 32 random bytes, base64url — set once at account creation, never used again. */
+function generateDiscardedPassword(): string {
+  const raw = new Uint8Array(32);
+  crypto.getRandomValues(raw);
+  let binary = "";
+  for (const byte of raw) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/**
+ * Resolves the invite's works-at group to users.default_location_id.
+ * Best-effort: a resolution failure must not strand a created account, so
+ * errors are logged and acceptance continues (location is manager-editable
+ * from the employee detail screen at any time).
+ */
+async function applyInviteLocation(
+  locationGroup: InviteLocationGroup,
+  userId: string,
+): Promise<void> {
+  if (locationGroup === "both") return;
+
+  const { data: locations, error: locationsError } = await supabaseAdmin
+    .from("locations")
+    .select("id, short_code")
+    .eq("active", true);
+  if (locationsError) {
+    console.error("Unable to read locations for invite", locationsError);
+    return;
+  }
+
+  const locationId = resolveLocationGroupToLocationId(
+    locationGroup,
+    locations ?? [],
+  );
+  if (!locationId) {
+    console.error(`No active location matches invite group ${locationGroup}`);
+    return;
+  }
+
+  const { error: updateError } = await supabaseAdmin
+    .from("users")
+    .update({ default_location_id: locationId })
+    .eq("id", userId);
+  if (updateError) {
+    console.error("Unable to set invited user's location", updateError);
+  }
 }
 
 async function removeUnclaimedUser(userId: string): Promise<void> {
@@ -242,6 +297,7 @@ Deno.serve(async (req) => {
       valid: true,
       invitedName: validity.invitedName,
       role: validity.role,
+      locationGroup: validity.locationGroup,
     });
   }
 
@@ -250,11 +306,24 @@ Deno.serve(async (req) => {
     return jsonResponse(req, { error: reasonMessage(reason), reason }, 409);
   }
 
+  // Onboarding mode (the in-app invited setup flow) has no email/password:
+  // the account is minted under a synthetic address on a domain we own and a
+  // discarded random password. The user signs in with name + PIN/password via
+  // login-with-name from then on; this response's one-shot tokenHash gives the
+  // client its first session so it can store that credential.
+  const onboarding = parsed.value.mode === "onboarding";
+  const accountEmail = onboarding
+    ? `join-${lookup.invite.id}@members.babytunasystems.com`
+    : parsed.value.email!;
+  const accountPassword = onboarding
+    ? generateDiscardedPassword()
+    : parsed.value.password!;
+
   const fullName = parsed.value.name ?? validity.invitedName;
   const { data: created, error: createError } = await supabaseAdmin.auth.admin
     .createUser({
-      email: parsed.value.email!,
-      password: parsed.value.password!,
+      email: accountEmail,
+      password: accountPassword,
       email_confirm: true,
       user_metadata: {
         name: fullName,
@@ -266,14 +335,16 @@ Deno.serve(async (req) => {
   if (createError || !created.user) {
     console.error("Unable to create invited auth user", createError);
     return jsonResponse(req, {
-      error: "Unable to create account with this email",
+      error: onboarding
+        ? "Unable to create the account for this invite"
+        : "Unable to create account with this email",
     }, 409);
   }
 
   const invitedUserId = created.user.id;
   const identityWritten = await writeInviteeIdentity({
     userId: invitedUserId,
-    email: parsed.value.email!,
+    email: accountEmail,
     fullName,
     role: validity.role,
   });
@@ -293,6 +364,26 @@ Deno.serve(async (req) => {
       { error: "Unable to prepare invited account" },
       500,
     );
+  }
+
+  await applyInviteLocation(validity.locationGroup, invitedUserId);
+
+  // Mint the onboarding session token BEFORE consuming the invite so a
+  // failure here still leaves the invite reusable after cleanup.
+  let sessionTokenHash: string | null = null;
+  if (onboarding) {
+    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin
+      .generateLink({ type: "magiclink", email: accountEmail });
+    sessionTokenHash = linkData?.properties?.hashed_token ?? null;
+    if (linkError || !sessionTokenHash) {
+      console.error("Unable to mint onboarding session link", linkError);
+      await removeUnclaimedUser(invitedUserId);
+      return jsonResponse(
+        req,
+        { error: "Unable to prepare invited account" },
+        500,
+      );
+    }
   }
 
   // This PostgREST call is a single SQL UPDATE ... WHERE ... RETURNING request.
@@ -315,6 +406,15 @@ Deno.serve(async (req) => {
       { error: "This invite is no longer available", reason: "invalid" },
       409,
     );
+  }
+
+  if (onboarding) {
+    return jsonResponse(req, {
+      ok: true,
+      role: consumed.role,
+      locationGroup: validity.locationGroup,
+      tokenHash: sessionTokenHash,
+    });
   }
 
   return jsonResponse(req, { ok: true, role: consumed.role });

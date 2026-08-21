@@ -30,9 +30,9 @@ beforeEach(() => {
 });
 
 describe("getRoleDefaultModules", () => {
-  it("mirrors the SQL defaults for employees (stock check only)", () => {
+  it("mirrors the SQL defaults for employees (ordering checklist + stock check)", () => {
     expect(getRoleDefaultModules("employee")).toEqual({
-      ordering_simple: false,
+      ordering_simple: true,
       ordering_advanced: false,
       stock_check: true,
       tips: false,
@@ -80,7 +80,7 @@ describe("toModuleMap", () => {
     );
 
     expect(map).toEqual({
-      ordering_simple: false,
+      ordering_simple: true,
       ordering_advanced: true,
       stock_check: false,
       tips: false,
@@ -108,7 +108,7 @@ describe("fetchModulesForUser", () => {
       p_user_id: "employee-id",
     });
     expect(map.tips).toBe(true);
-    expect(map.ordering_simple).toBe(false);
+    expect(map.ordering_simple).toBe(true);
   });
 
   it("surfaces RPC errors", async () => {

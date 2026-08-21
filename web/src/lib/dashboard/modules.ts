@@ -34,14 +34,15 @@ export function isModuleKey(value: unknown): value is ModuleKey {
 
 /**
  * Client-side mirror of the SQL role defaults in get_effective_modules
- * (employee → stock_check only; manager → everything). Used to preset the
+ * (employee → ordering_simple + stock_check; manager → everything; see
+ * 20260820121000_ordering_simple_default_on.sql). Used to preset the
  * invite modal and as a safety net for missing keys — the RPC remains the
  * source of truth for effective values.
  */
 export function getRoleDefaultModules(role: TeamRole): ModuleMap {
   const isManager = role === "manager";
   return {
-    ordering_simple: isManager,
+    ordering_simple: true,
     ordering_advanced: isManager,
     stock_check: true,
     tips: isManager,

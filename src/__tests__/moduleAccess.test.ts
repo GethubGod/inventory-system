@@ -28,9 +28,9 @@ async function flushPromises() {
 }
 
 describe('role default modules', () => {
-  it('gives employees only stock check by default (dark-launch ordering)', () => {
+  it('gives employees the ordering checklist and stock check by default', () => {
     expect(getRoleDefaultModules('employee')).toEqual({
-      ordering_simple: false,
+      ordering_simple: true,
       ordering_advanced: false,
       stock_check: true,
       tips: false,
@@ -67,7 +67,7 @@ describe('resolveEffectiveModules', () => {
     ]);
 
     expect(effective).toEqual({
-      ordering_simple: false,
+      ordering_simple: true,
       ordering_advanced: true,
       stock_check: false,
       tips: false,
@@ -86,17 +86,8 @@ describe('resolveEffectiveModules', () => {
 });
 
 describe('employee tab list', () => {
-  it('renders only Home, Cart, and Settings for default employees', () => {
+  it('includes the Order tab for default employees (ordering_simple on by default)', () => {
     expect(getVisibleEmployeeTabs(getRoleDefaultModules('employee'))).toEqual([
-      'index',
-      'cart',
-      'settings',
-    ]);
-  });
-
-  it('adds the Order tab when ordering_simple is on', () => {
-    const modules = { ...getRoleDefaultModules('employee'), ordering_simple: true };
-    expect(getVisibleEmployeeTabs(modules)).toEqual([
       'index',
       'simple-order',
       'cart',
@@ -104,8 +95,21 @@ describe('employee tab list', () => {
     ]);
   });
 
+  it('drops the Order tab when ordering_simple is switched off', () => {
+    const modules = { ...getRoleDefaultModules('employee'), ordering_simple: false };
+    expect(getVisibleEmployeeTabs(modules)).toEqual([
+      'index',
+      'cart',
+      'settings',
+    ]);
+  });
+
   it('adds the Advanced ordering tab when ordering_advanced is on', () => {
-    const modules = { ...getRoleDefaultModules('employee'), ordering_advanced: true };
+    const modules = {
+      ...getRoleDefaultModules('employee'),
+      ordering_simple: false,
+      ordering_advanced: true,
+    };
     expect(getVisibleEmployeeTabs(modules)).toEqual([
       'index',
       'quick-order',
