@@ -1,30 +1,24 @@
-import { Redirect, Tabs, usePathname } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Redirect, Tabs } from "expo-router";
 import { useOrderStore } from "@/store";
 import { AuthLoadingScreen } from "@/components";
 import { useMyModules, useProtectedAuthGuard } from "@/hooks";
-import { colors } from "@/theme/design";
-import {
-  TabButton,
-  getTabBarScreenOptions,
-  getTabBarBottomInset,
-  tabBarBadgeStyle,
-} from "@/components/navigation";
+import { getVisibleEmployeeTabs } from "@/store/moduleStore.helpers";
+import { FloatingPillTabBar } from "@/components/navigation";
 
 export default function TabsLayout() {
   const cartTotal = useOrderStore((state) =>
     state.getTotalCartCount("employee"),
   );
-  const insets = useSafeAreaInsets();
-  const tabBarBottomInset = getTabBarBottomInset(insets.bottom);
   const guard = useProtectedAuthGuard();
   // Phase 3: tabs render from per-user module state (rpc get_effective_modules,
   // kept live via the user_modules realtime channel — a manager flipping a
   // toggle adds/removes tabs here without re-login). Falls back to role
   // defaults if the fetch fails so nobody gets locked out.
   const { modules } = useMyModules(guard.resolvedRole);
-  const pathname = usePathname();
-  const isBrowseRoute = pathname.includes("inventory-browse");
+  // Checklist-first restructure: the floating pill toolbar replaces the
+  // attached tab bar, rendering from the same derivation the invite preview
+  // and Preview-as use. Home and Cart are gone for checklist-only employees.
+  const visibleTabs = getVisibleEmployeeTabs(modules);
 
   if (guard.isChecking) {
     return <AuthLoadingScreen />;
@@ -35,64 +29,45 @@ export default function TabsLayout() {
   }
 
   return (
-    <Tabs screenOptions={getTabBarScreenOptions(tabBarBottomInset)}>
-      {/* Browse - Default Tab (index.tsx) */}
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabButton
-              name="home-outline"
-              label="Home"
-              size={size}
-              color={isBrowseRoute ? colors.primary : color}
-              focused={focused || isBrowseRoute}
-            />
-          ),
-        }}
-      />
+    <Tabs
+      screenOptions={{ headerShown: false }}
+      tabBar={(props) => (
+        <FloatingPillTabBar
+          {...props}
+          visibleTabs={visibleTabs}
+          cartCount={cartTotal}
+        />
+      )}
+    >
+      {/* Home is no longer an employee surface — index redirects to the first
+          visible pill tab (see index.tsx). */}
+      <Tabs.Screen name="index" options={{ href: null }} />
 
       {/* Simple ordering checklist (Phase 5a surface, ordering_simple module) */}
       <Tabs.Screen
         name="simple-order"
-        options={{
-          href: modules.ordering_simple ? undefined : null,
-          title: "Order",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="list-outline" label="Order" size={size} color={color} focused={focused} />
-          ),
-        }}
+        options={{ href: modules.ordering_simple ? undefined : null, title: "Order" }}
       />
 
       {/* Advanced ordering (Beta) — the former Quick Order surface, gated by
-          ordering_advanced. Tab label is the space-constrained "Advanced";
-          the full "Advanced ordering (Beta)" hint lives on the screen header. */}
+          ordering_advanced. */}
       <Tabs.Screen
         name="quick-order"
-        options={{
-          href: modules.ordering_advanced ? undefined : null,
-          title: "Advanced",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="flash-outline" label="Advanced" size={size} color={color} focused={focused} />
-          ),
-        }}
+        options={{ href: modules.ordering_advanced ? undefined : null, title: "Advanced" }}
       />
 
-      {/* Cart */}
+      {/* Cart only serves the advanced flow, so it shares its gate. */}
       <Tabs.Screen
         name="cart"
-        options={{
-          title: "Cart",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="bag-handle-outline" label="Cart" size={size} color={color} focused={focused} />
-          ),
-          tabBarBadge: cartTotal > 0 ? cartTotal : undefined,
-          tabBarBadgeStyle: tabBarBadgeStyle,
-        }}
+        options={{ href: modules.ordering_advanced ? undefined : null, title: "Cart" }}
       />
 
-      {/* Stock Check — opened from Settings, not the tab bar. The stock_check
+      {/* Past sent orders with one-tap reorder. */}
+      <Tabs.Screen name="history" options={{ title: "History" }} />
+
+      <Tabs.Screen name="settings" options={{ title: "Settings" }} />
+
+      {/* Stock Check — opened from Settings, not the pill. The stock_check
           module gates the screens themselves via useModuleAccessGuard. */}
       <Tabs.Screen name="stock-check" options={{ href: null }} />
 
@@ -100,27 +75,7 @@ export default function TabsLayout() {
           The `tips` module gate already exists (modules.tips) but must never
           show a broken screen, so no tab is rendered yet. */}
 
-      <Tabs.Screen
-        name="voice"
-        options={{
-          href: null,
-          title: "Smart",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="reader-outline" label="Smart" size={size} color={color} focused={focused} />
-          ),
-        }}
-      />
-
-      {/* Settings */}
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: "Settings",
-          tabBarIcon: ({ color, size, focused }) => (
-            <TabButton name="person-circle-outline" label="Settings" size={size} color={color} focused={focused} />
-          ),
-        }}
-      />
+      <Tabs.Screen name="voice" options={{ href: null }} />
 
       {/* Hidden screens */}
       <Tabs.Screen name="draft" options={{ href: null }} />

@@ -50,6 +50,7 @@ describe('mapRecentOrderRow', () => {
       createdAt: '2026-08-10T12:00:00Z',
       itemCount: 4,
       messageText: 'Order text',
+      reorderItems: [],
     });
   });
 
@@ -67,6 +68,7 @@ describe('mapRecentOrderRow', () => {
       createdAt: '',
       itemCount: null,
       messageText: '',
+      reorderItems: [],
     });
   });
 });
@@ -140,6 +142,7 @@ describe('listMyRecentOrders', () => {
         createdAt: '2026-08-10T12:00:00Z',
         itemCount: 2,
         messageText: 'Order text',
+        reorderItems: [],
       },
     ]);
   });
