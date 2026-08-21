@@ -40,7 +40,9 @@ function mealLabel(meal: string): string {
 
 /** $ amount field value → cents, or null when invalid (0 .. $99,999.99). */
 function parseAmountToCents(value: string): number | null {
-  const num = Number(value.replace(/[$,\s]/g, ""));
+  const stripped = value.replace(/[$,\s]/g, "");
+  if (stripped === "") return null; // Number("") is 0 — a cleared field is invalid, not $0
+  const num = Number(stripped);
   if (!Number.isFinite(num) || num < 0 || num >= 100000) return null;
   return Math.round(num * 100);
 }
@@ -82,7 +84,24 @@ function FixDialog({
     setBusy(true);
     setError(null);
     const supabase = getSupabase();
+    // PostgREST calls can't share a transaction, so order the steps to keep
+    // every intermediate state recoverable: add people first, update the
+    // amounts + split_count, remove people last. An amounts-only fix (the
+    // common case) is then a single atomic UPDATE, and the entry can never
+    // pass through a zero-people state.
     try {
+      const before = new Set(entry.peopleIds);
+      const after = new Set(peopleIds);
+      const added = peopleIds.filter((id) => !before.has(id));
+      const removed = entry.peopleIds.filter((id) => !after.has(id));
+
+      if (added.length > 0) {
+        const { error: insertError } = await supabase.from("tip_entry_people").insert(
+          added.map((personId) => ({ tip_entry_id: entry.id, tip_employee_id: personId })),
+        );
+        if (insertError) throw new Error(insertError.message);
+      }
+
       const { error: updateError } = await supabase
         .from("tip_entries")
         .update({
@@ -93,22 +112,21 @@ function FixDialog({
         .eq("id", entry.id);
       if (updateError) throw new Error(updateError.message);
 
-      const { error: deleteError } = await supabase
-        .from("tip_entry_people")
-        .delete()
-        .eq("tip_entry_id", entry.id);
-      if (deleteError) throw new Error(deleteError.message);
-      const { error: insertError } = await supabase.from("tip_entry_people").insert(
-        peopleIds.map((personId) => ({ tip_entry_id: entry.id, tip_employee_id: personId })),
-      );
-      if (insertError) throw new Error(insertError.message);
+      if (removed.length > 0) {
+        const { error: deleteError } = await supabase
+          .from("tip_entry_people")
+          .delete()
+          .eq("tip_entry_id", entry.id)
+          .in("tip_employee_id", removed);
+        if (deleteError) throw new Error(deleteError.message);
+      }
 
       toast("Entry updated");
       ctx.refetch();
       onClose();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Could not save the fix.");
-      ctx.refetch(); // the people delete/insert isn't atomic — show the truth
+      ctx.refetch(); // the steps aren't atomic — show what actually landed
       setBusy(false);
     }
   }

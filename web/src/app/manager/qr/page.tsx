@@ -100,14 +100,14 @@ function QrPageInner() {
           <p className="text-ink">
             No token to show. Entry tokens are stored hashed and can&apos;t be
             re-displayed — this page only works right after rotating a token
-            from the Admin tab.
+            from the dashboard&apos;s Devices &amp; entry log page.
           </p>
           <button
             type="button"
             onClick={() => router.push("/manager")}
             className="self-start bg-accent text-white rounded-full px-5 py-2.5 font-semibold"
           >
-            Go to Admin
+            Go to the dashboard
           </button>
         </div>
       </div>

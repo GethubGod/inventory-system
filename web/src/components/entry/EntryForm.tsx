@@ -269,6 +269,11 @@ export function EntryForm() {
 
   const lastPayloadRef = useRef<SavePayload | null>(null);
   const finishedRef = useRef(false);
+  // Per-meal memory of the closer's selection, so switching Lunch↔Dinner and
+  // back never discards manual picks (or their voice-overwrite protection).
+  const savedSelectionsRef = useRef<
+    Partial<Record<MealPeriod, { ids: string[]; touched: boolean }>>
+  >({});
 
   /** End the per-scan session and return to the scan gate. */
   const finishSession = useCallback(() => {
@@ -383,6 +388,11 @@ export function EntryForm() {
       if (!session || next === meal || slotLoading) return;
       if (disabledMeals.includes(next)) return;
       setMeal(next);
+      // Remember the crew picked for the meal we're leaving.
+      savedSelectionsRef.current[meal] = {
+        ids: selectedIds,
+        touched: touchedFields.has("people"),
+      };
       // The target slot is empty by construction (recorded shifts are
       // locked), but confirm against the server so a save that landed from
       // another device mid-session still gets caught.
@@ -395,17 +405,29 @@ export function EntryForm() {
           );
           setMeal(meal);
         } else {
-          // A different shift means a different crew: re-seed the selection
-          // from that meal's schedule (the closer can still adjust).
           setScheduledByMeal((prev) => ({ ...prev, [next]: slot.scheduledIds }));
-          setSelectedIds(slot.scheduledIds);
-          setPickPersonWarning(false);
-          setTouchedFields((prev) => {
-            if (!prev.has("people")) return prev;
-            const cleared = new Set(prev);
-            cleared.delete("people");
-            return cleared;
-          });
+          const saved = savedSelectionsRef.current[next];
+          if (saved) {
+            // Round-trip: restore what the closer had for this meal.
+            setSelectedIds(saved.ids);
+            setTouchedFields((prev) => {
+              const restored = new Set(prev);
+              if (saved.touched) restored.add("people");
+              else restored.delete("people");
+              return restored;
+            });
+          } else {
+            // First visit: a different shift means a different crew — seed
+            // from that meal's schedule (the closer can still adjust).
+            setSelectedIds(slot.scheduledIds);
+            setPickPersonWarning(false);
+            setTouchedFields((prev) => {
+              if (!prev.has("people")) return prev;
+              const cleared = new Set(prev);
+              cleared.delete("people");
+              return cleared;
+            });
+          }
         }
       } catch (error) {
         if (isSessionInvalid(error)) {
@@ -413,11 +435,14 @@ export function EntryForm() {
           router.replace("/");
           return;
         }
+        // Couldn't confirm the slot: stay on the meal we know about instead
+        // of showing the previous meal's crew under the new tab.
+        setMeal(meal);
       } finally {
         setSlotLoading(false);
       }
     },
-    [session, meal, slotLoading, disabledMeals, router],
+    [session, meal, slotLoading, disabledMeals, selectedIds, touchedFields, router],
   );
 
   /** A slot came back already-recorded from the server: lock it here too. */

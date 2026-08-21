@@ -52,12 +52,17 @@ export interface DashboardDataState {
 }
 
 export function useDashboardData(range: DashboardRange): DashboardDataState {
-  const [result, setResult] = useState<{ key: string; data: DashboardData } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<{
+    key: string;
+    rangeKey: string;
+    data: DashboardData;
+  } | null>(null);
+  const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
   const [reload, setReload] = useState(0);
 
   const { start, end } = rangeBounds(range);
-  const key = `${start}|${end}|${reload}`;
+  const rangeKey = `${start}|${end}`;
+  const key = `${rangeKey}|${reload}`;
 
   useEffect(() => {
     let cancelled = false;
@@ -88,7 +93,7 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
             }),
           supabase
             .from("tip_employee_schedules")
-            .select("id, tip_employee_id, location_id, weekday, meal")
+            .select("id, tip_employee_id, location_id, weekday, meal, created_at")
             .order("id")
             .then((r) => {
               if (r.error) throw new Error(r.error.message);
@@ -184,7 +189,24 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
         locationId: row.location_id,
         weekday: row.weekday,
         meal: row.meal as MealPeriod,
+        createdAt: row.created_at,
       }));
+
+      // Each location's first-ever entry date floors the missing-shift scan —
+      // same rule the v1 discrepancies tab used.
+      const firstEntryDates: Record<string, string | undefined> = {};
+      await Promise.all(
+        locationRows.map(async (location) => {
+          const r = await supabase
+            .from("tip_entries")
+            .select("business_date")
+            .eq("location_id", location.id)
+            .order("business_date", { ascending: true })
+            .limit(1);
+          if (r.error) throw new Error(r.error.message);
+          firstEntryDates[location.id] = r.data?.[0]?.business_date;
+        }),
+      );
 
       const locations = locationRows.map(toLocationInfo).sort((a, b) => {
         // Sushi card/segment first, matching the mockup.
@@ -202,34 +224,44 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
           locationId: row.location_id,
           tokenRotatedAt: row.token_rotated_at,
         })),
+        firstEntryDates,
       };
     }
 
     load()
       .then((data) => {
         if (cancelled) return;
-        setResult({ key, data });
-        setError(null);
+        setResult({ key, rangeKey, data });
+        setFailure(null);
       })
       .catch((loadError: unknown) => {
         if (cancelled) return;
-        setError(loadError instanceof Error ? loadError.message : "Could not load data.");
+        setFailure({
+          key,
+          message: loadError instanceof Error ? loadError.message : "Could not load data.",
+        });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [key, start, end]);
+  }, [key, rangeKey, start, end]);
 
   const refetch = useCallback(() => setReload((n) => n + 1), []);
 
-  return useMemo(
-    () => ({
-      data: result?.data ?? null,
-      loading: result === null || result.key !== key,
+  return useMemo(() => {
+    // Data from another range must never render under this range's label —
+    // stale-while-revalidate applies only to same-range refetches (so
+    // mutations don't flicker the page).
+    const data = result && result.rangeKey === rangeKey ? result.data : null;
+    const error = failure && failure.key === key ? failure.message : null;
+    return {
+      data,
+      // A failed fetch for the CURRENT key is a settled state — show the
+      // error + Retry, not an eternal spinner.
+      loading: (result === null || result.key !== key) && error === null,
       error,
       refetch,
-    }),
-    [result, key, error, refetch],
-  );
+    };
+  }, [result, key, rangeKey, failure, refetch]);
 }

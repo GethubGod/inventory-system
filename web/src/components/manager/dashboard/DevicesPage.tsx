@@ -158,9 +158,13 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
             </span>
           </span>
           <span className="flex flex-none gap-2">
-            <button type="button" className={btn} onClick={() => openQrPage(freshToken)}>
-              Print
-            </button>
+            {/* Tokens are stored hashed — a printable QR only exists right
+                after a rotation, so that's the only time Print can work. */}
+            {freshToken && (
+              <button type="button" className={btn} onClick={() => openQrPage(freshToken)}>
+                Print
+              </button>
+            )}
             <button type="button" className={btn} onClick={() => setConfirming("rotate")}>
               Rotate…
             </button>

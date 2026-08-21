@@ -36,6 +36,7 @@ export interface ScheduleRowDb {
   locationId: string;
   weekday: number; // 0 = Sunday … 6 = Saturday
   meal: MealPeriod;
+  createdAt: string;
 }
 
 export interface DeviceSessionRow {
@@ -59,6 +60,8 @@ export interface DashboardData {
   /** Device sessions whose scan falls in the selected range. */
   sessions: DeviceSessionRow[];
   access: AccessRow[];
+  /** Each location's first-ever entry business date (missing-shift floor). */
+  firstEntryDates: Record<string, string | undefined>;
 }
 
 export type LocFilter = "both" | LocationKind;

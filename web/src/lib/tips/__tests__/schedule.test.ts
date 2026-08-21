@@ -67,6 +67,8 @@ describe("deriveMissingShifts", () => {
     schedules,
     employees,
     locationIds: [SUSHI, POKI],
+    // Both locations have history from well before the range.
+    firstEntryDates: { [SUSHI]: "2026-07-01", [POKI]: "2026-07-01" },
     rangeStart,
     rangeEnd,
   };
@@ -124,6 +126,53 @@ describe("deriveMissingShifts", () => {
       "2026-08-08 dinner",
       "2026-08-07 dinner",
       "2026-08-07 lunch",
+    ]);
+  });
+
+  it("a schedule rule can't flag dates before it was created", () => {
+    // The Poki Saturday-dinner rule was created Sat Aug 8 at 10am LA — only
+    // Aug 8 itself (and later Saturdays) can be missing, not Aug 1.
+    const missing = deriveMissingShifts({
+      ...base,
+      rangeStart: "2026-07-27",
+      rangeEnd: "2026-08-09",
+      schedules: [
+        {
+          tipEmployeeId: "lena",
+          locationId: POKI,
+          weekday: 6,
+          meal: "dinner",
+          createdAt: "2026-08-08T17:00:00Z",
+        },
+      ],
+      entries: [],
+      now: new Date("2026-08-10T06:00:00Z"),
+    });
+    expect(missing).toEqual([{ businessDate: "2026-08-08", locationId: POKI, meal: "dinner" }]);
+  });
+
+  it("a location with no entries yet reports nothing missing", () => {
+    const missing = deriveMissingShifts({
+      ...base,
+      firstEntryDates: { [SUSHI]: "2026-07-01" }, // Poki never recorded anything
+      entries: [],
+      now: new Date("2026-08-10T06:00:00Z"),
+    });
+    expect(missing.every((m) => m.locationId === SUSHI)).toBe(true);
+    expect(missing).toEqual([{ businessDate: "2026-08-07", locationId: SUSHI, meal: "dinner" }]);
+  });
+
+  it("dates before a location's first entry are not missing", () => {
+    const missing = deriveMissingShifts({
+      ...base,
+      firstEntryDates: { [SUSHI]: "2026-07-01", [POKI]: "2026-08-08" },
+      entries: [],
+      now: new Date("2026-08-10T06:00:00Z"),
+    });
+    // Poki's Fri Aug 7 lunch/dinner slots fall before its first entry.
+    expect(missing.map((m) => `${m.businessDate} ${m.locationId} ${m.meal}`)).toEqual([
+      "2026-08-08 loc-poki dinner",
+      "2026-08-07 loc-sushi dinner",
     ]);
   });
 });

@@ -54,23 +54,61 @@ export function StaffPage({ ctx }: { ctx: PageContext }) {
   const { locations } = ctx.data;
   const byKind = new Map(locations.map((location) => [location.kind, location]));
 
-  // Optimistic schedule state so L/D pills flip instantly; a debounced
-  // refetch reconciles with the server. Render-phase reset (the React
-  // "adjust state when a prop changes" pattern) picks up each fresh fetch.
-  const [schedules, setSchedules] = useState<ScheduleRowDb[]>(ctx.data.schedules);
-  const [serverSchedules, setServerSchedules] = useState(ctx.data.schedules);
-  if (serverSchedules !== ctx.data.schedules) {
-    setServerSchedules(ctx.data.schedules);
-    setSchedules(ctx.data.schedules);
-  }
+  // Optimistic schedule display: pills render the server rows overlaid with
+  // local overrides (the manager's intent, written to the DB as they tap),
+  // so a background refetch that snapshots before the latest tap can never
+  // revert a pill. Overrides win for the page's lifetime; a failed write
+  // removes its override and refetches.
+  const [overrides, setOverrides] = useState<ReadonlyMap<string, boolean>>(new Map());
+  const slotKey = (employeeId: string, locationId: string, weekday: number, meal: MealPeriod) =>
+    `${employeeId}|${locationId}|${weekday}|${meal}`;
+  const isScheduled = (
+    employeeId: string,
+    locationId: string,
+    weekday: number,
+    meal: MealPeriod,
+  ): boolean => {
+    const override = overrides.get(slotKey(employeeId, locationId, weekday, meal));
+    if (override !== undefined) return override;
+    return ctx.data.schedules.some(
+      (row: ScheduleRowDb) =>
+        row.tipEmployeeId === employeeId &&
+        row.locationId === locationId &&
+        row.weekday === weekday &&
+        row.meal === meal,
+    );
+  };
+  const clearOverridesFor = (employeeId: string) => {
+    setOverrides((previous) => {
+      const next = new Map(previous);
+      for (const key of previous.keys()) {
+        if (key.startsWith(`${employeeId}|`)) next.delete(key);
+      }
+      return next;
+    });
+  };
+
+  const refetchRef = useRef(ctx.refetch);
+  useEffect(() => {
+    refetchRef.current = ctx.refetch;
+  });
   const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const queueRefetch = () => {
     if (refetchTimer.current) clearTimeout(refetchTimer.current);
-    refetchTimer.current = setTimeout(() => ctx.refetch(), 1500);
+    refetchTimer.current = setTimeout(() => {
+      refetchTimer.current = null;
+      refetchRef.current();
+    }, 1500);
   };
   useEffect(
     () => () => {
-      if (refetchTimer.current) clearTimeout(refetchTimer.current);
+      // Don't drop a pending reconcile on unmount — the writes are already
+      // committed, and other pages derive from ctx.data.schedules.
+      if (refetchTimer.current) {
+        clearTimeout(refetchTimer.current);
+        refetchTimer.current = null;
+        refetchRef.current();
+      }
     },
     [],
   );
@@ -130,6 +168,9 @@ export function StaffPage({ ctx }: { ctx: PageContext }) {
           .in("location_id", staleIds);
       }
     }
+    // Their schedule rows may have changed server-side; local overrides for
+    // this employee no longer describe reality.
+    clearOverridesFor(employee.id);
     ctx.refetch();
   }
 
@@ -139,15 +180,19 @@ export function StaffPage({ ctx }: { ctx: PageContext }) {
     weekday: number,
     meal: MealPeriod,
   ) {
-    const existing = schedules.find(
-      (row) =>
-        row.tipEmployeeId === employee.id &&
-        row.locationId === locationId &&
-        row.weekday === weekday &&
-        row.meal === meal,
-    );
-    if (existing) {
-      setSchedules((previous) => previous.filter((row) => row !== existing));
+    const key = slotKey(employee.id, locationId, weekday, meal);
+    const currentlyOn = isScheduled(employee.id, locationId, weekday, meal);
+    setOverrides((previous) => new Map(previous).set(key, !currentlyOn));
+
+    const undoOverride = () => {
+      setOverrides((previous) => {
+        const next = new Map(previous);
+        next.delete(key);
+        return next;
+      });
+    };
+
+    if (currentlyOn) {
       const { error } = await supabase
         .from("tip_employee_schedules")
         .delete()
@@ -157,22 +202,22 @@ export function StaffPage({ ctx }: { ctx: PageContext }) {
         .eq("meal", meal);
       if (error) {
         toast(`Could not save the schedule: ${error.message}`);
+        undoOverride();
         ctx.refetch();
         return;
       }
     } else {
-      setSchedules((previous) => [
-        ...previous,
-        { id: `optimistic-${employee.id}-${locationId}-${weekday}-${meal}`, tipEmployeeId: employee.id, locationId, weekday, meal },
-      ]);
       const { error } = await supabase.from("tip_employee_schedules").insert({
         tip_employee_id: employee.id,
         location_id: locationId,
         weekday,
         meal,
       });
-      if (error) {
+      // 23505 = the row already exists (e.g. a re-tap raced a stale
+      // snapshot) — the desired state is already true, not an error.
+      if (error && error.code !== "23505") {
         toast(`Could not save the schedule: ${error.message}`);
+        undoOverride();
         ctx.refetch();
         return;
       }
@@ -343,9 +388,11 @@ export function StaffPage({ ctx }: { ctx: PageContext }) {
 
               let shifts = 0;
               for (const location of shown) {
-                shifts += schedules.filter(
-                  (row) => row.tipEmployeeId === employee.id && row.locationId === location.id,
-                ).length;
+                for (const weekday of DAY_ORDER) {
+                  for (const meal of ["lunch", "dinner"] as const) {
+                    if (isScheduled(employee.id, location.id, weekday, meal)) shifts += 1;
+                  }
+                }
               }
 
               return (
@@ -385,13 +432,7 @@ export function StaffPage({ ctx }: { ctx: PageContext }) {
                         </span>
                         {DAY_ORDER.map((weekday) => {
                           const has = (meal: MealPeriod) =>
-                            schedules.some(
-                              (row) =>
-                                row.tipEmployeeId === employee.id &&
-                                row.locationId === location.id &&
-                                row.weekday === weekday &&
-                                row.meal === meal,
-                            );
+                            isScheduled(employee.id, location.id, weekday, meal);
                           return (
                             <span
                               key={weekday}

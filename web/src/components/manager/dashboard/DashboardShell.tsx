@@ -101,6 +101,7 @@ function ShellInner({
       })),
       entries: data.entries,
       locationIds: [...visibleIds],
+      firstEntryDates: data.firstEntryDates,
       rangeStart: bounds.start,
       rangeEnd: bounds.end,
       now: new Date(),

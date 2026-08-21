@@ -6,7 +6,7 @@
 // active AND still works at the row's location (location_id null = both) —
 // stale rows left behind by a works-at change are ignored defensively.
 
-import { weekdayOfBusinessDate } from "./businessDate";
+import { businessDateFor, weekdayOfBusinessDate } from "./businessDate";
 import { addDays } from "./dashboardRange";
 import { shiftHasClosed } from "./entryTiming";
 import type { MealPeriod } from "@/types/database";
@@ -16,6 +16,12 @@ export interface ScheduleRow {
   locationId: string;
   weekday: number;
   meal: MealPeriod;
+  /**
+   * When the schedule rule was created (ISO timestamp). A rule can't testify
+   * about business dates before it existed — without this floor, setting up
+   * the schedule would retroactively flag months of "missing" shifts.
+   */
+  createdAt?: string;
 }
 
 export interface ScheduleEmployee {
@@ -63,29 +69,51 @@ const MAX_RANGE_DAYS = 400; // hard cap, mirrors the v1 discrepancies guard
  * Business dates in [rangeStart, rangeEnd] where the schedule says somebody
  * was working (location + meal) but no tip_entries row exists and the shift's
  * close time has passed. Sorted newest-first.
+ *
+ * Two floors keep old dates honest: a slot only counts from the business
+ * date its earliest schedule rule was created, and a location only counts
+ * from its first-ever recorded entry (mirrors the v1 discrepancies rule —
+ * a location that never used the system has nothing "missing"). Note the
+ * derivation reflects the CURRENT schedule and roster on purpose: the spec
+ * asks "who does the schedule say works this slot", not a historical diff.
  */
 export function deriveMissingShifts(options: {
   schedules: ScheduleRow[];
   employees: ScheduleEmployee[];
   entries: Array<{ businessDate: string; locationId: string; meal: MealPeriod }>;
   locationIds: string[];
+  /** Each location's first-ever entry business date (absent = no entries yet). */
+  firstEntryDates: Record<string, string | undefined>;
   rangeStart: string;
   rangeEnd: string;
   now: Date;
 }): MissingShift[] {
-  const { schedules, employees, entries, locationIds, rangeStart, rangeEnd, now } = options;
+  const {
+    schedules,
+    employees,
+    entries,
+    locationIds,
+    firstEntryDates,
+    rangeStart,
+    rangeEnd,
+    now,
+  } = options;
 
   const recorded = new Set(
     entries.map((e) => `${e.businessDate}|${e.locationId}|${e.meal}`),
   );
 
-  // (locationId|weekday|meal) slots that have at least one valid scheduled person.
+  // (locationId|weekday|meal) slots with at least one valid scheduled person,
+  // mapped to the earliest business date their schedule rule existed on.
   const byId = new Map(employees.map((e) => [e.id, e]));
-  const staffedSlots = new Set<string>();
+  const staffedSlots = new Map<string, string>();
   for (const row of schedules) {
     const employee = byId.get(row.tipEmployeeId);
     if (!employee || !employee.active || !worksAt(employee, row.locationId)) continue;
-    staffedSlots.add(`${row.locationId}|${row.weekday}|${row.meal}`);
+    const slot = `${row.locationId}|${row.weekday}|${row.meal}`;
+    const floor = row.createdAt ? businessDateFor(new Date(row.createdAt)) : "";
+    const existing = staffedSlots.get(slot);
+    if (existing === undefined || floor < existing) staffedSlots.set(slot, floor);
   }
 
   const missing: MissingShift[] = [];
@@ -94,8 +122,11 @@ export function deriveMissingShifts(options: {
   for (let i = 0; i < MAX_RANGE_DAYS && date <= rangeEnd; i += 1) {
     const weekday = weekdayOfBusinessDate(date);
     for (const locationId of locationIds) {
+      const firstEntry = firstEntryDates[locationId];
+      if (!firstEntry || date < firstEntry) continue;
       for (const meal of meals) {
-        if (!staffedSlots.has(`${locationId}|${weekday}|${meal}`)) continue;
+        const slotFloor = staffedSlots.get(`${locationId}|${weekday}|${meal}`);
+        if (slotFloor === undefined || date < slotFloor) continue;
         if (recorded.has(`${date}|${locationId}|${meal}`)) continue;
         if (!shiftHasClosed(date, meal, now)) continue;
         missing.push({ businessDate: date, locationId, meal });
