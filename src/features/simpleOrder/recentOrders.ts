@@ -87,6 +87,17 @@ export function formatRecentOrderDate(iso: string, now: Date = new Date()): stri
   return monthDay;
 }
 
+/** "Today" / "Yesterday" / "Tuesday, Aug 18" for History cards. */
+export function formatHistoryDate(iso: string, now: Date = new Date()): string {
+  const relative = formatRecentOrderDate(iso, now);
+  if (relative === 'Today' || relative === 'Yesterday' || relative === '') {
+    return relative;
+  }
+  const date = new Date(iso);
+  const weekday = date.toLocaleDateString('en-US', { weekday: 'long' });
+  return `${weekday}, ${relative}`;
+}
+
 /** "9:14 AM" for the history card's "N items · sent 9:14 AM" line. */
 export function formatSentTime(iso: string): string {
   const date = new Date(iso);

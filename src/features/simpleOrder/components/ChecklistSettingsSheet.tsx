@@ -5,18 +5,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheetShell } from '@/components/BottomSheetShell';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerSelectionHaptic } from '@/lib/haptics';
-import {
-  colors,
-  glassColors,
-  glassHairlineWidth,
-  glassRadii,
-} from '@/theme/design';
+import { glassHairlineWidth, radii, tipsTheme } from '@/theme/design';
 import type { SimpleOrderDensity } from '@/types/settings';
+
+/**
+ * Checklist display sheet: Comfortable/Compact density cards plus the
+ * "Show categories" toggle. Reached from the quick-actions sheet and from
+ * Settings → Checklist display; both preferences persist per user.
+ */
 
 interface ChecklistSettingsSheetProps {
   visible: boolean;
   density: SimpleOrderDensity;
+  showCategories: boolean;
   onSelectDensity: (density: SimpleOrderDensity) => void;
+  onToggleCategories: (show: boolean) => void;
   onClose: () => void;
 }
 
@@ -24,26 +27,25 @@ const OPTIONS: {
   value: SimpleOrderDensity;
   label: string;
   detail: string;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
 }[] = [
   {
     value: 'comfort',
     label: 'Comfortable',
-    detail: 'Bigger buttons, easier to tap',
-    icon: 'resize-outline',
+    detail: 'Bigger rows with the usual amounts shown',
   },
   {
     value: 'dense',
     label: 'Compact',
-    detail: 'Smaller rows, more items on screen',
-    icon: 'reorder-four-outline',
+    detail: 'Tight rows, see the whole list at once',
   },
 ];
 
 export function ChecklistSettingsSheet({
   visible,
   density,
+  showCategories,
   onSelectDensity,
+  onToggleCategories,
   onClose,
 }: ChecklistSettingsSheetProps) {
   const ds = useScaledStyles();
@@ -57,109 +59,124 @@ export function ChecklistSettingsSheet({
     [onSelectDensity],
   );
 
+  const handleToggle = useCallback(() => {
+    void triggerSelectionHaptic();
+    onToggleCategories(!showCategories);
+  }, [onToggleCategories, showCategories]);
+
   return (
     <BottomSheetShell
       visible={visible}
       onClose={onClose}
-      bottomPadding={Math.max(insets.bottom, ds.spacing(12))}
+      bottomPadding={Math.max(insets.bottom, ds.spacing(14))}
     >
-      <Text
-        style={{
-          fontSize: ds.fontSize(20),
-          fontWeight: '700',
-          color: glassColors.textPrimary,
-          marginBottom: ds.spacing(2),
-        }}
-      >
-        List settings
+      <Text style={{ fontSize: ds.fontSize(20), fontWeight: '700', color: tipsTheme.ink }}>
+        Checklist display
       </Text>
       <Text
-        style={{
-          fontSize: ds.fontSize(13),
-          color: glassColors.textSecondary,
-          marginBottom: ds.spacing(12),
-        }}
+        style={{ fontSize: ds.fontSize(13), color: tipsTheme.ink2, marginBottom: ds.spacing(12) }}
       >
-        Row size
+        How your list is shown.
       </Text>
 
-      {OPTIONS.map((option, index) => {
+      {OPTIONS.map((option) => {
         const selected = option.value === density;
         return (
           <TouchableOpacity
             key={option.value}
             onPress={() => handleSelect(option.value)}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
             accessibilityRole="radio"
             accessibilityState={{ selected }}
             accessibilityLabel={`${option.label} rows`}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              minHeight: 60,
-              paddingVertical: ds.spacing(8),
-              borderBottomWidth:
-                index === OPTIONS.length - 1 ? 0 : glassHairlineWidth,
-              borderBottomColor: glassColors.divider,
+              gap: ds.spacing(11),
+              backgroundColor: tipsTheme.card,
+              borderWidth: selected ? 1 : glassHairlineWidth,
+              borderColor: selected ? tipsTheme.accent : tipsTheme.hairline,
+              borderRadius: 18,
+              paddingHorizontal: ds.spacing(16),
+              paddingVertical: ds.spacing(14),
+              marginBottom: ds.spacing(8),
             }}
           >
-            <View
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: glassRadii.iconTile,
-                backgroundColor: selected ? colors.primaryLight : colors.glassCircle,
-                borderWidth: glassHairlineWidth,
-                borderColor: selected
-                  ? glassColors.accentBorder
-                  : glassColors.controlBorder,
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: ds.spacing(12),
-              }}
-            >
-              <Ionicons
-                name={option.icon}
-                size={ds.icon(19)}
-                color={selected ? glassColors.accent : glassColors.textPrimary}
-              />
-            </View>
             <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: ds.fontSize(16),
-                  fontWeight: '600',
-                  color: glassColors.textPrimary,
-                }}
-              >
+              <Text style={{ fontSize: ds.fontSize(14.5), fontWeight: '600', color: tipsTheme.ink }}>
                 {option.label}
               </Text>
-              <Text
-                style={{
-                  marginTop: 1,
-                  fontSize: ds.fontSize(12),
-                  color: glassColors.textMuted,
-                }}
-              >
+              <Text style={{ fontSize: ds.fontSize(12), color: tipsTheme.ink2, marginTop: 1 }}>
                 {option.detail}
               </Text>
             </View>
-            {selected ? (
-              <Ionicons
-                name="checkmark-circle"
-                size={ds.icon(24)}
-                color={glassColors.accent}
-              />
-            ) : (
-              <Ionicons
-                name="ellipse-outline"
-                size={ds.icon(24)}
-                color={glassColors.textMuted}
-              />
-            )}
+            <View
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: radii.circle,
+                borderWidth: selected ? 0 : 1.5,
+                borderColor: tipsTheme.disabled,
+                backgroundColor: selected ? tipsTheme.accent : 'transparent',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              {selected ? <Ionicons name="checkmark" size={13} color="#FFFFFF" /> : null}
+            </View>
           </TouchableOpacity>
         );
       })}
+
+      <TouchableOpacity
+        onPress={handleToggle}
+        activeOpacity={0.8}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: showCategories }}
+        accessibilityLabel="Show categories"
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: ds.spacing(11),
+          backgroundColor: tipsTheme.card,
+          borderWidth: glassHairlineWidth,
+          borderColor: tipsTheme.hairline,
+          borderRadius: 18,
+          paddingHorizontal: ds.spacing(16),
+          paddingVertical: ds.spacing(13),
+          marginTop: ds.spacing(4),
+        }}
+      >
+        <Ionicons name="list-outline" size={ds.icon(20)} color={tipsTheme.ink} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: ds.fontSize(14.5), fontWeight: '600', color: tipsTheme.ink }}>
+            Show categories
+          </Text>
+          <Text style={{ fontSize: ds.fontSize(11.5), color: tipsTheme.ink3, marginTop: 1 }}>
+            Group items under Fish, Protein, Dry goods
+          </Text>
+        </View>
+        <View
+          style={{
+            width: 44,
+            height: 26,
+            borderRadius: radii.pill,
+            backgroundColor: showCategories ? tipsTheme.accent : '#D6D3CE',
+            justifyContent: 'center',
+            paddingHorizontal: 2,
+          }}
+        >
+          <View
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: radii.circle,
+              backgroundColor: '#FFFFFF',
+              alignSelf: showCategories ? 'flex-end' : 'flex-start',
+            }}
+          />
+        </View>
+      </TouchableOpacity>
     </BottomSheetShell>
   );
 }

@@ -14,13 +14,14 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
-import { EmptyStateCard, LoadingIndicator, LocationSelectorButton } from '@/components';
+import { EmptyStateCard, LoadingIndicator } from '@/components';
+import { getFloatingPillClearance } from '@/components/navigation';
 import { useResolvedActiveLocation } from '@/hooks/useResolvedActiveLocation';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
@@ -34,56 +35,44 @@ import {
   getOrGenerateMyChecklist,
   prepareDirectSend,
   regenerateMyChecklist,
+  saveChecklistAsDefault,
   sendChecklistOrder,
   type Checklist,
   type DirectSendGroup,
 } from '@/services/orderChecklist';
 import { getMyOrderSendMode, type OrderSendMode } from '@/services/orderSendMode';
-import {
-  listRecurringReminderRules,
-  type RecurringReminderRule,
-} from '@/services/employeeReminders';
-import { findMyChecklistOrderDayRule } from './orderDayReminder';
 import type { SendAllQueueProgress } from '@/features/fulfillment/sendAll/sendAllQueue';
 import { useAuthStore, useInventoryStore, useSettingsStore } from '@/store';
-import {
-  colors,
-  glassColors,
-  glassHairlineWidth,
-  glassRadii,
-  glassSpacing,
-} from '@/theme/design';
+import { useSimpleOrderUiStore } from '@/store/simpleOrderUiStore';
+import { glassHairlineWidth, radii, tipsTheme } from '@/theme/design';
 import type { InventoryItem, Location } from '@/types';
 import { LocationSwitcherDropdown } from '@/features/stock-check/components/LocationSwitcherDropdown';
 import {
   addedLineKey,
+  buildDefaultLines,
   buildSendLines,
   EMPTY_SELECTION_STATE,
   getCheckedLines,
   locationGroupForLocation,
-  sectionizeLines,
   selectionReducer,
   type SelectionLine,
+  type SelectionState,
 } from './checklistSelection';
 import { buildDirectSendLines } from './directSendFlow';
+import { deriveDisplaySections, type DisplaySection } from './displaySections';
 import { filterCatalogItems, type VoiceAddition } from './catalogSearch';
+import { unitOptionsForLine } from './unitOptions';
 import { ChecklistItemRow } from './components/ChecklistItemRow';
 import { ChecklistSettingsSheet } from './components/ChecklistSettingsSheet';
+import { ChecklistToast, type ChecklistToastState } from './components/ChecklistToast';
 import { ConfirmOrderSheet } from './components/ConfirmOrderSheet';
 import { DirectSendQueue } from './components/DirectSendQueue';
-import { OrderDayReminderSheet } from './components/OrderDayReminderSheet';
+import { NoteSheet } from './components/NoteSheet';
 import { PinnedOrderBar } from './components/PinnedOrderBar';
+import { QuantityCardSheet } from './components/QuantityCardSheet';
+import { QuickActionsSheet, type QuickAction } from './components/QuickActionsSheet';
 import { RecentOrdersSheet } from './components/RecentOrdersSheet';
 import { VoiceAddSheet } from './components/VoiceAddSheet';
-
-interface ChecklistSection {
-  key: 'frequent' | 'occasional' | 'added' | 'rare';
-  title: string | null;
-  data: SelectionLine[];
-  collapsedCount?: number;
-}
-
-const TAB_BAR_CLEARANCE = 60;
 
 export function SimpleOrderScreen() {
   const ds = useScaledStyles();
@@ -102,6 +91,15 @@ export function SimpleOrderScreen() {
   const setSimpleOrderDensity = useSettingsStore(
     (state) => state.setSimpleOrderDensity,
   );
+  const showCategories = useSettingsStore((state) => state.simpleOrderShowCategories);
+  const setShowCategories = useSettingsStore(
+    (state) => state.setSimpleOrderShowCategories,
+  );
+
+  const quickActionsToken = useSimpleOrderUiStore((state) => state.quickActionsToken);
+  const consumePendingReorder = useSimpleOrderUiStore(
+    (state) => state.consumePendingReorder,
+  );
 
   const locationGroup = useMemo(
     () => locationGroupForLocation(location?.name, location?.short_code),
@@ -113,12 +111,16 @@ export function SimpleOrderScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [rareExpanded, setRareExpanded] = useState(false);
+  const [rareExpanded, setRareExpanded] = useState(true);
   const [locationDropdownOpen, setLocationDropdownOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [displaySheetVisible, setDisplaySheetVisible] = useState(false);
+  const [quickActionsVisible, setQuickActionsVisible] = useState(false);
+  const [noteSheetVisible, setNoteSheetVisible] = useState(false);
+  const [note, setNote] = useState('');
+  const [quantityKey, setQuantityKey] = useState<string | null>(null);
   const [voiceVisible, setVoiceVisible] = useState(false);
-  const [orderBarHeight, setOrderBarHeight] = useState(48);
+  const [orderBarHeight, setOrderBarHeight] = useState(62);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -126,27 +128,42 @@ export function SimpleOrderScreen() {
   const [sendMode, setSendMode] = useState<OrderSendMode>('review');
   const [directSendGroups, setDirectSendGroups] = useState<DirectSendGroup[] | null>(null);
   const [recentOrdersVisible, setRecentOrdersVisible] = useState(false);
-  const [reminderSheetVisible, setReminderSheetVisible] = useState(false);
-  const [reminderRule, setReminderRule] = useState<RecurringReminderRule | null>(null);
+  const [toast, setToast] = useState<ChecklistToastState | null>(null);
   const loadRequestRef = useRef(0);
+  const toastIdRef = useRef(0);
+  const quickActionsTokenRef = useRef(quickActionsToken);
 
-  // 5c: surface whether this employee already has an order-day reminder so the
-  // header bell can reflect it. Failures fall back to the inactive state.
+  const showToast = useCallback(
+    (message: string, action?: { actionLabel: string; onAction: () => void }) => {
+      toastIdRef.current += 1;
+      setToast({ id: toastIdRef.current, message, ...action });
+    },
+    [],
+  );
+
+  // The floating pill's dots button requests the quick-actions sheet from
+  // outside this screen via the ui store's monotonic token.
   useEffect(() => {
-    let active = true;
-    listRecurringReminderRules()
-      .then((rules) => {
-        if (active) {
-          setReminderRule(findMyChecklistOrderDayRule(rules, locationGroup));
-        }
-      })
-      .catch(() => {
-        if (active) setReminderRule(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [locationGroup]);
+    if (quickActionsToken !== quickActionsTokenRef.current) {
+      quickActionsTokenRef.current = quickActionsToken;
+      setLocationDropdownOpen(false);
+      setQuickActionsVisible(true);
+    }
+  }, [quickActionsToken]);
+
+  // History's Reorder stages lines in the ui store; apply them when the
+  // Order tab gains focus.
+  useFocusEffect(
+    useCallback(() => {
+      const staged = consumePendingReorder();
+      if (staged && staged.items.length > 0) {
+        dispatch({ type: 'applyReorder', items: staged.items });
+        showToast(
+          `Loaded ${staged.items.length} ${staged.items.length === 1 ? 'item' : 'items'} from ${staged.sourceLabel}`,
+        );
+      }
+    }, [consumePendingReorder, showToast]),
+  );
 
   // Manager-configured 5b preference; unknown/error safely means review mode.
   useEffect(() => {
@@ -234,17 +251,24 @@ export function SimpleOrderScreen() {
     dispatch({ type: 'adjustQuantity', key, delta });
   }, []);
 
-  const handleSetQuantity = useCallback((key: string, quantity: number) => {
-    dispatch({ type: 'setQuantity', key, quantity });
-  }, []);
-
-  const handleRemoveLine = useCallback((key: string) => {
-    dispatch({ type: 'removeLine', key });
+  const handleOpenQuantityCard = useCallback((key: string) => {
+    setQuantityKey(key);
   }, []);
 
   const handleAddInventoryItem = useCallback((item: InventoryItem) => {
     dispatch({ type: 'addInventoryItem', item });
   }, []);
+
+  const inventoryById = useMemo(
+    () => new Map(inventoryItems.map((item) => [item.id, item])),
+    [inventoryItems],
+  );
+
+  const categoryForItemId = useCallback(
+    (itemId: string | null) =>
+      itemId ? (inventoryById.get(itemId)?.category ?? null) : null,
+    [inventoryById],
+  );
 
   const searchableItems = useMemo(
     () =>
@@ -297,36 +321,99 @@ export function SimpleOrderScreen() {
     [checkedLines],
   );
 
-  const listSections = useMemo<ChecklistSection[]>(() => {
-    const grouped = sectionizeLines(selection);
-    const sections: ChecklistSection[] = [];
-    if (grouped.frequent.length > 0) {
-      sections.push({ key: 'frequent', title: 'Usual order', data: grouped.frequent });
-    }
-    if (grouped.occasional.length > 0) {
-      sections.push({
-        key: 'occasional',
-        title: 'Sometimes ordered',
-        data: grouped.occasional,
-      });
-    }
-    // Always present so its footer can host the "Add more items" button
-    // between the everyday sections and the collapsed rare section.
-    sections.push({
-      key: 'added',
-      title: grouped.added.length > 0 ? 'Added by you' : null,
-      data: grouped.added,
-    });
-    if (grouped.rare.length > 0) {
-      sections.push({
-        key: 'rare',
-        title: 'Rarely ordered',
-        data: rareExpanded ? grouped.rare : [],
-        collapsedCount: grouped.rare.length,
-      });
-    }
-    return sections;
-  }, [rareExpanded, selection]);
+  const listSections = useMemo(
+    () =>
+      deriveDisplaySections(selection, {
+        showCategories,
+        rareExpanded,
+        categoryForItemId,
+      }),
+    [categoryForItemId, rareExpanded, selection, showCategories],
+  );
+
+  const quantityLine = useMemo(
+    () => selection.lines.find((line) => line.key === quantityKey) ?? null,
+    [quantityKey, selection.lines],
+  );
+  const quantityUnitOptions = useMemo(
+    () =>
+      quantityLine
+        ? unitOptionsForLine(
+            quantityLine.unit,
+            quantityLine.itemId ? inventoryById.get(quantityLine.itemId) ?? null : null,
+          )
+        : [],
+    [inventoryById, quantityLine],
+  );
+
+  const handleQuickAction = useCallback(
+    (action: QuickAction) => {
+      setQuickActionsVisible(false);
+      switch (action) {
+        case 'clear': {
+          const snapshot: SelectionState = selection;
+          dispatch({ type: 'clearAll' });
+          setNote('');
+          showToast('Checklist cleared', {
+            actionLabel: 'Undo',
+            onAction: () => {
+              dispatch({ type: 'restore', state: snapshot });
+              setToast(null);
+            },
+          });
+          break;
+        }
+        case 'saveDefault': {
+          const defaults = buildDefaultLines(selection);
+          if (defaults.length === 0) {
+            showToast('Check some items first, then save them as your default');
+            break;
+          }
+          void saveChecklistAsDefault(locationGroup, defaults)
+            .then((count) => {
+              void triggerConfirmationHaptic();
+              showToast(`Saved as default · ${count} ${count === 1 ? 'item' : 'items'}`);
+            })
+            .catch((error: unknown) => {
+              void triggerNotificationHaptic(NotificationFeedbackType.Error);
+              showToast(
+                error instanceof Error ? error.message : 'Could not save your default.',
+              );
+            });
+          break;
+        }
+        case 'note':
+          setNoteSheetVisible(true);
+          break;
+        case 'display':
+          setDisplaySheetVisible(true);
+          break;
+        case 'receive':
+          // Cast: .expo/types/router.d.ts is a stale generated artifact
+          // (last regenerated June '26); the route file exists.
+          router.push('/(tabs)/receive-delivery' as Parameters<typeof router.push>[0]);
+          break;
+        case 'recent':
+          setRecentOrdersVisible(true);
+          break;
+      }
+    },
+    [locationGroup, selection, showToast],
+  );
+
+  const handleSaveNote = useCallback(
+    (nextNote: string) => {
+      const hadNote = note.trim().length > 0;
+      setNote(nextNote);
+      setNoteSheetVisible(false);
+      if (nextNote.trim()) {
+        showToast(hadNote ? 'Note updated' : 'Note added');
+      } else if (hadNote) {
+        showToast('Note removed');
+      }
+    },
+    [note, showToast],
+  );
 
   const handleOpenConfirm = useCallback(() => {
     if (checkedCount === 0) return;
@@ -346,7 +433,7 @@ export function SimpleOrderScreen() {
       setIsSending(true);
       setSendError(null);
       try {
-        const groups = await prepareDirectSend(directLines, locationGroup);
+        const groups = await prepareDirectSend(directLines, locationGroup, note);
         void triggerConfirmationHaptic();
         setConfirmVisible(false);
         setDirectSendGroups(groups);
@@ -367,7 +454,7 @@ export function SimpleOrderScreen() {
     setIsSending(true);
     setSendError(null);
     try {
-      await sendChecklistOrder(selection.checklistId, sendLines);
+      await sendChecklistOrder(selection.checklistId, sendLines, { note });
       void triggerConfirmationHaptic();
       setConfirmVisible(false);
       setSentItemCount(sendLines.length);
@@ -381,7 +468,7 @@ export function SimpleOrderScreen() {
     } finally {
       setIsSending(false);
     }
-  }, [isSending, locationGroup, selection, sendLines, sendMode]);
+  }, [isSending, locationGroup, note, selection, sendLines, sendMode]);
 
   const handleDirectSendDone = useCallback(
     (progress: SendAllQueueProgress) => {
@@ -390,6 +477,7 @@ export function SimpleOrderScreen() {
       // the review-mode success state. All-skipped keeps the selection intact.
       if (progress.sent > 0 && checklist) {
         dispatch({ type: 'init', checklist });
+        setNote('');
       }
     },
     [checklist],
@@ -397,6 +485,7 @@ export function SimpleOrderScreen() {
 
   const handleSuccessDone = useCallback(() => {
     setSentItemCount(null);
+    setNote('');
     if (checklist) {
       dispatch({ type: 'init', checklist });
     }
@@ -410,7 +499,7 @@ export function SimpleOrderScreen() {
     }: {
       item: SelectionLine;
       index: number;
-      section: ChecklistSection;
+      section: DisplaySection;
     }) => (
       <ChecklistItemRow
         line={item}
@@ -418,15 +507,15 @@ export function SimpleOrderScreen() {
         density={density}
         onToggle={handleToggleLine}
         onAdjustQuantity={handleAdjustQuantity}
-        onSetQuantity={handleSetQuantity}
+        onOpenQuantityCard={handleOpenQuantityCard}
       />
     ),
-    [density, handleAdjustQuantity, handleSetQuantity, handleToggleLine],
+    [density, handleAdjustQuantity, handleOpenQuantityCard, handleToggleLine],
   );
 
   const renderSectionHeader = useCallback(
-    ({ section }: { section: ChecklistSection }) => {
-      if (section.key === 'rare') {
+    ({ section }: { section: DisplaySection }) => {
+      if (section.isRare) {
         return (
           <TouchableOpacity
             onPress={() => {
@@ -436,13 +525,13 @@ export function SimpleOrderScreen() {
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityState={{ expanded: rareExpanded }}
-            accessibilityLabel={`Rarely ordered, ${section.collapsedCount ?? 0} items`}
+            accessibilityLabel={`Rarely ordered, ${section.rareCount ?? 0} items`}
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              minHeight: 48,
-              marginTop: ds.spacing(16),
-              backgroundColor: colors.background,
+              minHeight: 42,
+              marginTop: ds.spacing(10),
+              backgroundColor: tipsTheme.page,
             }}
           >
             <Text
@@ -452,15 +541,15 @@ export function SimpleOrderScreen() {
                 fontWeight: '700',
                 letterSpacing: 0.6,
                 textTransform: 'uppercase',
-                color: glassColors.textSecondary,
+                color: tipsTheme.ink2,
               }}
             >
-              Rarely ordered ({section.collapsedCount ?? 0})
+              {section.title}
             </Text>
             <Ionicons
               name={rareExpanded ? 'chevron-up' : 'chevron-down'}
-              size={ds.icon(18)}
-              color={glassColors.textSecondary}
+              size={ds.icon(16)}
+              color={tipsTheme.ink2}
             />
           </TouchableOpacity>
         );
@@ -471,20 +560,20 @@ export function SimpleOrderScreen() {
       return (
         <View
           style={{
-            minHeight: 36,
+            minHeight: density === 'dense' ? 26 : 32,
             justifyContent: 'flex-end',
-            paddingBottom: ds.spacing(4),
-            marginTop: ds.spacing(12),
-            backgroundColor: colors.background,
+            paddingBottom: ds.spacing(2),
+            marginTop: ds.spacing(density === 'dense' ? 8 : 12),
+            backgroundColor: tipsTheme.page,
           }}
         >
           <Text
             style={{
-              fontSize: ds.fontSize(12),
+              fontSize: ds.fontSize(density === 'dense' ? 11 : 12),
               fontWeight: '700',
               letterSpacing: 0.6,
               textTransform: 'uppercase',
-              color: glassColors.textSecondary,
+              color: tipsTheme.ink2,
             }}
           >
             {section.title}
@@ -492,15 +581,14 @@ export function SimpleOrderScreen() {
         </View>
       );
     },
-    [ds, rareExpanded],
+    [density, ds, rareExpanded],
   );
 
-  const tabBarBottomOffset =
-    TAB_BAR_CLEARANCE + Math.max(insets.bottom, glassSpacing.tabBarBottom);
-  const listBottomPadding =
-    tabBarBottomOffset + orderBarHeight + ds.spacing(24);
+  const pillClearance = getFloatingPillClearance(insets.bottom);
+  const orderBarRestingBottom = pillClearance + ds.spacing(2);
+  const listBottomPadding = orderBarRestingBottom + orderBarHeight + ds.spacing(24);
 
-  const locationLabel = location?.name ?? 'Choose location';
+  const locationLabel = (location?.name ?? 'Location').replace(/^Babytuna\s+/i, '');
 
   let content: React.ReactNode;
   if (directSendGroups !== null) {
@@ -514,20 +602,20 @@ export function SimpleOrderScreen() {
           flex: 1,
           alignItems: 'center',
           justifyContent: 'center',
-          paddingBottom: tabBarBottomOffset,
+          paddingBottom: pillClearance,
         }}
       >
         <Ionicons
           name="checkmark-circle"
           size={ds.icon(72)}
-          color={glassColors.successText}
+          color="#22883E"
           style={{ marginBottom: ds.spacing(12) }}
         />
         <Text
           style={{
             fontSize: ds.fontSize(22),
             fontWeight: '700',
-            color: glassColors.textPrimary,
+            color: tipsTheme.ink,
             marginBottom: ds.spacing(4),
           }}
         >
@@ -536,7 +624,7 @@ export function SimpleOrderScreen() {
         <Text
           style={{
             fontSize: ds.fontSize(15),
-            color: glassColors.textSecondary,
+            color: tipsTheme.ink2,
             textAlign: 'center',
             paddingHorizontal: ds.spacing(32),
             marginBottom: ds.spacing(20),
@@ -553,19 +641,13 @@ export function SimpleOrderScreen() {
           style={{
             minHeight: 52,
             paddingHorizontal: ds.spacing(28),
-            borderRadius: glassRadii.submitButton,
-            backgroundColor: colors.primary,
+            borderRadius: radii.pill,
+            backgroundColor: tipsTheme.accent,
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <Text
-            style={{
-              fontSize: ds.fontSize(17),
-              fontWeight: '700',
-              color: colors.white,
-            }}
-          >
+          <Text style={{ fontSize: ds.fontSize(16), fontWeight: '700', color: '#FFFFFF' }}>
             Done
           </Text>
         </TouchableOpacity>
@@ -610,7 +692,7 @@ export function SimpleOrderScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => void handleRefresh()}
-            tintColor={glassColors.accent}
+            tintColor={tipsTheme.accent}
           />
         }
       />
@@ -620,149 +702,70 @@ export function SimpleOrderScreen() {
   return (
     <SafeAreaView
       edges={['top']}
-      style={{ flex: 1, backgroundColor: colors.background }}
+      style={{ flex: 1, backgroundColor: tipsTheme.page }}
     >
-      <View style={{ flex: 1, paddingHorizontal: glassSpacing.screen }}>
+      <View style={{ flex: 1, paddingHorizontal: ds.spacing(18) }}>
+        {/* Tight top: status bar → header → list, no dead band. */}
         <View
           style={{
             zIndex: 10,
             position: 'relative',
             paddingTop: ds.spacing(2),
-            paddingBottom: ds.spacing(12),
+            paddingBottom: ds.spacing(6),
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <LocationSelectorButton
-              label={locationLabel}
-              expanded={locationDropdownOpen}
-              onPress={() => setLocationDropdownOpen((prev) => !prev)}
-            />
-            <View style={{ flex: 1 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: ds.spacing(8) }}>
+            <Text
+              style={{
+                flex: 1,
+                fontSize: ds.fontSize(24),
+                fontWeight: '700',
+                color: tipsTheme.ink,
+              }}
+            >
+              Checklist
+            </Text>
             <TouchableOpacity
               onPress={() => {
                 void triggerImpactHaptic(ImpactFeedbackStyle.Light);
-                setSettingsVisible(true);
+                setLocationDropdownOpen((prev) => !prev);
               }}
+              activeOpacity={0.8}
               accessibilityRole="button"
-              accessibilityLabel="Checklist settings"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityState={{ expanded: locationDropdownOpen }}
+              accessibilityLabel={`Location: ${locationLabel}. Change location`}
               style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
+                flexDirection: 'row',
                 alignItems: 'center',
-                justifyContent: 'center',
+                gap: ds.spacing(7),
+                backgroundColor: tipsTheme.card,
                 borderWidth: glassHairlineWidth,
-                borderColor: glassColors.controlBorder,
-                backgroundColor: colors.glassCircle,
-                marginRight: ds.spacing(8),
+                borderColor: 'rgba(0, 0, 0, 0.07)',
+                borderRadius: radii.pill,
+                paddingHorizontal: ds.spacing(12),
+                paddingVertical: ds.spacing(7),
               }}
             >
-              <Ionicons
-                name="options-outline"
-                size={ds.icon(19)}
-                color={glassColors.textPrimary}
+              <View
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: radii.circle,
+                  backgroundColor: tipsTheme.accent,
+                }}
               />
-            </TouchableOpacity>
-            {/* 7a: entry point for the delivery receiving flow. Lives in the
-                header (least-cluttered spot) so the recent-orders sheet stays
-                read-only. */}
-            <TouchableOpacity
-              onPress={() => {
-                void triggerImpactHaptic(ImpactFeedbackStyle.Light);
-                // Cast: .expo/types/router.d.ts is a stale generated artifact
-                // (last regenerated June '26); the route file exists.
-                router.push('/(tabs)/receive-delivery' as Parameters<typeof router.push>[0]);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Receive delivery"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: glassHairlineWidth,
-                borderColor: glassColors.controlBorder,
-                backgroundColor: colors.glassCircle,
-                marginRight: ds.spacing(8),
-              }}
-            >
-              <Ionicons
-                name="cube-outline"
-                size={ds.icon(19)}
-                color={glassColors.textPrimary}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                void triggerImpactHaptic(ImpactFeedbackStyle.Light);
-                setReminderSheetVisible(true);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={
-                reminderRule && reminderRule.enabled !== false
-                  ? 'Edit order-day reminder'
-                  : 'Set order-day reminder'
-              }
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: glassHairlineWidth,
-                borderColor:
-                  reminderRule && reminderRule.enabled !== false
-                    ? glassColors.accentBorder
-                    : glassColors.controlBorder,
-                backgroundColor:
-                  reminderRule && reminderRule.enabled !== false
-                    ? colors.primaryPale
-                    : colors.glassCircle,
-                marginRight: ds.spacing(8),
-              }}
-            >
-              <Ionicons
-                name={
-                  reminderRule && reminderRule.enabled !== false
-                    ? 'notifications'
-                    : 'notifications-outline'
-                }
-                size={ds.icon(19)}
-                color={
-                  reminderRule && reminderRule.enabled !== false
-                    ? glassColors.accent
-                    : glassColors.textPrimary
-                }
-              />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                void triggerImpactHaptic(ImpactFeedbackStyle.Light);
-                setRecentOrdersVisible(true);
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Recent orders"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderWidth: glassHairlineWidth,
-                borderColor: glassColors.controlBorder,
-                backgroundColor: colors.glassCircle,
-              }}
-            >
-              <Ionicons
-                name="time-outline"
-                size={ds.icon(19)}
-                color={glassColors.textPrimary}
-              />
+              <Text
+                numberOfLines={1}
+                style={{
+                  maxWidth: ds.spacing(120),
+                  fontSize: ds.fontSize(13),
+                  fontWeight: '600',
+                  color: tipsTheme.ink,
+                }}
+              >
+                {locationLabel}
+              </Text>
+              <Ionicons name="chevron-down" size={ds.icon(13)} color={tipsTheme.ink2} />
             </TouchableOpacity>
           </View>
           <LocationSwitcherDropdown
@@ -791,16 +794,48 @@ export function SimpleOrderScreen() {
           onPressSend={handleOpenConfirm}
           voiceAvailable
           onPressMic={() => setVoiceVisible(true)}
-          restingBottom={tabBarBottomOffset + ds.spacing(8)}
+          hasNote={note.trim().length > 0}
+          onPressNote={() => setNoteSheetVisible(true)}
+          restingBottom={orderBarRestingBottom}
           onHeightChange={setOrderBarHeight}
         />
       ) : null}
 
-      <ChecklistSettingsSheet
-        visible={settingsVisible}
+      <QuickActionsSheet
+        visible={quickActionsVisible}
+        hasNote={note.trim().length > 0}
         density={density}
+        showCategories={showCategories}
+        onAction={handleQuickAction}
+        onClose={() => setQuickActionsVisible(false)}
+      />
+
+      <ChecklistSettingsSheet
+        visible={displaySheetVisible}
+        density={density}
+        showCategories={showCategories}
         onSelectDensity={setSimpleOrderDensity}
-        onClose={() => setSettingsVisible(false)}
+        onToggleCategories={setShowCategories}
+        onClose={() => setDisplaySheetVisible(false)}
+      />
+
+      <NoteSheet
+        visible={noteSheetVisible}
+        note={note}
+        onSave={handleSaveNote}
+        onClose={() => setNoteSheetVisible(false)}
+      />
+
+      <QuantityCardSheet
+        visible={quantityKey !== null}
+        line={quantityLine}
+        unitOptions={quantityUnitOptions}
+        onSetUnit={(key, unit) => dispatch({ type: 'setUnit', key, unit })}
+        onCommit={(key, quantity) => {
+          dispatch({ type: 'setQuantity', key, quantity });
+          setQuantityKey(null);
+        }}
+        onClose={() => setQuantityKey(null)}
       />
 
       <VoiceAddSheet
@@ -819,10 +854,13 @@ export function SimpleOrderScreen() {
         // share-sheet-only Unassigned card instead of being skipped.
         lines={sendMode === 'direct' ? checkedLines : sendableCheckedLines}
         unmatchedNames={sendMode === 'direct' ? [] : unmatchedNames}
+        note={note}
+        onEditNote={() => {
+          setConfirmVisible(false);
+          setNoteSheetVisible(true);
+        }}
         isSending={isSending}
         sendError={sendError}
-        onAdjustQuantity={handleAdjustQuantity}
-        onRemoveLine={handleRemoveLine}
         onConfirm={() => void handleConfirmSend()}
         onClose={() => setConfirmVisible(false)}
       />
@@ -832,11 +870,10 @@ export function SimpleOrderScreen() {
         onClose={() => setRecentOrdersVisible(false)}
       />
 
-      <OrderDayReminderSheet
-        visible={reminderSheetVisible}
-        locationGroup={locationGroup}
-        onClose={() => setReminderSheetVisible(false)}
-        onRuleChanged={setReminderRule}
+      <ChecklistToast
+        toast={toast}
+        bottom={orderBarRestingBottom + orderBarHeight + ds.spacing(12)}
+        onExpire={() => setToast(null)}
       />
     </SafeAreaView>
   );
