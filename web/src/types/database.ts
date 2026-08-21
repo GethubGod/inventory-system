@@ -4262,6 +4262,7 @@ export type Database = {
       tip_location_access: {
         Row: {
           entry_token_hash: string | null
+          entry_token_plain: string | null
           location_id: string
           pin_hash: string | null
           pin_rotated_at: string | null
@@ -4271,6 +4272,7 @@ export type Database = {
         }
         Insert: {
           entry_token_hash?: string | null
+          entry_token_plain?: string | null
           location_id: string
           pin_hash?: string | null
           pin_rotated_at?: string | null
@@ -4280,6 +4282,7 @@ export type Database = {
         }
         Update: {
           entry_token_hash?: string | null
+          entry_token_plain?: string | null
           location_id?: string
           pin_hash?: string | null
           pin_rotated_at?: string | null

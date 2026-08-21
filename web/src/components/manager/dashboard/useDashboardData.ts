@@ -101,7 +101,7 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
             }),
           supabase
             .from("tip_location_access")
-            .select("location_id, token_rotated_at")
+            .select("location_id, token_rotated_at, entry_token_plain")
             .then((r) => {
               if (r.error) throw new Error(r.error.message);
               return r.data ?? [];
@@ -223,6 +223,7 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
         access: accessRows.map((row) => ({
           locationId: row.location_id,
           tokenRotatedAt: row.token_rotated_at,
+          entryToken: row.entry_token_plain ?? null,
         })),
         firstEntryDates,
       };

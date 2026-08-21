@@ -5,7 +5,8 @@
 // then the entry log: one row per entry with a timing badge against close
 // time, missing scheduled shifts in red on top, and on-time KPIs.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import QRCode from "qrcode";
 import { getSupabase } from "@/lib/supabase";
 import { TIPS_TIMEZONE } from "@/lib/tips/businessDate";
 import {
@@ -18,7 +19,9 @@ import { shortDayLabel } from "@/lib/tips/dashboardRange";
 import {
   btn,
   btnDanger,
+  btnPrim,
   ConfirmDialog,
+  ModalShell,
   InfoButton,
   LocationChip,
   panelWrap,
@@ -48,7 +51,97 @@ function rotatedLabel(iso: string): string {
   }).format(new Date(iso));
 }
 
-/** Decorative QR placeholder from the mockup — the real code lives on /manager/qr. */
+/** Build the phone-facing entry URL a sticker encodes. Browser only. */
+function entryUrlFor(token: string): string {
+  return `${window.location.origin}/e?t=${encodeURIComponent(token)}`;
+}
+
+/** Renders the location's live entry QR as a data URL; null while pending. */
+function useQrDataUrl(token: string | null): string | null {
+  // Keyed by token so a stale image never shows for a rotated code.
+  const [generated, setGenerated] = useState<{ token: string; url: string } | null>(null);
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    QRCode.toDataURL(entryUrlFor(token), { width: 480, margin: 2 })
+      .then((url) => {
+        if (!cancelled) setGenerated({ token, url });
+      })
+      .catch(() => {
+        // leave the previous (or empty) state; the card falls back to the glyph
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
+  return token !== null && generated?.token === token ? generated.url : null;
+}
+
+/**
+ * The full printable sticker sheet, previewed in the View dialog. Printing
+ * hides everything except `.qr-print-sheet` (see globals.css), so the same
+ * DOM prints as a clean instruction sheet.
+ */
+function StickerSheetDialog({
+  location,
+  qrDataUrl,
+  entryUrl,
+  onClose,
+}: {
+  location: LocationInfo;
+  qrDataUrl: string;
+  entryUrl: string;
+  onClose: () => void;
+}) {
+  return (
+    <ModalShell title={`${location.label} — entry QR`} onClose={onClose} wide>
+      <div className="mt-3 max-h-[62vh] overflow-y-auto rounded-well bg-well p-3">
+        <div className="qr-print-sheet mx-auto flex max-w-[430px] flex-col items-center gap-1 rounded-[6px] border border-line bg-white px-8 py-9 text-center text-[#111]">
+          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#888]">
+            Babytuna · Tip entry
+          </div>
+          <h2 className="text-[26px] font-extrabold leading-tight">{location.name}</h2>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={qrDataUrl}
+            alt={`Tip entry QR code for ${location.name}`}
+            className="qr-print-code my-3 h-[230px] w-[230px]"
+          />
+          <ol className="w-full list-none space-y-2 text-left text-[13.5px] leading-snug">
+            {[
+              "Open the phone camera and point it at the code.",
+              "Tap the link that pops up.",
+              "Pick who closed, then enter tonight's cash and card tips.",
+              "Save — the phone signs itself out after each entry.",
+            ].map((step, index) => (
+              <li key={step} className="flex gap-2.5">
+                <span className="flex h-[22px] w-[22px] flex-none items-center justify-center rounded-full bg-[#111] text-[12px] font-bold text-white">
+                  {index + 1}
+                </span>
+                <span className="pt-0.5">{step}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-5 w-full border-t border-[#e5e5e5] pt-3 text-[11px] leading-relaxed text-[#888]">
+            One scan per entry. If this code stops working it was rotated — print a fresh
+            sticker from Tip Dashboard → Devices &amp; entry log.
+            <span className="mt-1 block break-all font-mono text-[9.5px]">{entryUrl}</span>
+          </div>
+        </div>
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <button type="button" className={btn} onClick={onClose}>
+          Close
+        </button>
+        <button type="button" className={btnPrim} onClick={() => window.print()}>
+          Print sticker
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+/** Decorative QR placeholder shown before a location's first rotation. */
 function QrGlyph() {
   return (
     <svg viewBox="0 0 21 21" width="100%" height="100%" aria-hidden>
@@ -78,9 +171,13 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
   const [confirming, setConfirming] = useState<"rotate" | "signout" | null>(null);
   const [working, setWorking] = useState(false);
   const [freshToken, setFreshToken] = useState<string | null>(null);
+  const [viewing, setViewing] = useState(false);
 
   const access = ctx.data.access.find((row) => row.locationId === location.id);
   const rotatedAt = access?.tokenRotatedAt ?? null;
+  // A just-rotated token wins over the fetched one until the refetch lands.
+  const token = freshToken ?? access?.entryToken ?? null;
+  const qrDataUrl = useQrDataUrl(token);
 
   const sessions = ctx.data.sessions.filter((session) => session.locationId === location.id);
   const closerName = (closerId: string | null) =>
@@ -101,7 +198,7 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
       return;
     }
     setFreshToken(data);
-    toast("Token rotated — the old sticker is dead. Print the new QR now.");
+    toast("Token rotated — the old sticker is dead. Open View to print the new one.");
     ctx.refetch();
   }
 
@@ -120,14 +217,6 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
     ctx.refetch();
   }
 
-  function openQrPage(withToken: string | null) {
-    const base = `/manager/qr?location=${location.id}&name=${encodeURIComponent(location.name)}`;
-    // Full-page load, not router.push: the QR page reads the #t= fragment on
-    // its very first render, before a client-side navigation has updated
-    // window.location.
-    window.location.assign(withToken ? `${base}#t=${encodeURIComponent(withToken)}` : base);
-  }
-
   return (
     <div className={panelWrap}>
       <div className="flex items-center gap-[9px] border-b border-line px-[18px] py-3">
@@ -142,9 +231,22 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
       </div>
       <div className="flex flex-col gap-3.5 px-[18px] py-3.5">
         <div className="flex items-center gap-3.5">
-          <span className="h-16 w-16 flex-none rounded-[10px] border border-line bg-white p-[7px]">
-            <QrGlyph />
-          </span>
+          {qrDataUrl ? (
+            <button
+              type="button"
+              onClick={() => setViewing(true)}
+              title="View and print the sticker"
+              aria-label={`View the ${location.label} entry QR`}
+              className="h-16 w-16 flex-none overflow-hidden rounded-[10px] border border-line bg-white p-1 hover:border-accent"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={qrDataUrl} alt="" className="h-full w-full" />
+            </button>
+          ) : (
+            <span className="h-16 w-16 flex-none rounded-[10px] border border-line bg-white p-[7px] opacity-40">
+              <QrGlyph />
+            </span>
+          )}
           <span className="min-w-0 flex-1">
             <b className="block text-[13.5px] text-ink">QR sticker</b>
             <span className="mt-px block text-[12.5px] text-ink2">
@@ -158,11 +260,9 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
             </span>
           </span>
           <span className="flex flex-none gap-2">
-            {/* Tokens are stored hashed — a printable QR only exists right
-                after a rotation, so that's the only time Print can work. */}
-            {freshToken && (
-              <button type="button" className={btn} onClick={() => openQrPage(freshToken)}>
-                Print
+            {qrDataUrl && (
+              <button type="button" className={btn} onClick={() => setViewing(true)}>
+                View
               </button>
             )}
             <button type="button" className={btn} onClick={() => setConfirming("rotate")}>
@@ -170,23 +270,6 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
             </button>
           </span>
         </div>
-
-        {freshToken && (
-          <div className="rounded-well bg-well p-3">
-            <div className="section-label">New entry token</div>
-            <p className="mt-1 break-all font-mono text-sm text-ink">{freshToken}</p>
-            <p className="mt-1 text-xs font-semibold text-alert">
-              Shown once — print the new QR now.
-            </p>
-            <button
-              type="button"
-              className={`${btn} mt-2 bg-card`}
-              onClick={() => openQrPage(freshToken)}
-            >
-              Open printable QR page
-            </button>
-          </div>
-        )}
 
         <div className="flex items-center gap-3 rounded-well bg-well px-3.5 py-[11px]">
           <span className="flex-1 text-[12.5px] text-ink2">
@@ -213,6 +296,14 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
         )}
       </div>
 
+      {viewing && token && qrDataUrl && (
+        <StickerSheetDialog
+          location={location}
+          qrDataUrl={qrDataUrl}
+          entryUrl={entryUrlFor(token)}
+          onClose={() => setViewing(false)}
+        />
+      )}
       {confirming === "rotate" && (
         <ConfirmDialog
           title={`Rotate the ${location.label} sticker?`}

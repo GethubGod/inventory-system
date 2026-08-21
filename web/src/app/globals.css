@@ -58,4 +58,28 @@ body {
   body {
     background: #ffffff;
   }
+
+  /* While the sticker View dialog is open, print ONLY the sticker sheet:
+     everything else goes invisible and the sheet is pinned to the page. */
+  body:has(.qr-print-sheet) * {
+    visibility: hidden;
+  }
+  body:has(.qr-print-sheet) .qr-print-sheet,
+  body:has(.qr-print-sheet) .qr-print-sheet * {
+    visibility: visible;
+  }
+  body:has(.qr-print-sheet) .qr-print-sheet {
+    position: fixed;
+    inset: 0 auto auto 50%;
+    transform: translateX(-50%);
+    width: 5.5in;
+    max-width: none;
+    margin: 0.6in 0 0;
+    border: none;
+    box-shadow: none;
+  }
+  body:has(.qr-print-sheet) .qr-print-code {
+    height: 3.2in;
+    width: 3.2in;
+  }
 }

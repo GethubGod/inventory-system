@@ -49,6 +49,8 @@ export interface DeviceSessionRow {
 export interface AccessRow {
   locationId: string;
   tokenRotatedAt: string | null;
+  /** Manager-viewable entry token backing the printable QR (null pre-rotation). */
+  entryToken: string | null;
 }
 
 export interface DashboardData {

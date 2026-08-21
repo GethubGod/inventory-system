@@ -79,25 +79,27 @@ export function Sidebar({
         collapsed ? "w-[66px] px-[9px]" : "w-[216px] px-3"
       } py-[18px]`}
     >
-      <div className={`flex items-center gap-1.5 ${collapsed ? "flex-col gap-2" : ""}`}>
-        <div className="min-w-0 flex-1 overflow-hidden whitespace-nowrap px-2.5 pb-4 pt-1 text-[15px] font-bold tracking-[0.01em] text-ink">
-          {collapsed ? (
-            <>
-              B<span className="text-accent">·</span>
-            </>
-          ) : (
-            <>
-              Babytuna <span className="text-accent">·</span> Tips
-            </>
-          )}
-        </div>
+      <div className={`mb-3 flex ${collapsed ? "justify-center" : "justify-end"}`}>
         <button
           type="button"
           onClick={onToggleCollapsed}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="h-[26px] w-[26px] flex-none rounded-lg text-[13px] font-extrabold text-ink opacity-60 hover:opacity-100"
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] border border-line bg-well text-ink2 hover:bg-tint hover:text-ink"
         >
-          {collapsed ? "›" : "‹"}
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+            className={`h-[18px] w-[18px] ${collapsed ? "rotate-180" : ""}`}
+          >
+            <path d="M11 7l-5 5 5 5" />
+            <path d="M18 7l-5 5 5 5" />
+          </svg>
         </button>
       </div>
 
