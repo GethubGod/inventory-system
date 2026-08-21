@@ -24,10 +24,10 @@ function param(value: string | string[] | undefined): string {
 }
 
 const TAB_DESCRIPTIONS: Record<string, string> = {
-  index: 'Home — quick actions and store insights',
   'simple-order': 'Order — the daily checklist with usual amounts',
   'quick-order': 'Advanced — free-form ordering with the parser',
   cart: 'Cart — items staged before sending',
+  history: 'History — past sent orders with one-tap reorder',
   settings: 'Settings — profile, reminders, and sign out',
 };
 

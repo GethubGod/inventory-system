@@ -1,5 +1,6 @@
 import type {
   Checklist,
+  ChecklistDefaultLine,
   ChecklistItem,
   ChecklistSendLine,
 } from '@/services/orderChecklist';
@@ -33,13 +34,25 @@ export interface SelectionState {
   lines: SelectionLine[];
 }
 
+/** One line of a past order being loaded back into today's checklist. */
+export interface ReorderItem {
+  itemId: string | null;
+  itemName: string;
+  unit: string | null;
+  quantity: number;
+}
+
 export type SelectionAction =
   | { type: 'init'; checklist: Checklist }
   | { type: 'toggle'; key: string }
   | { type: 'setQuantity'; key: string; quantity: number }
   | { type: 'adjustQuantity'; key: string; delta: number }
+  | { type: 'setUnit'; key: string; unit: string }
   | { type: 'addInventoryItem'; item: InventoryItem }
-  | { type: 'removeLine'; key: string };
+  | { type: 'removeLine'; key: string }
+  | { type: 'clearAll' }
+  | { type: 'restore'; state: SelectionState }
+  | { type: 'applyReorder'; items: ReorderItem[] };
 
 export const MIN_QUANTITY = 0.25;
 export const MAX_QUANTITY = 999;
@@ -182,6 +195,85 @@ export function selectionReducer(
       return { ...state, lines: [...state.lines, newLine] };
     }
 
+    case 'setUnit': {
+      // Per-line unit override for THIS order only — never mutates the
+      // inventory item's configured units, and save-as-default records it on
+      // the user's own checklist row.
+      const unit = action.unit.trim();
+      if (!unit) return state;
+      return updateLine(state, action.key, (line) =>
+        line.unit === unit ? line : { ...line, unit },
+      );
+    }
+
+    case 'clearAll':
+      // Uncheck everything and reset quantities to the recommended amounts.
+      // Lines keep their rows (including search adds) so Undo can restore by
+      // snapshot and nothing silently disappears.
+      return {
+        ...state,
+        lines: state.lines.map((line) => {
+          const quantity = defaultQuantityFor({ recommendedQty: line.recommendedQty });
+          if (!line.checked && line.quantity === quantity) return line;
+          return { ...line, checked: false, quantity };
+        }),
+      };
+
+    case 'restore':
+      return action.state;
+
+    case 'applyReorder': {
+      // Loads a past order into today's checklist: exactly that order's items
+      // become the checked set with its quantities (and units, when archived).
+      const byItemId = new Map<string, SelectionLine>();
+      const byName = new Map<string, SelectionLine>();
+      for (const line of state.lines) {
+        if (line.itemId) byItemId.set(line.itemId, line);
+        byName.set(line.itemName.trim().toLowerCase(), line);
+      }
+
+      const updates = new Map<string, ReorderItem>();
+      const additions: SelectionLine[] = [];
+      for (const item of action.items) {
+        const name = item.itemName.trim();
+        if (!name || !Number.isFinite(item.quantity) || item.quantity <= 0) continue;
+        const existing =
+          (item.itemId ? byItemId.get(item.itemId) : undefined) ??
+          byName.get(name.toLowerCase());
+        if (existing) {
+          updates.set(existing.key, item);
+          continue;
+        }
+        additions.push({
+          key: item.itemId ? addedLineKey(item.itemId) : `added:name:${name.toLowerCase()}`,
+          source: 'search',
+          itemId: item.itemId,
+          itemName: name,
+          unit: item.unit?.trim() || 'unit',
+          checked: true,
+          quantity: clampQuantity(item.quantity),
+          recommendedQty: null,
+          bucket: 'added',
+          lastOrderedAt: null,
+        });
+      }
+      if (updates.size === 0 && additions.length === 0) return state;
+
+      const lines = state.lines.map((line) => {
+        const update = updates.get(line.key);
+        if (!update) {
+          return line.checked ? { ...line, checked: false } : line;
+        }
+        return {
+          ...line,
+          checked: true,
+          quantity: clampQuantity(update.quantity),
+          unit: update.unit?.trim() || line.unit,
+        };
+      });
+      return { ...state, lines: [...lines, ...additions] };
+    }
+
     case 'removeLine': {
       const target = state.lines.find((line) => line.key === action.key);
       if (!target) return state;
@@ -267,6 +359,23 @@ export function buildSendLines(state: SelectionState): BuiltSendLines {
   }
 
   return { lines, unmatchedNames };
+}
+
+/**
+ * Maps the currently checked selection to save-as-default lines: checklist
+ * rows carry their row id for an in-place update; search adds insert as
+ * manual rows. Quantities land in recommended_qty on the server.
+ */
+export function buildDefaultLines(state: SelectionState): ChecklistDefaultLine[] {
+  return getCheckedLines(state)
+    .filter((line) => Number.isFinite(line.quantity) && line.quantity > 0)
+    .map((line) => ({
+      checklistItemId: line.source === 'checklist' ? line.key : null,
+      itemId: line.itemId,
+      itemName: line.itemName,
+      unit: line.unit,
+      quantity: line.quantity,
+    }));
 }
 
 /**
