@@ -113,38 +113,31 @@ iOS `webcredentials:tips.babytunasystems.com` associated domain added to app.jso
   remaining rows (auth user, users, profiles, user_modules, invites).
 
 ## Needs David
-1. **Deploy order matters**: apply the 4 migrations BEFORE (or together with)
+1. **Deploy order matters**: apply the 5 onboarding migrations (including
+   `20260821153027_harden_onboarding_and_invite_deletion.sql`) BEFORE or with
    deploying `create-invite`/`accept-invite`/`login-with-name` — the new
    create-invite inserts `location_group` and reads `login_identities`.
    `login-with-name` also needs its `[functions.login-with-name] verify_jwt=false`
    config (already in supabase/config.toml) picked up at deploy.
-2. **API-key mismatch found in production (pre-existing, affects the live app
-   today):** the deployed edge functions' injected `SUPABASE_ANON_KEY` is now the
-   *publishable* key (`sb_publishable_15Zj…`), so accept-invite returns 401
-   Unauthorized to any client sending the legacy JWT anon key — which is what the
-   repo `.env` contained. Invite acceptance from a binary built with the legacy
-   key is currently broken. I switched the local `.env` (gitignored) to the
-   publishable key to demo; production builds/EAS env need the same alignment.
-   Please confirm which key the shipped 2.2 binary embeds.
+2. **Public API keys:** the app/web clients accept the current publishable-key
+   variable or the legacy anon-key variable. Pre-session functions accept
+   publishable keys through `apikey` and legacy anon JWTs through either
+   `apikey` or bearer auth. Set the publishable-key variable in future builds;
+   existing legacy-key builds remain compatible.
 3. **AASA goes live on the next web deploy** (required for iCloud Keychain save
    on the password path). No web deploy performed by me.
-4. Final **Terms/Privacy URLs** — placeholders `babytunasystems.com/terms` /
-   `/privacy` in `src/features/auth/legal.ts` (privacy matches about-support).
-5. **App Store link**: `web/src/components/join/JoinLanding.tsx` `APP_STORE_URL`
-   is still the TODO placeholder.
+4. **Terms/Privacy are complete** at `tips.babytunasystems.com/terms` and
+   `/privacy`. Update the App Store Connect privacy-policy field from the old
+   Notion URL after the web deploy.
+5. **App Store link is complete** and points to app id `6759226573`.
 6. **Tips-PIN unification decision**: the login credentials use the same bcrypt
    hashing as the tips PINs, but note tips v2 (live 2026-08-20) removed PINs from
    the tips web app entirely (QR-only). "Restaurant PIN" in onboarding copy now
    refers to the register PIN the manager gives out. Unifying with a future tips
    credential is mechanical (same hashing) but there is currently nothing to
    unify with.
-7. **Pre-existing bug found during cleanup: delete-self fails for invited
-   users.** `invites.used_by`/`created_by` reference auth.users with no ON
-   DELETE handling and `prepareSelfDelete` doesn't clear them, so any account
-   created through an invite cannot delete itself ("Database error deleting
-   user") until the invite row is removed. Verified in production. This blocks
-   the App Store-required account deletion for invited employees — a task chip
-   was raised for it.
+7. **Invited-user deletion is fixed** by detaching invite audit references
+   while preserving the consumed timestamp, plus explicit delete-self cleanup.
 8. The dev simulator (iPhone 17 Pro) was signed out of your session
    (davidp@gmail…) to demonstrate the auth flow — sign back in when you next
    use it. The installed dev-client build now points at Metro on port 8081.

@@ -15,7 +15,7 @@ import { glassColors, glassRadii, glassSpacing } from '@/theme/design';
 const APPSTORE_COMPLIANCE_LINKS = {
   support: 'https://www.babytunasystems.com/support',
   contact: 'https://www.babytunasystems.com/contact',
-  privacy: 'https://www.babytunasystems.com/privacy',
+  privacy: 'https://tips.babytunasystems.com/privacy',
 } as const;
 
 function AboutSection() {

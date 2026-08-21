@@ -10,23 +10,16 @@ is pushed to production by agents).
 - [ ] Rename placeholder roster (Maria/Jose/Lena/Tom/Ken)
 - [ ] Print QR stickers — ONLY from `tips.babytunasystems.com/manager/qr` (vercel.app URL bakes wrong host)
 
-## Phase gates
-- [ ] **Phase 4 go-signal:** tell this session when the two tips chats
-      ("Tips entry speaker and QR" / "tips dashboard variants") are merged to main.
-      Phase 4 is frozen until then and builds on top of their edge-fn rewrites.
-
-## Small decisions
-- [ ] Phase 2b: real App Store link for the `/join/[token]` page (currently a
-      `TODO-DAVID` placeholder pointing at https://apps.apple.com/)
-
 ## Real-world verification (build is done with fixtures; these prove it)
 - [ ] Phase 1: send a real order-day Send All run from a physical iPhone
       (`sms:` deep-link recipient+body quirks can only be proven on-device)
 - [ ] Phase 5c: confirm an order-day reminder push lands on a real device
-- [ ] Phase 6a/6b: provide ~2 months of real order screenshots for parse accuracy + import
-- [ ] Phase 7b: provide a few real supplier invoices (incl. one with a price change)
-- [ ] Phase 9b: lay out the Virtual Shelf grid to match the physical shelves
+- [ ] Complete one invited-user onboarding on a physical iPhone, then confirm
+      PIN/password sign-in and in-app account deletion.
 
 ## Final
-- [ ] Review `roadmap/integration` branch end-to-end; merging to `main` deploys `web/` via Vercel
-- [ ] Run staged deploy checklists in order (`docs/deploy/phase-*.md`)
+- [ ] Deploy the retained migrations before or with the changed Edge Functions.
+- [ ] Deploy `web/`, then change the App Store Connect privacy-policy URL to
+      `https://tips.babytunasystems.com/privacy`.
+- [ ] Review and merge the curated integration branch; merging to `main`
+      deploys `web/` through Vercel.

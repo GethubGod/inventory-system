@@ -12,8 +12,8 @@ import {
   type InviteValidation,
 } from "@/lib/join";
 
-// TODO-DAVID: replace with the real App Store listing URL once published.
-const APP_STORE_URL = "https://apps.apple.com/";
+const APP_STORE_URL =
+  "https://apps.apple.com/us/app/babytuna-systems/id6759226573";
 
 const FAILURE_COPY: Record<
   InviteFailureReason,
@@ -106,8 +106,8 @@ export default function JoinLanding({ token }: { token: string }) {
                 Come back here and tap <strong>Open in app</strong> below.
               </SetupStep>
               <SetupStep n={3}>
-                Create your account with your email and a password — no access
-                code needed, this link is yours.
+                Finish the manager-started setup in the app and choose your PIN
+                or password — no access code needed.
               </SetupStep>
             </ol>
 
@@ -119,6 +119,17 @@ export default function JoinLanding({ token }: { token: string }) {
             </a>
             <p className="text-ink3 text-xs text-center mt-3">
               Nothing happening? Install the app first, then tap again.
+            </p>
+            <p className="mt-5 text-center text-xs text-ink3">
+              By continuing, you agree to the{" "}
+              <a className="underline underline-offset-2" href="/terms">
+                Terms
+              </a>{" "}
+              and acknowledge the{" "}
+              <a className="underline underline-offset-2" href="/privacy">
+                Privacy Policy
+              </a>
+              .
             </p>
           </div>
         ) : (
