@@ -214,3 +214,40 @@ export function normalizeAmount(value: unknown): number | null {
   if (num < 0 || num >= 100000) return null;
   return Math.round(num * 100) / 100;
 }
+
+/**
+ * Weekday of a YYYY-MM-DD business date: 0 = Sunday … 6 = Saturday (the JS
+ * Date.getDay() convention; tip_employee_schedules.weekday matches). Mirrors
+ * weekdayOfBusinessDate in web/src/lib/tips/businessDate.ts.
+ */
+export function weekdayOfBusinessDate(businessDate: string): number {
+  const [y, m, d] = businessDate.split('-').map(Number);
+  return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1, 12)).getUTCDay();
+}
+
+/**
+ * Employee ids with a tip_employee_schedules row for (location, business
+ * date's weekday, meal). Callers intersect this with the active roster —
+ * the schedule table alone doesn't know about deactivations or works-at
+ * changes.
+ */
+export async function fetchScheduledIds(
+  admin: any,
+  locationId: string,
+  businessDate: string,
+  meal: 'lunch' | 'dinner',
+): Promise<Set<string>> {
+  const { data, error } = await admin
+    .from('tip_employee_schedules')
+    .select('tip_employee_id')
+    .eq('location_id', locationId)
+    .eq('weekday', weekdayOfBusinessDate(businessDate))
+    .eq('meal', meal);
+  if (error) {
+    console.warn('[tips] schedule fetch failed', error);
+    return new Set();
+  }
+  return new Set(
+    (data ?? []).map((row: { tip_employee_id: string }) => row.tip_employee_id),
+  );
+}

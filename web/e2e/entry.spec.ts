@@ -52,6 +52,15 @@ test.describe("typed entry", () => {
     // Pin the test to the dinner slot regardless of wall-clock default.
     await mealTab(page, "Dinner").click();
 
+    // The manager's weekly schedule pre-selects today's crew; clear any
+    // pre-selected chips so the split-math scenario stays deterministic.
+    // (Chips are the only buttons carrying aria-pressed.) Re-query after
+    // every click — the chip list re-renders.
+    const pressed = page.locator('button[aria-pressed="true"]');
+    while ((await pressed.count()) > 0) {
+      await pressed.first().click();
+    }
+
     await fillAmount(page, "Cash", "120.50");
     await fillAmount(page, "Card", "340.25");
 
