@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EmptyStateCard, LoadingIndicator } from '@/components';
+import { getFloatingPillClearance } from '@/components/navigation';
 import { useResolvedActiveLocation } from '@/hooks/useResolvedActiveLocation';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
@@ -35,6 +36,7 @@ import {
   glassHairlineWidth,
   glassRadii,
   glassSpacing,
+  tipsTheme,
 } from '@/theme/design';
 import { formatQuantity } from '../checklistSelection';
 import { formatRecentOrderDate } from '../recentOrders';
@@ -331,7 +333,9 @@ export function ReceiveDeliveryScreen() {
   }, [loadOrders, phase.name]);
 
   const flaggedCount = countFlaggedLines(state);
-  const bottomInset = Math.max(insets.bottom, ds.spacing(12));
+  // Clear the floating pill toolbar (it stays visible on this screen with the
+  // dots button appended).
+  const bottomInset = getFloatingPillClearance(insets.bottom);
   const saveButtonHeight = Math.max(56, ds.buttonH);
 
   let content: React.ReactNode;
@@ -573,7 +577,7 @@ export function ReceiveDeliveryScreen() {
   }
 
   return (
-    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: tipsTheme.page }}>
       <View style={{ flex: 1, paddingHorizontal: glassSpacing.screen }}>
         <View
           style={{

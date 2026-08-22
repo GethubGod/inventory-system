@@ -9,12 +9,12 @@ import {
 } from '@/store/moduleStore.helpers';
 import type { InviteLocationGroup } from '@/services/invites';
 
-/** Display metadata per employee tab route key (mirrors app/(tabs)/_layout.tsx). */
+/** Display metadata per employee tab route key (mirrors the floating pill toolbar). */
 export const EMPLOYEE_TAB_META: Record<string, { label: string; icon: string }> = {
-  index: { label: 'Home', icon: 'home-outline' },
   'simple-order': { label: 'Order', icon: 'list-outline' },
   'quick-order': { label: 'Advanced', icon: 'flash-outline' },
   cart: { label: 'Cart', icon: 'bag-handle-outline' },
+  history: { label: 'History', icon: 'time-outline' },
   settings: { label: 'Settings', icon: 'person-circle-outline' },
 };
 
@@ -56,13 +56,13 @@ export function deriveInvitePreview(
   const tabKeys = getVisibleEmployeeTabs(modules);
   const tabLabels = tabKeys.map((key) => EMPLOYEE_TAB_META[key]?.label ?? key);
 
-  const locationBit =
-    locationGroup === 'both'
-      ? 'both stores'
-      : `the ${LOCATION_GROUP_LABELS[locationGroup]} list`;
   const opensOn = modules.ordering_simple
-    ? `Opens on Home with ${locationBit} one tap away on the Order tab.`
-    : `Opens on Home, set to ${locationBit === 'both stores' ? 'both stores' : locationBit}.`;
+    ? locationGroup === 'both'
+      ? 'Opens on the order checklist, covering both stores.'
+      : `Opens on the ${LOCATION_GROUP_LABELS[locationGroup]} order checklist.`
+    : modules.ordering_advanced
+      ? `Opens on Advanced ordering${locationGroup === 'both' ? ' for both stores' : ` at ${LOCATION_GROUP_LABELS[locationGroup]}`}.`
+      : 'Opens on order history — no ordering surface is on.';
 
   const extras: string[] = [];
   if (modules.stock_check) extras.push('Stock check opens from inside the app.');
