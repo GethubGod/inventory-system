@@ -144,8 +144,7 @@ function ScanLanding() {
           <div className="pt-1">
             <p className="font-bold text-ink">Two ways to scan</p>
             <p className="mt-1 text-sm text-ink2">
-              Point your camera app at the sticker, or use the scanner right
-              here — same sticker either way
+              Use your camera app or scan it here.
             </p>
           </div>
         </div>
@@ -161,9 +160,6 @@ function ScanLanding() {
         <CameraIcon />
         Scan the sticker
       </button>
-      <p className="mt-4 text-center text-sm text-ink3">
-        One scan per entry — you&rsquo;re signed out automatically after saving
-      </p>
 
       {showScanner && (
         <QrScanner

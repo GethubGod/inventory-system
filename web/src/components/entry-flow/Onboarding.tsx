@@ -21,22 +21,29 @@ interface Slide {
 const SLIDES: Slide[] = [
   {
     title: "Scan to start",
-    body: "The sticker by the register is your sign-in. Scan it with your camera — or tap Scan here — and you're in. No PIN, nothing to remember.",
+    body: "Scan the sticker by the register with your camera, or tap Scan here. No PIN needed.",
     icon: "scan",
   },
   {
     title: "Speak it in",
-    body: "Say the shift, the cash, the card, and who's splitting — any order, any accent. Tap any row to type it instead.",
+    body: "Say the shift, cash, card, and who's splitting. Any order or accent works. You can also tap a row to type.",
     icon: "mic",
   },
   {
     title: "Save and go",
-    body: "Check the numbers, hit Save. You'll see a quick confirmation and the app resets for the next shift.",
+    body: "Check the numbers and tap Save. You'll see a quick confirmation, then the app resets for the next shift.",
     icon: "check",
   },
 ];
 
-function SlideIcon({ icon, size = 44 }: { icon: Slide["icon"]; size?: number }) {
+function SlideIcon({
+  icon,
+  variant,
+}: {
+  icon: Slide["icon"];
+  variant: OnboardingVariant;
+}) {
+  const size = variant === "story" ? 52 : 44;
   const common = {
     width: size,
     height: size,
@@ -46,29 +53,55 @@ function SlideIcon({ icon, size = 44 }: { icon: Slide["icon"]; size?: number }) 
     strokeWidth: 1.8,
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
-    "aria-hidden": true,
+    className: "onboarding-kinetic-graphic",
   };
-  if (icon === "scan") {
+
+  const graphic = (() => {
+    if (icon === "scan") {
+      return (
+        <svg {...common}>
+          <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
+          <rect x="8" y="8" width="8" height="8" rx="1.5" />
+          <path className="onboarding-kinetic-scan-beam" d="M5 12h14" />
+        </svg>
+      );
+    }
+
+    if (icon === "mic") {
+      return (
+        <span className="onboarding-kinetic-eq">
+          <span />
+          <span />
+          <span />
+          <span />
+          <span />
+        </span>
+      );
+    }
+
     return (
-      <svg {...common}>
-        <path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" />
-        <rect x="8" y="8" width="8" height="8" rx="1.5" />
-      </svg>
+      <>
+        <span className="onboarding-kinetic-glint" />
+        <svg {...common} className="onboarding-kinetic-graphic onboarding-kinetic-check">
+          <path d="M20 6L9 17l-5-5" />
+        </svg>
+      </>
     );
-  }
-  if (icon === "mic") {
-    return (
-      <svg {...common}>
-        <rect x="9" y="2" width="6" height="12" rx="3" />
-        <path d="M5 10v1a7 7 0 0 0 14 0v-1" />
-        <path d="M12 18v4" />
-      </svg>
-    );
-  }
+  })();
+
+  const sizeClasses = variant === "story" ? "h-28 w-28" : "h-24 w-24";
+  const colorClass = variant === "story" ? "text-white" : "text-accent";
+
   return (
-    <svg {...common}>
-      <path d="M20 6L9 17l-5-5" />
-    </svg>
+    <span
+      aria-hidden="true"
+      data-onboarding-icon={icon}
+      data-onboarding-variant={variant}
+      className={`onboarding-kinetic-stage flex items-center justify-center ${sizeClasses} ${colorClass}`}
+    >
+      <span className="onboarding-kinetic-tile" />
+      {graphic}
+    </span>
   );
 }
 
@@ -132,6 +165,7 @@ function CardsOnboarding({ onDone }: { onDone: () => void }) {
         <div
           ref={trackRef}
           onScroll={handleScroll}
+          aria-label="Tutorial slides"
           className="mt-6 flex flex-1 snap-x snap-mandatory overflow-x-auto"
           style={{ scrollbarWidth: "none" }}
         >
@@ -141,9 +175,7 @@ function CardsOnboarding({ onDone }: { onDone: () => void }) {
               className="flex w-full shrink-0 snap-center flex-col px-5"
             >
               <div className="flex flex-1 flex-col items-center justify-center rounded-card bg-card p-8 text-center">
-                <span className="flex h-24 w-24 items-center justify-center rounded-full bg-tint text-accent">
-                  <SlideIcon icon={slide.icon} />
-                </span>
+                <SlideIcon icon={slide.icon} variant="cards" />
                 <h2 className="mt-6 text-2xl font-bold text-ink">
                   {slide.title}
                 </h2>
@@ -170,7 +202,7 @@ function CardsOnboarding({ onDone }: { onDone: () => void }) {
             onClick={() => (index === last ? onDone() : goTo(index + 1))}
             className="w-full rounded-full bg-accent py-4 font-semibold text-white active:opacity-90"
           >
-            {index === last ? "Got it — let's go" : "Next"}
+            {index === last ? "Got it" : "Next"}
           </button>
         </div>
       </div>
@@ -218,9 +250,7 @@ function StoryOnboarding({ onDone }: { onDone: () => void }) {
           onClick={advance}
           className="flex flex-1 flex-col items-center justify-center text-center"
         >
-          <span className="flex h-28 w-28 items-center justify-center rounded-full bg-white/15">
-            <SlideIcon icon={slide.icon} size={52} />
-          </span>
+          <SlideIcon icon={slide.icon} variant="story" />
           <h2 className="mt-8 text-3xl font-bold">{slide.title}</h2>
           <p className="mt-4 max-w-xs text-white/85">{slide.body}</p>
         </button>
@@ -246,7 +276,7 @@ function StoryOnboarding({ onDone }: { onDone: () => void }) {
             onClick={advance}
             className="rounded-full bg-white px-8 py-3.5 font-semibold text-accent active:opacity-90"
           >
-            {index === last ? "Let's go" : "Next"}
+            {index === last ? "Got it" : "Next"}
           </button>
         </div>
       </div>

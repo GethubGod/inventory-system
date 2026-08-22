@@ -17,28 +17,35 @@ test.describe("scan landing", () => {
     page,
   }) => {
     await page.goto("/");
-    // Variant A carousel: three slides, dots, Next → Next → done. The button
-    // label follows the scroll position, which animates — advance until the
-    // last slide's label appears instead of firing blind clicks.
+    // Variant A carousel: three slides, dots, Next → Next → done.
+    const currentSlide = () =>
+      page.getByLabel("Tutorial slides").evaluate((track) =>
+        Math.round(track.scrollLeft / track.clientWidth),
+      );
+
     await expect(page.getByText("Scan to start")).toBeVisible();
-    const nextButton = page.getByRole("button", { name: "Next", exact: true });
-    const goButton = page.getByRole("button", { name: /let.s go/i });
-    await expect(async () => {
-      if (await nextButton.isVisible()) await nextButton.click();
-      await expect(goButton).toBeVisible({ timeout: 1500 });
-    }).toPass({ timeout: 20_000 });
+    await expect(page.locator("[data-onboarding-icon]")).toHaveCount(3);
+    await expect(
+      page.locator(".onboarding-kinetic-tile").first(),
+    ).toHaveCSS("animation-iteration-count", "infinite");
+    await expect(page.locator(".onboarding-kinetic-eq > span")).toHaveCount(5);
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect.poll(currentSlide).toBe(1);
     await expect(page.getByText("Speak it in")).toBeVisible();
-    // Same animation caveat for the final click: the label can briefly flap
-    // back to "Next" while the scroll settles.
-    await expect(async () => {
-      if (await goButton.isVisible()) await goButton.click();
-      await expect(
-        page.getByRole("heading", { name: "Scan to enter" }),
-      ).toBeVisible({ timeout: 1500 });
-    }).toPass({ timeout: 20_000 });
+    await page.getByRole("button", { name: "Next", exact: true }).click();
+    await expect.poll(currentSlide).toBe(2);
+    await page.getByRole("button", { name: "Got it", exact: true }).click();
+
+    await expect(
+      page.getByRole("heading", { name: "Scan to enter" }),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Scan the sticker" }),
     ).toBeVisible();
+    await expect(
+      page.getByText("Use your camera app or scan it here."),
+    ).toBeVisible();
+    await expect(page.getByText(/One scan per entry/)).toHaveCount(0);
     // PIN entry is gone from the product.
     await expect(page.getByText(/PIN/)).toHaveCount(0);
 
