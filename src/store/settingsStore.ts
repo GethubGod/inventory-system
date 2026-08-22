@@ -7,11 +7,13 @@ import {
   Reminder,
   ExportFormatSettings,
   InventoryView,
+  SimpleOrderDensity,
   StockSettings,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_REMINDER_SETTINGS,
   DEFAULT_EXPORT_FORMAT_SETTINGS,
   DEFAULT_INVENTORY_VIEW,
+  DEFAULT_SIMPLE_ORDER_DENSITY,
   DEFAULT_STOCK_SETTINGS,
 } from '@/types/settings';
 import type { ComposerMode } from '@/features/ordering/quickOrderComposer';
@@ -54,6 +56,10 @@ interface SettingsState {
   // Quick Order Settings
   quickOrderComposerMode: ComposerMode;
   setQuickOrderComposerMode: (mode: ComposerMode) => void;
+
+  // Simple Order Settings
+  simpleOrderDensity: SimpleOrderDensity;
+  setSimpleOrderDensity: (density: SimpleOrderDensity) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -75,6 +81,9 @@ export const useSettingsStore = create<SettingsState>()(
 
       // Quick Order - Initial State
       quickOrderComposerMode: 'order',
+
+      // Simple Order - Initial State
+      simpleOrderDensity: DEFAULT_SIMPLE_ORDER_DENSITY,
 
       // Profile Actions
       setAvatarUri: (avatarUri) => set({ avatarUri }),
@@ -157,6 +166,9 @@ export const useSettingsStore = create<SettingsState>()(
       // Quick Order Actions
       setQuickOrderComposerMode: (quickOrderComposerMode) => set({ quickOrderComposerMode }),
 
+      // Simple Order Actions
+      setSimpleOrderDensity: (simpleOrderDensity) => set({ simpleOrderDensity }),
+
       // Reset Actions
       resetAllToDefaults: () =>
         set({
@@ -167,6 +179,7 @@ export const useSettingsStore = create<SettingsState>()(
           inventoryView: DEFAULT_INVENTORY_VIEW,
           stockSettings: DEFAULT_STOCK_SETTINGS,
           quickOrderComposerMode: 'order',
+          simpleOrderDensity: DEFAULT_SIMPLE_ORDER_DENSITY,
         }),
     }),
     {

@@ -66,6 +66,7 @@ export interface Profile {
   notifications_enabled: boolean;
   last_active_at: string | null;
   last_order_at: string | null;
+  order_send_mode: 'direct' | 'review';
   profile_completed: boolean;
   provider: AuthProvider | null;
   created_at: string;

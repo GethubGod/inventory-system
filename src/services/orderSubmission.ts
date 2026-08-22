@@ -42,7 +42,11 @@ function getRequestContext(): {
   anonKey: string;
 } {
   const url = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').trim();
-  const anonKey = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
+  const anonKey = (
+    process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
+    ''
+  ).trim();
   if (!url || !anonKey) {
     throw new OrderSubmissionError(
       'App configuration error. Please restart the app.',
@@ -242,7 +246,11 @@ export async function submitOrder(req: SubmitOrderRequest): Promise<SubmitOrderR
 export function syncProfileAfterOrder(userId: string, orderCreatedAt: string): void {
   // Best-effort — never blocks the happy path
   const url = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').trim();
-  const anonKey = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
+  const anonKey = (
+    process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
+    ''
+  ).trim();
   const token = (useAuthStore.getState().session as any)?.access_token ?? '';
   if (!url || !anonKey || !token) return;
 

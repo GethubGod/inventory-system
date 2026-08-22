@@ -65,7 +65,7 @@ export function resolveProtectedAuthGuard(
   }
 
   if (!session) {
-    return { isChecking: false, redirectTo: '/(auth)/login', resolvedRole };
+    return { isChecking: false, redirectTo: '/(auth)/welcome' as Href, resolvedRole };
   }
 
   // Session exists but profile hasn't been fetched yet (transient state

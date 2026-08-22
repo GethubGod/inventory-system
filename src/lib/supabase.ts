@@ -179,10 +179,14 @@ const ExpoSecureStoreAdapter = {
 };
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() ?? '';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() ?? '';
+const supabasePublicKey = (
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ??
+  ''
+).trim();
 const missingConfig = [
   !supabaseUrl ? 'EXPO_PUBLIC_SUPABASE_URL' : null,
-  !supabaseAnonKey ? 'EXPO_PUBLIC_SUPABASE_ANON_KEY' : null,
+  !supabasePublicKey ? 'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY (or legacy ANON_KEY)' : null,
 ].filter((entry): entry is string => Boolean(entry));
 
 export const supabaseConfigError =
@@ -198,10 +202,10 @@ if (__DEV__ && supabaseConfigError) {
 
 // Keep app startup resilient if env vars are missing.
 const resolvedSupabaseUrl = supabaseUrl || 'https://invalid.supabase.local';
-const resolvedSupabaseAnonKey = supabaseAnonKey || 'invalid-anon-key';
+const resolvedSupabasePublicKey = supabasePublicKey || 'invalid-public-key';
 const supabaseAuthStorageKey = `sb-${new URL(resolvedSupabaseUrl).hostname.split('.')[0]}-auth-token`;
 
-export const supabase = createClient(resolvedSupabaseUrl, resolvedSupabaseAnonKey, {
+export const supabase = createClient(resolvedSupabaseUrl, resolvedSupabasePublicKey, {
   auth: {
     storage: ExpoSecureStoreAdapter,
     storageKey: supabaseAuthStorageKey,
