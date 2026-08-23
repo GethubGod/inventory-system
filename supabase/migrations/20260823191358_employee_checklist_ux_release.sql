@@ -55,7 +55,7 @@ declare
   v_item_name text;
   v_unit text;
   v_qty numeric;
-  v_matched_ids uuid[] := '{}';
+  v_matched_ids uuid[] := array[]::uuid[];
   v_next_sort integer;
   v_count integer := 0;
 begin

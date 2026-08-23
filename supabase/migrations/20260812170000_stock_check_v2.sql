@@ -352,7 +352,6 @@ declare
   v_area_item public.area_items%rowtype;
   v_area public.storage_areas%rowtype;
   v_quantity numeric;
-  v_existing_count boolean;
   v_was_skipped boolean;
   v_area_items_total integer;
   v_area_checked integer;
@@ -435,14 +434,6 @@ begin
   else
     raise exception 'Unknown stock-count entry mode' using errcode = 'P0001';
   end if;
-
-  select exists (
-    select 1
-    from public.stock_updates stock_update
-    where stock_update.stock_check_session_id = p_session_id
-      and stock_update.area_item_id = p_area_item_id
-  )
-  into v_existing_count;
 
   v_area_progress := coalesce(v_session.area_progress, '{}'::jsonb);
   select count(*)::integer
