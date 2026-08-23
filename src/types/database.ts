@@ -78,6 +78,7 @@ export type ReminderEventType = 'sent' | 'reminded_again' | 'auto_resolved' | 'c
 export type ReminderThreadScope = 'employee' | 'location_banner';
 export type RecurringReminderScope = 'employee' | 'location';
 export type RecurringReminderCondition = 'no_order_today' | 'days_since_last_order_gte';
+export type RecurringReminderRuleKind = 'standard' | 'checklist_order_day';
 
 export interface ReminderSystemSetting {
   id: string;
@@ -111,6 +112,9 @@ export interface ReminderEvent {
   sent_at: string;
   channels_attempted: string[];
   delivery_result: Record<string, unknown>;
+  push_delivery_status: 'accepted' | 'failed' | null;
+  expo_push_receipt_ids: string[];
+  push_error_detail: string | null;
 }
 
 export interface RecurringReminderRule {
@@ -118,6 +122,8 @@ export interface RecurringReminderRule {
   scope: RecurringReminderScope;
   employee_id: string | null;
   location_id: string | null;
+  rule_kind: RecurringReminderRuleKind;
+  location_group: 'sushi' | 'poki' | null;
   days_of_week: number[];
   time_of_day: string;
   timezone: string;
@@ -273,6 +279,8 @@ export interface OrderItem {
   decided_by: string | null;
   decided_at: string | null;
   note: string | null;
+  /** Employee-chosen unit when it differs from the item's base/pack unit (display-only). */
+  unit_label?: string | null;
   status?: string | null;
   supplier_override_id?: string | null;
   was_suggested?: boolean;

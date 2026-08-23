@@ -265,10 +265,17 @@ export async function loadPendingFulfillmentData(options?: {
   // secondary_supplier, secondary_supplier_id) may not exist on every
   // database — a missing column causes PostgREST to return a 400 error
   // that silently breaks the entire query.
-  const buildQuery = (inventorySelect: string, includeReviewColumns: boolean) => {
+  const buildQuery = (
+    inventorySelect: string,
+    includeReviewColumns: boolean,
+    includeUnitLabel: boolean,
+  ) => {
     const orderSelectPrefix = includeReviewColumns
-      ? 'id,status,location_id,created_at,entry_method,quick_session_id,manager_review_status,'
-      : 'id,status,location_id,created_at,';
+      ? 'id,status,location_id,created_at,notes,entry_method,quick_session_id,manager_review_status,'
+      : 'id,status,location_id,created_at,notes,';
+    // order_items.unit_label ships with the employee-app phase; fall back
+    // without it so the screen keeps working before that migration deploys.
+    const unitLabelSelect = includeUnitLabel ? 'unit_label,' : '';
 
     let q = supabase
       .from('orders')
@@ -277,7 +284,7 @@ export async function loadPendingFulfillmentData(options?: {
         user:users!orders_user_id_fkey(id,name),
         location:locations(id,name,short_code),
         order_items(
-          id,order_id,quantity,unit_type,input_mode,
+          id,order_id,quantity,unit_type,input_mode,${unitLabelSelect}
           remaining_reported,decided_quantity,decided_by,decided_at,
           note,supplier_override_id,status,inventory_item_id,
           inventory_item:inventory_items(${inventorySelect})
@@ -295,9 +302,11 @@ export async function loadPendingFulfillmentData(options?: {
   // Try with all columns first (best supplier resolution), fall back to
   // core columns if any are missing (error 42703 = undefined_column).
   let includeReviewColumns = true;
+  let includeUnitLabel = true;
   let { data, error } = await buildQuery(
     'id,name,category,base_unit,pack_unit,pack_size,supplier_category,default_supplier,secondary_supplier,supplier_id,active',
-    includeReviewColumns
+    includeReviewColumns,
+    includeUnitLabel
   );
 
   if (error && (error as any).code === '42703') {
@@ -309,15 +318,23 @@ export async function loadPendingFulfillmentData(options?: {
     ) {
       includeReviewColumns = false;
     }
+    if (message.includes('unit_label')) {
+      includeUnitLabel = false;
+    }
 
     ({ data, error } = await buildQuery(
       'id,name,category,base_unit,pack_unit,pack_size,supplier_category,supplier_id,active',
-      includeReviewColumns
+      includeReviewColumns,
+      includeUnitLabel
     ));
   }
 
   if (error && (error as any).code === '42703') {
-    ({ data, error } = await buildQuery('*', includeReviewColumns));
+    const message = String((error as any).message ?? '');
+    if (message.includes('unit_label')) {
+      includeUnitLabel = false;
+    }
+    ({ data, error } = await buildQuery('*', includeReviewColumns, includeUnitLabel));
   }
 
   if (error) {

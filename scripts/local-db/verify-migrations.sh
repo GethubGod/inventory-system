@@ -3,9 +3,8 @@
 # verify-migrations.sh
 #
 # Spins up a disposable postgres:17 Docker container, loads a stubbed auth
-# schema plus a snapshot of the CURRENT production public schema, then applies
-# every migration in supabase/migrations/ that does NOT exist on origin/main
-# (i.e. migrations that are new on this branch), in timestamp (filename) order.
+# schema plus a production public-schema snapshot, then applies every migration
+# newer than that snapshot plus any older migration that is new on this branch.
 #
 # Usage:
 #   scripts/local-db/verify-migrations.sh          # run, clean up container
@@ -21,6 +20,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MIGRATIONS_DIR="$REPO_ROOT/supabase/migrations"
 BASELINE="$SCRIPT_DIR/baseline_public_schema.sql"
 AUTH_STUB="$SCRIPT_DIR/auth_stub.sql"
+# The snapshot was captured after this production migration on 2026-08-11.
+BASELINE_MIGRATION_CUTOFF="20260811204219_tip_entry_session_duplicate_guard.sql"
 
 KEEP=false
 if [[ "${1:-}" == "--keep" ]]; then
@@ -103,21 +104,24 @@ run_sql_file "$AUTH_STUB"
 echo "==> Loading production public-schema baseline ($(basename "$BASELINE"))"
 run_sql_file "$BASELINE"
 
-# Migrations new on this branch = files in supabase/migrations/ that are not in
-# origin/main's supabase/migrations/. Timestamp order == sorted filename order.
+# Apply every migration after the snapshot cutoff, including files already on
+# main, because the checked-in baseline does not contain their schema changes.
+# Also include any branch-new migration at or before the cutoff.
 MAIN_LIST="$(git -C "$REPO_ROOT" ls-tree -r --name-only origin/main -- supabase/migrations/ | sed 's|.*/||' | sort)"
 LOCAL_LIST="$(cd "$MIGRATIONS_DIR" && ls -1 *.sql 2>/dev/null | sort)"
 NEW_MIGRATIONS="$(comm -13 <(printf '%s\n' "$MAIN_LIST") <(printf '%s\n' "$LOCAL_LIST"))"
+AFTER_BASELINE="$(printf '%s\n' "$LOCAL_LIST" | awk -v cutoff="$BASELINE_MIGRATION_CUTOFF" '$0 > cutoff')"
+MIGRATIONS_TO_APPLY="$(printf '%s\n%s\n' "$AFTER_BASELINE" "$NEW_MIGRATIONS" | sed '/^$/d' | sort -u)"
 
-if [[ -z "$NEW_MIGRATIONS" ]]; then
+if [[ -z "$MIGRATIONS_TO_APPLY" ]]; then
   echo ""
   echo "==> No new migrations on this branch vs origin/main. Nothing to verify."
   echo "PASS (baseline + auth stub loaded cleanly; 0 new migrations)"
   exit 0
 fi
 
-echo "==> New migrations to apply (vs origin/main), in timestamp order:"
-printf '      %s\n' $NEW_MIGRATIONS
+echo "==> Migrations to apply after the baseline snapshot, in timestamp order:"
+printf '      %s\n' $MIGRATIONS_TO_APPLY
 
 APPLIED=0
 while IFS= read -r mig; do
@@ -130,7 +134,7 @@ while IFS= read -r mig; do
     exit 1
   fi
   APPLIED=$((APPLIED + 1))
-done <<< "$NEW_MIGRATIONS"
+done <<< "$MIGRATIONS_TO_APPLY"
 
 echo ""
-echo "PASS: $APPLIED new migration(s) applied cleanly on top of the production baseline."
+echo "PASS: $APPLIED migration(s) applied cleanly on top of the production baseline."

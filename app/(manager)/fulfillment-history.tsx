@@ -16,6 +16,11 @@ import { useAuthStore, useOrderStore } from '@/store';
 import { supabase } from '@/lib/supabase';
 import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 import { useModuleAccessGuard } from '@/hooks';
+import {
+  listDiscrepancies,
+  type ReceiptDiscrepancy,
+} from '@/services/orderReceiving';
+import { describeDiscrepancyLine } from '@/features/simpleOrder/receiving/receiveLineState';
 
 type DateFilter = 'all' | 'today' | '7d' | '30d';
 
@@ -107,6 +112,18 @@ function FulfillmentHistoryScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [supplierById, setSupplierById] = useState<Record<string, SupplierLookupRow>>({});
+  const [discrepancies, setDiscrepancies] = useState<ReceiptDiscrepancy[]>([]);
+
+  // 7a: one listDiscrepancies fetch powers both the per-order "Delivery issue"
+  // badge and the recent-issues section. Failures are non-fatal — the history
+  // list must never break because receiving data is unavailable.
+  const loadDiscrepancies = useCallback(async () => {
+    try {
+      setDiscrepancies(await listDiscrepancies(30));
+    } catch (error) {
+      console.warn('Unable to load delivery discrepancies.', error);
+    }
+  }, []);
 
   const loadSuppliers = useCallback(async () => {
     const run = async (columns: string) =>
@@ -144,8 +161,8 @@ function FulfillmentHistoryScreen() {
   const refreshData = useCallback(async () => {
     const managerId = user?.id ?? null;
     await flushPendingPastOrderSync(managerId);
-    await Promise.all([fetchPastOrders(managerId), loadSuppliers()]);
-  }, [fetchPastOrders, flushPendingPastOrderSync, loadSuppliers, user?.id]);
+    await Promise.all([fetchPastOrders(managerId), loadSuppliers(), loadDiscrepancies()]);
+  }, [fetchPastOrders, flushPendingPastOrderSync, loadDiscrepancies, loadSuppliers, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -169,6 +186,11 @@ function FulfillmentHistoryScreen() {
       return displayName.includes(normalizedSearch);
     });
   }, [dateFilter, normalizedSearch, pastOrders, supplierById]);
+
+  const orderIdsWithIssues = useMemo(
+    () => new Set(discrepancies.map((entry) => entry.pastOrderId)),
+    [discrepancies],
+  );
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={['top', 'left', 'right']}>
@@ -230,6 +252,47 @@ function FulfillmentHistoryScreen() {
             />
           }
           ItemSeparatorComponent={() => <View className="h-3" />}
+          ListHeaderComponent={
+            discrepancies.length > 0 ? (
+              <View className="bg-white rounded-2xl border border-red-100 px-4 py-3 mb-4">
+                <View className="flex-row items-center mb-2">
+                  <Ionicons name="alert-circle" size={16} color={colors.red} />
+                  <Text className="ml-1.5 text-sm font-bold text-gray-900">
+                    Delivery issues (last 30 days)
+                  </Text>
+                </View>
+                {discrepancies.slice(0, 5).map((entry) => (
+                  <View
+                    key={entry.line.id}
+                    className="flex-row items-start py-1.5 border-t border-gray-50"
+                  >
+                    <View className="flex-1 pr-2">
+                      <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>
+                        {entry.line.itemName}
+                        <Text className="font-normal text-red-700">
+                          {'  '}
+                          {describeDiscrepancyLine(entry.line)}
+                        </Text>
+                      </Text>
+                      <Text className="text-xs text-gray-500 mt-0.5" numberOfLines={1}>
+                        {entry.supplierName}
+                        {entry.employee?.name ? ` • ${entry.employee.name}` : ''}
+                        {entry.receiptReceivedAt
+                          ? ` • ${new Date(entry.receiptReceivedAt).toLocaleDateString()}`
+                          : ''}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+                {discrepancies.length > 5 && (
+                  <Text className="text-xs text-gray-400 mt-1.5">
+                    +{discrepancies.length - 5} more flagged item
+                    {discrepancies.length - 5 === 1 ? '' : 's'}
+                  </Text>
+                )}
+              </View>
+            ) : null
+          }
           renderItem={({ item }) => {
             const summary = getPastOrderSummary(item);
             const dateLabel = new Date(item.createdAt).toLocaleString();
@@ -282,6 +345,13 @@ function FulfillmentHistoryScreen() {
                       {item.itemCount} item{item.itemCount === 1 ? '' : 's'}
                     </Text>
                   </View>
+                  {orderIdsWithIssues.has(item.id) && (
+                    <View className="px-2.5 py-1 rounded-full bg-red-100 mr-2">
+                      <Text className="text-[11px] font-semibold text-red-700">
+                        Delivery issue
+                      </Text>
+                    </View>
+                  )}
                   {item.remainingCount > 0 && (
                     <View className="px-2.5 py-1 rounded-full bg-amber-100 mr-2">
                       <Text className="text-[11px] font-semibold text-amber-800">

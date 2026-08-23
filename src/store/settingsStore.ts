@@ -14,6 +14,7 @@ import {
   DEFAULT_EXPORT_FORMAT_SETTINGS,
   DEFAULT_INVENTORY_VIEW,
   DEFAULT_SIMPLE_ORDER_DENSITY,
+  DEFAULT_SIMPLE_ORDER_SHOW_CATEGORIES,
   DEFAULT_STOCK_SETTINGS,
 } from '@/types/settings';
 import type { ComposerMode } from '@/features/ordering/quickOrderComposer';
@@ -60,6 +61,8 @@ interface SettingsState {
   // Simple Order Settings
   simpleOrderDensity: SimpleOrderDensity;
   setSimpleOrderDensity: (density: SimpleOrderDensity) => void;
+  simpleOrderShowCategories: boolean;
+  setSimpleOrderShowCategories: (show: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -84,6 +87,7 @@ export const useSettingsStore = create<SettingsState>()(
 
       // Simple Order - Initial State
       simpleOrderDensity: DEFAULT_SIMPLE_ORDER_DENSITY,
+      simpleOrderShowCategories: DEFAULT_SIMPLE_ORDER_SHOW_CATEGORIES,
 
       // Profile Actions
       setAvatarUri: (avatarUri) => set({ avatarUri }),
@@ -168,6 +172,8 @@ export const useSettingsStore = create<SettingsState>()(
 
       // Simple Order Actions
       setSimpleOrderDensity: (simpleOrderDensity) => set({ simpleOrderDensity }),
+      setSimpleOrderShowCategories: (simpleOrderShowCategories) =>
+        set({ simpleOrderShowCategories }),
 
       // Reset Actions
       resetAllToDefaults: () =>
@@ -180,6 +186,7 @@ export const useSettingsStore = create<SettingsState>()(
           stockSettings: DEFAULT_STOCK_SETTINGS,
           quickOrderComposerMode: 'order',
           simpleOrderDensity: DEFAULT_SIMPLE_ORDER_DENSITY,
+          simpleOrderShowCategories: DEFAULT_SIMPLE_ORDER_SHOW_CATEGORIES,
         }),
     }),
     {

@@ -10,7 +10,8 @@
 --     sets from the JWT, null-safe so unauthenticated sessions behave like
 --     service connections.
 --
--- This is a stub: no gotrue, no storage, no realtime. See README.md.
+-- This is a stub: no gotrue or realtime. Storage includes only the objects
+-- required for migration parsing and RLS-policy verification. See README.md.
 
 \set ON_ERROR_STOP on
 
@@ -71,3 +72,35 @@ AS $$
 $$;
 
 GRANT SELECT ON auth.users TO anon, authenticated, service_role;
+
+-- Minimal Storage stand-in for bucket declarations and object RLS policies.
+CREATE SCHEMA IF NOT EXISTS storage;
+GRANT USAGE ON SCHEMA storage TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS storage.buckets (
+  id text PRIMARY KEY,
+  name text NOT NULL UNIQUE,
+  public boolean NOT NULL DEFAULT false,
+  file_size_limit bigint,
+  allowed_mime_types text[]
+);
+
+CREATE TABLE IF NOT EXISTS storage.objects (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  bucket_id text REFERENCES storage.buckets(id),
+  name text NOT NULL,
+  owner_id text
+);
+
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+CREATE OR REPLACE FUNCTION storage.foldername(name text)
+RETURNS text[]
+LANGUAGE sql IMMUTABLE
+SET search_path = ''
+AS $$
+  SELECT CASE
+    WHEN name IS NULL THEN ARRAY[]::text[]
+    ELSE string_to_array(trim(both '/' from name), '/')
+  END
+$$;
