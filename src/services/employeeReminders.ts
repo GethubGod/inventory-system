@@ -60,6 +60,9 @@ export interface SendReminderResult {
     channels_attempted: string[];
     delivery_result: Record<string, unknown>;
     sent_at: string;
+    push_delivery_status: 'accepted' | 'failed' | null;
+    expo_push_receipt_ids: string[];
+    push_error_detail: string | null;
   };
   push: {
     attempted: boolean;
@@ -67,6 +70,9 @@ export interface SendReminderResult {
     tokenCount: number;
     successCount: number;
     failureCount: number;
+    deliveryOutcome: 'accepted' | 'failed' | null;
+    receiptIds: string[];
+    errorDetail: string | null;
   };
   notificationsEnabled: boolean;
   inAppNotificationId: string | null;
@@ -80,6 +86,8 @@ export interface RecurringReminderRule {
   scope: 'employee' | 'location';
   employee_id: string | null;
   location_id: string | null;
+  rule_kind: 'standard' | 'checklist_order_day';
+  location_group: 'sushi' | 'poki' | null;
   days_of_week: number[];
   time_of_day: string;
   timezone: string;
@@ -113,6 +121,9 @@ export interface ReminderDeliveryEvent {
   sent_at: string;
   channels_attempted: string[];
   delivery_result: Record<string, unknown>;
+  push_delivery_status: 'accepted' | 'failed' | null;
+  expo_push_receipt_ids: string[];
+  push_error_detail: string | null;
   reminder: {
     id: string;
     employee_id: string;
@@ -120,6 +131,22 @@ export interface ReminderDeliveryEvent {
     location_id: string | null;
     employee_name?: string | null;
   };
+}
+
+export interface ChecklistOrderDayReminderRuleInput {
+  id?: string;
+  locationGroup: 'sushi' | 'poki';
+  daysOfWeek: number[];
+  timeOfDay: string;
+  timezone: string;
+  quietHoursEnabled?: boolean;
+  quietHoursStart?: string | null;
+  quietHoursEnd?: string | null;
+  channels?: {
+    push?: boolean;
+    in_app?: boolean;
+  };
+  enabled?: boolean;
 }
 
 export class ReminderServiceError extends Error {
@@ -440,6 +467,9 @@ async function sendReminderDirect(params: {
       channels_attempted: channelsAttempted,
       delivery_result: eventRow?.delivery_result ?? {},
       sent_at: nowIso,
+      push_delivery_status: null,
+      expo_push_receipt_ids: [],
+      push_error_detail: null,
     },
     push: {
       attempted: false,
@@ -447,6 +477,9 @@ async function sendReminderDirect(params: {
       tokenCount: 0,
       successCount: 0,
       failureCount: 0,
+      deliveryOutcome: null,
+      receiptIds: [],
+      errorDetail: null,
     },
     notificationsEnabled: true,
     inAppNotificationId,
@@ -553,13 +586,19 @@ export async function listRecurringReminderRules(): Promise<RecurringReminderRul
 }
 
 export async function upsertRecurringReminderRule(
-  input: Omit<RecurringReminderRule, 'id' | 'created_at' | 'updated_at' | 'last_triggered_at'> & { id?: string }
+  input: Omit<RecurringReminderRule, 'id' | 'created_at' | 'updated_at' | 'last_triggered_at' | 'rule_kind' | 'location_group'> & {
+    id?: string;
+    rule_kind?: RecurringReminderRule['rule_kind'];
+    location_group?: RecurringReminderRule['location_group'];
+  }
 ): Promise<RecurringReminderRule> {
   const payload = {
     ...(input.id ? { id: input.id } : {}),
     scope: input.scope,
     employee_id: input.employee_id,
     location_id: input.location_id,
+    rule_kind: input.rule_kind ?? 'standard',
+    location_group: input.location_group ?? null,
     days_of_week: input.days_of_week,
     time_of_day: input.time_of_day,
     timezone: input.timezone,
@@ -584,6 +623,50 @@ export async function upsertRecurringReminderRule(
   }
 
   return data as RecurringReminderRule;
+}
+
+/**
+ * Creates or edits only the signed-in employee's checklist order-day rule.
+ * The matching RLS policies deliberately keep all general recurring rules
+ * manager-only while allowing this narrowly scoped employee preference.
+ */
+export async function upsertMyChecklistOrderDayReminderRule(
+  input: ChecklistOrderDayReminderRuleInput
+): Promise<RecurringReminderRule> {
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+
+  const userId = authData.user?.id;
+  if (!userId) {
+    throw new Error('You must be signed in to set an order-day reminder.');
+  }
+
+  const daysOfWeek = [...new Set(input.daysOfWeek.map(Number))]
+    .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+    .sort((left, right) => left - right);
+  if (daysOfWeek.length === 0) {
+    throw new Error('Choose at least one day for the order-day reminder.');
+  }
+
+  return upsertRecurringReminderRule({
+    ...(input.id ? { id: input.id } : {}),
+    scope: 'employee',
+    employee_id: userId,
+    location_id: null,
+    rule_kind: 'checklist_order_day',
+    location_group: input.locationGroup,
+    days_of_week: daysOfWeek,
+    time_of_day: input.timeOfDay,
+    timezone: input.timezone,
+    condition_type: 'no_order_today',
+    condition_value: null,
+    quiet_hours_enabled: Boolean(input.quietHoursEnabled),
+    quiet_hours_start: input.quietHoursEnabled ? input.quietHoursStart ?? null : null,
+    quiet_hours_end: input.quietHoursEnabled ? input.quietHoursEnd ?? null : null,
+    channels: input.channels ?? { push: true, in_app: true },
+    enabled: input.enabled ?? true,
+    created_by: userId,
+  });
 }
 
 export async function deleteRecurringReminderRule(ruleId: string): Promise<void> {
@@ -647,6 +730,9 @@ export async function listReminderDeliveryEvents(limit = 50): Promise<ReminderDe
       sent_at,
       channels_attempted,
       delivery_result,
+      push_delivery_status,
+      expo_push_receipt_ids,
+      push_error_detail,
       reminder:reminders(
         id,
         employee_id,
@@ -668,6 +754,12 @@ export async function listReminderDeliveryEvents(limit = 50): Promise<ReminderDe
     sent_at: row.sent_at,
     channels_attempted: Array.isArray(row.channels_attempted) ? row.channels_attempted : [],
     delivery_result: typeof row.delivery_result === 'object' && row.delivery_result ? row.delivery_result : {},
+    push_delivery_status:
+      row.push_delivery_status === 'accepted' || row.push_delivery_status === 'failed'
+        ? row.push_delivery_status
+        : null,
+    expo_push_receipt_ids: Array.isArray(row.expo_push_receipt_ids) ? row.expo_push_receipt_ids : [],
+    push_error_detail: typeof row.push_error_detail === 'string' ? row.push_error_detail : null,
     reminder: {
       id: row.reminder?.id,
       employee_id: row.reminder?.employee_id,

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
-import { Link, Redirect, router } from 'expo-router';
+import { Link, Redirect, router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,7 +17,9 @@ import { useAuthStore } from '@/store';
 import { AuthLoadingScreen, AuthLogoHeader, LoadingIndicator } from '@/components';
 import { useAuthScreenGuard } from '@/hooks';
 import { validatePassword } from '@/lib';
+import { fetchInvitePreview, type InvitePreview } from '@/services/invites';
 import { colors } from '@/constants';
+import { LegalFooter } from '@/features/auth/components/LegalFooter';
 
 const ACCESS_CODE_REGEX = /^\d{4}$/;
 const AUTH_SCREEN_BACKGROUND = '#000000';
@@ -46,15 +48,57 @@ export default function SignUpScreen() {
   const [confirmPasswordError, setConfirmPasswordError] = useState<string | null>(null);
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
 
-  const { signUp, isLoading } = useAuthStore();
+  // Invite-link mode (babytunasystems://join?token=… → /join → here). The
+  // access-code path below stays fully intact and remains the default.
+  const params = useLocalSearchParams<{ inviteToken?: string | string[] }>();
+  const rawInviteToken = Array.isArray(params.inviteToken)
+    ? params.inviteToken[0]
+    : params.inviteToken;
+  const inviteToken = typeof rawInviteToken === 'string' ? rawInviteToken.trim() : '';
+  const [inviteDismissed, setInviteDismissed] = useState(false);
+  const [invitePreview, setInvitePreview] = useState<InvitePreview | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+
+  const inviteMode = inviteToken.length > 0 && !inviteDismissed;
+  const inviteChecking = inviteMode && invitePreview === null && inviteError === null;
+
+  const { signUp, signUpWithInvite, isLoading } = useAuthStore();
   const guard = useAuthScreenGuard();
+
+  useEffect(() => {
+    if (!inviteToken) return;
+    let cancelled = false;
+    setInvitePreview(null);
+    setInviteError(null);
+    fetchInvitePreview(inviteToken)
+      .then((preview) => {
+        if (cancelled) return;
+        setInvitePreview(preview);
+        if (preview.invitedName) {
+          const invitedName = preview.invitedName;
+          setName((prev) => (prev.trim() ? prev : invitedName));
+        }
+      })
+      .catch((error: any) => {
+        if (!cancelled) {
+          setInviteError(error?.message || 'This invite link is not valid.');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteToken]);
 
   const passwordValidation = useMemo(() => validatePassword(password), [password]);
   const isPasswordEmpty = password.length === 0;
   const hasConfirmPassword = confirmPassword.length > 0;
   const passwordsMatch = hasConfirmPassword && password === confirmPassword;
 
-  const canCreateAccount = !isLoading && passwordValidation.isValid && passwordsMatch;
+  const canCreateAccount =
+    !isLoading &&
+    passwordValidation.isValid &&
+    passwordsMatch &&
+    (!inviteMode || invitePreview !== null);
 
   const sanitizeAccessCode = (value: string) => value.replace(/\D/g, '').slice(0, 4);
 
@@ -83,13 +127,15 @@ export default function SignUpScreen() {
       setConfirmPasswordError('Passwords do not match.');
       return;
     }
-    if (!ACCESS_CODE_REGEX.test(accessCode)) {
+    if (!inviteMode && !ACCESS_CODE_REGEX.test(accessCode)) {
       setAccessCodeError('Access code must be exactly 4 digits.');
       return;
     }
 
     try {
-      const result = await signUp(email.trim(), password, name.trim(), accessCode);
+      const result = inviteMode
+        ? await signUpWithInvite(inviteToken, email.trim(), password, name.trim())
+        : await signUp(email.trim(), password, name.trim(), accessCode);
 
       if (result.status === 'confirmation_required') {
         Alert.alert(
@@ -159,6 +205,48 @@ export default function SignUpScreen() {
               <Text className="text-2xl font-bold text-gray-900 mb-6 text-center">
                 Create Account
               </Text>
+
+              {inviteMode ? (
+                inviteChecking ? (
+                  <View className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 flex-row items-center">
+                    <LoadingIndicator size="small" />
+                    <Text className="ml-3 text-sm text-gray-600">Checking your invite…</Text>
+                  </View>
+                ) : invitePreview ? (
+                  <View className="mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
+                    <View className="flex-row items-center mb-1">
+                      <Ionicons name="mail-open-outline" size={16} color={colors.primary[500]} />
+                      <Text className="ml-2 text-sm font-semibold text-gray-800">
+                        {invitePreview.invitedName
+                          ? `You're invited, ${invitePreview.invitedName}`
+                          : "You're invited"}
+                      </Text>
+                    </View>
+                    <Text className="text-xs text-gray-500">
+                      {invitePreview.role
+                        ? `This link signs you up as ${invitePreview.role}. No access code needed.`
+                        : 'No access code needed — this link is yours.'}
+                    </Text>
+                  </View>
+                ) : (
+                  <View className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                    <View className="flex-row items-center mb-1">
+                      <Ionicons name="alert-circle" size={16} color={colors.error} />
+                      <Text className="ml-2 text-sm font-semibold text-red-700">
+                        Invite link problem
+                      </Text>
+                    </View>
+                    <Text className="text-xs text-red-600 mb-2">
+                      {inviteError ?? 'This invite link is not valid. Ask your manager for a new one.'}
+                    </Text>
+                    <TouchableOpacity onPress={() => setInviteDismissed(true)}>
+                      <Text className="text-xs font-bold text-primary-500">
+                        Use an access code instead
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )
+              ) : null}
 
               <View className="mb-4">
                 <Text className="text-sm font-medium text-gray-700 mb-2">Full Name</Text>
@@ -324,6 +412,7 @@ export default function SignUpScreen() {
                 ) : null}
               </View>
 
+              {inviteMode ? null : (
               <View className="mb-6">
                 <Text className="text-sm font-medium text-gray-700 mb-3">Access Code</Text>
                 <View className={getInputStyle('accessCode')} style={{ height: 48 }}>
@@ -373,6 +462,7 @@ export default function SignUpScreen() {
                   <Text className="text-xs text-red-500 mt-1.5 ml-1">{accessCodeError}</Text>
                 ) : null}
               </View>
+              )}
 
               <TouchableOpacity
                 className={`rounded-xl items-center justify-center ${
@@ -401,6 +491,7 @@ export default function SignUpScreen() {
             </View>
           </View>
         </ScrollView>
+        <LegalFooter />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

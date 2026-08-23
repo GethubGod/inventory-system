@@ -72,6 +72,40 @@ export const colors = {
   tagIndigoBg: 'rgba(79, 70, 229, 0.08)',
 } as const;
 
+/**
+ * Onboarding/auth phase tokens.
+ * authTheme: the black setup/sign-in flow (matches the existing (auth) look).
+ * tipsTheme: the tips-web colorway for the new manager Team surfaces —
+ * named here once so screens never scatter hex literals.
+ */
+export const authTheme = {
+  background: '#000000',
+  text: '#FFFFFF',
+  textDim: 'rgba(255, 255, 255, 0.55)',
+  textFaint: 'rgba(255, 255, 255, 0.45)',
+  well: 'rgba(255, 255, 255, 0.09)',
+  wellBorder: 'rgba(255, 255, 255, 0.18)',
+  wellIcon: 'rgba(255, 255, 255, 0.10)',
+  accent: colors.primary,
+  accentSoft: 'rgba(232, 80, 58, 0.2)',
+  legal: 'rgba(255, 255, 255, 0.35)',
+  progressTrack: 'rgba(255, 255, 255, 0.15)',
+} as const;
+
+export const tipsTheme = {
+  page: '#F5F5F4',
+  card: '#FFFFFF',
+  hairline: 'rgba(0, 0, 0, 0.06)',
+  well: '#EDEDEC',
+  tint: '#FBEAE7',
+  alert: '#C03520',
+  accent: colors.primary,
+  ink: '#1A1A1A',
+  ink2: '#5F5F5F',
+  ink3: '#9C9890',
+  disabled: '#C9C5BC',
+} as const;
+
 /** Quick Order accent — Android wide-gamut displays make #E8503A read neon vs iOS. */
 export const quickOrderAccent = Platform.select({
   android: '#D05248',

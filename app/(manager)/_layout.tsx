@@ -5,7 +5,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthStore } from "@/store";
 import { supabase } from "@/lib/supabase";
 import { AuthLoadingScreen } from "@/components";
-import { useProtectedAuthGuard } from "@/hooks";
+import { useMyModules, useProtectedAuthGuard } from "@/hooks";
+import { isOrderFulfillmentEligible } from "@/services/fulfillmentEligibility";
 import { colors } from "@/theme/design";
 import {
   TabButton,
@@ -24,6 +25,10 @@ export default function ManagerLayout() {
   const badgeChannelRef = useRef<RealtimeChannel | null>(null);
   const guard = useProtectedAuthGuard({ requireManager: true });
   const resolvedRole = guard.resolvedRole;
+  // Phase 3: managers default to every module on; the fulfillment module can
+  // still be toggled off per user. Subscription-driven, so a live flip
+  // adds/removes the tab without re-login.
+  const { modules } = useMyModules(resolvedRole);
   const tabBarBottomInset = getTabBarBottomInset(insets.bottom);
   const pathname = usePathname();
   const isBrowseRoute = pathname.includes("browse");
@@ -59,10 +64,7 @@ export default function ManagerLayout() {
         (Array.isArray(data) ? data : [])
           .filter((row: any) => {
             const order = Array.isArray(row?.orders) ? row.orders[0] : row?.orders;
-            if (order?.entry_method !== "quick_order" && !order?.quick_session_id) {
-              return true;
-            }
-            return order?.manager_review_status === "approved";
+            return isOrderFulfillmentEligible(order ?? {});
           })
           .map((row: any) =>
             typeof row?.order_id === "string" ? row.order_id : null,
@@ -164,10 +166,12 @@ export default function ManagerLayout() {
       {/* Browse (hidden — accessed from Home) */}
       <Tabs.Screen name="browse" options={{ href: null }} />
 
-      {/* Quick Order */}
+      {/* Quick Order — gated by the ordering_advanced module (managers
+          default all-on). */}
       <Tabs.Screen
         name="quick-order"
         options={{
+          href: modules.ordering_advanced ? undefined : null,
           title: "Quick",
           tabBarIcon: ({ color, size, focused }) => (
             <TabButton name="flash-outline" label="Quick" size={size} color={color} focused={focused} />
@@ -175,10 +179,12 @@ export default function ManagerLayout() {
         }}
       />
 
-      {/* Fulfillment (replaces Cart in manager mode) */}
+      {/* Fulfillment (replaces Cart in manager mode) — gated by the
+          fulfillment module (managers default all-on). */}
       <Tabs.Screen
         name="fulfillment"
         options={{
+          href: modules.fulfillment ? undefined : null,
           title: "Fulfillment",
           tabBarIcon: ({ color, size, focused }) => (
             <TabButton name="clipboard-outline" label="Fulfillment" size={size} color={color} focused={focused} />
@@ -218,6 +224,7 @@ export default function ManagerLayout() {
       <Tabs.Screen name="cart" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="export-fish-order" options={{ href: null }} />
       <Tabs.Screen name="fulfillment-confirmation" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="fulfillment-send-all" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="fulfillment-history" options={{ href: null }} />
       <Tabs.Screen name="fulfillment-history-detail" options={{ href: null }} />
       <Tabs.Screen name="past-orders/index" options={{ href: null, tabBarStyle: { display: "none" } }} />
@@ -227,6 +234,13 @@ export default function ManagerLayout() {
       <Tabs.Screen name="manager-settings/profile" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="manager-settings/access-codes" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="manager-settings/quick-order-config" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/supplier-contacts" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team-invite" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team-invite-link" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team-member" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team-preview" options={{ href: null, tabBarStyle: { display: "none" } }} />
+      <Tabs.Screen name="manager-settings/team-defaults" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders-recurring" options={{ href: null, tabBarStyle: { display: "none" } }} />
       <Tabs.Screen name="employee-reminders-settings" options={{ href: null, tabBarStyle: { display: "none" } }} />

@@ -51,6 +51,8 @@
     <string>Camera access is required to scan QR codes.</string>
     <key>NSFaceIDUsageDescription</key>
     <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Microphone access lets you add order items by voice.</string>
     <key>NSPhotoLibraryUsageDescription</key>
     <string>Photo library access is needed to update your profile photo.</string>
     <key>NSUserActivityTypes</key>
