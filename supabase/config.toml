@@ -47,6 +47,12 @@ verify_jwt = false
 [functions.login-with-name]
 verify_jwt = false
 
+# The recurring reminder evaluator authorizes either an authenticated manager
+# JWT or the dedicated CRON_SECRET. Gateway verification must be disabled so
+# the non-JWT scheduler secret can reach that in-function authorization check.
+[functions.evaluate-recurring-reminders]
+verify_jwt = false
+
 # Tips web app entry endpoints use their own session-token auth (entry devices
 # have no Supabase JWT beyond the anon key). The HTTP functions still require
 # the anon key as bearer; the WebSocket stream cannot send headers at all.
