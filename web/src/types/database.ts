@@ -4210,6 +4210,48 @@ export type Database = {
           },
         ]
       }
+      tip_employee_schedules: {
+        Row: {
+          created_at: string
+          id: string
+          location_id: string
+          meal: string
+          tip_employee_id: string
+          weekday: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          location_id: string
+          meal: string
+          tip_employee_id: string
+          weekday: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          location_id?: string
+          meal?: string
+          tip_employee_id?: string
+          weekday?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tip_employee_schedules_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tip_employee_schedules_tip_employee_id_fkey"
+            columns: ["tip_employee_id"]
+            isOneToOne: false
+            referencedRelation: "tip_employees"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tip_entries: {
         Row: {
           anomaly_reason: string | null
@@ -4221,6 +4263,8 @@ export type Database = {
           entered_by: string | null
           entry_method: string
           entry_session_id: string | null
+          flag_verified_at: string | null
+          flag_verified_by: string | null
           flagged_anomaly: boolean
           id: string
           location_id: string
@@ -4239,6 +4283,8 @@ export type Database = {
           entered_by?: string | null
           entry_method: string
           entry_session_id?: string | null
+          flag_verified_at?: string | null
+          flag_verified_by?: string | null
           flagged_anomaly?: boolean
           id?: string
           location_id: string
@@ -4257,6 +4303,8 @@ export type Database = {
           entered_by?: string | null
           entry_method?: string
           entry_session_id?: string | null
+          flag_verified_at?: string | null
+          flag_verified_by?: string | null
           flagged_anomaly?: boolean
           id?: string
           location_id?: string
@@ -4370,6 +4418,7 @@ export type Database = {
       tip_location_access: {
         Row: {
           entry_token_hash: string | null
+          entry_token_plain: string | null
           location_id: string
           pin_hash: string | null
           pin_rotated_at: string | null
@@ -4379,6 +4428,7 @@ export type Database = {
         }
         Insert: {
           entry_token_hash?: string | null
+          entry_token_plain?: string | null
           location_id: string
           pin_hash?: string | null
           pin_rotated_at?: string | null
@@ -4388,6 +4438,7 @@ export type Database = {
         }
         Update: {
           entry_token_hash?: string | null
+          entry_token_plain?: string | null
           location_id?: string
           pin_hash?: string | null
           pin_rotated_at?: string | null

@@ -8,7 +8,7 @@
 // save shows a full-screen confirmation, then ends the session and returns
 // to the scan gate — one QR scan per entry.
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/Avatar";
 import {
@@ -236,6 +236,11 @@ export function EntryForm() {
   const [cash, setCash] = useState("");
   const [card, setCard] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Who the manager's schedule says works each meal today. Seeds the chip
+  // pre-selection and floats scheduled people to the top of the picker.
+  const [scheduledByMeal, setScheduledByMeal] = useState<
+    Partial<Record<MealPeriod, string[]>>
+  >({});
   // Fields the user actually edited this visit. VoiceSheet only locks
   // user-edited fields against voice overwrites.
   const [touchedFields, setTouchedFields] = useState<
@@ -264,6 +269,11 @@ export function EntryForm() {
 
   const lastPayloadRef = useRef<SavePayload | null>(null);
   const finishedRef = useRef(false);
+  // Per-meal memory of the closer's selection, so switching Lunch↔Dinner and
+  // back never discards manual picks (or their voice-overwrite protection).
+  const savedSelectionsRef = useRef<
+    Partial<Record<MealPeriod, { ids: string[]; touched: boolean }>>
+  >({});
 
   /** End the per-scan session and return to the scan gate. */
   const finishSession = useCallback(() => {
@@ -280,7 +290,12 @@ export function EntryForm() {
   // page uses, and one that keeps setState out of the effect body.
   const runInit = useCallback(async (): Promise<
     | { kind: "redirect"; to: string; clear: boolean }
-    | { kind: "ready"; stored: StoredSession; fresh: SessionState }
+    | {
+        kind: "ready";
+        stored: StoredSession;
+        fresh: SessionState;
+        presetScheduled: string[] | null;
+      }
     | { kind: "error"; message: string }
   > => {
     const stored = loadSession();
@@ -290,7 +305,19 @@ export function EntryForm() {
     }
     try {
       const fresh = await fetchState(stored.token);
-      return { kind: "ready", stored, fresh };
+      // The roster's scheduled flags cover today's DEFAULT meal. When the
+      // preset lands on the other meal (default already recorded), fetch that
+      // meal's scheduled list too — best-effort, pre-selection only.
+      const preset = mealPreset(fresh.today);
+      let presetScheduled: string[] | null = null;
+      if (preset.meal && preset.meal !== fresh.today.defaultMeal) {
+        try {
+          presetScheduled = (await getSlot(stored.token, preset.meal)).scheduledIds;
+        } catch {
+          presetScheduled = null;
+        }
+      }
+      return { kind: "ready", stored, fresh, presetScheduled };
     } catch (error) {
       if (isSessionInvalid(error)) {
         return { kind: "redirect", to: "/", clear: true };
@@ -322,7 +349,24 @@ export function EntryForm() {
       setState(outcome.fresh);
       setDisabledMeals(preset.disabled);
       setAllDone(preset.allRecorded);
-      if (preset.meal) setMeal(preset.meal);
+      const byMeal: Partial<Record<MealPeriod, string[]>> = {
+        [outcome.fresh.today.defaultMeal]: outcome.fresh.roster
+          .filter((person) => person.scheduled === true)
+          .map((person) => person.id),
+      };
+      if (
+        preset.meal &&
+        preset.meal !== outcome.fresh.today.defaultMeal &&
+        outcome.presetScheduled
+      ) {
+        byMeal[preset.meal] = outcome.presetScheduled;
+      }
+      setScheduledByMeal(byMeal);
+      if (preset.meal) {
+        setMeal(preset.meal);
+        // Scheduled people start selected; the closer can still add/remove.
+        setSelectedIds(byMeal[preset.meal] ?? []);
+      }
       setLoadError(null);
       setLoading(false);
     },
@@ -344,6 +388,11 @@ export function EntryForm() {
       if (!session || next === meal || slotLoading) return;
       if (disabledMeals.includes(next)) return;
       setMeal(next);
+      // Remember the crew picked for the meal we're leaving.
+      savedSelectionsRef.current[meal] = {
+        ids: selectedIds,
+        touched: touchedFields.has("people"),
+      };
       // The target slot is empty by construction (recorded shifts are
       // locked), but confirm against the server so a save that landed from
       // another device mid-session still gets caught.
@@ -355,6 +404,30 @@ export function EntryForm() {
             prev.includes(next) ? prev : [...prev, next],
           );
           setMeal(meal);
+        } else {
+          setScheduledByMeal((prev) => ({ ...prev, [next]: slot.scheduledIds }));
+          const saved = savedSelectionsRef.current[next];
+          if (saved) {
+            // Round-trip: restore what the closer had for this meal.
+            setSelectedIds(saved.ids);
+            setTouchedFields((prev) => {
+              const restored = new Set(prev);
+              if (saved.touched) restored.add("people");
+              else restored.delete("people");
+              return restored;
+            });
+          } else {
+            // First visit: a different shift means a different crew — seed
+            // from that meal's schedule (the closer can still adjust).
+            setSelectedIds(slot.scheduledIds);
+            setPickPersonWarning(false);
+            setTouchedFields((prev) => {
+              if (!prev.has("people")) return prev;
+              const cleared = new Set(prev);
+              cleared.delete("people");
+              return cleared;
+            });
+          }
         }
       } catch (error) {
         if (isSessionInvalid(error)) {
@@ -362,11 +435,14 @@ export function EntryForm() {
           router.replace("/");
           return;
         }
+        // Couldn't confirm the slot: stay on the meal we know about instead
+        // of showing the previous meal's crew under the new tab.
+        setMeal(meal);
       } finally {
         setSlotLoading(false);
       }
     },
-    [session, meal, slotLoading, disabledMeals, router],
+    [session, meal, slotLoading, disabledMeals, selectedIds, touchedFields, router],
   );
 
   /** A slot came back already-recorded from the server: lock it here too. */
@@ -520,6 +596,17 @@ export function EntryForm() {
     [markTouched],
   );
 
+  // Scheduled people sort first for the current meal; unscheduled staff sink
+  // to the bottom. Stable sort keeps the server's sort_order/name order
+  // within each group.
+  const displayRoster = useMemo(() => {
+    if (!state) return [];
+    const scheduled = new Set(scheduledByMeal[meal] ?? []);
+    return [...state.roster].sort(
+      (a, b) => Number(scheduled.has(b.id)) - Number(scheduled.has(a.id)),
+    );
+  }, [state, scheduledByMeal, meal]);
+
   if (loading) {
     return (
       <main className="max-w-md mx-auto px-5 min-h-dvh flex items-center justify-center">
@@ -643,7 +730,7 @@ export function EntryForm() {
           <div className="section-label">Who&apos;s splitting</div>
           <div className="mt-3">
             <RosterChips
-              roster={state.roster}
+              roster={displayRoster}
               selectedIds={selectedIds}
               onToggle={togglePerson}
             />
@@ -751,7 +838,7 @@ export function EntryForm() {
         <VoiceSheet
           sessionToken={session.token}
           locationName={state.location.name}
-          roster={state.roster}
+          roster={displayRoster}
           initialMeal={meal}
           disabledMeals={disabledMeals}
           initialCash={cash}

@@ -65,6 +65,16 @@ export function defaultMealPeriod(
   return hour >= 4 && hour < 16 ? "lunch" : "dinner";
 }
 
+/**
+ * Weekday of a YYYY-MM-DD business date: 0 = Sunday … 6 = Saturday (the JS
+ * Date.getDay() / Postgres extract(dow) convention). tip_employee_schedules
+ * stores weekdays with the same convention.
+ */
+export function weekdayOfBusinessDate(businessDate: string): number {
+  const [y, m, d] = businessDate.split("-").map(Number);
+  return new Date(Date.UTC(y, (m ?? 1) - 1, d ?? 1, 12)).getUTCDay();
+}
+
 /** "Wed, Aug 6" for a YYYY-MM-DD business date (no timezone drift). */
 export function formatBusinessDate(businessDate: string): string {
   const [y, m, d] = businessDate.split("-").map(Number);
