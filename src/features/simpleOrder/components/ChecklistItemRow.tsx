@@ -1,16 +1,18 @@
-import React, { memo, useCallback, useState } from 'react';
-import { Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { memo, useCallback } from 'react';
+import { Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerImpactHaptic, triggerSelectionHaptic } from '@/lib/haptics';
-import {
-  colors,
-  glassColors,
-  glassHairlineWidth,
-  glassRadii,
-} from '@/theme/design';
+import { glassHairlineWidth, radii, tipsTheme } from '@/theme/design';
 import type { SimpleOrderDensity } from '@/types/settings';
 import { formatQuantity, type SelectionLine } from '../checklistSelection';
+
+/**
+ * Checklist row, tips colorway. Row tap toggles checked; the stepper's −/+
+ * adjust; tapping the middle (quantity) opens the quantity card. Compact rows
+ * are single-line with a WIDE stepper middle showing quantity + unit side by
+ * side (`− 2 fillet +`) — the middle tap target stays ≥ 56pt wide.
+ */
 
 interface ChecklistItemRowProps {
   line: SelectionLine;
@@ -18,46 +20,42 @@ interface ChecklistItemRowProps {
   density: SimpleOrderDensity;
   onToggle: (key: string) => void;
   onAdjustQuantity: (key: string, delta: number) => void;
-  onSetQuantity: (key: string, quantity: number) => void;
+  onOpenQuantityCard: (key: string) => void;
 }
 
 interface DensityMetrics {
   rowMinHeight: number;
   checkboxSize: number;
-  stepperSize: number;
+  stepperButtonSize: number;
   nameFontSize: number;
   quantityFontSize: number;
   verticalPadding: number;
   showSubtitle: boolean;
+  midMinWidth: number;
 }
 
 const DENSITY_METRICS: Record<SimpleOrderDensity, DensityMetrics> = {
   comfort: {
-    rowMinHeight: 56,
-    checkboxSize: 28,
-    stepperSize: 40,
-    nameFontSize: 16,
-    quantityFontSize: 16,
+    rowMinHeight: 58,
+    checkboxSize: 26,
+    stepperButtonSize: 38,
+    nameFontSize: 15,
+    quantityFontSize: 14.5,
     verticalPadding: 8,
     showSubtitle: true,
+    midMinWidth: 34,
   },
   dense: {
-    rowMinHeight: 44,
-    checkboxSize: 22,
-    stepperSize: 32,
-    nameFontSize: 14,
-    quantityFontSize: 14,
-    verticalPadding: 4,
+    rowMinHeight: 40,
+    checkboxSize: 21,
+    stepperButtonSize: 28,
+    nameFontSize: 13.5,
+    quantityFontSize: 13,
+    verticalPadding: 3,
     showSubtitle: false,
+    midMinWidth: 56,
   },
 };
-
-function parseQuantityInput(raw: string): number | null {
-  const cleaned = raw.replace(',', '.').trim();
-  if (!cleaned) return null;
-  const parsed = Number(cleaned);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-}
 
 export const ChecklistItemRow = memo(function ChecklistItemRow({
   line,
@@ -65,10 +63,9 @@ export const ChecklistItemRow = memo(function ChecklistItemRow({
   density,
   onToggle,
   onAdjustQuantity,
-  onSetQuantity,
+  onOpenQuantityCard,
 }: ChecklistItemRowProps) {
   const ds = useScaledStyles();
-  const [draftQuantity, setDraftQuantity] = useState<string | null>(null);
   const metrics = DENSITY_METRICS[density];
 
   const handleToggle = useCallback(() => {
@@ -86,28 +83,24 @@ export const ChecklistItemRow = memo(function ChecklistItemRow({
     onAdjustQuantity(line.key, 1);
   }, [line.key, onAdjustQuantity]);
 
-  const handleQuantityCommit = useCallback(() => {
-    if (draftQuantity !== null) {
-      const parsed = parseQuantityInput(draftQuantity);
-      if (parsed !== null) {
-        onSetQuantity(line.key, parsed);
-      }
-    }
-    setDraftQuantity(null);
-  }, [draftQuantity, line.key, onSetQuantity]);
+  const handleOpenQuantity = useCallback(() => {
+    void triggerSelectionHaptic();
+    onOpenQuantityCard(line.key);
+  }, [line.key, onOpenQuantityCard]);
 
   const checkboxSize = Math.max(metrics.checkboxSize, ds.icon(metrics.checkboxSize));
-  const stepperSize = Math.max(metrics.stepperSize, ds.icon(metrics.stepperSize));
+  const stepperSize = Math.max(metrics.stepperButtonSize, ds.icon(metrics.stepperButtonSize));
 
   return (
     <View
       style={{
         flexDirection: 'row',
         alignItems: 'center',
+        gap: ds.spacing(density === 'dense' ? 8 : 12),
         minHeight: Math.max(metrics.rowMinHeight, density === 'dense' ? 0 : ds.rowH),
         paddingVertical: ds.spacing(metrics.verticalPadding),
         borderBottomWidth: isLast ? 0 : glassHairlineWidth,
-        borderBottomColor: glassColors.divider,
+        borderBottomColor: tipsTheme.hairline,
       }}
     >
       <TouchableOpacity
@@ -120,35 +113,43 @@ export const ChecklistItemRow = memo(function ChecklistItemRow({
           flex: 1,
           flexDirection: 'row',
           alignItems: 'center',
+          gap: ds.spacing(density === 'dense' ? 8 : 12),
           minHeight: metrics.rowMinHeight,
-          paddingRight: ds.spacing(8),
         }}
       >
-        <Ionicons
-          name={line.checked ? 'checkmark-circle' : 'ellipse-outline'}
-          size={checkboxSize}
-          color={line.checked ? glassColors.accent : glassColors.textMuted}
-          style={{ marginRight: ds.spacing(density === 'dense' ? 8 : 12) }}
-        />
-        <View style={{ flex: 1 }}>
+        <View
+          style={{
+            width: checkboxSize,
+            height: checkboxSize,
+            borderRadius: radii.circle,
+            borderWidth: line.checked ? 0 : 1.5,
+            borderColor: tipsTheme.disabled,
+            backgroundColor: line.checked ? tipsTheme.accent : 'transparent',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {line.checked ? (
+            <Ionicons
+              name="checkmark"
+              size={Math.round(checkboxSize * 0.55)}
+              color="#FFFFFF"
+            />
+          ) : null}
+        </View>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text
-            numberOfLines={density === 'dense' ? 1 : 2}
+            numberOfLines={1}
             style={{
               fontSize: ds.fontSize(metrics.nameFontSize),
               fontWeight: '600',
-              color: line.checked ? glassColors.textPrimary : glassColors.textSecondary,
+              color: line.checked ? tipsTheme.ink : tipsTheme.ink2,
             }}
           >
             {line.itemName}
           </Text>
           {metrics.showSubtitle ? (
-            <Text
-              style={{
-                marginTop: 1,
-                fontSize: ds.fontSize(12),
-                color: glassColors.textMuted,
-              }}
-            >
+            <Text style={{ marginTop: 1, fontSize: ds.fontSize(12), color: tipsTheme.ink3 }}>
               {line.unit}
               {line.recommendedQty !== null
                 ? ` · usually ${formatQuantity(line.recommendedQty)}`
@@ -162,10 +163,10 @@ export const ChecklistItemRow = memo(function ChecklistItemRow({
         style={{
           flexDirection: 'row',
           alignItems: 'center',
-          backgroundColor: colors.glassCircle,
+          backgroundColor: tipsTheme.card,
           borderWidth: glassHairlineWidth,
-          borderColor: glassColors.controlBorder,
-          borderRadius: glassRadii.stepper,
+          borderColor: 'rgba(0, 0, 0, 0.09)',
+          borderRadius: radii.pill,
           opacity: line.checked ? 1 : 0.45,
         }}
       >
@@ -183,43 +184,51 @@ export const ChecklistItemRow = memo(function ChecklistItemRow({
         >
           <Ionicons
             name="remove"
-            size={ds.icon(density === 'dense' ? 16 : 20)}
-            color={glassColors.textPrimary}
+            size={ds.icon(density === 'dense' ? 15 : 17)}
+            color={tipsTheme.ink}
           />
         </TouchableOpacity>
-        <TextInput
-          value={draftQuantity ?? formatQuantity(line.quantity)}
-          onChangeText={setDraftQuantity}
-          onFocus={() => setDraftQuantity(formatQuantity(line.quantity))}
-          onBlur={handleQuantityCommit}
-          onSubmitEditing={handleQuantityCommit}
-          keyboardType="decimal-pad"
-          returnKeyType="done"
-          selectTextOnFocus
-          accessibilityLabel={`${line.itemName} quantity in ${line.unit}`}
+
+        <TouchableOpacity
+          onPress={handleOpenQuantity}
+          activeOpacity={0.6}
+          accessibilityRole="button"
+          accessibilityLabel={`Set ${line.itemName} quantity, now ${formatQuantity(line.quantity)} ${line.unit}`}
           style={{
-            minWidth: ds.spacing(density === 'dense' ? 32 : 40),
-            textAlign: 'center',
+            minWidth: ds.spacing(metrics.midMinWidth),
+            minHeight: stepperSize,
+            flexDirection: 'row',
+            alignItems: 'baseline',
+            justifyContent: 'center',
+            gap: density === 'dense' ? 4 : 0,
             paddingHorizontal: ds.spacing(4),
-            paddingVertical: 0,
-            fontSize: ds.fontSize(metrics.quantityFontSize),
-            fontWeight: '700',
-            color: glassColors.textPrimary,
+            paddingVertical: ds.spacing(density === 'dense' ? 5 : 6),
           }}
-        />
-        {density === 'dense' ? (
+        >
           <Text
-            numberOfLines={1}
             style={{
-              maxWidth: ds.spacing(52),
-              fontSize: ds.fontSize(11),
-              color: glassColors.textMuted,
-              marginRight: ds.spacing(2),
+              fontSize: ds.fontSize(metrics.quantityFontSize),
+              fontWeight: '700',
+              color: tipsTheme.ink,
+              textAlign: 'center',
             }}
           >
-            {line.unit}
+            {formatQuantity(line.quantity)}
           </Text>
-        ) : null}
+          {density === 'dense' ? (
+            <Text
+              numberOfLines={1}
+              style={{
+                maxWidth: ds.spacing(52),
+                fontSize: ds.fontSize(10.5),
+                color: tipsTheme.ink3,
+              }}
+            >
+              {line.unit}
+            </Text>
+          ) : null}
+        </TouchableOpacity>
+
         <TouchableOpacity
           onPress={handleIncrement}
           activeOpacity={0.6}
@@ -234,8 +243,8 @@ export const ChecklistItemRow = memo(function ChecklistItemRow({
         >
           <Ionicons
             name="add"
-            size={ds.icon(density === 'dense' ? 16 : 20)}
-            color={glassColors.accent}
+            size={ds.icon(density === 'dense' ? 15 : 17)}
+            color={tipsTheme.accent}
           />
         </TouchableOpacity>
       </View>

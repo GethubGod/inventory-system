@@ -40,12 +40,24 @@ export interface ChecklistSendLine {
   quantity: number;
 }
 
+/** One checked line of the current selection, for save-as-default. */
+export interface ChecklistDefaultLine {
+  /** order_checklist_items row id when the line came from the checklist. */
+  checklistItemId: string | null;
+  itemId: string | null;
+  itemName: string;
+  unit: string;
+  quantity: number;
+}
+
 export interface DirectSendGroup {
   supplierId: string | null;
   supplierName: string;
   contact: SupplierContact | null;
   lines: ChecklistSendLine[];
   messageText: string;
+  /** Free-text note the employee attached to this send (already appended to messageText). */
+  orderNote?: string | null;
   /**
    * Location group of the checklist the send originated from. Optional for
    * backward compatibility; when present it is archived on the history rows
@@ -209,6 +221,99 @@ function normalizeUnit(value: string | null | undefined): string {
   return (value ?? '').trim().toLocaleLowerCase();
 }
 
+/**
+ * Normalizes an order note for sending: trimmed, empty → null.
+ */
+export function normalizeOrderNote(note: string | null | undefined): string | null {
+  const trimmed = (note ?? '').trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Appends the employee's order note to a supplier message body. */
+export function appendNoteToMessage(message: string, note: string | null | undefined): string {
+  const normalized = normalizeOrderNote(note);
+  if (!normalized) return message;
+  return `${message.trimEnd()}\n\nNote: ${normalized}`;
+}
+
+export interface LineUnitMeta {
+  /** Per-item note surfaced in today's fulfillment UI when the unit is overridden. */
+  itemNote: string | null;
+  /** Authoritative override recorded on order_items.unit_label. */
+  override: { inventory_item_id: string; unit_label: string } | null;
+}
+
+/**
+ * Unit metadata for a review-mode send line. A line whose unit matches the
+ * inventory item's base or pack unit needs nothing (unit_type already carries
+ * it); any other unit is a per-line override — recorded on the order line and
+ * echoed as an item note so the manager sees it in the existing fulfillment
+ * screens. The inventory item's own units are never modified.
+ */
+export function buildLineUnitMeta(
+  line: ChecklistSendLine,
+  inventoryItem: InventoryUnitRow | undefined,
+): LineUnitMeta {
+  if (!line.itemId || !inventoryItem) {
+    return { itemNote: null, override: null };
+  }
+  const lineUnit = normalizeUnit(line.unit);
+  if (
+    lineUnit.length === 0 ||
+    lineUnit === normalizeUnit(inventoryItem.base_unit) ||
+    lineUnit === normalizeUnit(inventoryItem.pack_unit)
+  ) {
+    return { itemNote: null, override: null };
+  }
+  return {
+    itemNote: `Ordered as ${formatMetaQuantity(line.quantity)} ${line.unit.trim()}`,
+    override: { inventory_item_id: line.itemId, unit_label: line.unit.trim() },
+  };
+}
+
+function formatMetaQuantity(value: number): string {
+  return Number.isInteger(value) ? String(value) : String(Math.round(value * 100) / 100);
+}
+
+/**
+ * Upserts the current checked selection as the user's stored checklist default
+ * (quantities into recommended_qty; unchecked rows keep their row but start
+ * unchecked). Returns the number of saved lines.
+ */
+export async function saveChecklistAsDefault(
+  locationGroup: LocationGroup,
+  lines: ChecklistDefaultLine[],
+): Promise<number> {
+  if (lines.length === 0) {
+    throw new Error('Check at least one item before saving it as your default.');
+  }
+  const payload = lines.map((line, index) => {
+    const itemName = line.itemName?.trim();
+    const unit = line.unit?.trim();
+    if (!itemName || !unit) {
+      throw new Error(`Checklist item ${index + 1} is missing a name or unit.`);
+    }
+    if (!Number.isFinite(line.quantity) || line.quantity <= 0) {
+      throw new Error(`Checklist item ${index + 1} has an invalid quantity.`);
+    }
+    return {
+      id: line.checklistItemId,
+      item_id: line.itemId,
+      item_name: itemName,
+      unit,
+      quantity: line.quantity,
+    };
+  });
+
+  const { data, error } = await supabase.rpc('save_my_checklist_default', {
+    p_location_group: locationGroup,
+    p_items: payload,
+  });
+
+  if (error) throw error;
+  return typeof data === 'number' ? data : lines.length;
+}
+
 function unitTypeForLine(line: ChecklistSendLine, inventoryItem: InventoryUnitRow): 'base' | 'pack' {
   const lineUnit = normalizeUnit(line.unit);
   const packUnit = normalizeUnit(inventoryItem.pack_unit);
@@ -317,7 +422,9 @@ function buildDirectSendMessage(params: {
 export async function prepareDirectSend(
   lines: ChecklistSendLine[],
   locationGroup?: LocationGroup,
+  orderNote?: string | null,
 ): Promise<DirectSendGroup[]> {
+  const normalizedNote = normalizeOrderNote(orderNote);
   const normalizedLines = normalizeDirectSendLines(lines);
   const itemIds = Array.from(
     new Set(
@@ -384,16 +491,20 @@ export async function prepareDirectSend(
       contact: supplierId ? contactBySupplierId.get(supplierId) ?? null : null,
       lines: [line],
       locationGroup: locationGroup ?? null,
+      orderNote: normalizedNote,
     });
   });
 
   return Array.from(groups.values()).map((group) => ({
     ...group,
-    messageText: buildDirectSendMessage({
-      supplierName: group.supplierName,
-      lines: group.lines,
-      inventoryById,
-    }),
+    messageText: appendNoteToMessage(
+      buildDirectSendMessage({
+        supplierName: group.supplierName,
+        lines: group.lines,
+        inventoryById,
+      }),
+      normalizedNote,
+    ),
   }));
 }
 
@@ -466,6 +577,8 @@ export async function archiveDirectSend(
     totalItemCount: regularItems.length,
     finalizedAt: now,
     entryMethod: 'simple_checklist_direct',
+    // Employee note for this send; also already appended to message_text.
+    orderNote: normalizeOrderNote(group.orderNote),
   };
 
   const { data: pastOrderData, error: pastOrderError } = await supabase
@@ -534,11 +647,13 @@ function validateSendLines(lines: ChecklistSendLine[]): asserts lines is Array<C
 export async function sendChecklistOrder(
   checklistId: string,
   lines: ChecklistSendLine[],
+  options?: { note?: string | null },
 ): Promise<{ orderId: string }> {
   if (!checklistId.trim()) {
     throw new Error('Missing checklist ID.');
   }
   validateSendLines(lines);
+  const orderNote = normalizeOrderNote(options?.note);
 
   const userId = await getCurrentUserId();
   const { data: checklistRow, error: checklistError } = await supabase
@@ -578,11 +693,19 @@ export async function sendChecklistOrder(
     ((inventoryRows ?? []) as InventoryUnitRow[]).map((inventoryItem) => [inventoryItem.id, inventoryItem]),
   );
 
+  const unitOverrides: { inventory_item_id: string; unit_label: string }[] = [];
   const items = lines.map((line) => {
     const inventoryItem = inventoryById.get(line.itemId);
     if (!inventoryItem) {
       throw new Error(`Checklist item "${line.itemName}" is no longer available in inventory.`);
     }
+
+    // A unit that is neither the item's base nor pack unit is a per-line
+    // override: submit_order_rpc only knows base|pack, so the chosen unit is
+    // echoed as an item note (visible in today's fulfillment screens) and
+    // recorded on order_items.unit_label right after submit.
+    const unitMeta = buildLineUnitMeta(line, inventoryItem);
+    if (unitMeta.override) unitOverrides.push(unitMeta.override);
 
     return {
       inventory_item_id: line.itemId,
@@ -594,7 +717,7 @@ export async function sendChecklistOrder(
       decided_quantity: null,
       decided_by: null,
       decided_at: null,
-      note: null,
+      note: unitMeta.itemNote,
     };
   });
 
@@ -607,6 +730,19 @@ export async function sendChecklistOrder(
     entryMethod: 'simple_checklist',
     quickSessionId: null,
   });
+
+  if (orderNote || unitOverrides.length > 0) {
+    const { error: metaError } = await supabase.rpc('set_my_order_meta', {
+      p_order_id: result.order.id,
+      p_note: orderNote,
+      p_unit_overrides: unitOverrides.length > 0 ? unitOverrides : null,
+    });
+    if (metaError) {
+      // The order itself went through; surface the metadata failure without
+      // pretending the send failed.
+      console.warn('[Checklist] Order sent but its note/unit metadata failed to save.', metaError);
+    }
+  }
 
   return { orderId: result.order.id };
 }

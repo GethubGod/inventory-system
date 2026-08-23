@@ -10,14 +10,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheetShell } from '@/components/BottomSheetShell';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
-import { triggerImpactHaptic, triggerSelectionHaptic } from '@/lib/haptics';
-import {
-  colors,
-  glassColors,
-  glassHairlineWidth,
-  glassRadii,
-} from '@/theme/design';
+import { triggerImpactHaptic } from '@/lib/haptics';
+import { glassHairlineWidth, radii, tipsTheme } from '@/theme/design';
 import { formatQuantity, type SelectionLine } from '../checklistSelection';
+
+/**
+ * Review order sheet: compact one-line rows (item name left, "qty unit"
+ * right), the note card when a note exists, and "Send N items". The subtitle
+ * flips between manager-review and direct-send wording per the user's send
+ * mode. Quantities are adjusted on the list or quantity card, not here.
+ */
 
 interface ConfirmOrderSheetProps {
   visible: boolean;
@@ -25,25 +27,23 @@ interface ConfirmOrderSheetProps {
   mode: 'review' | 'direct';
   lines: SelectionLine[];
   unmatchedNames: string[];
+  note: string;
+  onEditNote: () => void;
   isSending: boolean;
   sendError: string | null;
-  onAdjustQuantity: (key: string, delta: number) => void;
-  onRemoveLine: (key: string) => void;
   onConfirm: () => void;
   onClose: () => void;
 }
-
-const STEPPER_SIZE = 36;
 
 export function ConfirmOrderSheet({
   visible,
   mode,
   lines,
   unmatchedNames,
+  note,
+  onEditNote,
   isSending,
   sendError,
-  onAdjustQuantity,
-  onRemoveLine,
   onConfirm,
   onClose,
 }: ConfirmOrderSheetProps) {
@@ -61,180 +61,141 @@ export function ConfirmOrderSheet({
   }, [onConfirm]);
 
   const sendableCount = lines.length;
+  const trimmedNote = note.trim();
 
   return (
     <BottomSheetShell
       visible={visible}
       onClose={handleClose}
-      bottomPadding={Math.max(insets.bottom, ds.spacing(12))}
+      bottomPadding={Math.max(insets.bottom, ds.spacing(14))}
     >
-      <Text
-        style={{
-          fontSize: ds.fontSize(20),
-          fontWeight: '700',
-          color: glassColors.textPrimary,
-          marginBottom: ds.spacing(2),
-        }}
-      >
+      <Text style={{ fontSize: ds.fontSize(20), fontWeight: '700', color: tipsTheme.ink }}>
         Review order
       </Text>
       <Text
-        style={{
-          fontSize: ds.fontSize(13),
-          color: glassColors.textSecondary,
-          marginBottom: ds.spacing(10),
-        }}
+        style={{ fontSize: ds.fontSize(13), color: tipsTheme.ink2, marginBottom: ds.spacing(12) }}
       >
-        {sendableCount === 1 ? '1 item' : `${sendableCount} items`} —{' '}
-        {mode === 'direct'
-          ? 'sends straight to your suppliers'
-          : 'goes to manager review'}
+        {sendableCount === 1 ? '1 item' : `${sendableCount} items`} ·{' '}
+        {mode === 'direct' ? 'sends straight to your suppliers' : 'goes to manager review'}
       </Text>
 
-      <ScrollView
-        style={{ maxHeight: ds.spacing(300) }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+      <View
+        style={{
+          backgroundColor: tipsTheme.card,
+          borderWidth: glassHairlineWidth,
+          borderColor: tipsTheme.hairline,
+          borderRadius: 18,
+          paddingHorizontal: ds.spacing(16),
+          marginBottom: ds.spacing(12),
+        }}
       >
-        {lines.map((line, index) => (
-          <View
-            key={line.key}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              minHeight: 52,
-              paddingVertical: ds.spacing(6),
-              borderBottomWidth:
-                index === lines.length - 1 ? 0 : glassHairlineWidth,
-              borderBottomColor: glassColors.divider,
-            }}
-          >
-            <View style={{ flex: 1, paddingRight: ds.spacing(8) }}>
+        <ScrollView
+          style={{ maxHeight: ds.spacing(300) }}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {lines.map((line, index) => (
+            <View
+              key={line.key}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: ds.spacing(10),
+                minHeight: 40,
+                borderBottomWidth: index === lines.length - 1 ? 0 : glassHairlineWidth,
+                borderBottomColor: 'rgba(0, 0, 0, 0.05)',
+              }}
+            >
               <Text
                 numberOfLines={1}
                 style={{
-                  fontSize: ds.fontSize(15),
+                  flex: 1,
+                  minWidth: 0,
+                  fontSize: ds.fontSize(14),
                   fontWeight: '600',
-                  color: glassColors.textPrimary,
+                  color: tipsTheme.ink,
                 }}
               >
                 {line.itemName}
               </Text>
               <Text
-                style={{ fontSize: ds.fontSize(12), color: glassColors.textMuted }}
+                style={{
+                  fontSize: ds.fontSize(13),
+                  fontWeight: '600',
+                  color: tipsTheme.ink2,
+                }}
+                numberOfLines={1}
               >
                 {formatQuantity(line.quantity)} {line.unit}
               </Text>
             </View>
+          ))}
 
-            <View
+          {lines.length === 0 ? (
+            <Text
               style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                backgroundColor: colors.glassCircle,
-                borderWidth: glassHairlineWidth,
-                borderColor: glassColors.controlBorder,
-                borderRadius: glassRadii.stepper,
-                marginRight: ds.spacing(8),
+                paddingVertical: ds.spacing(16),
+                fontSize: ds.fontSize(14),
+                color: tipsTheme.ink2,
+                textAlign: 'center',
               }}
             >
-              <TouchableOpacity
-                onPress={() => {
-                  void triggerSelectionHaptic();
-                  onAdjustQuantity(line.key, -1);
-                }}
-                disabled={isSending}
-                accessibilityRole="button"
-                accessibilityLabel={`Decrease ${line.itemName} quantity`}
-                style={{
-                  width: STEPPER_SIZE,
-                  height: STEPPER_SIZE,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="remove" size={ds.icon(18)} color={glassColors.textPrimary} />
-              </TouchableOpacity>
-              <Text
-                style={{
-                  minWidth: ds.spacing(30),
-                  textAlign: 'center',
-                  fontSize: ds.fontSize(15),
-                  fontWeight: '700',
-                  color: glassColors.textPrimary,
-                }}
-              >
-                {formatQuantity(line.quantity)}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  void triggerSelectionHaptic();
-                  onAdjustQuantity(line.key, 1);
-                }}
-                disabled={isSending}
-                accessibilityRole="button"
-                accessibilityLabel={`Increase ${line.itemName} quantity`}
-                style={{
-                  width: STEPPER_SIZE,
-                  height: STEPPER_SIZE,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="add" size={ds.icon(18)} color={glassColors.textPrimary} />
-              </TouchableOpacity>
-            </View>
+              No items left to send.
+            </Text>
+          ) : null}
+        </ScrollView>
+      </View>
 
-            <TouchableOpacity
-              onPress={() => {
-                void triggerSelectionHaptic();
-                onRemoveLine(line.key);
-              }}
-              disabled={isSending}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove ${line.itemName} from order`}
-              hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+      {trimmedNote ? (
+        <TouchableOpacity
+          onPress={onEditNote}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Edit the order note"
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: ds.spacing(9),
+            backgroundColor: tipsTheme.card,
+            borderWidth: glassHairlineWidth,
+            borderColor: tipsTheme.hairline,
+            borderRadius: 18,
+            paddingHorizontal: ds.spacing(16),
+            paddingVertical: ds.spacing(12),
+            marginBottom: ds.spacing(12),
+          }}
+        >
+          <Ionicons name="create-outline" size={ds.icon(16)} color={tipsTheme.accent} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text
               style={{
-                width: STEPPER_SIZE,
-                height: STEPPER_SIZE,
-                alignItems: 'center',
-                justifyContent: 'center',
+                fontSize: ds.fontSize(11),
+                fontWeight: '700',
+                letterSpacing: 0.5,
+                color: tipsTheme.ink2,
+                marginBottom: 1,
               }}
             >
-              <Ionicons
-                name="trash-outline"
-                size={ds.icon(18)}
-                color={glassColors.dangerText}
-              />
-            </TouchableOpacity>
+              NOTE
+            </Text>
+            <Text style={{ fontSize: ds.fontSize(13), color: tipsTheme.ink }} numberOfLines={4}>
+              {trimmedNote}
+            </Text>
           </View>
-        ))}
-
-        {lines.length === 0 ? (
-          <Text
-            style={{
-              paddingVertical: ds.spacing(16),
-              fontSize: ds.fontSize(14),
-              color: glassColors.textSecondary,
-              textAlign: 'center',
-            }}
-          >
-            No items left to send.
-          </Text>
-        ) : null}
-      </ScrollView>
+        </TouchableOpacity>
+      ) : null}
 
       {unmatchedNames.length > 0 ? (
         <View
           style={{
-            backgroundColor: glassColors.warningSoft,
-            borderRadius: glassRadii.tag,
-            paddingHorizontal: ds.spacing(10),
-            paddingVertical: ds.spacing(8),
-            marginTop: ds.spacing(10),
+            backgroundColor: tipsTheme.tint,
+            borderRadius: 12,
+            paddingHorizontal: ds.spacing(12),
+            paddingVertical: ds.spacing(9),
+            marginBottom: ds.spacing(12),
           }}
         >
-          <Text style={{ fontSize: ds.fontSize(12), color: glassColors.warningText }}>
+          <Text style={{ fontSize: ds.fontSize(12), color: tipsTheme.alert }}>
             Not in inventory, will be skipped: {unmatchedNames.join(', ')}
           </Text>
         </View>
@@ -243,45 +204,36 @@ export function ConfirmOrderSheet({
       {sendError ? (
         <View
           style={{
-            backgroundColor: glassColors.dangerSoft,
-            borderRadius: glassRadii.tag,
-            paddingHorizontal: ds.spacing(10),
-            paddingVertical: ds.spacing(8),
-            marginTop: ds.spacing(10),
+            backgroundColor: tipsTheme.tint,
+            borderRadius: 12,
+            paddingHorizontal: ds.spacing(12),
+            paddingVertical: ds.spacing(9),
+            marginBottom: ds.spacing(12),
           }}
         >
-          <Text style={{ fontSize: ds.fontSize(13), color: glassColors.dangerText }}>
-            {sendError}
-          </Text>
+          <Text style={{ fontSize: ds.fontSize(13), color: tipsTheme.alert }}>{sendError}</Text>
         </View>
       ) : null}
 
       <TouchableOpacity
         onPress={handleConfirm}
         disabled={isSending || sendableCount === 0}
-        activeOpacity={0.8}
+        activeOpacity={0.85}
         accessibilityRole="button"
         accessibilityLabel="Confirm and send order"
         style={{
-          marginTop: ds.spacing(14),
           minHeight: Math.max(52, ds.buttonH),
-          borderRadius: glassRadii.submitButton,
+          borderRadius: radii.pill,
           backgroundColor:
-            isSending || sendableCount === 0 ? glassColors.textMuted : colors.primary,
+            isSending || sendableCount === 0 ? tipsTheme.disabled : tipsTheme.accent,
           alignItems: 'center',
           justifyContent: 'center',
         }}
       >
         {isSending ? (
-          <ActivityIndicator color={colors.white} />
+          <ActivityIndicator color="#FFFFFF" />
         ) : (
-          <Text
-            style={{
-              fontSize: ds.fontSize(17),
-              fontWeight: '700',
-              color: colors.white,
-            }}
-          >
+          <Text style={{ fontSize: ds.fontSize(15), fontWeight: '700', color: '#FFFFFF' }}>
             {mode === 'direct'
               ? 'Continue to send'
               : sendableCount === 1

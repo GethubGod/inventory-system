@@ -18,14 +18,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerImpactHaptic, triggerSelectionHaptic } from '@/lib/haptics';
-import {
-  colors,
-  glassColors,
-  glassHairlineWidth,
-  glassRadii,
-} from '@/theme/design';
+import { glassHairlineWidth, radii, tipsTheme } from '@/theme/design';
 import type { InventoryItem } from '@/types';
 import { unitForInventoryItem } from '../checklistSelection';
+
+/**
+ * Pinned bottom stack, floating above the pill toolbar: optional note chip →
+ * search results card while typing → the add-item bar (search field with the
+ * mic inside, red send circle with a count badge; gray at zero). Send opens
+ * the Review order sheet.
+ */
 
 interface PinnedOrderBarProps {
   query: string;
@@ -38,13 +40,17 @@ interface PinnedOrderBarProps {
   onPressSend: () => void;
   voiceAvailable: boolean;
   onPressMic: () => void;
-  /** Resting bottom offset (tab bar clearance). */
+  /** Note chip above the bar ("Note added · edit"). */
+  hasNote: boolean;
+  onPressNote: () => void;
+  /** Resting bottom offset (pill toolbar clearance). */
   restingBottom: number;
   onHeightChange?: (height: number) => void;
 }
 
 const KEYBOARD_FALLBACK_MS = 220;
 const MAX_RESULTS_HEIGHT = 288;
+const SEND_SIZE = 46;
 
 export function PinnedOrderBar({
   query,
@@ -56,6 +62,8 @@ export function PinnedOrderBar({
   onPressSend,
   voiceAvailable,
   onPressMic,
+  hasNote,
+  onPressNote,
   restingBottom,
   onHeightChange,
 }: PinnedOrderBarProps) {
@@ -80,7 +88,7 @@ export function PinnedOrderBar({
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
     const onShow = (event: KeyboardEvent) => {
-      const target = Math.max(event.endCoordinates.height, restingBottomRef.current);
+      const target = Math.max(event.endCoordinates.height + 12, restingBottomRef.current);
       keyboardBottom.value = withTiming(target, {
         duration: event.duration && event.duration > 0 ? event.duration : KEYBOARD_FALLBACK_MS,
         easing: Easing.out(Easing.cubic),
@@ -146,30 +154,28 @@ export function PinnedOrderBar({
             minHeight: 48,
             paddingHorizontal: ds.spacing(14),
             borderBottomWidth: index === results.length - 1 ? 0 : glassHairlineWidth,
-            borderBottomColor: glassColors.divider,
+            borderBottomColor: 'rgba(0, 0, 0, 0.05)',
           }}
         >
           <View style={{ flex: 1, paddingRight: ds.spacing(8) }}>
             <Text
               numberOfLines={1}
               style={{
-                fontSize: ds.fontSize(15),
+                fontSize: ds.fontSize(14),
                 fontWeight: '600',
-                color: alreadySelected
-                  ? glassColors.textMuted
-                  : glassColors.textPrimary,
+                color: alreadySelected ? tipsTheme.ink3 : tipsTheme.ink,
               }}
             >
               {item.name}
             </Text>
-            <Text style={{ fontSize: ds.fontSize(11), color: glassColors.textMuted }}>
+            <Text style={{ fontSize: ds.fontSize(11), color: tipsTheme.ink3 }}>
               {unitForInventoryItem(item)}
             </Text>
           </View>
           <Ionicons
-            name={alreadySelected ? 'checkmark-circle' : 'add-circle-outline'}
-            size={ds.icon(24)}
-            color={alreadySelected ? glassColors.successText : glassColors.accent}
+            name={alreadySelected ? 'checkmark' : 'add'}
+            size={ds.icon(20)}
+            color={alreadySelected ? '#22883E' : tipsTheme.accent}
           />
         </TouchableOpacity>
       );
@@ -184,21 +190,48 @@ export function PinnedOrderBar({
       style={[
         {
           position: 'absolute',
-          left: ds.spacing(16),
-          right: ds.spacing(16),
+          left: ds.spacing(14),
+          right: ds.spacing(14),
         },
         containerAnimatedStyle,
       ]}
     >
+      {hasNote ? (
+        <TouchableOpacity
+          onPress={onPressNote}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel="Note added, edit"
+          style={{
+            alignSelf: 'flex-start',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: ds.spacing(7),
+            backgroundColor: tipsTheme.card,
+            borderWidth: glassHairlineWidth,
+            borderColor: 'rgba(0, 0, 0, 0.08)',
+            borderRadius: radii.pill,
+            paddingHorizontal: ds.spacing(13),
+            paddingVertical: ds.spacing(7),
+            marginBottom: ds.spacing(10),
+          }}
+        >
+          <Ionicons name="create-outline" size={ds.icon(14)} color={tipsTheme.accent} />
+          <Text style={{ fontSize: ds.fontSize(12), fontWeight: '600', color: tipsTheme.ink }}>
+            Note added · edit
+          </Text>
+        </TouchableOpacity>
+      ) : null}
+
       {showResults ? (
         <View
           style={{
             maxHeight: MAX_RESULTS_HEIGHT,
-            marginBottom: ds.spacing(8),
-            backgroundColor: colors.white,
-            borderRadius: glassRadii.surface,
+            marginBottom: ds.spacing(10),
+            backgroundColor: tipsTheme.card,
+            borderRadius: 18,
             borderWidth: glassHairlineWidth,
-            borderColor: glassColors.cardBorder,
+            borderColor: 'rgba(0, 0, 0, 0.08)',
             overflow: 'hidden',
           }}
         >
@@ -221,52 +254,65 @@ export function PinnedOrderBar({
               <Text
                 style={{
                   fontSize: ds.fontSize(13),
-                  color: glassColors.textSecondary,
+                  color: tipsTheme.ink2,
                   textAlign: 'center',
                 }}
               >
-                No inventory items match “{query.trim()}”.
+                No items match “{query.trim()}”
               </Text>
             </View>
           )}
         </View>
       ) : null}
 
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: ds.spacing(8),
+          backgroundColor: tipsTheme.card,
+          borderWidth: glassHairlineWidth,
+          borderColor: 'rgba(0, 0, 0, 0.07)',
+          borderRadius: 24,
+          padding: ds.spacing(8),
+          shadowColor: '#14120E',
+          shadowOffset: { width: 0, height: 8 },
+          shadowOpacity: 0.1,
+          shadowRadius: 24,
+          elevation: Platform.OS === 'android' ? 8 : 0,
+        }}
+      >
         <View
           style={{
             flex: 1,
             flexDirection: 'row',
             alignItems: 'center',
-            minHeight: 48,
-            backgroundColor: colors.white,
-            borderWidth: glassHairlineWidth,
-            borderColor: glassColors.cardBorder,
-            borderRadius: glassRadii.pill,
-            paddingLeft: ds.spacing(14),
+            minHeight: SEND_SIZE,
+            backgroundColor: tipsTheme.page,
+            borderRadius: radii.pill,
+            paddingLeft: ds.spacing(15),
             paddingRight: ds.spacing(6),
-            marginRight: ds.spacing(8),
           }}
         >
           <Ionicons
             name="search-outline"
             size={ds.icon(17)}
-            color={glassColors.textMuted}
+            color={tipsTheme.ink3}
             style={{ marginRight: ds.spacing(8) }}
           />
           <TextInput
             ref={inputRef}
             value={query}
             onChangeText={onQueryChange}
-            placeholder="Add item…"
-            placeholderTextColor={glassColors.textMuted}
+            placeholder="Add item"
+            placeholderTextColor={tipsTheme.ink3}
             autoCorrect={false}
             returnKeyType="search"
             accessibilityLabel="Search inventory to add items"
             style={{
               flex: 1,
-              fontSize: ds.fontSize(15),
-              color: glassColors.textPrimary,
+              fontSize: ds.fontSize(14),
+              color: tipsTheme.ink,
               paddingVertical: 0,
             }}
           />
@@ -278,11 +324,7 @@ export function PinnedOrderBar({
               hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
               style={{ padding: ds.spacing(6) }}
             >
-              <Ionicons
-                name="close-circle"
-                size={ds.icon(18)}
-                color={glassColors.textMuted}
-              />
+              <Ionicons name="close-circle" size={ds.icon(18)} color={tipsTheme.ink3} />
             </TouchableOpacity>
           ) : null}
           {voiceAvailable ? (
@@ -291,9 +333,15 @@ export function PinnedOrderBar({
               accessibilityRole="button"
               accessibilityLabel="Add items by voice"
               hitSlop={{ top: 10, bottom: 10, left: 4, right: 6 }}
-              style={{ padding: ds.spacing(6) }}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: radii.circle,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <Ionicons name="mic-outline" size={ds.icon(20)} color={glassColors.accent} />
+              <Ionicons name="mic-outline" size={ds.icon(20)} color={tipsTheme.accent} />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -310,26 +358,38 @@ export function PinnedOrderBar({
               : `Send order with ${checkedCount} ${checkedCount === 1 ? 'item' : 'items'}`
           }
           style={{
-            flexDirection: 'row',
+            width: SEND_SIZE,
+            height: SEND_SIZE,
+            borderRadius: radii.circle,
+            backgroundColor: sendDisabled ? tipsTheme.disabled : tipsTheme.accent,
             alignItems: 'center',
             justifyContent: 'center',
-            minHeight: 48,
-            paddingHorizontal: ds.spacing(16),
-            borderRadius: glassRadii.pill,
-            backgroundColor: sendDisabled ? glassColors.textMuted : colors.primary,
           }}
         >
-          <Text
-            style={{
-              fontSize: ds.fontSize(16),
-              fontWeight: '700',
-              color: colors.white,
-              marginRight: ds.spacing(6),
-            }}
-          >
-            {checkedCount}
-          </Text>
-          <Ionicons name="arrow-up" size={ds.icon(18)} color={colors.white} />
+          <Ionicons name="arrow-up" size={ds.icon(20)} color="#FFFFFF" />
+          {checkedCount > 0 ? (
+            <View
+              style={{
+                position: 'absolute',
+                top: -4,
+                right: -4,
+                minWidth: 20,
+                height: 18,
+                paddingHorizontal: 6,
+                borderRadius: radii.pill,
+                backgroundColor: tipsTheme.ink,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text
+                style={{ fontSize: ds.fontSize(10.5), fontWeight: '700', color: '#FFFFFF' }}
+                numberOfLines={1}
+              >
+                {checkedCount}
+              </Text>
+            </View>
+          ) : null}
         </TouchableOpacity>
       </View>
     </Animated.View>

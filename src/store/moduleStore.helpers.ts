@@ -66,19 +66,26 @@ export function resolveEffectiveModules(
 }
 
 /**
- * Employee tab-bar entries, in display order, for a given module map.
- * Screens that are hidden by design (stock check opens from Settings, voice,
- * drafts, …) never appear here — they are module-guarded at the route level.
+ * Employee tab-bar entries, in display order, for a given module map — the
+ * single source the floating pill toolbar, the invite live-preview card, and
+ * Preview-as all render from. Checklist-first restructure: Home and Cart are
+ * gone for checklist-only employees; Advanced (and Cart, which only serves
+ * the advanced flow) appear only with ordering_advanced. Screens that are
+ * hidden by design (stock check opens from Settings, voice, drafts, …) never
+ * appear here — they are module-guarded at the route level.
  *
  * TODO-PHASE4: append a 'tips' tab (gated by modules.tips) once the tips
  * surface ships. The gate exists today but must never show a broken screen,
  * so no tab is rendered yet.
  */
 export function getVisibleEmployeeTabs(modules: EffectiveModules): string[] {
-  const tabs: string[] = ['index'];
+  const tabs: string[] = [];
   if (modules.ordering_simple) tabs.push('simple-order');
-  if (modules.ordering_advanced) tabs.push('quick-order');
-  tabs.push('cart');
+  if (modules.ordering_advanced) {
+    tabs.push('quick-order');
+    tabs.push('cart');
+  }
+  tabs.push('history');
   tabs.push('settings');
   return tabs;
 }
