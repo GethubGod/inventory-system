@@ -20,6 +20,13 @@ export class TipApiError extends Error {
 export interface RosterPerson {
   id: string;
   name: string;
+  /**
+   * Whether the manager's weekly schedule has this person working today's
+   * default meal at this location. The entry form pre-selects scheduled
+   * people and floats them to the top. Read defensively (`=== true`) — an
+   * older server simply omits the field.
+   */
+  scheduled: boolean;
 }
 
 export interface TodayStatus {
@@ -132,11 +139,14 @@ export async function setCloser(sessionToken: string, closerId: string): Promise
 export async function getSlot(
   sessionToken: string,
   meal: MealPeriod,
-): Promise<{ businessDate: string; entry: SlotEntry | null }> {
+): Promise<{ businessDate: string; entry: SlotEntry | null; scheduledIds: string[] }> {
   const json = await callFunction("tip-entries", { action: "get_slot", sessionToken, meal });
   return {
     businessDate: json.businessDate as string,
     entry: (json.entry as SlotEntry | null) ?? null,
+    // Who the schedule says works this meal — used to re-seed pre-selection
+    // when the closer switches meals. Older servers omit it.
+    scheduledIds: Array.isArray(json.scheduledIds) ? (json.scheduledIds as string[]) : [],
   };
 }
 

@@ -103,6 +103,10 @@ test.describe("scan landing", () => {
     await page.goto(`/e?t=${pokiToken}`);
     await expect(page).toHaveURL(/\/entry$/);
     await expect(page.getByRole("heading", { name: "Tips" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Lena/ })).toBeVisible();
+    // Target the roster chip specifically — the header closer pill is also
+    // a button whose name contains "Lena".
+    await expect(
+      page.locator("button[aria-pressed]").filter({ hasText: "Lena" }),
+    ).toBeVisible();
   });
 });

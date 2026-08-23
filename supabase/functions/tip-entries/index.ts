@@ -9,6 +9,7 @@ import { corsHeadersForRequest } from '../_shared/cors.ts';
 import {
   businessDateFor,
   checkAnomaly,
+  fetchScheduledIds,
   normalizeAmount,
   validateTipSession,
 } from '../_shared/tips.ts';
@@ -71,6 +72,27 @@ async function loadSlot(locationId: string, businessDate: string, meal: string) 
   };
 }
 
+/**
+ * Employee ids scheduled for (location, business date, meal), intersected
+ * with the active roster so deactivated or moved staff never come back
+ * pre-selected on the phone.
+ */
+async function scheduledRosterIds(locationId: string, businessDate: string, meal: 'lunch' | 'dinner') {
+  const scheduled = await fetchScheduledIds(supabaseAdmin, locationId, businessDate, meal);
+  if (scheduled.size === 0) return [];
+  const { data, error } = await supabaseAdmin
+    .from('tip_employees')
+    .select('id')
+    .eq('active', true)
+    .or(`location_id.is.null,location_id.eq.${locationId}`)
+    .in('id', [...scheduled]);
+  if (error) {
+    console.warn('[tip-entries] scheduled roster fetch failed', error);
+    return [];
+  }
+  return (data ?? []).map((row: { id: string }) => row.id);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeadersForRequest(req) });
@@ -98,8 +120,11 @@ Deno.serve(async (req) => {
       const meal = parseMeal(body.meal);
       if (!meal) return json(req, { ok: false, error: 'Invalid meal period' }, 400);
       const businessDate = businessDateFor(new Date());
-      const entry = await loadSlot(session.location_id, businessDate, meal);
-      return json(req, { ok: true, businessDate, entry });
+      const [entry, scheduledIds] = await Promise.all([
+        loadSlot(session.location_id, businessDate, meal),
+        scheduledRosterIds(session.location_id, businessDate, meal),
+      ]);
+      return json(req, { ok: true, businessDate, entry, scheduledIds });
     }
 
     if (action === 'save') {

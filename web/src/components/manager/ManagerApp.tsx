@@ -1,24 +1,14 @@
 "use client";
 
-// Manager dashboard shell: Supabase auth gate + manager check + tab bar.
+// Manager surface: Supabase auth gate + manager check, then the Tip
+// Dashboard (sidebar app). Sign-out flips back to the login card via
+// onAuthStateChange.
 
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
 import LoginCard from "@/components/manager/LoginCard";
-import EntriesTab from "@/components/manager/EntriesTab";
-import DiscrepanciesTab from "@/components/manager/DiscrepanciesTab";
-import AbTab from "@/components/manager/AbTab";
-import AdminTab from "@/components/manager/AdminTab";
-
-type TabId = "entries" | "discrepancies" | "ab" | "admin";
-
-const TABS: Array<{ id: TabId; label: string }> = [
-  { id: "entries", label: "Entries" },
-  { id: "discrepancies", label: "Discrepancies" },
-  { id: "ab", label: "A/B test" },
-  { id: "admin", label: "Admin" },
-];
+import { DashboardShell } from "@/components/manager/dashboard/DashboardShell";
 
 export default function ManagerApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -27,7 +17,6 @@ export default function ManagerApp() {
     userId: string;
     ok: boolean;
   } | null>(null);
-  const [tab, setTab] = useState<TabId>("entries");
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -102,38 +91,21 @@ export default function ManagerApp() {
     );
   }
 
+  const email = session.user.email ?? "";
+  const metadataName =
+    typeof session.user.user_metadata?.full_name === "string"
+      ? session.user.user_metadata.full_name
+      : typeof session.user.user_metadata?.name === "string"
+        ? session.user.user_metadata.name
+        : null;
+  const profileName = metadataName ?? (email.split("@")[0] || "Manager");
+
   return (
-    <div className="w-full max-w-6xl mx-auto px-5 py-6">
-      <header className="flex items-center justify-between gap-3 mb-5">
-        <h1 className="text-xl font-bold text-ink">Tip Dashboard</h1>
-        <button
-          type="button"
-          onClick={signOut}
-          className="bg-card rounded-full px-4 py-2 text-sm font-semibold text-ink2"
-        >
-          Sign out
-        </button>
-      </header>
-
-      <nav className="flex flex-wrap gap-2 mb-5">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setTab(t.id)}
-            className={`rounded-full px-4 py-2 text-sm font-semibold ${
-              tab === t.id ? "bg-accent text-white" : "bg-card text-ink2"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </nav>
-
-      {tab === "entries" ? <EntriesTab /> : null}
-      {tab === "discrepancies" ? <DiscrepanciesTab /> : null}
-      {tab === "ab" ? <AbTab /> : null}
-      {tab === "admin" ? <AdminTab /> : null}
-    </div>
+    <DashboardShell
+      userId={session.user.id}
+      profileName={profileName}
+      profileEmail={email}
+      onSignOut={signOut}
+    />
   );
 }
