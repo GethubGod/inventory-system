@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Redirect, Tabs, usePathname } from "expo-router";
 import { RealtimeChannel } from "@supabase/supabase-js";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useAuthStore } from "@/store";
+import { useAuthStore, useOrderStore } from "@/store";
 import { supabase } from "@/lib/supabase";
 import { AuthLoadingScreen } from "@/components";
 import { useMyModules, useProtectedAuthGuard } from "@/hooks";
-import { isOrderFulfillmentEligible } from "@/services/fulfillmentEligibility";
+import { extractConsumedOrderItemIds } from "@/store/helpers";
+import { loadQueuedOrderLaterSourceOrderItemIds } from "@/services/fulfillmentDataSource";
+import { getPendingFulfillmentOrderIdsFromItemRows } from "@/services/fulfillmentEligibility";
 import { colors } from "@/theme/design";
 import {
   TabButton,
@@ -17,6 +19,8 @@ import {
 
 export default function ManagerLayout() {
   const session = useAuthStore((s) => s.session);
+  const locations = useAuthStore((s) => s.locations);
+  const fetchPastOrders = useOrderStore((s) => s.fetchPastOrders);
   const insets = useSafeAreaInsets();
   const [pendingFulfillmentCount, setPendingFulfillmentCount] = useState(0);
   const badgeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -32,6 +36,13 @@ export default function ManagerLayout() {
   const tabBarBottomInset = getTabBarBottomInset(insets.bottom);
   const pathname = usePathname();
   const isBrowseRoute = pathname.includes("browse");
+  const managerLocationIds = useMemo(
+    () =>
+      locations
+        .map((location) => (typeof location.id === "string" ? location.id.trim() : ""))
+        .filter((id) => id.length > 0),
+    [locations],
+  );
 
   const refreshPendingFulfillmentCount = useCallback(async () => {
     if (!session || resolvedRole !== "manager") {
@@ -40,36 +51,49 @@ export default function ManagerLayout() {
     }
 
     try {
-      // Count unique submitted orders that still have at least one pending order_item.
-      // This tracks actual fulfillment workload more accurately than raw order status counts.
-      let { data, error } = await supabase
-        .from("order_items")
-        .select("order_id,orders!inner(status,entry_method,quick_session_id,manager_review_status)")
-        .or("status.is.null,status.eq.pending")
-        .eq("orders.status", "submitted")
-        .limit(10000);
-
-      if (error && (error as any).code === "42703") {
-        ({ data, error } = await supabase
+      // Match the screen's source data: scoped submitted orders, its pending
+      // item shape, queued order-later exclusions, and already-consumed items.
+      const buildPendingOrderItemsQuery = (includeReviewColumns: boolean) => {
+        const orderSelect = includeReviewColumns
+          ? "status,entry_method,quick_session_id,manager_review_status"
+          : "status";
+        let query = supabase
           .from("order_items")
-          .select("order_id,orders!inner(status)")
+          .select(
+            "id,order_id,quantity,input_mode,remaining_reported,decided_quantity,status,inventory_item:inventory_items(id),orders!inner(" +
+              orderSelect +
+              ")",
+          )
           .or("status.is.null,status.eq.pending")
           .eq("orders.status", "submitted")
-          .limit(10000));
+          .limit(10000);
+
+        if (managerLocationIds.length > 0) {
+          query = query.in("orders.location_id", managerLocationIds);
+        }
+
+        return query;
+      };
+
+      const [pendingOrderItemsResult, pastOrders, orderLaterSourceOrderItemIds] = await Promise.all([
+        buildPendingOrderItemsQuery(true),
+        fetchPastOrders(session.user.id),
+        loadQueuedOrderLaterSourceOrderItemIds(),
+      ]);
+      let { data, error } = pendingOrderItemsResult;
+
+      if (error && (error as any).code === "42703") {
+        ({ data, error } = await buildPendingOrderItemsQuery(false));
       }
 
       if (error) throw error;
 
-      const uniqueOrderIds = new Set(
-        (Array.isArray(data) ? data : [])
-          .filter((row: any) => {
-            const order = Array.isArray(row?.orders) ? row.orders[0] : row?.orders;
-            return isOrderFulfillmentEligible(order ?? {});
-          })
-          .map((row: any) =>
-            typeof row?.order_id === "string" ? row.order_id : null,
-          )
-          .filter((value: string | null): value is string => Boolean(value)),
+      const uniqueOrderIds = getPendingFulfillmentOrderIdsFromItemRows(
+        Array.isArray(data) ? data : [],
+        {
+          consumedOrderItemIds: extractConsumedOrderItemIds(pastOrders),
+          orderLaterSourceOrderItemIds,
+        },
       );
 
       setPendingFulfillmentCount(uniqueOrderIds.size);
@@ -80,7 +104,7 @@ export default function ManagerLayout() {
       );
       setPendingFulfillmentCount(0);
     }
-  }, [resolvedRole, session]);
+  }, [fetchPastOrders, managerLocationIds, resolvedRole, session]);
 
   useEffect(() => {
     void refreshPendingFulfillmentCount();
@@ -118,6 +142,16 @@ export default function ManagerLayout() {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "order_items" },
+        scheduleCountRefresh,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "order_later_items" },
+        scheduleCountRefresh,
+      )
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "past_orders" },
         scheduleCountRefresh,
       )
       .subscribe();
