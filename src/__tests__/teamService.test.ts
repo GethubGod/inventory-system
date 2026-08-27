@@ -83,7 +83,7 @@ describe('invite Messages link', () => {
     expect(body).toContain('Nate');
     expect(body).toContain('https://tips.babytunasystems.com/join/abc');
     expect(buildInviteMessageBody('  ', 'https://x.test/j')).toBe(
-      "Here's your Babytuna Systems setup link: https://x.test/j",
+      "Here's your Smelter setup link: https://x.test/j",
     );
   });
 });

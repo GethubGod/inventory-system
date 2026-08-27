@@ -46,7 +46,7 @@ export function AboutLegalSheet({ visible, onClose, onShowLicenses }: AboutLegal
       <Text
         style={{ fontSize: ds.fontSize(13), color: tipsTheme.ink2, marginBottom: ds.spacing(12) }}
       >
-        Babytuna Systems {appVersion}
+        Smelter {appVersion}
       </Text>
 
       <SettingsCard>

@@ -98,7 +98,7 @@ export default function NotificationsDebugScreen() {
       await Notifications.scheduleNotificationAsync({
         content: {
           title: 'Test Notification',
-          body: `This is a test from Babytuna at ${new Date().toLocaleTimeString()}`,
+          body: `This is a test from Smelter at ${new Date().toLocaleTimeString()}`,
           data: { type: 'debug-test' },
           sound: true,
         },

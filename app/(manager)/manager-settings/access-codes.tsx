@@ -170,7 +170,7 @@ export default function ManagerAccessCodesScreen() {
 
     try {
       await Share.share({
-        message: `Your ${roleLabel.toLowerCase()} access code for Babytuna is: ${code}\n\nUse this code when creating your account.`,
+        message: `Your ${roleLabel.toLowerCase()} access code for Smelter is: ${code}\n\nUse this code when creating your account.`,
       });
     } catch {
       // Share sheet dismissed.
