@@ -117,6 +117,7 @@ function readNumber(tokens: Token[], start: number): { value: number; next: numb
       if (current % 100 >= 20 && unit >= 10) break;
       if (current === 0) current = unit;
       else if (current % 100 >= 20 && unit <= 9) current += unit;
+      else if (current >= 100 && current % 100 === 0) current += unit; // "one hundred five"
       else break;
       i += 1;
       consumedAny = true;

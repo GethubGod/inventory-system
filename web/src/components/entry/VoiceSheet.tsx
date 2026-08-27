@@ -6,9 +6,12 @@
 // "Done talking" moves to a review state with low-confidence flags and
 // per-field re-record; "Save tips" hands the values back to the entry form.
 //
-// A/B: variant "waveform" shows a level waveform in the header; variant
-// "live_transcript" streams PCM over a WebSocket and shows a rolling
-// transcript pill. The variant is assigned per device (session.ts).
+// Engines: where the browser supports native SpeechRecognition (variant
+// "local_live"), words are transcribed ON DEVICE and parsed locally — fields
+// fill while you're still talking, no network in the loop. Elsewhere (or if
+// recognition breaks mid-session) the original Gemini chunk pipeline runs:
+// A/B variant "waveform" shows a level waveform, "live_transcript" streams
+// PCM over a WebSocket for a rolling transcript pill (session.ts).
 
 import {
   useCallback,
@@ -32,8 +35,10 @@ import {
   type TargetField,
   type TipFieldsState,
 } from "@/lib/tips/merge";
+import { parseLocalUtterance, type KnownFieldState } from "@/lib/tips/localVoiceParse";
 import { TipRecorder } from "@/lib/tips/recorder";
 import { getVoiceVariant } from "@/lib/tips/session";
+import { LiveSpeech } from "@/lib/tips/speech";
 import type { MealPeriod, VoiceVariant } from "@/types/database";
 import { AmountWell, isValidAmount } from "./AmountWell";
 import { LiveTranscript } from "./LiveTranscript";
@@ -151,7 +156,13 @@ export function VoiceSheet({
   onCancel: () => void;
   onApply: (result: VoiceApplyResult) => void;
 }) {
-  const [variant] = useState<VoiceVariant>(() => getVoiceVariant());
+  // Local-first: native speech recognition parses on device (instant fills);
+  // the Gemini chunk pipeline is the fallback when it's unsupported/broken.
+  const [engine, setEngine] = useState<"local" | "gemini">(() =>
+    LiveSpeech.isSupported() ? "local" : "gemini",
+  );
+  const [abVariant] = useState<VoiceVariant>(() => getVoiceVariant());
+  const variant: VoiceVariant = engine === "local" ? "local_live" : abVariant;
 
   const buildInitialFields = useCallback((): TipFieldsState => {
     let fields = emptyFields();
@@ -238,6 +249,14 @@ export function VoiceSheet({
   const rerecordRecorderRef = useRef<TipRecorder | null>(null);
 
   const recorderRef = useRef<TipRecorder | null>(null);
+  const speechRef = useRef<LiveSpeech | null>(null);
+  const rerecordSpeechRef = useRef<LiveSpeech | null>(null);
+  /** Fields as they stood before the in-flight utterance began — every
+   *  interim update re-merges the whole utterance against this base, so
+   *  mid-utterance revisions by the recognizer converge cleanly. */
+  const utteranceBaseRef = useRef<TipFieldsState | null>(null);
+  /** Amount field voice touched last — target of a bare "actually seventy". */
+  const lastAmountFieldRef = useRef<"cash" | "card" | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const queueRef = useRef<Promise<void>>(Promise.resolve());
   const parseErrorsRef = useRef(0);
@@ -261,6 +280,62 @@ export function VoiceSheet({
     } catch {
       // Already closed.
     }
+  }, []);
+
+  /**
+   * Local engine: merge one utterance (interim or final) into the fields.
+   * Runs synchronously on every recognition update — this is what makes
+   * "say fifty, watch it land" instant.
+   */
+  const applyLocalUtterance = useCallback(
+    (text: string, isFinal: boolean, targetField: TargetField | null = null) => {
+      if (disposedRef.current) return;
+      const base = utteranceBaseRef.current ?? fieldsRef.current;
+      utteranceBaseRef.current = base;
+      const known: KnownFieldState = {
+        cash: base.cash.value,
+        card: base.card.value,
+        lastAmountField: lastAmountFieldRef.current,
+        people: base.people.ids.map((id) => ({
+          id,
+          name: base.people.names[id] ?? "",
+        })),
+      };
+      const parsed = parseLocalUtterance(text, roster, known);
+      if (parsed.card.value !== null) lastAmountFieldRef.current = "card";
+      else if (parsed.cash.value !== null) lastAmountFieldRef.current = "cash";
+      setFields((prev) => {
+        const merged = mergeParsed(base, parsed, targetField);
+        // Keep typed edits that landed mid-utterance: merge rules already
+        // guard them because base captured their "typed" source.
+        void prev;
+        if (
+          merged.meal.value !== null &&
+          merged.meal.value !== base.meal.value &&
+          disabledMeals.includes(merged.meal.value)
+        ) {
+          setMealLockedHint(merged.meal.value);
+          return { ...merged, meal: base.meal };
+        }
+        return merged;
+      });
+      if (isFinal) {
+        utteranceBaseRef.current = null;
+        const spoken = text.trim();
+        if (spoken) {
+          setTranscript((prevT) => (prevT ? `${prevT} ${spoken}` : spoken));
+        }
+        setLiveText("");
+      } else {
+        setLiveText(text);
+      }
+    },
+    [roster, disabledMeals, setFields],
+  );
+
+  /** A manual edit mid-utterance re-bases the merge on the edited fields. */
+  const rebaseUtterance = useCallback(() => {
+    utteranceBaseRef.current = null;
   }, []);
 
   /**
@@ -325,11 +400,38 @@ export function VoiceSheet({
     [sessionToken, setFields, disabledMeals],
   );
 
-  // Main recorder + (variant B) transcript WebSocket. Re-runs on "Redo all"
-  // via the epoch counter; cleanup cancels the recorder and closes the ws.
+  // Main capture. Local engine: native SpeechRecognition, zero network.
+  // Gemini engine: recorder + chunk queue (+ variant B transcript WS).
+  // Re-runs on "Redo all" via the epoch counter and on engine fallback.
   useEffect(() => {
     let cancelled = false;
     disposedRef.current = false;
+
+    if (engine === "local") {
+      const speech = new LiveSpeech();
+      speechRef.current = speech;
+      speech.start({
+        onUtterance: (text, isFinal) => {
+          if (!cancelled) applyLocalUtterance(text, isFinal);
+        },
+        onError: (kind) => {
+          if (cancelled) return;
+          if (kind === "permission") {
+            setMicError(true);
+            return;
+          }
+          // Recognition engine gave up — hand the session to the Gemini
+          // pipeline with all captured fields intact.
+          setEngine("gemini");
+        },
+      });
+      return () => {
+        cancelled = true;
+        speech.stop();
+        speechRef.current = null;
+      };
+    }
+
     const recorder = new TipRecorder();
     recorderRef.current = recorder;
 
@@ -411,7 +513,7 @@ export function VoiceSheet({
       recorder.cancel();
       closeWs();
     };
-  }, [epoch, variant, sessionToken, enqueueChunk, closeWs]);
+  }, [epoch, engine, variant, sessionToken, enqueueChunk, applyLocalUtterance, closeWs]);
 
   // Unmount: make sure any targeted re-record recorder is also released.
   useEffect(
@@ -419,6 +521,8 @@ export function VoiceSheet({
       disposedRef.current = true;
       rerecordRecorderRef.current?.cancel();
       rerecordRecorderRef.current = null;
+      rerecordSpeechRef.current?.stop();
+      rerecordSpeechRef.current = null;
     },
     [],
   );
@@ -427,12 +531,23 @@ export function VoiceSheet({
     disposedRef.current = true;
     recorderRef.current?.cancel();
     rerecordRecorderRef.current?.cancel();
+    speechRef.current?.stop();
+    rerecordSpeechRef.current?.stop();
     closeWs();
     onCancel();
   }, [closeWs, onCancel]);
 
   const handleDone = useCallback(async () => {
     if (finishing) return;
+    if (engine === "local") {
+      // stop() flushes any pending interim as a final utterance through
+      // applyLocalUtterance — review opens on settled values immediately.
+      speechRef.current?.stop();
+      speechRef.current = null;
+      setEditingRow(null);
+      setPhase("review");
+      return;
+    }
     setFinishing(true);
     try {
       const recorder = recorderRef.current;
@@ -446,7 +561,7 @@ export function VoiceSheet({
       setEditingRow(null);
       setPhase("review");
     }
-  }, [finishing, closeWs, enqueueChunk]);
+  }, [finishing, engine, closeWs, enqueueChunk]);
 
   const handleRedoAll = useCallback(() => {
     setCorrections((count) => count + 1);
@@ -469,6 +584,12 @@ export function VoiceSheet({
     setRerecordField(null);
     rerecordRecorderRef.current?.cancel();
     rerecordRecorderRef.current = null;
+    utteranceBaseRef.current = null;
+    lastAmountFieldRef.current = null;
+    speechRef.current?.stop();
+    speechRef.current = null;
+    rerecordSpeechRef.current?.stop();
+    rerecordSpeechRef.current = null;
     setPhase("listening");
     setEpoch((value) => value + 1);
   }, [buildInitialFields]);
@@ -483,9 +604,10 @@ export function VoiceSheet({
         setCorrections((count) => count + 1);
       }
       setFields((prev) => setTyped(prev, field, value));
+      rebaseUtterance();
       setEditingRow(null);
     },
-    [setFields],
+    [setFields, rebaseUtterance],
   );
 
   const commitMeal = useCallback(
@@ -496,9 +618,10 @@ export function VoiceSheet({
         setCorrections((count) => count + 1);
       }
       setFields((prev) => setTyped(prev, "meal", meal));
+      rebaseUtterance();
       setEditingRow(null);
     },
-    [setFields, disabledMeals],
+    [setFields, disabledMeals, rebaseUtterance],
   );
 
   const togglePerson = useCallback(
@@ -518,8 +641,9 @@ export function VoiceSheet({
       }
       // setTypedPeople clears unmatched — manual edit resolves them.
       setFields((prev) => setTypedPeople(prev, ids, names));
+      rebaseUtterance();
     },
-    [roster, setFields],
+    [roster, setFields, rebaseUtterance],
   );
 
   const confirmLowConfidence = useCallback(
@@ -540,6 +664,21 @@ export function VoiceSheet({
     async (field: TargetField) => {
       if (rerecordField !== null) return;
       setRerecordField(field);
+      if (engine === "local") {
+        utteranceBaseRef.current = null;
+        const speech = new LiveSpeech();
+        rerecordSpeechRef.current = speech;
+        speech.start({
+          onUtterance: (text, isFinal) => applyLocalUtterance(text, isFinal, field),
+          onError: (kind) => {
+            rerecordSpeechRef.current = null;
+            setRerecordField(null);
+            if (kind === "permission") setMicError(true);
+            else setVoiceBroken(true);
+          },
+        });
+        return;
+      }
       const recorder = new TipRecorder();
       rerecordRecorderRef.current = recorder;
       try {
@@ -553,19 +692,26 @@ export function VoiceSheet({
         setVoiceBroken(true);
       }
     },
-    [rerecordField, enqueueChunk],
+    [rerecordField, engine, applyLocalUtterance, enqueueChunk],
   );
 
   const stopRerecord = useCallback(async () => {
-    const recorder = rerecordRecorderRef.current;
     const field = rerecordField;
-    rerecordRecorderRef.current = null;
     setRerecordField(null);
+    if (engine === "local") {
+      rerecordSpeechRef.current?.stop();
+      rerecordSpeechRef.current = null;
+      utteranceBaseRef.current = null;
+      if (field) setCorrections((count) => count + 1);
+      return;
+    }
+    const recorder = rerecordRecorderRef.current;
+    rerecordRecorderRef.current = null;
     if (!recorder || !field) return;
     const blob = await recorder.finish();
     if (blob) void enqueueChunk(blob, field);
     setCorrections((count) => count + 1);
-  }, [rerecordField, enqueueChunk]);
+  }, [rerecordField, engine, enqueueChunk]);
 
   // ---- Derived checklist state.
 
@@ -780,7 +926,7 @@ export function VoiceSheet({
                 {WAITING_TEXT[row]}
               </span>
             ) : display !== null ? (
-              <span className="font-semibold text-ink truncate">
+              <span key={display} className="value-pop font-semibold text-ink truncate">
                 {display}
                 {low && <span className="text-alert">?</span>}
                 {unmatchedCount > 0 && (
@@ -887,7 +1033,9 @@ export function VoiceSheet({
                 </span>
                 <span className="font-semibold text-ink">Listening…</span>
                 <div className="flex-1 flex justify-end min-w-0">
-                  {variant === "waveform" ? (
+                  {variant === "local_live" ? (
+                    <LiveTranscript text={liveText} />
+                  ) : variant === "waveform" ? (
                     <Waveform level={level} />
                   ) : !wsDead ? (
                     <LiveTranscript text={liveText} />
