@@ -59,11 +59,16 @@ describe('isOrderFulfillmentEligible', () => {
     expect(isOrderFulfillmentEligible({})).toBe(true);
   });
 
-  test('requires approval for quick-session rows, matching the Fulfillment screen', () => {
+  test('accepts quick-session rows once review is settled, matching the Fulfillment screen', () => {
     expect(isOrderFulfillmentEligible({
       entry_method: 'quick_order',
       quick_session_id: 'session-001',
       manager_review_status: 'approved',
+    })).toBe(true);
+    expect(isOrderFulfillmentEligible({
+      entry_method: 'quick_order',
+      quick_session_id: 'session-001',
+      manager_review_status: 'not_required',
     })).toBe(true);
     expect(isOrderFulfillmentEligible({
       entry_method: 'voice_order',
@@ -72,7 +77,7 @@ describe('isOrderFulfillmentEligible', () => {
   });
 
   test('excludes Quick Order rows that are not fulfillment-ready', () => {
-    for (const manager_review_status of [null, 'not_required', 'pending', 'rejected', 'changes_requested']) {
+    for (const manager_review_status of [null, 'pending', 'rejected', 'changes_requested']) {
       expect(isOrderFulfillmentEligible({
         entry_method: 'quick_order',
         quick_session_id: 'session-001',
@@ -178,7 +183,7 @@ describe('Fulfillment badge and screen eligibility', () => {
     expect(getBadgeOrderIds(orders, options)).toEqual([]);
   });
 
-  test('excludes the reported not-required Quick Order regression from both surfaces', () => {
+  test('includes review-exempt Quick Orders in both surfaces', () => {
     const orders = [{
       id: 'b0768c70',
       status: 'submitted',
@@ -196,6 +201,6 @@ describe('Fulfillment badge and screen eligibility', () => {
     }];
 
     expectBadgeAndScreenToAgree(orders);
-    expect(getBadgeOrderIds(orders)).toEqual([]);
+    expect(getBadgeOrderIds(orders)).toEqual(['b0768c70']);
   });
 });

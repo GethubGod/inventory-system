@@ -29,8 +29,9 @@ function getJoinedOrder(value: unknown): Record<string, unknown> | null {
   return toRecord(value);
 }
 
-// This mirrors the Fulfillment data source's order-level filter. A row created
-// through Quick Order needs explicit manager approval before it appears there.
+// A Quick Order row reaches fulfillment once review is settled: approved by a
+// manager, or skipped entirely ('not_required', e.g. manager-submitted orders).
+// Requiring 'approved' alone strands review-exempt orders forever.
 export function isOrderFulfillmentEligible(order: unknown): boolean {
   const row = toRecord(order);
   if (!row) return false;
@@ -39,7 +40,10 @@ export function isOrderFulfillmentEligible(order: unknown): boolean {
     return true;
   }
 
-  return row.manager_review_status === 'approved';
+  return (
+    row.manager_review_status === 'approved' ||
+    row.manager_review_status === 'not_required'
+  );
 }
 
 // This mirrors the Fulfillment data source's item-level filter. It intentionally
