@@ -109,9 +109,38 @@ export interface FreshSignIn extends SessionState {
   sessionToken: string;
 }
 
-export async function validateToken(token: string): Promise<FreshSignIn> {
-  const json = await callFunction("tip-entry-auth", { action: "validate_token", token });
+/**
+ * Validate a scanned QR token and mint the entry session in ONE roundtrip.
+ * When this device remembers who's closing, the remembered closer rides
+ * along and the server applies it in the same request (the response's
+ * `closer` is non-null when it stuck) — the old separate set_closer hop is
+ * gone from the critical path.
+ */
+export async function validateToken(
+  token: string,
+  remembered?: { closerId: string; locationId: string },
+): Promise<FreshSignIn> {
+  const json = await callFunction("tip-entry-auth", {
+    action: "validate_token",
+    token,
+    ...(remembered
+      ? { closerId: remembered.closerId, closerLocationId: remembered.locationId }
+      : {}),
+  });
   return json as unknown as FreshSignIn;
+}
+
+/**
+ * Fire-and-forget warm-up: pings both entry functions so the isolates, TLS
+ * session, and CORS preflight cache are all hot before the first real call.
+ * Called from the scan screens — never throws, never blocks anything.
+ */
+export function warmUpEntryFunctions(): void {
+  for (const name of ["tip-entry-auth", "tip-entries"] as const) {
+    callFunction(name, { action: "ping" }).catch(() => {
+      // Purely opportunistic.
+    });
+  }
 }
 
 /**

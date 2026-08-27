@@ -21,7 +21,7 @@ interface Slide {
 const SLIDES: Slide[] = [
   {
     title: "Scan to start",
-    body: "Scan the sticker by the register with your camera, or tap Scan here. No PIN needed.",
+    body: "Scan the QR code by the register with your camera, or tap Scan here. No PIN needed.",
     icon: "scan",
   },
   {

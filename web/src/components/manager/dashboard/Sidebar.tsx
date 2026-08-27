@@ -79,7 +79,12 @@ export function Sidebar({
         collapsed ? "w-[66px] px-[9px]" : "w-[216px] px-3"
       } py-[18px]`}
     >
-      <div className={`mb-3 flex ${collapsed ? "justify-center" : "justify-end"}`}>
+      <div
+        className={`mb-3 flex items-center ${
+          collapsed ? "justify-center" : "justify-between"
+        }`}
+      >
+        {!collapsed && <p className="wordmark px-2">smelter</p>}
         <button
           type="button"
           onClick={onToggleCollapsed}

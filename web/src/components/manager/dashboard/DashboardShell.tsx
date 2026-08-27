@@ -140,7 +140,7 @@ function ShellInner({
       ctx.entries,
       (locationId) => ctx.locationById.get(locationId)?.label ?? locationId,
     );
-    downloadCsv(`babytuna-tips_${bounds.start}_${bounds.end}.csv`, csv);
+    downloadCsv(`smelter-tips_${bounds.start}_${bounds.end}.csv`, csv);
     toast(`CSV exported — ${ctx.entries.length} rows (${ctx.rangeLabel})`);
   }, [ctx, range, toast]);
 

@@ -1,9 +1,9 @@
 "use client";
 
 // In-page QR scanner so a phone that already has the site open can scan the
-// register sticker without leaving for the camera app. Uses the native
+// register QR code without leaving for the camera app. Uses the native
 // BarcodeDetector where it exists (Chrome/Android) and falls back to jsQR
-// frame-decoding (iOS Safari). Accepts only Babytuna entry stickers — a QR
+// frame-decoding (iOS Safari). Accepts only Babytuna entry codes — a QR
 // whose URL carries the ?t= entry token — and hands the token back.
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,7 +17,7 @@ export function tokenFromScan(raw: string): string | null {
     const token = url.searchParams.get("t");
     return token && token.length >= 16 ? token : null;
   } catch {
-    // Not a URL — tolerate a bare token (e.g. a re-printed sticker).
+    // Not a URL — tolerate a bare token (e.g. a re-printed QR code).
     return /^[A-Za-z0-9_-]{16,128}$/.test(text) ? text : null;
   }
 }
@@ -151,7 +151,7 @@ export function QrScanner({
           <div className="rounded-card bg-card p-5 text-center">
             <p className="font-bold text-ink">Can&rsquo;t use the camera</p>
             <p className="mt-2 text-ink2">
-              Allow camera access for this site, or scan the sticker with your
+              Allow camera access for this site, or scan the QR code with your
               phone&rsquo;s camera app instead.
             </p>
           </div>
@@ -175,14 +175,14 @@ export function QrScanner({
           {/* Scan frame */}
           <div className="relative z-10 mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-8 pt-14">
             <p className="text-center text-lg font-semibold text-white">
-              Point at the sticker
+              Point at the QR code
             </p>
             <div className="flex flex-1 items-center justify-center">
               <div className="h-56 w-56 rounded-3xl border-4 border-white/80" />
             </div>
             {wrongCode && (
               <p className="mb-4 text-center text-sm font-medium text-white/90">
-                That code isn&rsquo;t a Babytuna sticker — try the one by the
+                That code isn&rsquo;t a smelter QR code — try the one by the
                 register.
               </p>
             )}

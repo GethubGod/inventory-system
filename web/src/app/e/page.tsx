@@ -1,18 +1,17 @@
 "use client";
 
-// QR/NFC landing: /e?t=<token>. Validates the sticker token, mints the
+// QR/NFC landing: /e?t=<token>. Validates the QR token, mints the
 // per-scan session, then goes straight to work — if this phone remembers
 // who's closing (and they're still on the roster), the closer screen is
 // skipped entirely.
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { setCloser, validateToken, TipApiError } from "@/lib/tips/api";
+import { validateToken, TipApiError } from "@/lib/tips/api";
 import {
   loadRememberedCloser,
   loadSession,
   saveSession,
-  updateSession,
 } from "@/lib/tips/session";
 import { Splash } from "@/components/entry-flow/chrome";
 
@@ -36,31 +35,25 @@ function TokenLanding() {
     }
     let cancelled = false;
     const signIn = async (): Promise<"entry" | "closer"> => {
-      const fresh = await validateToken(token);
+      // The remembered closer rides along with validation — one roundtrip
+      // signs in AND skips the roster screen. If the server didn't apply it
+      // (location mismatch, roster change), `closer` comes back null and the
+      // picker shows exactly as before.
+      const remembered = loadRememberedCloser();
+      const fresh = await validateToken(
+        token,
+        remembered
+          ? { closerId: remembered.closerId, locationId: remembered.locationId }
+          : undefined,
+      );
       saveSession({
         token: fresh.sessionToken,
         locationId: fresh.location.id,
         locationName: fresh.location.name,
-        closerId: null,
-        closerName: null,
+        closerId: fresh.closer?.id ?? null,
+        closerName: fresh.closer?.name ?? null,
       });
-      // Remembered closer: apply it server-side and skip the roster screen.
-      const remembered = loadRememberedCloser(fresh.location.id);
-      const stillOnRoster =
-        remembered && fresh.roster.some((r) => r.id === remembered.closerId);
-      if (remembered && stillOnRoster) {
-        try {
-          await setCloser(fresh.sessionToken, remembered.closerId);
-          updateSession({
-            closerId: remembered.closerId,
-            closerName: remembered.closerName,
-          });
-          return "entry";
-        } catch {
-          // Roster changed under us — fall through to the picker.
-        }
-      }
-      return "closer";
+      return fresh.closer ? "entry" : "closer";
     };
     signIn()
       .then((destination) => {
@@ -76,7 +69,7 @@ function TokenLanding() {
         setErrorMessage(
           err instanceof TipApiError && err.code === "rate_limited"
             ? err.message
-            : "This QR code is no longer active. Ask a manager for the new sticker.",
+            : "This QR code is no longer active. Ask a manager for the new one.",
         );
         setPhase("error");
       });
@@ -85,6 +78,13 @@ function TokenLanding() {
     };
   }, [token, router, attempt]);
 
+  // Both possible destinations are known the moment this page mounts —
+  // prefetch them so the post-validation navigation is instant.
+  useEffect(() => {
+    router.prefetch("/entry");
+    router.prefetch("/closer");
+  }, [router]);
+
   const retry = () => {
     setPhase("checking");
     setErrorMessage(null);
@@ -92,7 +92,7 @@ function TokenLanding() {
   };
 
   if (phase === "checking") {
-    return <Splash>Checking the sticker&hellip;</Splash>;
+    return <Splash>Checking the QR code&hellip;</Splash>;
   }
 
   return (
@@ -121,7 +121,7 @@ function TokenLanding() {
 
 export default function TokenLandingPage() {
   return (
-    <Suspense fallback={<Splash>Checking the sticker&hellip;</Splash>}>
+    <Suspense fallback={<Splash>Checking the QR code&hellip;</Splash>}>
       <TokenLanding />
     </Suspense>
   );

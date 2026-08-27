@@ -5060,4 +5060,4 @@ export const Constants = {
 // plain `string`, so the app narrows them here.
 export type MealPeriod = "lunch" | "dinner";
 export type EntryMethod = "typed" | "voice";
-export type VoiceVariant = "waveform" | "live_transcript";
+export type VoiceVariant = "waveform" | "live_transcript" | "local_live";

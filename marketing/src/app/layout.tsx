@@ -2,15 +2,13 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "smelter tips",
-  description:
-    "End-of-day tip entry for Babytuna Sushi and Babytuna Poki & Pho",
+  title: "smelter",
+  description: "smelter — restaurant operations tools",
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
   themeColor: "#F5F5F4",
 };
 
