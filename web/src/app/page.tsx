@@ -1,13 +1,13 @@
 "use client";
 
-// Scan gate: every entry session starts here with a QR scan. The sticker can
+// Scan gate: every entry session starts here with a QR scan. The QR code can
 // be scanned with the phone's camera app (opens /e?t=...) or with the
 // in-page scanner below — no PIN path. First visit on a device shows the
 // onboarding carousel (preview anytime with /?onboarding=a or =b).
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { fetchState, isSessionInvalid } from "@/lib/tips/api";
+import { fetchState, isSessionInvalid, warmUpEntryFunctions } from "@/lib/tips/api";
 import {
   clearSession,
   hasOnboarded,
@@ -74,6 +74,14 @@ function ScanLanding() {
   const onboardingParam = search.get("onboarding");
   const variant: OnboardingVariant = onboardingParam === "b" ? "story" : "cards";
 
+  // Warm the edge functions and prefetch the sign-in route while the user
+  // is still looking at this screen — by the time a QR code is scanned the
+  // TLS session, CORS preflight, and isolates are all hot.
+  useEffect(() => {
+    warmUpEntryFunctions();
+    router.prefetch("/e");
+  }, [router]);
+
   useEffect(() => {
     let cancelled = false;
     const session = loadSession();
@@ -127,12 +135,12 @@ function ScanLanding() {
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-8 pt-14">
       <h1 className="text-3xl font-bold text-ink">Scan to enter</h1>
       <p className="mt-2 text-ink2">
-        Every entry starts with the sticker by the register
+        Every entry starts with the QR code by the register
       </p>
       {networkNote && (
         <p className="mt-3 text-sm text-ink3">
           Couldn&rsquo;t check this phone&rsquo;s last session — scan the
-          sticker to start fresh.
+          QR code to start fresh.
         </p>
       )}
 
@@ -158,7 +166,7 @@ function ScanLanding() {
         className="mt-10 flex w-full items-center justify-center gap-2 rounded-full bg-accent py-4 font-semibold text-white active:opacity-90"
       >
         <CameraIcon />
-        Scan the sticker
+        Scan the QR code
       </button>
 
       {showScanner && (

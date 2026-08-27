@@ -62,8 +62,7 @@ async function fetchRoster(locationId: string) {
   return (data ?? []).map((row: { id: string; name: string }) => ({ id: row.id, name: row.name }));
 }
 
-async function fetchToday(locationId: string) {
-  const now = new Date();
+async function fetchToday(locationId: string, now: Date = new Date()) {
   const businessDate = businessDateFor(now);
   const { data, error } = await supabaseAdmin
     .from('tip_entries')
@@ -95,12 +94,17 @@ async function mintSession(locationId: string) {
 }
 
 async function sessionPayload(locationId: string, locationName: string, closerId: string | null) {
-  const today = await fetchToday(locationId);
+  // businessDate and defaultMeal are computed locally, so all three queries
+  // can run in parallel — one DB roundtrip's worth of wall clock, not three.
+  const now = new Date();
+  const businessDate = businessDateFor(now);
+  const defaultMeal = defaultMealPeriod(now);
   // Scheduled = has a manager-set schedule row for today's default meal; the
   // entry form pre-selects these people and floats them to the top.
-  const [bareRoster, scheduledIds] = await Promise.all([
+  const [today, bareRoster, scheduledIds] = await Promise.all([
+    fetchToday(locationId, now),
     fetchRoster(locationId),
-    fetchScheduledIds(supabaseAdmin, locationId, today.businessDate, today.defaultMeal),
+    fetchScheduledIds(supabaseAdmin, locationId, businessDate, defaultMeal),
   ]);
   const roster = bareRoster.map((row: { id: string; name: string }) => ({
     ...row,
@@ -131,6 +135,14 @@ Deno.serve(async (req) => {
   }
 
   const action = typeof body.action === 'string' ? body.action : '';
+
+  // Warm-up ping: the entry pages fire this while the phone is still aiming
+  // at the QR code, so the isolate + TLS + preflight are all hot by the time
+  // the real validate_token lands. No auth, no DB.
+  if (action === 'ping') {
+    return json(req, { ok: true });
+  }
+
   const identifierHash = await sha256Hex(clientIdentifier(req));
 
   try {
@@ -150,13 +162,38 @@ Deno.serve(async (req) => {
           code: result?.code ?? 'invalid',
           error: rateLimited
             ? 'Too many attempts. Wait a few minutes and try again.'
-            : 'This QR code is no longer active. Ask a manager for the new sticker.',
+            : 'This QR code is no longer active. Ask a manager for the new one.',
         }, rateLimited ? 429 : 401);
       }
 
-      const sessionToken = await mintSession(result.location_id);
-      const payload = await sessionPayload(result.location_id, result.location_name ?? '', null);
-      return json(req, { ok: true, sessionToken, ...payload });
+      // Session mint and payload queries are independent — run them together.
+      const [sessionToken, payload] = await Promise.all([
+        mintSession(result.location_id),
+        sessionPayload(result.location_id, result.location_name ?? '', null),
+      ]);
+
+      // Remembered closer: fold what used to be a second set_closer request
+      // into this one. Applied only when the remembered location matches the
+      // scanned one (shared roster rows have location_id null, so roster
+      // membership alone would leak a closer across stores) AND the id is
+      // still on the roster — otherwise the client shows the picker.
+      const closerId = typeof body.closerId === 'string' ? body.closerId.trim() : '';
+      const rememberedLocation =
+        typeof body.closerLocationId === 'string' ? body.closerLocationId.trim() : '';
+      let closer: { id: string; name: string } | null = null;
+      if (UUID_PATTERN.test(closerId) && rememberedLocation === result.location_id) {
+        const match = payload.roster.find((r: { id: string }) => r.id === closerId);
+        if (match) {
+          const tokenHash = await sha256Hex(sessionToken);
+          const { error: closerError } = await supabaseAdmin
+            .from('tip_entry_sessions')
+            .update({ closer_id: closerId })
+            .eq('token_hash', tokenHash);
+          if (!closerError) closer = match;
+        }
+      }
+
+      return json(req, { ok: true, sessionToken, ...payload, closer });
     }
 
     if (action === 'end_session') {
@@ -174,7 +211,7 @@ Deno.serve(async (req) => {
     // Everything below requires a valid entry session.
     const session = await validateTipSession(supabaseAdmin, body.sessionToken);
     if (!session) {
-      return json(req, { ok: false, code: 'session_invalid', error: 'Session expired. Scan the sticker again.' }, 401);
+      return json(req, { ok: false, code: 'session_invalid', error: 'Session expired. Scan the QR code again.' }, 401);
     }
 
     if (action === 'state') {

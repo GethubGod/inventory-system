@@ -1,6 +1,6 @@
 "use client";
 
-// Devices & entry log — device cards FIRST (per-location QR sticker status,
+// Devices & entry log — device cards FIRST (per-location QR code status,
 // Rotate with plaintext-shown-once, scan-session summary, Sign out all),
 // then the entry log: one row per entry with a timing badge against close
 // time, missing scheduled shifts in red on top, and on-time KPIs.
@@ -51,7 +51,7 @@ function rotatedLabel(iso: string): string {
   }).format(new Date(iso));
 }
 
-/** Build the phone-facing entry URL a sticker encodes. Browser only. */
+/** Build the phone-facing entry URL a QR code encodes. Browser only. */
 function entryUrlFor(token: string): string {
   return `${window.location.origin}/e?t=${encodeURIComponent(token)}`;
 }
@@ -78,27 +78,26 @@ function useQrDataUrl(token: string | null): string | null {
 }
 
 /**
- * The full printable sticker sheet, previewed in the View dialog. Printing
+ * The full printable QR sheet, previewed in the View dialog. Printing
  * hides everything except `.qr-print-sheet` (see globals.css), so the same
  * DOM prints as a clean instruction sheet.
  */
 function StickerSheetDialog({
   location,
   qrDataUrl,
-  entryUrl,
   onClose,
 }: {
   location: LocationInfo;
   qrDataUrl: string;
-  entryUrl: string;
   onClose: () => void;
 }) {
   return (
     <ModalShell title={`${location.label} — entry QR`} onClose={onClose} wide>
       <div className="mt-3 max-h-[62vh] overflow-y-auto rounded-well bg-well p-3">
         <div className="qr-print-sheet mx-auto flex max-w-[430px] flex-col items-center gap-1 rounded-[6px] border border-line bg-white px-8 py-9 text-center text-[#111]">
-          <div className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#888]">
-            Babytuna · Tip entry
+          <div className="text-[11px] font-bold tracking-[0.18em]">
+            <span className="text-[#e84d38]">smelter</span>
+            <span className="text-[#888]"> · tip entry</span>
           </div>
           <h2 className="text-[26px] font-extrabold leading-tight">{location.name}</h2>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -122,11 +121,6 @@ function StickerSheetDialog({
               </li>
             ))}
           </ol>
-          <div className="mt-5 w-full border-t border-[#e5e5e5] pt-3 text-[11px] leading-relaxed text-[#888]">
-            One scan per entry. If this code stops working it was rotated — print a fresh
-            sticker from Tip Dashboard → Devices &amp; entry log.
-            <span className="mt-1 block break-all font-mono text-[9.5px]">{entryUrl}</span>
-          </div>
         </div>
       </div>
       <div className="mt-4 flex justify-end gap-2">
@@ -134,7 +128,7 @@ function StickerSheetDialog({
           Close
         </button>
         <button type="button" className={btnPrim} onClick={() => window.print()}>
-          Print sticker
+          Print QR code
         </button>
       </div>
     </ModalShell>
@@ -198,7 +192,7 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
       return;
     }
     setFreshToken(data);
-    toast("Token rotated — the old sticker is dead. Open View to print the new one.");
+    toast("Token rotated — the old QR code is dead. Open View to print the new one.");
     ctx.refetch();
   }
 
@@ -226,7 +220,7 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
         />
         <h4 className="text-[14.5px] font-extrabold text-ink">{location.label}</h4>
         <span className="ml-auto text-xs font-semibold text-ink2">
-          {rotatedAt ? "Sticker active" : "Never rotated"}
+          {rotatedAt ? "QR code active" : "Never rotated"}
         </span>
       </div>
       <div className="flex flex-col gap-3.5 px-[18px] py-3.5">
@@ -235,7 +229,7 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
             <button
               type="button"
               onClick={() => setViewing(true)}
-              title="View and print the sticker"
+              title="View and print the QR code"
               aria-label={`View the ${location.label} entry QR`}
               className="h-16 w-16 flex-none overflow-hidden rounded-[10px] border border-line bg-white p-1 hover:border-accent"
             >
@@ -248,7 +242,7 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
             </span>
           )}
           <span className="min-w-0 flex-1">
-            <b className="block text-[13.5px] text-ink">QR sticker</b>
+            <b className="block text-[13.5px] text-ink">QR code</b>
             <span className="mt-px block text-[12.5px] text-ink2">
               {rotatedAt ? (
                 <>Rotated {rotatedLabel(rotatedAt)}</>
@@ -300,14 +294,13 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
         <StickerSheetDialog
           location={location}
           qrDataUrl={qrDataUrl}
-          entryUrl={entryUrlFor(token)}
           onClose={() => setViewing(false)}
         />
       )}
       {confirming === "rotate" && (
         <ConfirmDialog
-          title={`Rotate the ${location.label} sticker?`}
-          body="This kills the current QR sticker immediately — phones can no longer scan it. The new token shows once; print the new sticker right away."
+          title={`Rotate the ${location.label} QR code?`}
+          body="This kills the current QR code immediately — phones can no longer scan it. Print the new one right away."
           confirmLabel="Rotate"
           busyLabel="Rotating…"
           busy={working}
@@ -318,7 +311,7 @@ function DeviceCard({ ctx, location }: { ctx: PageContext; location: LocationInf
       {confirming === "signout" && (
         <ConfirmDialog
           title={`Sign out every ${location.label} phone?`}
-          body="Every phone signed into this location will need to scan the sticker again. Use this for a lost phone."
+          body="Every phone signed into this location will need to scan the QR code again. Use this for a lost phone."
           confirmLabel="Sign out all"
           busyLabel="Signing out…"
           busy={working}
@@ -352,8 +345,8 @@ export function DevicesPage({ ctx }: { ctx: PageContext }) {
         <div className="mb-2.5 flex items-center gap-2">
           <h3 className={sectionH3}>Device access</h3>
           <InfoButton label="About device access">
-            Each restaurant signs in by scanning its <b>QR sticker</b> — one scan per entry, the
-            phone signs out after saving. Rotating replaces the sticker immediately; only a hash is
+            Each restaurant signs in by scanning its <b>QR code</b> — one scan per entry, the
+            phone signs out after saving. Rotating replaces the code immediately; only a hash is
             stored, so print right after rotating. Sign out all is for a lost phone.
           </InfoButton>
         </div>

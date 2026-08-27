@@ -795,7 +795,7 @@ export function EntryForm() {
       <ConfirmDialog
         open={showLocationDialog}
         title="Switch location"
-        body="Switching location means scanning that location's sticker. This phone will sign out first."
+        body="Switching location means scanning that location's QR code. This phone will sign out first."
         confirmLabel="Sign out & scan"
         cancelLabel="Stay here"
         // A save in flight must land (and show its confirmation) before the

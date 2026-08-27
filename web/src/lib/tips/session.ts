@@ -67,7 +67,7 @@ export function clearSession(): void {
 /**
  * Device-remembered "who's closing" — survives across entry sessions so the
  * same phone skips the roster screen on its next scan. Keyed per location:
- * a phone that scans the other store's sticker still gets asked.
+ * a phone that scans the other store's QR code still gets asked.
  */
 export interface RememberedCloser {
   locationId: string;
@@ -75,7 +75,7 @@ export interface RememberedCloser {
   closerName: string;
 }
 
-export function loadRememberedCloser(locationId: string): RememberedCloser | null {
+export function loadRememberedCloser(locationId?: string): RememberedCloser | null {
   const store = storage();
   if (!store) return null;
   try {
@@ -83,14 +83,18 @@ export function loadRememberedCloser(locationId: string): RememberedCloser | nul
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<RememberedCloser>;
     if (
-      parsed.locationId !== locationId ||
+      typeof parsed.locationId !== "string" ||
       typeof parsed.closerId !== "string" ||
       typeof parsed.closerName !== "string"
     ) {
       return null;
     }
+    // With a locationId the caller wants a match for THAT store; without one
+    // (the /e fast path) the stored entry rides to the server, which enforces
+    // the location match itself.
+    if (locationId !== undefined && parsed.locationId !== locationId) return null;
     return {
-      locationId,
+      locationId: parsed.locationId,
       closerId: parsed.closerId,
       closerName: parsed.closerName,
     };

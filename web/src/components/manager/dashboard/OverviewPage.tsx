@@ -199,7 +199,7 @@ export function OverviewPage({ ctx }: { ctx: PageContext }) {
             <span className="h-2 w-2 flex-none rounded-full bg-warnamber" aria-hidden />
             <span className="min-w-0 text-ink2">
               <b className="text-ink">{location.label} QR</b> has never been rotated — mint a
-              sticker so closers can scan in
+              QR code so closers can scan in
             </span>
             <button type="button" className={`${btn} ml-auto`} onClick={() => ctx.navigate("logdev")}>
               Devices

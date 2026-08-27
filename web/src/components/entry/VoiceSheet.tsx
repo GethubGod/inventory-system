@@ -822,7 +822,7 @@ export function VoiceSheet({
         </button>
         {row === "location" && locationHint && (
           <div className="px-4 pb-3 text-ink3 text-sm">
-            Signed into {locationName}. Scan that location&apos;s sticker to
+            Signed into {locationName}. Scan that location&apos;s QR code to
             switch.
           </div>
         )}

@@ -108,9 +108,15 @@ Deno.serve(async (req) => {
     return json(req, { error: 'Invalid request body' }, 400);
   }
 
+  // Warm-up ping (no session needed): fired while the phone is still on the
+  // scan screen so the isolate is hot before the first real request.
+  if (body.action === 'ping') {
+    return json(req, { ok: true });
+  }
+
   const session = await validateTipSession(supabaseAdmin, body.sessionToken);
   if (!session) {
-    return json(req, { ok: false, code: 'session_invalid', error: 'Session expired. Scan the sticker again.' }, 401);
+    return json(req, { ok: false, code: 'session_invalid', error: 'Session expired. Scan the QR code again.' }, 401);
   }
 
   const action = typeof body.action === 'string' ? body.action : '';
@@ -134,7 +140,9 @@ Deno.serve(async (req) => {
       const confirmAnomaly = body.confirmAnomaly === true;
       const entryMethod = body.entryMethod === 'voice' ? 'voice' : 'typed';
       const voiceVariant =
-        body.voiceVariant === 'waveform' || body.voiceVariant === 'live_transcript'
+        body.voiceVariant === 'waveform' ||
+        body.voiceVariant === 'live_transcript' ||
+        body.voiceVariant === 'local_live'
           ? body.voiceVariant
           : null;
       const correctionsCount =
