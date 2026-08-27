@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Babytuna Tips",
+  title: "smelter tips",
   description:
     "End-of-day tip entry for Babytuna Sushi and Babytuna Poki & Pho",
 };

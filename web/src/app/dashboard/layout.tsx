@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import DashboardGate from "@/components/dashboard/DashboardGate";
 
 export const metadata: Metadata = {
-  title: "Babytuna Dashboard",
-  description: "Manager dashboard for Babytuna Systems",
+  title: "smelter dashboard",
+  description: "Manager dashboard for smelter",
 };
 
 export default function DashboardLayout({ children }: LayoutProps<"/dashboard">) {
