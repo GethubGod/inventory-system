@@ -36,7 +36,14 @@ export function isOrderFulfillmentEligible(order: unknown): boolean {
   const row = toRecord(order);
   if (!row) return false;
 
-  if (row.entry_method !== 'quick_order' && !row.quick_session_id) {
+  // Quick and voice orders carry a review status; the session FK is ON DELETE
+  // SET NULL, so entry_method must gate on its own or a deleted session would
+  // smuggle a pending order past review.
+  const isReviewedEntry =
+    row.entry_method === 'quick_order' ||
+    row.entry_method === 'voice_order' ||
+    Boolean(row.quick_session_id);
+  if (!isReviewedEntry) {
     return true;
   }
 

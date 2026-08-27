@@ -72,8 +72,15 @@ describe('isOrderFulfillmentEligible', () => {
     })).toBe(true);
     expect(isOrderFulfillmentEligible({
       entry_method: 'voice_order',
-      manager_review_status: 'pending',
+      manager_review_status: 'not_required',
     })).toBe(true);
+    // Session FK is ON DELETE SET NULL; a pending voice order must stay
+    // excluded even with no quick_session_id.
+    expect(isOrderFulfillmentEligible({
+      entry_method: 'voice_order',
+      quick_session_id: null,
+      manager_review_status: 'pending',
+    })).toBe(false);
   });
 
   test('excludes Quick Order rows that are not fulfillment-ready', () => {

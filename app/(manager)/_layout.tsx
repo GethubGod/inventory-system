@@ -23,6 +23,7 @@ export default function ManagerLayout() {
   const fetchPastOrders = useOrderStore((s) => s.fetchPastOrders);
   const insets = useSafeAreaInsets();
   const [pendingFulfillmentCount, setPendingFulfillmentCount] = useState(0);
+  const badgeRefreshGenerationRef = useRef(0);
   const badgeRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -49,6 +50,11 @@ export default function ManagerLayout() {
       setPendingFulfillmentCount(0);
       return;
     }
+
+    // Overlapping refreshes can resolve out of order; only the newest one may
+    // write the badge.
+    const generation = ++badgeRefreshGenerationRef.current;
+    const isCurrent = () => badgeRefreshGenerationRef.current === generation;
 
     try {
       // Match the screen's source data: scoped submitted orders, its pending
@@ -96,13 +102,13 @@ export default function ManagerLayout() {
         },
       );
 
-      setPendingFulfillmentCount(uniqueOrderIds.size);
+      if (isCurrent()) setPendingFulfillmentCount(uniqueOrderIds.size);
     } catch (error) {
       console.error(
         "[ManagerLayout] Failed to load fulfillment badge count:",
         error,
       );
-      setPendingFulfillmentCount(0);
+      if (isCurrent()) setPendingFulfillmentCount(0);
     }
   }, [fetchPastOrders, managerLocationIds, resolvedRole, session]);
 
