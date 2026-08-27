@@ -111,7 +111,7 @@ export function EmployeeSettingsScreen() {
         ? 'Off'
         : summarizeOrderDayRule(reminderRule);
 
-  const bottomPadding = getFloatingPillClearance(insets.bottom) + ds.spacing(16);
+  const bottomPadding = getFloatingPillClearance(insets.bottom) + ds.spacing(24);
 
   return (
     <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: tipsTheme.page }}>

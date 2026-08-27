@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 import { View, Text, ScrollView } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import { useAuthStore } from '@/store';
@@ -11,6 +11,7 @@ import {
   settingsIconPalettes,
 } from '@/components/settings';
 import { BrandLogo, GlassSurface } from '@/components';
+import { getTabBarBottomInset } from '@/components/navigation';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   buildSettingsGroups,
@@ -20,13 +21,16 @@ import {
   glassColors,
   glassRadii,
   glassSpacing,
-  glassTabBarHeight,
 } from '@/theme/design';
 
 const SETTINGS_DIVIDER_COLOR = '#EAEAEA';
 
 export default function ManagerSettingsScreen() {
   const ds = useScaledStyles();
+  const insets = useSafeAreaInsets();
+  // The tab bar floats over the list, so its real height (60pt + the bottom
+  // inset it pads with) has to clear before the footer.
+  const tabBarClearance = 60 + getTabBarBottomInset(insets.bottom);
   const { user, setViewMode } = useAuthStore();
   const { isSigningOut, requestSignOut } = useSignOutAction();
   const appVersion = Constants.expoConfig?.version || '1.0.0';
@@ -51,7 +55,7 @@ export default function ManagerSettingsScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: glassColors.background }} edges={['top', 'left', 'right']}>
       <ScrollView
-        contentContainerStyle={{ paddingBottom: glassTabBarHeight + ds.spacing(20) }}
+        contentContainerStyle={{ paddingBottom: tabBarClearance + ds.spacing(24) }}
         showsVerticalScrollIndicator={false}
       >
         <View style={{ paddingHorizontal: glassSpacing.screen, paddingVertical: ds.spacing(16), flexDirection: 'row', alignItems: 'center' }}>

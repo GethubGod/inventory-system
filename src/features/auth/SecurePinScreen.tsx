@@ -5,6 +5,7 @@
 import { useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LoadingIndicator } from '@/components';
 import { triggerNotificationHaptic, NotificationFeedbackType } from '@/lib/haptics';
 import { PIN_LENGTH } from '@/services/loginCredentials';
@@ -18,6 +19,7 @@ type Phase = 'enter' | 'confirm' | 'submitting' | 'failed';
 
 export default function SecurePinScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const token = useOnboardingStore((state) => state.token);
   const completeOnboarding = useOnboardingStore((state) => state.completeOnboarding);
 
@@ -154,7 +156,14 @@ export default function SecurePinScreen() {
       {phase !== 'submitting' ? (
         <TouchableOpacity
           onPress={() => router.back()}
-          style={{ alignItems: 'center', marginBottom: 6 }}
+          style={{
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: 44,
+            // Keep the control (and its 44pt target) out of the home
+            // indicator band on devices that have one.
+            marginBottom: Math.max(insets.bottom, 6),
+          }}
           hitSlop={{ top: 8, bottom: 8, left: 20, right: 20 }}
         >
           <Text style={{ fontSize: 13, fontWeight: '600', color: authTheme.textDim }}>Back</Text>

@@ -95,7 +95,9 @@ function AccessCodeField({
             keyboardType="number-pad"
             maxLength={4}
             secureTextEntry={secureTextEntry}
-            placeholder={`4-digit ${label.toLowerCase()}`}
+            // The field carries wide tracking, so keep the hint short enough
+            // to fit; the label above stays fully descriptive.
+            placeholder="4-digit code"
             placeholderTextColor={glassColors.textMuted}
             style={{
               flex: 1,

@@ -1,5 +1,6 @@
 import { Redirect, Tabs } from "expo-router";
-import { useOrderStore } from "@/store";
+import { StatusBar } from "expo-status-bar";
+import { useDisplayStore, useOrderStore } from "@/store";
 import { AuthLoadingScreen } from "@/components";
 import { useMyModules, useProtectedAuthGuard } from "@/hooks";
 import { getVisibleEmployeeTabs } from "@/store/moduleStore.helpers";
@@ -9,6 +10,7 @@ export default function TabsLayout() {
   const cartTotal = useOrderStore((state) =>
     state.getTotalCartCount("employee"),
   );
+  const theme = useDisplayStore((state) => state.theme);
   const guard = useProtectedAuthGuard();
   // Phase 3: tabs render from per-user module state (rpc get_effective_modules,
   // kept live via the user_modules realtime channel — a manager flipping a
@@ -29,62 +31,67 @@ export default function TabsLayout() {
   }
 
   return (
-    <Tabs
-      screenOptions={{ headerShown: false }}
-      tabBar={(props) => (
-        <FloatingPillTabBar
-          {...props}
-          visibleTabs={visibleTabs}
-          cartCount={cartTotal}
+    <>
+      {/* The employee surfaces are light; expo-status-bar keeps whatever the
+          dark auth screens last set, so re-assert dark glyphs here. */}
+      <StatusBar style={theme === "dark" ? "light" : "dark"} />
+      <Tabs
+        screenOptions={{ headerShown: false }}
+        tabBar={(props) => (
+          <FloatingPillTabBar
+            {...props}
+            visibleTabs={visibleTabs}
+            cartCount={cartTotal}
+          />
+        )}
+      >
+        {/* Home is no longer an employee surface — index redirects to the first
+            visible pill tab (see index.tsx). */}
+        <Tabs.Screen name="index" options={{ href: null }} />
+
+        {/* Simple ordering checklist (Phase 5a surface, ordering_simple module) */}
+        <Tabs.Screen
+          name="simple-order"
+          options={{ href: modules.ordering_simple ? undefined : null, title: "Order" }}
         />
-      )}
-    >
-      {/* Home is no longer an employee surface — index redirects to the first
-          visible pill tab (see index.tsx). */}
-      <Tabs.Screen name="index" options={{ href: null }} />
 
-      {/* Simple ordering checklist (Phase 5a surface, ordering_simple module) */}
-      <Tabs.Screen
-        name="simple-order"
-        options={{ href: modules.ordering_simple ? undefined : null, title: "Order" }}
-      />
+        {/* Advanced ordering (Beta) — the former Quick Order surface, gated by
+            ordering_advanced. */}
+        <Tabs.Screen
+          name="quick-order"
+          options={{ href: modules.ordering_advanced ? undefined : null, title: "Advanced" }}
+        />
 
-      {/* Advanced ordering (Beta) — the former Quick Order surface, gated by
-          ordering_advanced. */}
-      <Tabs.Screen
-        name="quick-order"
-        options={{ href: modules.ordering_advanced ? undefined : null, title: "Advanced" }}
-      />
+        {/* Cart only serves the advanced flow, so it shares its gate. */}
+        <Tabs.Screen
+          name="cart"
+          options={{ href: modules.ordering_advanced ? undefined : null, title: "Cart" }}
+        />
 
-      {/* Cart only serves the advanced flow, so it shares its gate. */}
-      <Tabs.Screen
-        name="cart"
-        options={{ href: modules.ordering_advanced ? undefined : null, title: "Cart" }}
-      />
+        {/* Past sent orders with one-tap reorder. */}
+        <Tabs.Screen name="history" options={{ title: "History" }} />
 
-      {/* Past sent orders with one-tap reorder. */}
-      <Tabs.Screen name="history" options={{ title: "History" }} />
+        <Tabs.Screen name="settings" options={{ title: "Settings" }} />
 
-      <Tabs.Screen name="settings" options={{ title: "Settings" }} />
+        {/* Stock Check — opened from Settings, not the pill. The stock_check
+            module gates the screens themselves via useModuleAccessGuard. */}
+        <Tabs.Screen name="stock-check" options={{ href: null }} />
 
-      {/* Stock Check — opened from Settings, not the pill. The stock_check
-          module gates the screens themselves via useModuleAccessGuard. */}
-      <Tabs.Screen name="stock-check" options={{ href: null }} />
+        {/* TODO-PHASE4: render the tips tab here once the tips surface ships.
+            The `tips` module gate already exists (modules.tips) but must never
+            show a broken screen, so no tab is rendered yet. */}
 
-      {/* TODO-PHASE4: render the tips tab here once the tips surface ships.
-          The `tips` module gate already exists (modules.tips) but must never
-          show a broken screen, so no tab is rendered yet. */}
+        <Tabs.Screen name="voice" options={{ href: null }} />
 
-      <Tabs.Screen name="voice" options={{ href: null }} />
-
-      {/* Hidden screens */}
-      <Tabs.Screen name="draft" options={{ href: null }} />
-      <Tabs.Screen name="orders" options={{ href: null }} />
-      <Tabs.Screen name="profile" options={{ href: null }} />
-      <Tabs.Screen name="inventory-browse" options={{ href: null }} />
-      <Tabs.Screen name="stock-check-list" options={{ href: null }} />
-      <Tabs.Screen name="past-checks" options={{ href: null }} />
-      <Tabs.Screen name="receive-delivery" options={{ href: null }} />
-    </Tabs>
+        {/* Hidden screens */}
+        <Tabs.Screen name="draft" options={{ href: null }} />
+        <Tabs.Screen name="orders" options={{ href: null }} />
+        <Tabs.Screen name="profile" options={{ href: null }} />
+        <Tabs.Screen name="inventory-browse" options={{ href: null }} />
+        <Tabs.Screen name="stock-check-list" options={{ href: null }} />
+        <Tabs.Screen name="past-checks" options={{ href: null }} />
+        <Tabs.Screen name="receive-delivery" options={{ href: null }} />
+      </Tabs>
+    </>
   );
 }

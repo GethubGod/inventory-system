@@ -31,6 +31,10 @@ import {
   LoadingIndicator,
   LocationSelectorButton,
 } from '@/components';
+import {
+  getFloatingPillClearance,
+  getTabBarBottomInset,
+} from '@/components/navigation';
 import { getCategoryLabel, colors, getSupplierCategoryLabel } from '@/constants';
 import {
   glassColors,
@@ -134,8 +138,13 @@ export function BrowseInventoryScreenView({
     })),
   );
   const { activeLocationId, addInventoryItem } = useOrderingCartActions(mode.scope);
+  // Browse is reachable from both shells, so clear whichever floating chrome is
+  // taller (manager tab bar vs. employee pill) before the scroll gap.
   const tabBarSafeBottomPadding =
-    60 + Math.max(insets.bottom, glassSpacing.tabBarBottom) + ds.spacing(24);
+    Math.max(
+      60 + getTabBarBottomInset(insets.bottom),
+      getFloatingPillClearance(insets.bottom),
+    ) + ds.spacing(24);
   const headerBackButtonSize = Math.max(48, ds.icon(44));
   const headerCartButtonSize = headerBackButtonSize;
   const scrollToItemViewOffset = ds.spacing(4);
@@ -721,6 +730,10 @@ export function BrowseInventoryScreenView({
                   flex: 1,
                   marginLeft: ds.spacing(12),
                   fontSize: ds.fontSize(16),
+                  // Explicit tracking: without it the field can pick up the
+                  // wide letterSpacing of the PIN inputs and render the
+                  // placeholder as "S e a r c h  i n v e n t o r y . . .".
+                  letterSpacing: 0,
                   color: glassColors.textPrimary,
                 }}
                 placeholder="Search inventory..."
