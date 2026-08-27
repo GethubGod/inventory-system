@@ -77,10 +77,18 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
 
       const [locationRows, employeeRows, scheduleRows, accessRows, entryRows, sessionRows] =
         await Promise.all([
-          supabase.from("locations").select("id, name").order("name").then((r) => {
-            if (r.error) throw new Error(r.error.message);
-            return r.data ?? [];
-          }),
+          // PostgREST applies this embedded order + limit per location, so
+          // one locations request also gets each missing-shift floor.
+          supabase
+            .from("locations")
+            .select("id, name, tip_entries(business_date)")
+            .order("name")
+            .order("business_date", { ascending: true, referencedTable: "tip_entries" })
+            .limit(1, { referencedTable: "tip_entries" })
+            .then((r) => {
+              if (r.error) throw new Error(r.error.message);
+              return r.data ?? [];
+            }),
           supabase
             .from("tip_employees")
             .select("id, name, location_id, active, sort_order")
@@ -195,18 +203,9 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
       // Each location's first-ever entry date floors the missing-shift scan —
       // same rule the v1 discrepancies tab used.
       const firstEntryDates: Record<string, string | undefined> = {};
-      await Promise.all(
-        locationRows.map(async (location) => {
-          const r = await supabase
-            .from("tip_entries")
-            .select("business_date")
-            .eq("location_id", location.id)
-            .order("business_date", { ascending: true })
-            .limit(1);
-          if (r.error) throw new Error(r.error.message);
-          firstEntryDates[location.id] = r.data?.[0]?.business_date;
-        }),
-      );
+      for (const location of locationRows) {
+        firstEntryDates[location.id] = location.tip_entries[0]?.business_date;
+      }
 
       const locations = locationRows.map(toLocationInfo).sort((a, b) => {
         // Sushi card/segment first, matching the mockup.
