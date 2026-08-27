@@ -49,10 +49,23 @@ function QrPageInner() {
 
   useEffect(() => {
     let cancelled = false;
-    getSupabase()
-      .auth.getSession()
-      .then(({ data }) => {
-        if (!cancelled) setAuthState(data.session ? "ok" : "none");
+    const supabase = getSupabase();
+    // A live session is not enough — this page prints entry credentials, so
+    // require the same manager check as the rest of the dashboard.
+    supabase.auth
+      .getSession()
+      .then(async ({ data }) => {
+        if (!data.session) return "none" as const;
+        const { data: isManager, error } = await supabase.rpc(
+          "current_user_is_manager",
+        );
+        return !error && isManager === true ? ("ok" as const) : ("none" as const);
+      })
+      .then((next) => {
+        if (!cancelled) setAuthState(next);
+      })
+      .catch(() => {
+        if (!cancelled) setAuthState("none");
       });
     return () => {
       cancelled = true;
@@ -62,7 +75,7 @@ function QrPageInner() {
   useEffect(() => {
     if (!token || authState !== "ok") return;
     let cancelled = false;
-    const url = `${window.location.origin}/e?t=${token}`;
+    const url = `${window.location.origin}/e?t=${encodeURIComponent(token)}`;
     QRCode.toDataURL(url, { width: 480, margin: 2 })
       .then((dataUrl) => {
         if (cancelled) return;
@@ -87,7 +100,9 @@ function QrPageInner() {
     return (
       <div className="w-full max-w-md mx-auto mt-16 px-5">
         <div className="bg-card rounded-card p-6">
-          <p className="text-ink">Sign in via /manager first.</p>
+          <p className="text-ink">
+            Sign in with a manager account via /manager first.
+          </p>
         </div>
       </div>
     );

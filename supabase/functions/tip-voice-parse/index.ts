@@ -237,7 +237,14 @@ Deno.serve(async (req) => {
       return json(req, { ok: false, code: 'too_large', error: 'That recording is too long.' }, 413);
     }
 
-    const form = await req.formData();
+    // Non-multipart bodies (e.g. a JSON post) make formData() throw — that
+    // is a client error, not a server fault.
+    let form: FormData;
+    try {
+      form = await req.formData();
+    } catch {
+      return json(req, { ok: false, code: 'invalid_audio', error: 'Expected a voice recording upload.' }, 400);
+    }
     const session = await validateTipSession(supabaseAdmin, asString(form.get('session_token')));
     if (!session) {
       return json(req, { ok: false, code: 'session_invalid', error: 'Session expired. Scan the sticker again.' }, 401);

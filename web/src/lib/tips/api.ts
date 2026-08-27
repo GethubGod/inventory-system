@@ -81,6 +81,9 @@ async function callFunction(
         apikey: anonKey,
       },
       body: JSON.stringify(body),
+      // The page URL can still hold the QR token (?t=) when this fires —
+      // never let it ride to another origin as Referer.
+      referrerPolicy: "no-referrer",
     });
   } catch {
     throw new TipApiError(
@@ -110,6 +113,41 @@ export interface FreshSignIn extends SessionState {
 }
 
 /**
+ * Runtime shape check for session payloads. The edge function is typed only
+ * by convention; a malformed/partial response (older deploy, proxy error
+ * page) must surface as a clean TipApiError instead of crashing the render
+ * on `.id` / `.map` of undefined.
+ */
+function isSessionStateShape(value: unknown): value is SessionState {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  const location = v.location as Record<string, unknown> | undefined;
+  const today = v.today as Record<string, unknown> | undefined;
+  return (
+    !!location &&
+    typeof location.id === "string" &&
+    typeof location.name === "string" &&
+    Array.isArray(v.roster) &&
+    v.roster.every(
+      (p) =>
+        p && typeof p === "object" &&
+        typeof (p as Record<string, unknown>).id === "string" &&
+        typeof (p as Record<string, unknown>).name === "string",
+    ) &&
+    !!today &&
+    typeof today.businessDate === "string" &&
+    typeof today.lunchRecorded === "boolean" &&
+    typeof today.dinnerRecorded === "boolean"
+  );
+}
+
+function assertSessionState(json: Record<string, unknown>): void {
+  if (json.ok !== true || !isSessionStateShape(json)) {
+    throw new TipApiError("Something went wrong. Try again.", "bad_response", 200);
+  }
+}
+
+/**
  * Validate a scanned QR token and mint the entry session in ONE roundtrip.
  * When this device remembers who's closing, the remembered closer rides
  * along and the server applies it in the same request (the response's
@@ -127,6 +165,10 @@ export async function validateToken(
       ? { closerId: remembered.closerId, closerLocationId: remembered.locationId }
       : {}),
   });
+  assertSessionState(json);
+  if (typeof json.sessionToken !== "string" || !json.sessionToken) {
+    throw new TipApiError("Something went wrong. Try again.", "bad_response", 200);
+  }
   return json as unknown as FreshSignIn;
 }
 
@@ -158,6 +200,7 @@ export async function endSession(sessionToken: string): Promise<void> {
 
 export async function fetchState(sessionToken: string): Promise<SessionState> {
   const json = await callFunction("tip-entry-auth", { action: "state", sessionToken });
+  assertSessionState(json);
   return json as unknown as SessionState;
 }
 
@@ -245,6 +288,7 @@ async function parseVoiceChunkOnce(input: {
       method: "POST",
       headers: { Authorization: `Bearer ${anonKey}`, apikey: anonKey },
       body: form,
+      referrerPolicy: "no-referrer",
     });
   } catch {
     throw new TipApiError("Voice upload failed.", "network", 0);
