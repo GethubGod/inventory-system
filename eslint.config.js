@@ -10,6 +10,7 @@ module.exports = defineConfig([
       'scripts/google-sheets-sync.js',
       'scripts/scratch_query.ts',
       'web/**',
+      'marketing/**',
     ],
   },
   expoConfig,

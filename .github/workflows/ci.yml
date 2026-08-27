@@ -15,6 +15,7 @@ jobs:
     outputs:
       mobile: ${{ steps.filter.outputs.mobile }}
       web: ${{ steps.filter.outputs.web }}
+      marketing: ${{ steps.filter.outputs.marketing }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,11 +40,15 @@ jobs:
 
           mobile=false
           web=false
+          marketing=false
 
           while IFS= read -r file; do
             case "$file" in
               web/*)
                 web=true
+                ;;
+              marketing/*)
+                marketing=true
                 ;;
               app/*|assets/*|scripts/*|src/*|supabase/*|.env.example|.env.local.example|app.json|babel.config.js|dump.sql|eas.json|eslint.config.js|global.css|jest.config.js|metro.config.js|nativewind-env.d.ts|package.json|package-lock.json|tailwind.config.js|tsconfig.json)
                 mobile=true
@@ -63,6 +68,7 @@ jobs:
 
           echo "mobile=$mobile" >> "$GITHUB_OUTPUT"
           echo "web=$web" >> "$GITHUB_OUTPUT"
+          echo "marketing=$marketing" >> "$GITHUB_OUTPUT"
 
   mobile-quality:
     name: Mobile quality
@@ -132,3 +138,35 @@ jobs:
 
       # The Playwright suite intentionally writes to the live tips database,
       # so it remains an explicit, opt-in verification rather than a CI step.
+
+  marketing-quality:
+    name: Marketing quality
+    needs: changes
+    if: needs.changes.outputs.marketing == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: marketing
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: marketing/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        run: npx next build --webpack
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=critical

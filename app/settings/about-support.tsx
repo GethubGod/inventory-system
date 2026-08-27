@@ -13,9 +13,9 @@ import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { glassColors, glassRadii, glassSpacing } from '@/theme/design';
 
 const APPSTORE_COMPLIANCE_LINKS = {
-  support: 'https://www.babytunasystems.com/support',
-  contact: 'https://www.babytunasystems.com/contact',
-  privacy: 'https://tips.babytunasystems.com/privacy',
+  support: 'https://smelterpos.com/support',
+  contact: 'https://smelterpos.com/contact',
+  privacy: 'https://smelterpos.com/privacy',
 } as const;
 
 function AboutSection() {

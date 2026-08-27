@@ -49,7 +49,8 @@
     "metro.config.js",
     "scripts/scratch_query.ts",
     "supabase/functions/**",
-    "web"
+    "web",
+    "marketing"
   ],
   "include": [
     "**/*.ts",
