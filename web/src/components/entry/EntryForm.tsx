@@ -26,6 +26,7 @@ import { anomalyMessage, type AnomalyResult } from "@/lib/tips/anomaly";
 import { formatBusinessDate } from "@/lib/tips/businessDate";
 import { formatMoney } from "@/lib/tips/format";
 import { mealPreset } from "@/lib/tips/mealPreset";
+import { perPersonShare } from "@/lib/tips/split";
 import {
   clearSession,
   loadSession,
@@ -132,7 +133,9 @@ function SavedScreen({
 
   const total = payload.cash + payload.card;
   const count = payload.peopleIds.length;
-  const perPerson = count > 0 ? total / count : 0;
+  // Same cent-exact rounding as the live split strip — float division can
+  // disagree with it by a cent (e.g. $100 / 3).
+  const perPerson = perPersonShare(payload.cash, payload.card, count);
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-8 pt-20">
@@ -269,6 +272,10 @@ export function EntryForm() {
 
   const lastPayloadRef = useRef<SavePayload | null>(null);
   const finishedRef = useRef(false);
+  // Synchronous in-flight guard: the `saving` state lags a render behind the
+  // click, so two fast taps (or Save + anomaly "Save anyway") could both
+  // start a save. The ref blocks the second one in the same tick.
+  const saveInFlightRef = useRef(false);
   // Per-meal memory of the closer's selection, so switching Lunch↔Dinner and
   // back never discards manual picks (or their voice-overwrite protection).
   const savedSelectionsRef = useRef<
@@ -478,7 +485,8 @@ export function EntryForm() {
 
   const doSave = useCallback(
     async (payload: SavePayload) => {
-      if (!session) return;
+      if (!session || saveInFlightRef.current) return;
+      saveInFlightRef.current = true;
       lastPayloadRef.current = payload;
       setSaving(true);
       setSaveError(null);
@@ -508,6 +516,7 @@ export function EntryForm() {
           retryable: !duplicate,
         });
       } finally {
+        saveInFlightRef.current = false;
         setSaving(false);
       }
     },
@@ -515,14 +524,16 @@ export function EntryForm() {
   );
 
   const amountsValid = isValidAmount(cash) && isValidAmount(card);
-  const canSave = amountsValid && selectedIds.length > 0 && !saving;
+  // slotLoading: a meal switch is mid-flight — saving now would send the NEW
+  // meal with the OLD meal's crew (and possibly stale amounts).
+  const canSave = amountsValid && selectedIds.length > 0 && !saving && !slotLoading;
 
   const handleSaveClick = useCallback(() => {
     if (selectedIds.length === 0) {
       setPickPersonWarning(true);
       return;
     }
-    if (!amountsValid || saving) return;
+    if (!amountsValid || saving || slotLoading) return;
     void doSave({
       meal,
       cash: Number(cash),
@@ -533,7 +544,7 @@ export function EntryForm() {
       correctionsCount: voiceMeta?.corrections ?? 0,
       confirmAnomaly: false,
     });
-  }, [selectedIds, amountsValid, saving, doSave, meal, cash, card, voiceMeta]);
+  }, [selectedIds, amountsValid, saving, slotLoading, doSave, meal, cash, card, voiceMeta]);
 
   const handleVoiceApply = useCallback(
     (result: VoiceApplyResult) => {
@@ -780,7 +791,7 @@ export function EntryForm() {
               silently doing nothing. */}
           <button
             type="button"
-            disabled={saving || !amountsValid}
+            disabled={saving || slotLoading || !amountsValid}
             onClick={handleSaveClick}
             className={`flex-1 rounded-full py-4 font-semibold ${
               canSave ? "bg-card text-ink" : "bg-disabled text-white"

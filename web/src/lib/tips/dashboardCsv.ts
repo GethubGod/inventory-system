@@ -11,8 +11,19 @@ const HEADER =
   "Business date,Restaurant,Meal,Cash (split pool),Card (logged only)," +
   "People on split,Names,Per-person share,Flagged,Entered by,Entry method";
 
+/** Prefix-guard against spreadsheet formula injection (=, +, -, @, tab, CR). */
+function formulaSafe(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
 function csvField(value: string): string {
-  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  const safe = formulaSafe(value);
+  return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
+/** Always-quoted variant (the Names column follows the mockup's format). */
+function csvFieldQuoted(value: string): string {
+  return `"${formulaSafe(value).replace(/"/g, '""')}"`;
 }
 
 function capitalize(word: string): string {
@@ -38,7 +49,7 @@ export function buildLedgerCsv(
         (entry.cashCents / 100).toFixed(2),
         (entry.cardCents / 100).toFixed(2),
         String(entry.splitCount),
-        `"${entry.peopleNames.join("; ").replace(/"/g, '""')}"`,
+        csvFieldQuoted(entry.peopleNames.join("; ")),
         (cashShareCents(entry.cashCents, entry.splitCount) / 100).toFixed(2),
         entry.flaggedRaw ? "yes" : "no",
         csvField(entry.enteredByName ?? ""),

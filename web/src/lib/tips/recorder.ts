@@ -127,7 +127,13 @@ export class TipRecorder {
       }
     };
     this.source.connect(this.processor);
-    this.processor.connect(this.audioContext.destination);
+    // ScriptProcessor only fires onaudioprocess when connected to the
+    // destination — route through a zero-gain node so the live mic is NEVER
+    // audible on the device speaker (feedback + dining-room eavesdropping).
+    const mute = this.audioContext.createGain();
+    mute.gain.value = 0;
+    this.processor.connect(mute);
+    mute.connect(this.audioContext.destination);
 
     this.startSegment();
     this.silenceTimer = setInterval(() => this.checkSilence(), 250);
