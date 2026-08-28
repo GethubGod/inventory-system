@@ -4,6 +4,25 @@ import type { NextConfig } from "next";
  *  scan screen, so the dashboard gets a host rather than a path. */
 const DASHBOARD_HOST = "dashboard.smelterpos.com";
 
+// Keep the CSP pinned to the configured project. A wildcard here would let a
+// script-injection bug exfiltrate browser-stored sessions to an attacker-owned
+// Supabase project while still satisfying connect-src.
+const DEFAULT_SUPABASE_ORIGIN = "https://whrohvitvmcrmedepurd.supabase.co";
+
+function supabaseConnectSources(): string {
+  const configured = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+  let origin = DEFAULT_SUPABASE_ORIGIN;
+  if (configured) {
+    try {
+      origin = new URL(configured).origin;
+    } catch {
+      // The app itself will report the invalid URL when it creates the client;
+      // keep the security header valid and fail closed to the production host.
+    }
+  }
+  return `${origin} ${origin.replace(/^http/, "ws")}`;
+}
+
 const nextConfig: NextConfig = {
   rewrites() {
     return Promise.resolve({
@@ -35,7 +54,7 @@ const nextConfig: NextConfig = {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "media-src 'self' blob:",
-      "connect-src 'self' https://*.supabase.co wss://*.supabase.co",
+      `connect-src 'self' ${supabaseConnectSources()}`,
       "font-src 'self' data:",
       "object-src 'none'",
       "base-uri 'self'",
