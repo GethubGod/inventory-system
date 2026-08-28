@@ -22,8 +22,8 @@ export default function GlobalError({
       <div className="rounded-card bg-card p-5 text-center">
         <p className="font-bold text-ink">Something went wrong</p>
         <p className="mt-2 text-ink2">
-          Your entry is still on this screen. Try again — if it keeps
-          happening, scan the QR code again.
+          Try again — if it keeps happening, scan the QR code again or ask a
+          manager.
         </p>
       </div>
       <button
