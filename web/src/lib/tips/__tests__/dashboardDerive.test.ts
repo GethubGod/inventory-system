@@ -5,6 +5,7 @@ import {
   dailyTrend,
   moneyFromCents,
   rangeTotals,
+  splitTrendSeries,
   takeHomeByPerson,
   wholeDollarsFromCents,
   type LedgerEntry,
@@ -99,6 +100,28 @@ describe("dailyTrend", () => {
       return perLocation.reduce((total, row) => total + row.totalCents, 0);
     });
     expect(summed).toEqual(combined.map((day) => day.totalCents));
+  });
+});
+
+describe("splitTrendSeries", () => {
+  it("breaks a location line across a day recorded only by another location", () => {
+    const timeline = [
+      { businessDate: "2026-08-10", totalCents: 100 },
+      { businessDate: "2026-08-11", totalCents: 200 },
+      { businessDate: "2026-08-12", totalCents: 300 },
+    ];
+    const sushi = [timeline[0], timeline[2]];
+
+    expect(splitTrendSeries(sushi, timeline)).toEqual([[timeline[0]], [timeline[2]]]);
+  });
+
+  it("keeps consecutive shared-timeline days in one line", () => {
+    const timeline = [
+      { businessDate: "2026-08-10", totalCents: 100 },
+      { businessDate: "2026-08-11", totalCents: 200 },
+    ];
+
+    expect(splitTrendSeries(timeline, timeline)).toEqual([timeline]);
   });
 });
 

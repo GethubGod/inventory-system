@@ -8,6 +8,7 @@ import {
   dailyTrend,
   moneyFromCents,
   rangeTotals,
+  splitTrendSeries,
   takeHomeByPerson,
   wholeDollarsFromCents,
 } from "@/lib/tips/dashboardDerive";
@@ -74,20 +75,24 @@ function TrendChart({ ctx }: { ctx: PageContext }) {
       >
         {series.map((item) => {
           const points = pointsFor(item.days);
-          const line = points.map((point) => point.join(",")).join(" ");
           const color = trendColor(item.location);
-          const area = `0,${TREND_H} ${line} ${TREND_W},${TREND_H}`;
+          const area = `0,${TREND_H} ${points.map((point) => point.join(",")).join(" ")} ${TREND_W},${TREND_H}`;
           return (
             <g key={item.location.id}>
               {series.length === 1 && <polygon points={area} fill={trendAreaFill(item.location)} />}
-              <polyline
-                points={line}
-                fill="none"
-                stroke={color}
-                strokeWidth="2.5"
-                strokeLinejoin="round"
-                strokeLinecap="round"
-              />
+              {splitTrendSeries(item.days, days).map((segment) => (
+                <polyline
+                  key={segment[0].businessDate}
+                  points={pointsFor(segment)
+                    .map((point) => point.join(","))
+                    .join(" ")}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth="2.5"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              ))}
               {points.map((point, index) => (
                 <circle
                   key={item.days[index].businessDate}

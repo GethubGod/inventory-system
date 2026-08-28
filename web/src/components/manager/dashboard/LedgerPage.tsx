@@ -201,6 +201,15 @@ function FixDialog({
         removedPeople = true;
       }
 
+      // PostgREST mutations do not return affected-row counts by default, so
+      // a zero-row UPDATE/DELETE can have no error. Verify before reporting
+      // success; the catch path will roll back any steps that did land.
+      failedAt = "verifying the saved entry";
+      const saved = await readFixEntryState(supabase, entry.id);
+      if (!sameFixEntryState(saved, desired)) {
+        throw new Error("The saved entry did not match the requested values.");
+      }
+
       toast("Entry updated");
       ctx.refetch();
       onClose();
@@ -276,7 +285,7 @@ function FixDialog({
         setNeedsReload(true);
         const recovery =
           rollbackErrors.length === 0
-            ? `The entry was restored to its original state: ${fixEntryStateSummary(original, namesById)}`
+            ? `No rollback error was reported, but the result could not be verified. The last known original state was: ${fixEntryStateSummary(original, namesById)}`
             : `Rollback did not fully complete (${rollbackErrors.join("; ")}).`;
         setError(
           `Save failed while ${failedAt}: ${reason} ${recovery} Could not read it back (${readError instanceof Error ? readError.message : "request failed"}); reload the ledger before trying again.`,
