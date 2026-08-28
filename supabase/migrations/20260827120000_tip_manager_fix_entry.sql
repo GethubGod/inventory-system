@@ -14,7 +14,7 @@ create or replace function public.tip_manager_fix_entry(
 )
 returns void
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
