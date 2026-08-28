@@ -354,7 +354,9 @@ function DetailPanel({
   verifying: boolean;
 }) {
   const shares = entryShareCents(entry);
-  const noLunchFlag = entry.anomalyReason === "day_total_no_lunch";
+  // Prefix match: when the save was ALSO a statistical outlier the reason is
+  // "day_total_no_lunch; <statistical reason>" (contract amendment 2).
+  const noLunchFlag = entry.anomalyReason?.startsWith("day_total_no_lunch") ?? false;
   // What was actually subtracted at save time — shown from the raw figures,
   // not the current lunch row (which a fix may have changed since).
   const subtractedCents =

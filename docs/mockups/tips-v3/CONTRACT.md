@@ -1,6 +1,7 @@
 # Tips v3 — JSON contract (the seam between frontend and backend)
 
-Status: **DRAFT — pending written agreement from both sides.**
+Status: **AGREED** (Sol: yes-with-amendments, both folded in below;
+Fable: agreed. 2026-08-27.)
 Frontend owner: Claude (Fable). Backend owner: Codex (Sol).
 Source of truth for product behavior: `HANDOFF-tips-v3.md` + `tips-v3-final.html`.
 Where this file and the repo disagree about an existing data shape, the repo wins
@@ -152,7 +153,29 @@ Verified against the repo; the repo's existing shapes win. Alignments:
    rules above, so the currently deployed web build keeps saving unchanged
    rows (`entered_scope='shift'`, `gratuity=0`, weights all 1, `raw_* = typed`).
 
+## Agreed amendments (Sol's review, 2026-08-27)
+
+1. **The 13-arg `tip_save_entry` stays as a compatibility wrapper.** The
+   migration creates the new extended function AND recreates the 13-arg
+   signature as a service-role wrapper that delegates with v3 defaults
+   (gratuity 0, scope 'shift', raw_* = typed, unit weights, no note) — the
+   currently deployed edge function keeps working until the functions deploy.
+   Both signatures get the revoke/grant treatment. The wrapper can be dropped
+   in a later cleanup migration once the functions are live.
+2. **Anomaly precedence on a no-lunch day save.** The `needsConfirm`
+   round-trip comes ONLY from the statistical outlier check (on derived
+   amounts) — the missing-lunch condition never prompts the closer. When both
+   conditions hold, the saved row has `flagged_anomaly = true` and
+   `anomaly_reason = 'day_total_no_lunch; ' + <statistical reason>` — the
+   `day_total_no_lunch` token always first so the dashboard's flag detection
+   can match on prefix. When only the lunch is missing, the reason is exactly
+   `day_total_no_lunch`.
+3. **Weights stay positional through server-side filtering.** The server
+   filters/dedupes `peopleIds` (UUID regex, dedupe) — the `weights` array
+   must be filtered in lockstep BEFORE any of that reshaping, so index i
+   always refers to the same person.
+
 ## Sign-off
 
-- [ ] Backend (Codex/Sol): agreed, including error codes and defaults.
-- [ ] Frontend (Claude/Fable): agreed.
+- [x] Backend (Codex/Sol): agreed with amendments 1–3 above.
+- [x] Frontend (Claude/Fable): agreed, including amendments 1–3.
