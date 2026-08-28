@@ -8,6 +8,7 @@
 // half up; remainder cents stay in the drawer.
 
 import type { EntryMethod, MealPeriod } from "@/types/database";
+import { allocatePoolCents, fullShareCents } from "./split";
 
 export interface LedgerEntry {
   id: string;
@@ -19,6 +20,17 @@ export interface LedgerEntry {
   splitCount: number;
   peopleIds: string[];
   peopleNames: string[];
+  /** Share weight per person in (0,1], positional with peopleIds. */
+  weights: number[];
+  /** Its own bucket — never part of the cash pool or the card figure. */
+  gratuityCents: number;
+  enteredScope: "shift" | "day";
+  /** What the closer typed; null on rows saved before Tips v3. */
+  rawCashCents: number | null;
+  rawCardCents: number | null;
+  rawGratuityCents: number | null;
+  note: string | null;
+  noteAt: string | null;
   enteredById: string | null;
   enteredByName: string | null;
   entryMethod: EntryMethod;
@@ -80,17 +92,48 @@ export interface PersonTakeHome {
 }
 
 /**
- * Cash take-home per person across the range: each entry contributes
- * round(cash / splitCount) to every name on its split. Sorted highest first.
+ * One entry's per-person cash shares in cents, positional with peopleIds —
+ * the weighted largest-remainder allocation. Falls back to the legacy
+ * round(cash / splitCount) when the people list is empty (no rows to
+ * allocate to, e.g. degenerate historical data).
+ */
+export function entryShareCents(entry: LedgerEntry): number[] {
+  if (entry.peopleIds.length === 0) return [];
+  const weights =
+    entry.weights.length === entry.peopleIds.length
+      ? entry.weights
+      : entry.peopleIds.map(() => 1);
+  return allocatePoolCents(entry.cashCents, weights);
+}
+
+/**
+ * The "full share" (weight-1) figure for one entry, in cents — what the
+ * ledger's Per person column shows. Equals cashShareCents for an all-full
+ * split.
+ */
+export function entryFullShareCents(entry: LedgerEntry): number {
+  if (entry.peopleIds.length === 0) {
+    return cashShareCents(entry.cashCents, entry.splitCount);
+  }
+  const weights =
+    entry.weights.length === entry.peopleIds.length
+      ? entry.weights
+      : entry.peopleIds.map(() => 1);
+  return fullShareCents(entry.cashCents, weights);
+}
+
+/**
+ * Cash take-home per person across the range: each entry contributes its
+ * weighted allocation to every name on its split. Sorted highest first.
  */
 export function takeHomeByPerson(entries: LedgerEntry[]): PersonTakeHome[] {
   const byPerson = new Map<string, PersonTakeHome>();
   for (const entry of entries) {
-    const share = cashShareCents(entry.cashCents, entry.splitCount);
+    const shares = entryShareCents(entry);
     entry.peopleIds.forEach((personId, index) => {
       const name = entry.peopleNames[index] ?? "?";
       const person = byPerson.get(personId) ?? { id: personId, name, cents: 0, shifts: 0 };
-      person.cents += share;
+      person.cents += shares[index] ?? 0;
       person.shifts += 1;
       byPerson.set(personId, person);
     });

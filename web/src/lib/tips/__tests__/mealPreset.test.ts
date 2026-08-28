@@ -8,6 +8,7 @@ function today(partial: Partial<TodayStatus>): TodayStatus {
     lunchRecorded: false,
     dinnerRecorded: false,
     defaultMeal: "lunch",
+    lunch: null,
     ...partial,
   };
 }

@@ -1,20 +1,25 @@
 "use client";
 
 // Live per-person split readout. Derived only — never stored.
+//
+// Tips v3: the strip reads on the CASH pool only (card rides payroll and
+// weights never touch it). "Split N ways · $X each" when every share is
+// full; "Full share · $X" when any share is reduced. The right side is
+// always "of $Y cash".
 
-import { formatMoney } from "@/lib/tips/format";
-import { perPersonShare, totalTips } from "@/lib/tips/split";
+import { moneyFromCents } from "@/lib/tips/dashboardDerive";
+import { fullShareCents } from "@/lib/tips/split";
 
 export function SplitStrip({
-  cash,
-  card,
-  count,
+  poolCents,
+  weights,
 }: {
-  cash: number;
-  card: number;
-  count: number;
+  /** The cash pool being split, in cents (already net of lunch on day scope). */
+  poolCents: number;
+  /** Share weights of the selected people, positional. */
+  weights: number[];
 }) {
-  if (count < 1) {
+  if (weights.length < 1) {
     return (
       <div className="bg-card rounded-card px-4 py-3 flex items-baseline gap-2">
         <span className="section-label" style={{ color: "var(--color-ink3)" }}>
@@ -23,14 +28,18 @@ export function SplitStrip({
       </div>
     );
   }
+  const uneven = weights.some((weight) => weight < 1);
   return (
     <div className="bg-card rounded-card px-4 py-3 flex items-baseline gap-2">
-      <span className="section-label">Split {count} ways</span>
-      <span className="font-bold text-xl text-ink">
-        {formatMoney(perPersonShare(cash, card, count))} each
+      <span className="section-label">
+        {uneven ? "Full share" : `Split ${weights.length} ways`}
+      </span>
+      <span className="font-bold text-xl text-ink tabular-nums">
+        {moneyFromCents(fullShareCents(poolCents, weights))}
+        {uneven ? "" : " each"}
       </span>
       <span className="ml-auto text-ink3 text-sm">
-        of {formatMoney(totalTips(cash, card))}
+        of {moneyFromCents(Math.max(0, poolCents))} cash
       </span>
     </div>
   );

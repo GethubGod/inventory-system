@@ -27,6 +27,13 @@ interface RawEntryRow {
   meal_period: string;
   cash_amount: number | string; // Postgres numeric can arrive as a string
   card_amount: number | string;
+  gratuity_amount: number | string | null;
+  entered_scope: string | null;
+  raw_cash_amount: number | string | null;
+  raw_card_amount: number | string | null;
+  raw_gratuity_amount: number | string | null;
+  note: string | null;
+  note_at: string | null;
   split_count: number;
   entry_method: string;
   entered_by: string | null;
@@ -34,7 +41,16 @@ interface RawEntryRow {
   anomaly_reason: string | null;
   flag_verified_at: string | null;
   created_at: string;
-  tip_entry_people: Array<{ tip_employee_id: string }>;
+  tip_entry_people: Array<{
+    tip_employee_id: string;
+    share_weight: number | string | null;
+  }>;
+}
+
+/** Postgres numeric (possibly a string) → cents; null/undefined → fallback. */
+function centsOrNull(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  return Math.round(Number(value) * 100);
 }
 
 interface RawSessionRow {
@@ -110,7 +126,7 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
             supabase
               .from("tip_entries")
               .select(
-                "id, business_date, location_id, meal_period, cash_amount, card_amount, split_count, entry_method, entered_by, flagged_anomaly, anomaly_reason, flag_verified_at, created_at, tip_entry_people(tip_employee_id)",
+                "id, business_date, location_id, meal_period, cash_amount, card_amount, gratuity_amount, entered_scope, raw_cash_amount, raw_card_amount, raw_gratuity_amount, note, note_at, split_count, entry_method, entered_by, flagged_anomaly, anomaly_reason, flag_verified_at, created_at, tip_entry_people(tip_employee_id, share_weight)",
               )
               .gte("business_date", start)
               .lte("business_date", end)
@@ -151,6 +167,14 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
         const peopleIds = (row.tip_entry_people ?? [])
           .map((person) => person.tip_employee_id)
           .sort((a, b) => (rosterRank.get(a) ?? 999) - (rosterRank.get(b) ?? 999));
+        const weightById = new Map(
+          (row.tip_entry_people ?? []).map((person) => [
+            person.tip_employee_id,
+            person.share_weight === null || person.share_weight === undefined
+              ? 1
+              : Number(person.share_weight),
+          ]),
+        );
         return {
           id: row.id,
           businessDate: row.business_date,
@@ -158,9 +182,17 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
           meal: row.meal_period as MealPeriod,
           cashCents: Math.round(Number(row.cash_amount) * 100),
           cardCents: Math.round(Number(row.card_amount) * 100),
+          gratuityCents: centsOrNull(row.gratuity_amount) ?? 0,
+          enteredScope: row.entered_scope === "day" ? ("day" as const) : ("shift" as const),
+          rawCashCents: centsOrNull(row.raw_cash_amount),
+          rawCardCents: centsOrNull(row.raw_card_amount),
+          rawGratuityCents: centsOrNull(row.raw_gratuity_amount),
+          note: row.note ?? null,
+          noteAt: row.note_at ?? null,
           splitCount: row.split_count,
           peopleIds,
           peopleNames: peopleIds.map((id) => nameById.get(id) ?? "?"),
+          weights: peopleIds.map((id) => weightById.get(id) ?? 1),
           enteredById: row.entered_by,
           enteredByName: row.entered_by ? (nameById.get(row.entered_by) ?? null) : null,
           entryMethod: (row.entry_method === "voice" ? "voice" : "typed") as EntryMethod,

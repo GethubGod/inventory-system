@@ -1,0 +1,1402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smelter Tips v3 — interface proposals</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+button{font:inherit;cursor:pointer;background:none;border:0;color:inherit}
+input,textarea,select{font:inherit;color:inherit}
+:root{
+  --cream:#f5f5f4;--card:#fff;--well:#ededec;--accent:#e84d38;--tint:#fbeae7;--alert:#c03520;
+  --ink:#1a1a1a;--ink2:#5f5f5f;--ink3:#9c9890;--disabled:#c9c5bc;
+  --line:rgba(0,0,0,.08);--hair:rgba(0,0,0,.06);
+  --blue:#2563eb;--green:#1f7a4d;--amber:#b7791f;
+  --cashcol:rgba(216,144,32,.06);--cardcol:rgba(37,99,235,.055);--gratcol:rgba(31,122,77,.07);
+  --flagtint:#fdecea;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+body{font-family:var(--sans);background:#e6e7e9;color:var(--ink);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+.tnum{font-variant-numeric:tabular-nums}
+
+/* ---------- mockup chrome ---------- */
+#chrome{position:sticky;top:0;z-index:80;background:#101319;color:#e7e9ee;padding:9px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+#chrome .brand{font-weight:700;letter-spacing:-.01em}
+#chrome .brand i{color:var(--accent);font-style:normal}
+#chrome .sub{color:#8a93a6;font-size:12px;margin-right:auto}
+#chrome nav{display:flex;gap:6px;flex-wrap:wrap}
+#chrome nav button{padding:6px 13px;border-radius:8px;font-size:12.5px;font-weight:600;color:#c6ccd8;border:1px solid #2a3040}
+#chrome nav button[aria-pressed="true"]{background:#e7e9ee;color:#101319;border-color:#e7e9ee}
+
+/* ---------- page scaffolding ---------- */
+main{padding:26px 20px 90px;max-width:1560px;margin:0 auto}
+section[data-tab]{display:none}
+section[data-tab].live{display:block}
+.intro{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:24px;max-width:1000px}
+.intro h2{font-size:21px;letter-spacing:-.01em;margin-bottom:8px}
+.intro p{color:var(--ink2);margin-bottom:9px;max-width:88ch}
+.intro p:last-child{margin-bottom:0}
+.intro b{color:var(--ink)}
+.rule{background:var(--well);border-radius:11px;padding:11px 13px;margin-top:12px;font-size:13px;color:var(--ink2)}
+.rule code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--ink);background:#fff;padding:1px 5px;border-radius:5px;border:1px solid var(--line)}
+.ask{border-left:3px solid var(--accent);background:var(--tint);border-radius:0 11px 11px 0;padding:11px 14px;margin-top:12px;font-size:13px;color:#7c2a19}
+.ask b{color:var(--alert)}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(392px,1fr));gap:20px;align-items:start}
+.stack{display:flex;flex-direction:column;gap:20px}
+
+/* ---------- option shell ---------- */
+.opt{background:var(--card);border:1px solid var(--line);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
+.oh{display:flex;gap:12px;padding:16px 18px;border-bottom:1px solid var(--hair)}
+.oh .no{flex:none;width:34px;height:34px;border-radius:9px;background:#101319;color:#fff;font-weight:800;font-size:12.5px;display:flex;align-items:center;justify-content:center;letter-spacing:.02em}
+.oh h3{font-size:16px;letter-spacing:-.01em;line-height:1.25}
+.oh p{color:var(--ink2);font-size:12.5px;margin-top:4px}
+.obody{padding:18px;background:#f0f0f1;display:flex;justify-content:center}
+.ofoot{padding:13px 18px 16px;border-top:1px solid var(--hair);display:grid;gap:6px}
+.ofoot div{font-size:12.5px;color:var(--ink2);display:flex;gap:8px}
+.ofoot div span{flex:none;font-weight:800;font-size:10px;letter-spacing:.06em;text-transform:uppercase;width:38px;padding-top:2px}
+.ofoot .up span{color:var(--green)}
+.ofoot .dn span{color:var(--amber)}
+.ofoot .qq span{color:var(--accent)}
+
+/* ---------- phone frame + app primitives ---------- */
+.phone{width:100%;max-width:372px;background:var(--cream);border-radius:26px;border:1px solid rgba(0,0,0,.1);padding:14px 13px 12px;display:flex;flex-direction:column;gap:11px}
+.phone.tall{min-height:640px}
+.phead{display:flex;align-items:center;gap:8px}
+.phead b{font-size:24px;letter-spacing:-.02em}
+.phead .pill{margin-left:auto;background:var(--card);border-radius:999px;padding:5px 11px;font-size:12px}
+.phead .who{background:var(--card);border-radius:999px;padding:4px 10px 4px 4px;font-size:12px;display:flex;align-items:center;gap:6px}
+.av{width:21px;height:21px;border-radius:50%;background:var(--accent);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.c{background:var(--card);border-radius:20px;padding:14px}
+.c.tight{padding:11px 14px}
+.row{display:flex;align-items:center;gap:10px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.chev{margin-left:auto;color:var(--ink3)}
+.slabel{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.seg{display:flex;background:var(--well);border-radius:999px;padding:3px;gap:3px}
+.seg button{flex:1;border-radius:999px;padding:9px 6px;font-size:13.5px;font-weight:600;color:var(--ink2);text-align:center}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.07)}
+.seg.sm button{padding:6px 8px;font-size:12px}
+.seg.dark{background:#1a1a1a;padding:3px}
+.seg.dark button{color:#a6a6a6}
+.seg.dark button.on{background:#fff;color:#1a1a1a}
+.well{background:var(--well);border-radius:14px;padding:12px}
+.amt{display:flex;align-items:baseline;gap:3px;margin-top:2px}
+.amt i{font-style:normal;font-size:20px;font-weight:700;color:var(--ink2)}
+.amt input{width:100%;background:none;border:0;outline:0;font-size:22px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.amt input::placeholder{color:var(--ink3)}
+.amt.sm input{font-size:17px}
+.amt.sm i{font-size:15px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--ink2);display:flex;align-items:center;gap:6px}
+.chip.on{background:var(--tint);border-color:var(--accent);color:var(--alert)}
+.chip .pct{font-size:10.5px;font-weight:800;background:#fff;border:1px solid var(--line);border-radius:999px;padding:1px 6px;color:var(--ink2)}
+.chip.on .pct{background:var(--accent);border-color:var(--accent);color:#fff}
+.strip{background:var(--card);border-radius:20px;padding:11px 14px;display:flex;align-items:baseline;gap:8px}
+.strip b{font-size:19px;letter-spacing:-.01em}
+.strip .of{margin-left:auto;color:var(--ink3);font-size:12.5px}
+.bar{display:flex;gap:9px}
+.bar button{flex:1;border-radius:999px;padding:13px;font-weight:700;font-size:14.5px;background:var(--card);text-align:center}
+.bar button.prim{background:var(--accent);color:#fff;flex:1.3}
+.mini{font-size:12px;color:var(--ink2)}
+.mini b{color:var(--ink)}
+.calc{border-top:1px dashed var(--line);margin-top:11px;padding-top:10px;display:grid;gap:5px;font-size:12.5px;font-variant-numeric:tabular-nums}
+.calc .ln{display:flex;color:var(--ink2)}
+.calc .ln span:last-child{margin-left:auto;font-weight:600;color:var(--ink)}
+.calc .ln.sub span:last-child{color:var(--alert)}
+.calc .ln.tot{border-top:1px solid var(--line);padding-top:6px;margin-top:2px;font-weight:800;color:var(--ink)}
+.calc .ln.tot span:last-child{font-size:15px}
+.warn{background:var(--tint);color:var(--alert);border-radius:11px;padding:9px 11px;font-size:12.5px;margin-top:10px}
+.ok{color:var(--green)}
+.hair{height:1px;background:var(--hair);margin:11px -14px}
+.ghost{border:1px dashed var(--line);border-radius:12px;padding:10px;width:100%;text-align:center;font-size:12.5px;font-weight:600;color:var(--ink2)}
+</style>
+</head>
+<body>
+<header id="chrome">
+  <div class="brand"><i>smelter</i> tips</div>
+  <div class="sub">v3 interface proposals · nothing implemented · pick per feature</div>
+  <nav id="tabs">
+    <button data-go="grat" aria-pressed="true">A · Auto-grat + dinner scope</button>
+    <button data-go="share">B · Partial shares</button>
+    <button data-go="notes">C · Notes</button>
+    <button data-go="dash">D · Dashboard</button>
+    <button data-go="q">Open questions</button>
+  </nav>
+</header>
+<main>
+
+<!-- ============================ A · AUTO-GRAT + DINNER SCOPE ============================ -->
+<section data-tab="grat" class="live">
+  <div class="intro">
+    <h2>A · Auto-gratuity input + “is this the whole day?” toggle</h2>
+    <p>Two problems in one card. <b>(1)</b> The 18% auto-gratuity needs somewhere to live. <b>(2)</b> Square’s dinner/close-out report bundles the <i>whole day</i>, so typing it in straight makes dinner look enormous and inflates every total — dinner has to be able to say “this number is the day, subtract what lunch already recorded.”</p>
+    <div class="rule">Sample day used in all four: lunch is already recorded at <code>cash $118.00 · card $142.00</code>. The closer reads Square at close and sees <code>cash $323.00 · card $777.00 · auto-grat $216.00</code> for the whole day. Dinner-only therefore = <code>cash $205.00 · card $635.00 · grat $216.00</code>. Type in any well to watch the math move.</p>
+    <div class="ask"><b>Before I build:</b> is the auto-grat <i>already inside</i> that Card number on the Square report (a carve-out — “of the $777, $216 is auto-grat”), or does it arrive separately and get added on top? A1 and A3 treat it as its own bucket; A2 and A4 let you say which. This changes the totals, not just the layout.</div>
+  </div>
+
+  <div class="grid">
+
+    <!-- A1 -->
+    <article class="opt">
+      <header class="oh"><span class="no">A1</span><div>
+        <h3>Three wells, one scope switch</h3>
+        <p>Today’s screen with the least surgery: auto-grat becomes a third well, and a small segmented control above the amounts declares what the numbers mean. Subtraction shows as a receipt under the card.</p>
+      </div></header>
+      <div class="obody"><div class="phone" data-opt="a1">
+        <div class="phead"><b>Tips</b><span class="pill">Wed, Aug 27</span><span class="who"><span class="av">D</span>Dee</span></div>
+        <div class="c tight row"><span class="dot"></span><b>Babytuna Sushi</b><span class="chev">›</span></div>
+        <div class="seg"><button>Lunch</button><button class="on">Dinner</button></div>
+        <div class="c">
+          <div class="row" style="margin-bottom:9px"><span class="slabel">These numbers are</span></div>
+          <div class="seg sm" data-scope>
+            <button class="on" data-v="day">Whole day (Square)</button>
+            <button data-v="shift">Dinner only</button>
+          </div>
+          <div class="g3" style="margin-top:11px">
+            <label class="well"><span class="slabel">Cash</span><span class="amt sm"><i>$</i><input data-f="cash" value="323.00" inputmode="decimal"></span></label>
+            <label class="well"><span class="slabel">Card</span><span class="amt sm"><i>$</i><input data-f="card" value="777.00" inputmode="decimal"></span></label>
+            <label class="well" style="background:var(--gratcol);outline:1px solid rgba(31,122,77,.18)"><span class="slabel" style="color:var(--green)">Auto-grat</span><span class="amt sm"><i>$</i><input data-f="grat" value="216.00" inputmode="decimal"></span></label>
+          </div>
+          <div class="mini" style="margin-top:8px;color:var(--ink3)">Leave the auto-grat well blank on a night with no large parties.</div>
+          <div class="calc" data-mathbox>
+            <div class="ln"><span>Entered (whole day)</span><span data-out="ent">$1,316.00</span></div>
+            <div class="ln sub"><span>− Lunch already recorded</span><span data-out="lun">−$260.00</span></div>
+            <div class="ln tot"><span>Dinner records</span><span data-out="fin">$1,056.00</span></div>
+          </div>
+        </div>
+        <div class="c"><div class="slabel">Who’s splitting</div>
+          <div class="chips" style="margin-top:9px"><span class="chip on">Ana</span><span class="chip on">Marco</span><span class="chip on">Priya</span><span class="chip on">Dee</span><span class="chip">Kenji</span></div>
+        </div>
+        <div class="strip"><span class="slabel">Split 4 ways</span><b data-out="each">$51.25</b><span class="of">cash pool $205.00</span></div>
+        <div class="bar"><button class="prim">Speak it in</button><button>Save</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Nearly zero retraining — the screen still reads Cash / Card / grat left-to-right, and the receipt proves the subtraction on screen before saving.</div>
+        <div class="dn"><span>cost</span>Three wells is a tight fit on a small phone; the scope switch is easy to blow past on autopilot.</div>
+        <div class="qq"><span>ask</span>Should the switch default to “Whole day” on dinner and “Dinner only” on lunch?</div>
+        <div class="up"><span>final</span>Chosen. Auto-grat is typed in or left blank — no 18%-of-subtotal calculator.</div>
+      </div>
+    </article>
+
+    <!-- A2 -->
+    <article class="opt">
+      <header class="oh"><span class="no">A2</span><div>
+        <h3>Receipt tape</h3>
+        <p>No grid at all. The entry becomes a paper-tape of line items you add and edit, and “lunch already recorded” is a real negative line you tick on or off — the subtraction is a thing you can see and delete, not a mode.</p>
+      </div></header>
+      <div class="obody"><div class="phone" data-opt="a2">
+        <div class="phead"><b>Dinner</b><span class="pill">Wed, Aug 27 · Sushi</span></div>
+        <div class="c" style="padding:16px 15px">
+          <div class="slabel">Close-out tape</div>
+          <div class="tape" style="margin-top:10px">
+            <label class="tline"><span class="tl">Cash counted</span><span class="tv"><i>$</i><input data-f="cash" value="323.00" inputmode="decimal"></span></label>
+            <label class="tline"><span class="tl">Card tips (Square)</span><span class="tv"><i>$</i><input data-f="card" value="777.00" inputmode="decimal"></span></label>
+            <label class="tline"><span class="tl">Auto-gratuity 18% <button data-gratcalc style="color:var(--accent);font-weight:700;font-size:11px">calc</button></span><span class="tv"><i>$</i><input data-f="grat" value="216.00" inputmode="decimal"></span></label>
+            <div data-gratcalcbox hidden class="tsub">
+              <span>18% of a subtotal of <i>$</i><input data-f="sub" value="1200.00" inputmode="decimal" class="inl"> =</span> <b data-out="gratcalc">$216.00</b> <button data-usegrat style="color:var(--accent);font-weight:700">use</button>
+            </div>
+            <div class="tsub" data-gratin>
+              <label><input type="checkbox" data-f="gratinside" checked> The auto-grat is already inside the Card line above</label>
+            </div>
+            <label class="tline neg" data-lunchline>
+              <span class="tl"><input type="checkbox" data-f="minuslunch" checked> Subtract lunch (already recorded)</span>
+              <span class="tv neg" data-out="lunchamt">−$260.00</span>
+            </label>
+            <div class="tline total"><span class="tl">Dinner records</span><span class="tv" data-out="fin">$840.00</span></div>
+          </div>
+          <div class="mini" style="margin-top:10px;color:var(--ink3)">Lunch line pulled from today’s record at 3:41 PM · <button style="color:var(--accent);font-weight:700">see it</button></div>
+        </div>
+        <div class="c tight"><div class="slabel">Splitting the cash · 4</div>
+          <div class="chips" style="margin-top:8px"><span class="chip on">Ana</span><span class="chip on">Marco</span><span class="chip on">Priya</span><span class="chip on">Dee</span><span class="chip">Kenji</span></div>
+        </div>
+        <div class="strip"><span class="slabel">Each</span><b data-out="each">$51.25</b><span class="of">cash pool $205.00</span></div>
+        <div class="bar"><button class="prim">Speak it in</button><button>Save</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>The subtraction is a visible, deletable line — a closer can see exactly why dinner is smaller than what Square printed. Also the only option that asks whether grat is inside the card line.</div>
+        <div class="dn"><span>cost</span>A checkbox is a weaker signal than a segmented control; more reading per entry.</div>
+        <div class="qq"><span>ask</span>Should the lunch line be tickable at all, or always applied when lunch exists?</div>
+      </div>
+    </article>
+
+    <!-- A3 -->
+    <article class="opt">
+      <header class="oh"><span class="no">A3</span><div>
+        <h3>Day bar — enter once, split the day</h3>
+        <p>The closer types the Square day total once. A stacked bar shows the day being carved: lunch is locked (already banked), dinner is the remainder, auto-grat is its own band. You read the answer off a picture instead of a number.</p>
+      </div></header>
+      <div class="obody"><div class="phone" data-opt="a3">
+        <div class="phead"><b>Close out</b><span class="pill">Wed, Aug 27</span></div>
+        <div class="c">
+          <div class="slabel">Square day total — tips</div>
+          <div class="amt" style="margin-top:4px"><i>$</i><input data-f="daytotal" value="1100.00" inputmode="decimal"></div>
+          <div class="mini" style="margin-top:4px;color:var(--ink3)">cash $323.00 + card $777.00 · <button style="color:var(--accent);font-weight:700" data-splitday>enter separately</button></div>
+          <div class="hair"></div>
+          <div class="slabel">Of that, auto-gratuity 18%</div>
+          <div class="amt sm" style="margin-top:2px"><i>$</i><input data-f="grat" value="216.00" inputmode="decimal"></div>
+          <div class="stack2" data-out="bar" style="margin-top:14px"></div>
+          <div class="legend" data-out="legend"></div>
+        </div>
+        <div class="c tight">
+          <div class="row"><span class="slabel">Dinner gets</span><b class="tnum" style="margin-left:auto;font-size:19px" data-out="fin">$840.00</b></div>
+          <div class="mini" style="margin-top:3px">day $1,100.00 − lunch $260.00 · <b class="ok">reconciles</b></div>
+        </div>
+        <div class="c tight"><div class="slabel">Splitting the cash · 4</div>
+          <div class="chips" style="margin-top:8px"><span class="chip on">Ana</span><span class="chip on">Marco</span><span class="chip on">Priya</span><span class="chip on">Dee</span><span class="chip">Kenji</span></div>
+        </div>
+        <div class="bar"><button class="prim">Save dinner</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Impossible to double-count: the day is a fixed pie and lunch is visibly already gone. Reads at arm’s length, good after a long shift.</div>
+        <div class="dn"><span>cost</span>Biggest departure from today’s screen; if lunch was never recorded the bar has nothing to subtract and has to degrade into A1.</div>
+        <div class="qq"><span>ask</span>Is one blended “day total” usable, or must cash and card always stay separate on entry?</div>
+      </div>
+    </article>
+
+    <!-- A4 -->
+    <article class="opt">
+      <header class="oh"><span class="no">A4</span><div>
+        <h3>Guided — one question per screen</h3>
+        <p>Ask, don’t assume. Three plain-English questions with a live preview of the consequence. Slower, but a closer cannot get the day/shift thing wrong, and it explains itself to whoever is covering tonight.</p>
+      </div></header>
+      <div class="obody"><div class="phone tall" data-opt="a4">
+        <div class="phead"><b>Dinner</b><span class="pill">Wed, Aug 27</span></div>
+        <div class="dots" data-dots><i class="on"></i><i></i><i></i></div>
+
+        <div class="c step" data-step="0">
+          <h4>What does the Square report say?</h4>
+          <p class="qsub">Type it exactly as printed — we’ll sort out the rest.</p>
+          <div class="g2" style="margin-top:12px">
+            <label class="well"><span class="slabel">Cash</span><span class="amt sm"><i>$</i><input data-f="cash" value="323.00" inputmode="decimal"></span></label>
+            <label class="well"><span class="slabel">Card</span><span class="amt sm"><i>$</i><input data-f="card" value="777.00" inputmode="decimal"></span></label>
+          </div>
+        </div>
+
+        <div class="c step" data-step="1" hidden>
+          <h4>Is that the whole day, or dinner only?</h4>
+          <p class="qsub">Square’s close-out usually bundles lunch in.</p>
+          <div class="picks" data-scope style="margin-top:12px">
+            <button class="pick on" data-v="day"><b>The whole day</b><span>Lunch is in there. We’ll take out the $260.00 lunch already recorded and save <em data-out="prevday">$840.00</em> for dinner.</span></button>
+            <button class="pick" data-v="shift"><b>Dinner only</b><span>Nothing to take out. We’ll save <em data-out="prevshift">$1,100.00</em> for dinner.</span></button>
+          </div>
+        </div>
+
+        <div class="c step" data-step="2" hidden>
+          <h4>Any auto-gratuity tonight?</h4>
+          <p class="qsub">Large parties, 18% added to the check.</p>
+          <div class="seg" data-gyn style="margin-top:12px"><button class="on" data-v="y">Yes</button><button data-v="n">No</button></div>
+          <div data-gbox style="margin-top:11px">
+            <div class="g2">
+              <label class="well"><span class="slabel">Grat amount</span><span class="amt sm"><i>$</i><input data-f="grat" value="216.00" inputmode="decimal"></span></label>
+              <label class="well"><span class="slabel">or subtotal ×18%</span><span class="amt sm"><i>$</i><input data-f="sub" value="1200.00" inputmode="decimal"></span></label>
+            </div>
+            <div class="mini" style="margin-top:7px">18% of $1,200.00 = <b data-out="gratcalc">$216.00</b> <button style="color:var(--accent);font-weight:700" data-usegrat>use this</button></div>
+            <label class="tsub" style="margin-top:8px;display:block"><input type="checkbox" data-f="gratinside" checked> It’s already counted inside the card number</label>
+          </div>
+        </div>
+
+        <div class="c tight summary" data-summary>
+          <div class="calc" style="border:0;margin:0;padding:0">
+            <div class="ln"><span>Entered</span><span data-out="ent">$1,100.00</span></div>
+            <div class="ln sub"><span>− lunch</span><span data-out="lun">−$260.00</span></div>
+            <div class="ln"><span>of which auto-grat</span><span data-out="gratline">$216.00</span></div>
+            <div class="ln tot"><span>Dinner records</span><span data-out="fin">$840.00</span></div>
+          </div>
+        </div>
+        <div style="flex:1"></div>
+        <div class="bar"><button data-back>Back</button><button class="prim" data-next>Next</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Each choice previews its own result in dollars, so the wrong pick is visibly wrong. Best option for a closer who only does this twice a month.</div>
+        <div class="dn"><span>cost</span>Three screens instead of one; the fastest closers will resent it. Voice entry would need its own path.</div>
+        <div class="qq"><span>ask</span>Worth showing only on dinner, and keeping lunch as the one-screen form?</div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================ B · PARTIAL SHARES ============================ -->
+<section data-tab="share">
+  <div class="intro">
+    <h2>B · Somebody only worked two hours</h2>
+    <p>Right now the split is strictly equal: pool ÷ heads. These four give a person less than a full share — a helper who came in for two hours, someone who left at eight — without dropping them off the entry.</p>
+    <div class="rule">Sample: dinner cash pool <code>$205.00</code>, five names, Kenji at a half share. Every mockup below is live — change a weight and the dollars move.</div>
+    <div class="ask"><b>The question that decides the math</b> (and it is not a design question — pick one and I’ll build it): when Kenji takes a half share, where do the other $20.50 go?<br>
+      <b>Reflow</b> — the pool is fully distributed by weight, so everyone else goes <i>up</i>: $45.56 each instead of $41.00.<br>
+      <b>Fixed cut</b> — a full share stays pool ÷ heads ($41.00), Kenji gets $20.50, and the leftover $20.50 stays in the drawer like the remainder cents do today.<br>
+      B4 lets you flip between the two so you can see the difference in dollars.</div>
+    <div class="rule">Also worth knowing: with weights, plain half-up rounding can pay out a cent or two <i>more</i> than the pool. Today’s rule (remainder stays in the drawer) can’t go negative, so whichever design you pick I’d switch the allocator to largest-remainder so the shares always sum to exactly the pool.</div>
+  </div>
+
+  <div class="grid">
+
+    <!-- B1 -->
+    <article class="opt">
+      <header class="oh"><span class="no">B1</span><div>
+        <h3>Badge on the chip</h3>
+        <p>The roster stays exactly as it is. Every selected name grows a small percentage badge; tapping the badge cycles 100 → 75 → 50 → 25 → custom. Nothing new on screen until you need it.</p>
+      </div></header>
+      <div class="obody"><div class="phone" data-opt="b1">
+        <div class="c">
+          <div class="row"><span class="slabel">Who’s splitting</span><span class="mini" style="margin-left:auto;color:var(--ink3)">tap a badge to change a share</span></div>
+          <div class="chips" data-roster style="margin-top:10px"></div>
+          <div class="warn" data-tip style="background:var(--well);color:var(--ink2)">Kenji is on a <b>half share</b> — tap 50% again for 25%, or hold for a custom number.</div>
+        </div>
+        <div class="c tight">
+          <div class="rows" data-payout></div>
+        </div>
+        <div class="strip"><span class="slabel">Full share</span><b data-out="full">$45.56</b><span class="of">cash pool $205.00</span></div>
+        <div class="bar"><button class="prim">Save</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Zero new screens and zero cost when everyone is full — the common night looks identical to today.</div>
+        <div class="dn"><span>cost</span>A 10px badge is a small tap target, and “cycle through four values” is a habit you have to learn.</div>
+        <div class="qq"><span>ask</span>Are 100/75/50/25 the right presets, or do you want thirds?</div>
+        <div class="up"><span>final</span>Chosen. The per-person amounts only appear once somebody is under 100%.</div>
+      </div>
+    </article>
+
+    <!-- B2 -->
+    <article class="opt">
+      <header class="oh"><span class="no">B2</span><div>
+        <h3>Hours, not percents</h3>
+        <p>Nobody thinks “Kenji gets 50%” — they think “Kenji came in for two hours.” Enter hours per person; the split is by hours worked and the percentage is derived, shown only as a receipt.</p>
+      </div></header>
+      <div class="obody"><div class="phone" data-opt="b2">
+        <div class="c">
+          <div class="row"><span class="slabel">Hours on the floor</span><button class="mini" style="margin-left:auto;color:var(--accent);font-weight:700" data-allfull>all full shift</button></div>
+          <div class="rows hrs" data-hours style="margin-top:9px"></div>
+        </div>
+        <div class="c tight">
+          <div class="calc" style="border:0;margin:0;padding:0">
+            <div class="ln"><span>Cash pool</span><span>$205.00</span></div>
+            <div class="ln"><span>Total hours</span><span data-out="th">18.0 h</span></div>
+            <div class="ln tot"><span>Per hour</span><span data-out="ph">$11.39</span></div>
+          </div>
+        </div>
+        <div class="bar"><button class="prim">Save</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Matches how the shift is actually described out loud, and gives you an hours record on the dashboard for free — useful well beyond tips.</div>
+        <div class="dn"><span>cost</span>Every entry now needs hours for <i>everyone</i>, not just the odd one out. Someone has to know them at close.</div>
+        <div class="qq"><span>ask</span>Do you already have scheduled hours in the app we could pre-fill from, so the closer only fixes exceptions?</div>
+      </div>
+    </article>
+
+    <!-- B3 -->
+    <article class="opt">
+      <header class="oh"><span class="no">B3</span><div>
+        <h3>Drag the pool</h3>
+        <p>One bar, one segment per person, drag the dividers. You are not entering a percentage — you are physically handing out the money, and the bar can never add up to more or less than the pool.</p>
+      </div></header>
+      <div class="obody"><div class="phone" data-opt="b3">
+        <div class="c">
+          <div class="row"><span class="slabel">Cash pool $205.00</span><button class="mini" style="margin-left:auto;color:var(--accent);font-weight:700" data-even>even it out</button></div>
+          <div class="wbar" data-bar style="margin-top:11px"></div>
+          <div class="wlegend" data-legend style="margin-top:12px"></div>
+          <div class="mini" style="margin-top:10px;color:var(--ink3)">Drag a divider · double-tap a name to give it a half share</div>
+        </div>
+        <div class="strip"><span class="slabel">Handed out</span><b data-out="sum">$205.00</b><span class="of ok" data-out="bal">balanced</span></div>
+        <div class="bar"><button class="prim">Save</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Always sums to the pool exactly — no leftover-policy question, no rounding surprise. Fastest for “just give her a bit more.”</div>
+        <div class="dn"><span>cost</span>Fiddly with six-plus names on a phone, hard to hit a round number, and it invites arbitrary splits rather than a rule you can defend later.</div>
+        <div class="qq"><span>ask</span>Should dragging snap to 5% steps so the numbers stay tidy?</div>
+      </div>
+    </article>
+
+    <!-- B4 -->
+    <article class="opt">
+      <header class="oh"><span class="no">B4</span><div>
+        <h3>Full share / helper</h3>
+        <p>A list, not chips. Each person is <b>Full</b> or <b>Helper</b>; helpers pick a quarter, half or three-quarter share. The leftover policy is an explicit switch so the rule is stated, not implied.</p>
+      </div></header>
+      <div class="obody"><div class="phone" data-opt="b4">
+        <div class="c">
+          <div class="slabel">Dinner · 5 on the split</div>
+          <div class="rows b4" data-list style="margin-top:10px"></div>
+        </div>
+        <div class="c tight">
+          <div class="slabel">The other $20.50</div>
+          <div class="seg sm" data-policy style="margin-top:8px"><button class="on" data-v="reflow">Reflow to the team</button><button data-v="drawer">Stays in the drawer</button></div>
+          <div class="calc" style="margin-top:10px">
+            <div class="ln"><span>Full share</span><span data-out="full">$45.56</span></div>
+            <div class="ln"><span>Kenji (½)</span><span data-out="half">$22.78</span></div>
+            <div class="ln tot"><span>Left in drawer</span><span data-out="left">$0.00</span></div>
+          </div>
+        </div>
+        <div class="bar"><button class="prim">Save</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Plain words for the common case, and it forces the money question into the open where you can decide it once in settings.</div>
+        <div class="dn"><span>cost</span>Tallest screen of the four; a five-name split becomes five rows of controls.</div>
+        <div class="qq"><span>ask</span>Should the leftover policy be a per-entry choice, or fixed once per restaurant in settings?</div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================ C · NOTES ============================ -->
+<section data-tab="notes">
+  <div class="intro">
+    <h2>C · “Something weird is going on”</h2>
+    <p>A free-text note on the entry, written at close by whoever is entering. The design question is how much structure to put around it — a bare box is fastest to write and useless to search later; chips are the opposite.</p>
+    <div class="ask"><b>Two things I need from you:</b> should a note ever be <i>required</i> (e.g. on a flagged/unusual amount, or when someone gets a partial share)? And who reads them — manager only in the dashboard, or does the note ride along to the employee’s own take-home view?</div>
+  </div>
+
+  <div class="grid">
+
+    <!-- C1 -->
+    <article class="opt">
+      <header class="oh"><span class="no">C1</span><div>
+        <h3>Quiet line</h3>
+        <p>One dashed row under the split. Tap, it grows a box, you type, it collapses into a one-line preview. Invisible on a normal night.</p>
+      </div></header>
+      <div class="obody"><div class="phone" data-opt="c1">
+        <div class="c tight"><div class="slabel">Splitting the cash · 4</div>
+          <div class="chips" style="margin-top:8px"><span class="chip on">Ana</span><span class="chip on">Marco</span><span class="chip on">Priya</span><span class="chip on">Dee</span></div>
+        </div>
+        <div class="strip"><span class="slabel">Each</span><b>$51.25</b><span class="of">of $205.00</span></div>
+        <div data-noteclosed>
+          <button class="ghost" data-open>+ Add a note</button>
+        </div>
+        <div class="c" data-noteopen hidden>
+          <div class="row"><span class="slabel">Note</span><span class="mini" style="margin-left:auto;color:var(--ink3)" data-out="count">0 / 280</span></div>
+          <textarea data-f="note" rows="3" placeholder="Register was $20 short — Marco recounted, still short." style="margin-top:7px"></textarea>
+          <div class="row" style="margin-top:9px;gap:8px"><button class="ghost" style="width:auto;padding:7px 14px" data-cancel>Cancel</button><button class="ghost" style="width:auto;padding:7px 14px;border-style:solid;background:var(--tint);border-color:var(--accent);color:var(--alert)" data-save>Attach</button></div>
+        </div>
+        <div class="c tight notepreview" data-notedone hidden>
+          <div class="row"><span class="nglyph">note</span><span class="mini" data-out="preview"></span><button class="chev" data-edit style="font-weight:700;color:var(--accent)">edit</button></div>
+        </div>
+        <div class="bar"><button class="prim">Save</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Costs nothing on the 95% of nights with nothing to say.</div>
+        <div class="dn"><span>cost</span>Free text is unsearchable and unaggregatable — you’ll read them one at a time forever.</div>
+        <div class="qq"><span>ask</span>Is 280 characters enough?</div>
+      </div>
+    </article>
+
+    <!-- C2 -->
+    <article class="opt">
+      <header class="oh"><span class="no">C2</span><div>
+        <h3>Reason chips + text</h3>
+        <p>Pick what happened from a short list, then add detail if you want. The chip is the part the dashboard can filter, count and chart; the text is for the human.</p>
+      </div></header>
+      <div class="obody"><div class="phone" data-opt="c2">
+        <div class="c">
+          <div class="slabel">Anything worth flagging?</div>
+          <div class="chips" data-reasons style="margin-top:10px"></div>
+          <textarea data-f="note" rows="2" placeholder="Add detail (optional)" style="margin-top:11px"></textarea>
+          <div class="mini" style="margin-top:8px;color:var(--ink3)">Lands on the dashboard as:</div>
+          <div class="dashpreview" data-out="preview"></div>
+        </div>
+        <div class="bar"><button class="prim">Save</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Two taps beats typing at 11pm, and “drawer short” becomes a number you can trend by person and location.</div>
+        <div class="dn"><span>cost</span>The list has to be right — a missing chip pushes people into “Other” and you’re back to free text.</div>
+        <div class="qq"><span>ask</span>What are the five things that actually go wrong? My guesses are on the chips — replace them.</div>
+      </div>
+    </article>
+
+    <!-- C3 -->
+    <article class="opt">
+      <header class="oh"><span class="no">C3</span><div>
+        <h3>Note on a person</h3>
+        <p>The note hangs off a name instead of the entry. “Kenji — came in 6–8 to cover.” Pairs with B: the note is the receipt for why somebody’s share is not full.</p>
+      </div></header>
+      <div class="obody"><div class="phone" data-opt="c3">
+        <div class="c">
+          <div class="row"><span class="slabel">Splitting the cash</span><span class="mini" style="margin-left:auto;color:var(--ink3)">tap a name to annotate</span></div>
+          <div class="rows c3" data-people style="margin-top:10px"></div>
+        </div>
+        <div class="c tight">
+          <div class="slabel">Note on the whole entry</div>
+          <input data-f="entrynote" placeholder="optional" class="plain" style="margin-top:7px">
+        </div>
+        <div class="bar"><button class="prim">Save</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Answers “why did Kenji get $22.78?” at the exact spot the question gets asked, months later.</div>
+        <div class="dn"><span>cost</span>New table (a note per person per entry) and more places to look on the dashboard.</div>
+        <div class="qq"><span>ask</span>Should a partial share <i>require</i> a per-person note?</div>
+      </div>
+    </article>
+
+    <!-- C4 -->
+    <article class="opt">
+      <header class="oh"><span class="no">C4</span><div>
+        <h3>Raise it</h3>
+        <p>Not a note field — an escalation. One button, a severity, and the entry lands on the dashboard flagged for attention, alongside the amounts the anomaly rule already flags.</p>
+      </div></header>
+      <div class="obody"><div class="phone" data-opt="c4">
+        <div class="c tight"><div class="slabel">Dinner · Sushi · Wed, Aug 27</div>
+          <div class="row" style="margin-top:7px"><b style="font-size:19px">$205.00</b><span class="mini" style="margin-left:auto">cash · 4 ways</span></div>
+        </div>
+        <button class="ghost raise" data-open>⚑ Something’s off tonight</button>
+        <div class="sheet" data-sheet hidden>
+          <div class="grab"></div>
+          <h4>What’s off?</h4>
+          <div class="seg sm" data-sev style="margin-top:11px"><button data-v="fyi" class="on">Just noting it</button><button data-v="check">Manager should check</button></div>
+          <textarea data-f="note" rows="3" placeholder="Drawer was $20 short. Recounted twice." style="margin-top:11px"></textarea>
+          <div class="mini" style="margin-top:9px;color:var(--ink3)" data-out="hint">Saves quietly with the entry — no alert.</div>
+          <div class="bar" style="margin-top:12px"><button data-cancel>Cancel</button><button class="prim" data-save>Attach &amp; save</button></div>
+        </div>
+        <div class="c tight flagged" data-done hidden>
+          <div class="row"><span class="fchip">⚑ check</span><span class="mini" data-out="preview"></span></div>
+        </div>
+        <div class="bar"><button class="prim">Save</button></div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Reuses the flag lane you already have — flagged rows are already tinted and have a Verify button in Recorded tips.</div>
+        <div class="dn"><span>cost</span>Framing everything as a problem discourages ordinary notes (“party of 30 on the patio”).</div>
+        <div class="qq"><span>ask</span>Should a raised note ever notify you, or only sit on the dashboard until you look?</div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================ D · DASHBOARD ============================ -->
+<section data-tab="dash">
+  <div class="intro">
+    <h2>D · Recorded tips, once all of that exists</h2>
+    <p>Four new things have to be visible without wrecking a table that already has nine columns: the <b>auto-grat</b> bucket, the fact that a dinner row was <b>derived from a day total</b> (and what was subtracted), <b>unequal shares</b>, and <b>notes</b>. These four make different bets about where that detail lives.</p>
+    <div class="rule">Same night in all four. Wed Aug 27 dinner at Sushi: Square said <code>$323.00</code> cash for the day, lunch had banked <code>$118.00</code>, so the row records <code>$205.00</code> — split five ways with Kenji on a half share, plus <code>$216.00</code> of auto-grat and a note about the drawer.</div>
+    <div class="ask"><b>Ask:</b> should the ledger show the <i>recorded</i> dinner number ($205.00) with the day total tucked behind a badge, or show <i>both</i> columns permanently? And does auto-grat belong in the cash pool column, the card column, or a third column of its own — that depends on your answer to the A-tab question about where the grat money actually goes.</div>
+  </div>
+
+  <div class="stack">
+
+    <!-- D1 -->
+    <article class="opt">
+      <header class="oh"><span class="no">D1</span><div>
+        <h3>Wider ledger — everything on the row</h3>
+        <p>Add the columns and live with the width. Scope shows as a badge on the cash cell, unequal shares as a fraction next to the name, notes as a glyph that opens a tooltip. Nothing to click to understand a row.</p>
+      </div></header>
+      <div class="obody" style="padding:0;background:#fff"><div class="wideframe">
+        <div class="tbar"><b>Recorded tips</b><span class="mini">Aug 21 – Aug 27 · 14 records</span><span class="tbtn">Export CSV</span></div>
+        <table class="ledger">
+          <thead><tr>
+            <th>Business date</th><th>Restaurant</th><th>Meal</th>
+            <th class="r cash">Cash pool</th><th class="r grat">Auto-grat</th>
+            <th>Split between</th><th class="r cash">Per person</th>
+            <th class="r card">Card → payroll</th><th>Note</th><th>Entered by</th><th></th>
+          </tr></thead>
+          <tbody>
+            <tr class="daytot"><td colspan="3">Wed, Aug 27</td><td class="r cash">$323.00</td><td class="r grat">$216.00</td><td class="cash"></td><td class="cash"></td><td class="r card">$777.00</td><td colspan="3"></td></tr>
+            <tr>
+              <td>Wed, Aug 27</td><td><span class="lchip sushi">Sushi</span></td><td>Dinner</td>
+              <td class="r cash b"><span class="scope" title="Entered as a whole-day total">day −lunch</span> $205.00</td>
+              <td class="r grat">$216.00</td>
+              <td>Ana, Marco, Priya, Dee, <span class="wname">Kenji <i>½</i></span></td>
+              <td class="r cash xb">$45.56 <span class="sub2">· Kenji $22.78</span></td>
+              <td class="r card">$635.00</td>
+              <td><span class="nglyph" data-tip="Drawer $20 short — Marco recounted, still short.">note</span></td>
+              <td class="mut">Dee · dictated</td><td class="r"><span class="tbtn sm">Fix</span></td>
+            </tr>
+            <tr>
+              <td>Wed, Aug 27</td><td><span class="lchip sushi">Sushi</span></td><td>Lunch</td>
+              <td class="r cash b">$118.00</td><td class="r grat mut">—</td>
+              <td>Ana, Priya, Dee</td><td class="r cash xb">$39.33</td><td class="r card">$142.00</td>
+              <td></td><td class="mut">Ana · typed</td><td class="r"><span class="tbtn sm">Fix</span></td>
+            </tr>
+            <tr class="flag">
+              <td>Tue, Aug 26</td><td><span class="lchip poki">Poki &amp; Pho</span></td><td>Dinner</td>
+              <td class="r b">$612.00 <span class="fchip">⚑ check</span></td><td class="r mut">—</td>
+              <td>Sam, <span class="wname">Rey <i>¼</i></span></td><td class="r xb">$489.60 <span class="sub2">· Rey $122.40</span></td>
+              <td class="r">$210.00</td>
+              <td><span class="nglyph" data-tip="Party of 30 on the patio, one check.">note</span></td>
+              <td class="mut">Sam · typed</td><td class="r"><span class="tbtn sm prim">Verify</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Scannable and exportable — the CSV can mirror the columns exactly, which matters when this feeds payroll.</div>
+        <div class="dn"><span>cost</span>Eleven columns needs a wide screen; the per-person cell stops being one number the moment shares are unequal.</div>
+        <div class="qq"><span>ask</span>Do you ever read this on a phone, or is it always the office laptop?</div>
+      </div>
+    </article>
+
+    <!-- D2 -->
+    <article class="opt">
+      <header class="oh"><span class="no">D2</span><div>
+        <h3>Narrow ledger, row opens up</h3>
+        <p>The table keeps today’s columns and stays calm. Click a row and it unfolds in place: the day-total arithmetic, the auto-grat, every name with its share in dollars, and the note in full.</p>
+      </div></header>
+      <div class="obody" style="padding:0;background:#fff"><div class="wideframe" data-opt="d2">
+        <div class="tbar"><b>Recorded tips</b><span class="mini">click a row for the breakdown</span></div>
+        <table class="ledger">
+          <thead><tr><th></th><th>Business date</th><th>Restaurant</th><th>Meal</th><th class="r cash">Cash pool</th><th>Split between</th><th class="r cash">Per person</th><th class="r card">Card → payroll</th><th>Entered by</th></tr></thead>
+          <tbody>
+            <tr class="exp open" data-exp><td class="tw"><span class="tri">▾</span></td><td>Wed, Aug 27</td><td><span class="lchip sushi">Sushi</span></td><td>Dinner</td>
+              <td class="r cash b">$205.00</td><td>5 names <span class="mark">·2 adj</span></td><td class="r cash xb">$45.56 <span class="sub2">avg</span></td><td class="r card">$635.00</td><td class="mut">Dee</td></tr>
+            <tr class="det" data-det><td></td><td colspan="8">
+              <div class="detgrid">
+                <div class="dcard">
+                  <div class="slabel">How this number was reached</div>
+                  <div class="calc" style="margin-top:8px">
+                    <div class="ln"><span>Entered from Square (whole day)</span><span>$323.00</span></div>
+                    <div class="ln sub"><span>− lunch recorded 3:41 PM</span><span>−$118.00</span></div>
+                    <div class="ln tot"><span>Dinner cash pool</span><span>$205.00</span></div>
+                  </div>
+                  <div class="hair2"></div>
+                  <div class="calc">
+                    <div class="ln"><span>Card → payroll</span><span>$635.00</span></div>
+                    <div class="ln"><span>of which auto-gratuity 18%</span><span>$216.00</span></div>
+                  </div>
+                </div>
+                <div class="dcard">
+                  <div class="slabel">Who takes what</div>
+                  <table class="mini2"><tbody>
+                    <tr><td>Ana</td><td class="r mut">full</td><td class="r b">$45.56</td></tr>
+                    <tr><td>Marco</td><td class="r mut">full</td><td class="r b">$45.56</td></tr>
+                    <tr><td>Priya</td><td class="r mut">full</td><td class="r b">$45.56</td></tr>
+                    <tr><td>Dee</td><td class="r mut">full</td><td class="r b">$45.56</td></tr>
+                    <tr><td>Kenji</td><td class="r mut">½ · 2h</td><td class="r b">$22.76</td></tr>
+                    <tr class="tt"><td>Pool</td><td></td><td class="r b">$205.00</td></tr>
+                  </tbody></table>
+                </div>
+                <div class="dcard">
+                  <div class="slabel">Note · Dee, 10:52 PM</div>
+                  <p class="ntext">Drawer $20 short — Marco recounted, still short. Kenji only came in 6–8 to cover Priya’s break.</p>
+                  <div class="row" style="margin-top:11px;gap:8px"><span class="tbtn sm">Fix entry</span><span class="tbtn sm">Reply</span></div>
+                </div>
+              </div>
+            </td></tr>
+            <tr class="exp" data-exp><td class="tw"><span class="tri">▸</span></td><td>Wed, Aug 27</td><td><span class="lchip sushi">Sushi</span></td><td>Lunch</td>
+              <td class="r cash b">$118.00</td><td>3 names</td><td class="r cash xb">$39.33</td><td class="r card">$142.00</td><td class="mut">Ana</td></tr>
+            <tr class="det" data-det hidden><td></td><td colspan="8"><div class="detgrid"><div class="dcard"><div class="slabel">How this number was reached</div><div class="calc" style="margin-top:8px"><div class="ln tot"><span>Entered as lunch only</span><span>$118.00</span></div></div></div><div class="dcard"><div class="slabel">Who takes what</div><table class="mini2"><tbody><tr><td>Ana</td><td class="r mut">full</td><td class="r b">$39.33</td></tr><tr><td>Priya</td><td class="r mut">full</td><td class="r b">$39.33</td></tr><tr><td>Dee</td><td class="r mut">full</td><td class="r b">$39.34</td></tr></tbody></table></div><div class="dcard"><div class="slabel">Note</div><p class="ntext mut">No note on this entry.</p></div></div></td></tr>
+          </tbody>
+        </table>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>The everyday view gets no busier, and the breakdown has room to actually explain itself — including the “$323 became $205” arithmetic in words.</div>
+        <div class="dn"><span>cost</span>A click per row; comparing two nights’ notes means opening two rows.</div>
+        <div class="qq"><span>ask</span>Should the row auto-open when it’s flagged?</div>
+      </div>
+    </article>
+
+    <!-- D3 -->
+    <article class="opt">
+      <header class="oh"><span class="no">D3</span><div>
+        <h3>Day cards — reconcile the day</h3>
+        <p>Stop thinking in rows. One card per business day showing the day as a whole: what Square said, what lunch took, what dinner took, whether it balances. The double-count problem becomes visible at a glance.</p>
+      </div></header>
+      <div class="obody" style="padding:20px;background:#f0f0f1"><div class="wideframe plain">
+        <div class="daycard">
+          <div class="dchead"><b>Wed, Aug 27</b><span class="lchip sushi">Babytuna Sushi</span><span class="recon ok">day reconciles</span><span class="dtot">$1,100.00 <i>total tips</i></span></div>
+          <div class="dcbar"><span class="sl" style="width:23.6%">Lunch $260.00</span><span class="sd" style="width:76.4%">Dinner $840.00</span></div>
+          <div class="dcgrid">
+            <div class="dcol">
+              <div class="slabel">Lunch · 11:30–3:41</div>
+              <div class="big">$118.00 <i>cash pool</i></div>
+              <div class="mini">card $142.00 · no auto-grat</div>
+              <div class="chips" style="margin-top:9px"><span class="chip sm">Ana $39.33</span><span class="chip sm">Priya $39.33</span><span class="chip sm">Dee $39.34</span></div>
+            </div>
+            <div class="dcol">
+              <div class="slabel">Dinner · 4:00–10:52 <span class="scope">entered as day total</span></div>
+              <div class="big">$205.00 <i>cash pool</i></div>
+              <div class="mini">Square said $323.00 for the day − $118.00 lunch</div>
+              <div class="mini">card $635.00 · <b class="ok">auto-grat $216.00</b></div>
+              <div class="chips" style="margin-top:9px"><span class="chip sm">Ana $45.56</span><span class="chip sm">Marco $45.56</span><span class="chip sm">Priya $45.56</span><span class="chip sm">Dee $45.56</span><span class="chip sm half">Kenji ½ $22.76</span></div>
+            </div>
+            <div class="dcol notecol">
+              <div class="slabel">Notes</div>
+              <p class="ntext"><b>Dee, 10:52 PM</b> — Drawer $20 short, Marco recounted, still short.</p>
+              <p class="ntext"><b>on Kenji</b> — came in 6–8 to cover Priya’s break.</p>
+            </div>
+          </div>
+        </div>
+        <div class="daycard slim">
+          <div class="dchead"><b>Tue, Aug 26</b><span class="lchip poki">Poki &amp; Pho</span><span class="recon warn">lunch never recorded</span><span class="dtot">$822.00 <i>total tips</i></span></div>
+          <div class="dcbar"><span class="sm2" style="width:100%">Dinner $822.00 — entered as day total with nothing to subtract</span></div>
+        </div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>The only layout that makes “did we double-count the day?” a first-class question — and it surfaces the nasty case (a day-total dinner with no lunch on record) instead of hiding it.</div>
+        <div class="dn"><span>cost</span>Poor for scanning three weeks; you’d still want the flat table underneath for export and search.</div>
+        <div class="qq"><span>ask</span>Would this replace Recorded tips, or sit next to it as a second view?</div>
+      </div>
+    </article>
+
+    <!-- D4 -->
+    <article class="opt">
+      <header class="oh"><span class="no">D4</span><div>
+        <h3>List + inspector</h3>
+        <p>Entries on the left, one persistent inspector on the right. Arrow-key down the list and everything — arithmetic, shares, note, fix controls — refreshes in place. Built for working through a week of flagged rows.</p>
+      </div></header>
+      <div class="obody" style="padding:0;background:#fff"><div class="wideframe" data-opt="d4">
+        <div class="splitpane">
+          <div class="lpane">
+            <div class="lsearch">Search notes, names, amounts…</div>
+            <div class="litem on" data-e="0"><div class="row"><b>Wed, Aug 27</b><span class="mut" style="margin-left:auto">Dinner</span></div><div class="row"><span class="lchip sushi">Sushi</span><span class="mut">5 names · ½ share</span><b style="margin-left:auto">$205.00</b></div><div class="lnote">“Drawer $20 short — Marco recounted…”</div></div>
+            <div class="litem" data-e="1"><div class="row"><b>Wed, Aug 27</b><span class="mut" style="margin-left:auto">Lunch</span></div><div class="row"><span class="lchip sushi">Sushi</span><span class="mut">3 names</span><b style="margin-left:auto">$118.00</b></div></div>
+            <div class="litem flag" data-e="2"><div class="row"><b>Tue, Aug 26</b><span class="mut" style="margin-left:auto">Dinner</span></div><div class="row"><span class="lchip poki">Poki &amp; Pho</span><span class="fchip">⚑ check</span><b style="margin-left:auto">$612.00</b></div><div class="lnote">“Party of 30 on the patio, one check.”</div></div>
+          </div>
+          <div class="rpane" data-out="insp"></div>
+        </div>
+      </div></div>
+      <div class="ofoot">
+        <div class="up"><span>good</span>Fastest for the actual job — verifying flagged entries and reading notes in a batch, without losing your place in the list.</div>
+        <div class="dn"><span>cost</span>Half the width goes to one entry; worst layout for comparing totals across a week.</div>
+        <div class="qq"><span>ask</span>Is “work through the flagged ones” a real weekly habit, or do you mostly just export?</div>
+      </div>
+    </article>
+
+  </div>
+</section>
+
+<!-- ============================ QUESTIONS ============================ -->
+<section data-tab="q">
+  <div class="intro" style="max-width:1000px">
+    <h2>What I need from you</h2>
+    <p>Answer these and I can build any combination you pick — you’re choosing one option per tab (e.g. <b>A2 + B4 + C2 + D2</b>), and they mix freely.</p>
+  </div>
+  <div class="qgrid">
+    <div class="qcard"><span class="qn">1</span><h4>Where does the auto-grat money actually go?</h4><p>Is the 18% <b>already inside</b> the card number Square reports (so it’s a carve-out, tracked but not added), or does it arrive separately and get added on top? And once it’s in — does it join the pooled cash split, ride payroll like card tips, or go to the server(s) who had that party?</p><p class="qwhy">This decides the totals and the dashboard column, not just the layout.</p></div>
+    <div class="qcard"><span class="qn">2</span><h4>Is 18% fixed?</h4><p>Same rate at both restaurants, forever? Should the closer be able to type a grat amount straight from the report, compute it from a party subtotal, or both? And does it apply per-party (several parties a night) or as one nightly total?</p></div>
+    <div class="qcard"><span class="qn">3</span><h4>What exactly gets subtracted on a whole-day dinner?</h4><p>Lunch cash, lunch card, both, and the lunch auto-grat too? My assumption: subtract like-for-like, field by field, from today’s recorded lunch at the same restaurant.</p></div>
+    <div class="qcard"><span class="qn">4</span><h4>What if lunch was never recorded?</h4><p>Then a whole-day dinner number has nothing to subtract and silently records the whole day as dinner. Options: block the save, warn and let it through flagged, or let the manager subtract later from the dashboard. I’d warn + flag.</p></div>
+    <div class="qcard"><span class="qn">5</span><h4>Store the number they typed?</h4><p>I’d store both the raw Square figure and the derived shift figure, so the dashboard can always show its work and a fix is reversible. Any objection to keeping the raw number?</p></div>
+    <div class="qcard"><span class="qn">6</span><h4>Reflow or fixed cut?</h4><p>The B-tab question. When Kenji takes ½, do the other four go up to $45.56 (pool fully distributed), or stay at $41.00 with $20.50 left in the drawer? Per-entry choice, or fixed once per restaurant?</p></div>
+    <div class="qcard"><span class="qn">7</span><h4>Who can set a partial share?</h4><p>The closer at entry, or manager-only from the dashboard after the fact? Closer is faster; manager-only is harder to abuse, since the person entering can shave a coworker’s share.</p></div>
+    <div class="qcard"><span class="qn">8</span><h4>Does the card side split too?</h4><p>Today per-person on the dashboard is cash-only (card rides payroll). If someone works a half shift, does their card/payroll allocation get the same weight?</p></div>
+    <div class="qcard"><span class="qn">9</span><h4>Who reads the notes?</h4><p>Manager only, or do notes ride along to the employee view? Anything naming a coworker becomes an HR artifact the moment it’s visible — worth deciding now, not after the first awkward one.</p></div>
+    <div class="qcard"><span class="qn">10</span><h4>Voice entry</h4><p>“Speak it in” currently parses cash, card and names. Should it also handle “eight forty for the day”, “Kenji half”, and a spoken note — or do the new fields stay typed for now?</p></div>
+  </div>
+</section>
+
+</main>
+
+<style>
+/* ---------- shared small parts ---------- */
+textarea,input.plain,input.inl{background:var(--well);border:0;border-radius:11px;padding:10px 11px;width:100%;outline:0;resize:none;font-size:13.5px;line-height:1.4}
+textarea::placeholder,input.plain::placeholder{color:var(--ink3)}
+input.inl{display:inline-block;width:78px;padding:2px 7px;border-radius:7px;font-weight:700;font-variant-numeric:tabular-nums}
+.rows{display:grid;gap:7px}
+.chip.sm{padding:5px 9px;font-size:11.5px;font-weight:700}
+.chip.sm.half{background:var(--gratcol);border-color:rgba(31,122,77,.3);color:var(--green)}
+h4{font-size:16px;letter-spacing:-.01em}
+.qsub{font-size:12.5px;color:var(--ink2);margin-top:4px}
+
+/* ---------- A2 receipt tape ---------- */
+.tape{display:grid;gap:0}
+.tline{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px dashed var(--line)}
+.tline .tl{font-size:13.5px;color:var(--ink2);display:flex;align-items:center;gap:7px}
+.tline .tv{margin-left:auto;display:flex;align-items:baseline;gap:2px;font-variant-numeric:tabular-nums}
+.tline .tv i{font-style:normal;color:var(--ink3);font-size:13px}
+.tline .tv input{width:86px;text-align:right;background:none;border:0;outline:0;font-size:16px;font-weight:700;font-variant-numeric:tabular-nums;border-bottom:1px solid var(--line);padding-bottom:1px}
+.tline.neg .tl{color:var(--alert)}
+.tline .tv.neg{color:var(--alert);font-weight:700;font-size:15px}
+.tline.total{border-bottom:0;border-top:2px solid var(--ink);margin-top:4px;padding-top:9px}
+.tline.total .tl{color:var(--ink);font-weight:800;font-size:14px}
+.tline.total .tv{font-size:20px;font-weight:800}
+.tsub{font-size:12px;color:var(--ink2);padding:8px 0;border-bottom:1px dashed var(--line);display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tsub label{display:flex;align-items:center;gap:7px;cursor:pointer}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent)}
+
+/* ---------- A3 day bar ---------- */
+.stack2{height:46px;border-radius:11px;overflow:hidden;display:flex;background:var(--well)}
+.stack2 span{display:flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:800;color:#fff;transition:width .18s ease-out;overflow:hidden;white-space:nowrap}
+.stack2 .s-lunch{background:var(--ink3)}
+.stack2 .s-dinner{background:var(--accent)}
+.stack2 .s-grat{background:var(--green)}
+.legend{display:flex;gap:14px;margin-top:9px;flex-wrap:wrap;font-size:11.5px;color:var(--ink2)}
+.legend b{display:flex;align-items:center;gap:6px;font-weight:600}
+.legend i{width:9px;height:9px;border-radius:3px;display:inline-block}
+
+/* ---------- A4 wizard ---------- */
+.dots{display:flex;gap:5px;justify-content:center}
+.dots i{width:22px;height:3px;border-radius:2px;background:var(--disabled)}
+.dots i.on{background:var(--accent)}
+.picks{display:grid;gap:9px}
+.pick{text-align:left;border:1.5px solid var(--line);border-radius:15px;padding:12px 13px;display:block;background:var(--card)}
+.pick b{display:block;font-size:15px;margin-bottom:3px}
+.pick span{font-size:12.5px;color:var(--ink2);line-height:1.4}
+.pick em{font-style:normal;font-weight:800;color:var(--ink)}
+.pick.on{border-color:var(--accent);background:var(--tint)}
+.pick.on span{color:#7c2a19}
+.summary{background:#1a1a1a;color:#fff}
+.summary .calc .ln{color:#a6a6a6}
+.summary .calc .ln span:last-child{color:#fff}
+.summary .calc .ln.sub span:last-child{color:#ff9b88}
+.summary .calc .ln.tot{border-top-color:#333;color:#fff}
+
+/* ---------- B ---------- */
+.rows .prow{display:flex;align-items:center;gap:10px;background:var(--well);border-radius:12px;padding:9px 11px}
+.rows .prow .nm{font-weight:600;font-size:13.5px}
+.rows .prow .amtv{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
+.rows .prow .sub{font-size:11px;color:var(--ink3)}
+.step2{display:flex;align-items:center;gap:2px;background:var(--card);border-radius:999px;padding:2px;margin-left:auto}
+.step2 button{width:26px;height:26px;border-radius:50%;font-weight:800;color:var(--ink2)}
+.step2 .v{min-width:44px;text-align:center;font-weight:800;font-size:12.5px;font-variant-numeric:tabular-nums}
+.hrs .prow{padding:8px 9px 8px 12px}
+.wbar{display:flex;height:56px;border-radius:13px;overflow:hidden;background:var(--well);position:relative;touch-action:none;user-select:none}
+.wseg{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;overflow:hidden;white-space:nowrap}
+.wseg .wv{font-size:10px;opacity:.85;font-weight:700}
+.whandle{position:absolute;top:0;bottom:0;width:14px;margin-left:-7px;cursor:ew-resize;z-index:3;display:flex;align-items:center;justify-content:center}
+.whandle::after{content:"";width:3px;height:26px;border-radius:2px;background:rgba(255,255,255,.85)}
+.wlegend{display:grid;gap:5px}
+.wlegend .wl{display:flex;align-items:center;gap:8px;font-size:12.5px}
+.wlegend .wl i{width:9px;height:9px;border-radius:3px}
+.wlegend .wl b{margin-left:auto;font-variant-numeric:tabular-nums}
+.wlegend .wl span.pc{color:var(--ink3);font-size:11.5px;width:38px;text-align:right;font-variant-numeric:tabular-nums}
+.b4 .prow{display:block;padding:10px 11px}
+.b4 .prow .top{display:flex;align-items:center;gap:10px}
+.b4 .prow .seg{margin-left:auto;width:154px;background:var(--card)}
+.b4 .prow .seg button{padding:5px;font-size:11.5px}
+.b4 .presets{display:flex;gap:6px;margin-top:9px}
+.b4 .presets button{flex:1;border:1px solid var(--line);background:var(--card);border-radius:9px;padding:6px;font-size:12px;font-weight:700;color:var(--ink2)}
+.b4 .presets button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* ---------- C ---------- */
+.nglyph{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);background:rgba(37,99,235,.09);border-radius:5px;padding:2px 6px;cursor:help}
+.notepreview .mini{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.dashpreview{margin-top:7px;border:1px solid var(--line);border-radius:11px;padding:9px 10px;font-size:12px;background:#fbfbfb}
+.dashpreview .dp{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.rchip{font-size:11px;font-weight:800;border-radius:6px;padding:2px 7px;background:var(--well);color:var(--ink2)}
+.rchip.on{background:var(--tint);color:var(--alert)}
+.raise{border-color:rgba(232,77,56,.4);color:var(--alert);font-weight:700;padding:13px}
+.sheet{background:var(--card);border-radius:24px;padding:16px 15px 15px;border:1px solid var(--line)}
+.grab{width:38px;height:4px;border-radius:2px;background:var(--disabled);margin:0 auto 12px}
+.flagged{background:var(--flagtint)}
+.fchip{font-size:10.5px;font-weight:800;color:var(--alert);background:#fff;border:1px solid rgba(192,53,32,.3);border-radius:6px;padding:1px 6px;white-space:nowrap}
+.c3 .prow{gap:8px}
+.c3 .prow .nb{margin-left:auto;font-size:11px;font-weight:800;color:var(--blue)}
+.c3 .noteline{margin-top:7px}
+
+/* ---------- D ---------- */
+.wideframe{width:100%;overflow-x:auto;background:#fff}
+.wideframe.plain{background:transparent;display:grid;gap:16px}
+.tbar{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.tbar b{font-size:16px}
+.tbar .mini{color:var(--ink3)}
+.tbtn{margin-left:auto;border:1px solid var(--line);border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700;color:var(--ink2);white-space:nowrap;cursor:pointer}
+.tbtn.sm{margin-left:0;padding:3px 9px;font-size:11.5px}
+.tbtn.prim{background:var(--accent);border-color:var(--accent);color:#fff}
+table.ledger{width:100%;border-collapse:collapse;font-size:13px;min-width:900px}
+table.ledger th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.ledger td{padding:10px 11px;border-bottom:1px solid var(--hair);vertical-align:middle}
+table.ledger .r{text-align:right}
+table.ledger .cash{background:var(--cashcol)}
+table.ledger .card{background:var(--cardcol)}
+table.ledger .grat{background:var(--gratcol)}
+table.ledger .b{font-weight:700;font-variant-numeric:tabular-nums}
+table.ledger .xb{font-weight:800;font-variant-numeric:tabular-nums}
+table.ledger .mut{color:var(--ink3);font-size:12.5px}
+table.ledger tr.daytot td{background:#fafafa;font-weight:800;color:var(--ink2);font-size:12px;padding:6px 11px;font-variant-numeric:tabular-nums}
+table.ledger tr.flag td{background:var(--flagtint)}
+.lchip{font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 8px;white-space:nowrap}
+.lchip.sushi{background:var(--tint);color:var(--alert)}
+.lchip.poki{background:rgba(37,99,235,.1);color:var(--blue)}
+.scope{font-size:10px;font-weight:800;letter-spacing:.03em;text-transform:uppercase;background:#fff;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--ink2);cursor:help}
+.wname{white-space:nowrap}
+.wname i{font-style:normal;font-weight:800;font-size:11px;color:var(--green);background:var(--gratcol);border-radius:5px;padding:0 5px}
+.sub2{font-weight:600;font-size:11.5px;color:var(--ink3)}
+.mark{font-size:11px;font-weight:800;color:var(--green);background:var(--gratcol);border-radius:5px;padding:1px 5px}
+tr.exp{cursor:pointer}
+tr.exp:hover td{background:#fafafa}
+tr.exp.open td{background:#f6f7f8}
+.tw{width:26px}
+.tri{color:var(--ink3);font-size:11px}
+tr.det td{background:#f6f7f8;padding:0 11px 16px}
+.detgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.dcard{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px}
+.hair2{height:1px;background:var(--hair);margin:11px 0}
+table.mini2{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:7px}
+table.mini2 td{padding:4px 0;border-bottom:1px solid var(--hair)}
+table.mini2 tr.tt td{border-bottom:0;border-top:1px solid var(--line);font-weight:800;padding-top:6px}
+.ntext{font-size:12.5px;color:var(--ink2);line-height:1.5;margin-top:7px}
+.daycard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px 18px}
+.daycard.slim{opacity:.92}
+.dchead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dchead b{font-size:16px}
+.dtot{margin-left:auto;font-size:19px;font-weight:800;font-variant-numeric:tabular-nums}
+.dtot i{font-style:normal;font-size:11px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;margin-left:5px}
+.recon{font-size:11px;font-weight:800;border-radius:6px;padding:2px 8px}
+.recon.ok{background:rgba(31,122,77,.1);color:var(--green)}
+.recon.warn{background:var(--tint);color:var(--alert)}
+.dcbar{display:flex;height:26px;border-radius:8px;overflow:hidden;margin-top:13px}
+.dcbar span{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff}
+.dcbar .sl{background:var(--ink3)}
+.dcbar .sd{background:var(--accent)}
+.dcbar .sm2{background:var(--amber)}
+.dcgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px;margin-top:16px}
+.dcol .big{font-size:24px;font-weight:800;letter-spacing:-.02em;margin:5px 0 3px;font-variant-numeric:tabular-nums}
+.dcol .big i{font-style:normal;font-size:11px;font-weight:600;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;margin-left:4px}
+.dcol .mini{color:var(--ink2);font-size:12.5px}
+.notecol{border-left:1px solid var(--hair);padding-left:18px}
+.splitpane{display:grid;grid-template-columns:minmax(240px,340px) 1fr;min-height:430px}
+.lpane{border-right:1px solid var(--line);padding:12px;display:grid;gap:8px;align-content:start}
+.lsearch{background:var(--well);border-radius:9px;padding:8px 11px;font-size:12.5px;color:var(--ink3)}
+.litem{border:1px solid var(--line);border-radius:12px;padding:10px 11px;display:grid;gap:5px;cursor:pointer}
+.litem .mut{color:var(--ink3);font-size:12px}
+.litem.on{border-color:var(--accent);background:var(--tint)}
+.litem.flag{background:var(--flagtint);border-color:rgba(192,53,32,.25)}
+.litem.flag.on{border-color:var(--alert)}
+.lnote{font-size:11.5px;color:var(--ink3);font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rpane{padding:18px 20px}
+.rpane h3{font-size:19px;letter-spacing:-.01em}
+.rpane .sup{color:var(--ink3);font-size:12.5px;margin-top:2px}
+.rpane .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-top:16px}
+
+/* ---------- questions ---------- */
+.qgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;max-width:1400px}
+.qcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 17px;position:relative}
+.qcard .qn{position:absolute;top:16px;right:16px;font-size:11px;font-weight:800;color:var(--ink3)}
+.qcard h4{font-size:15px;padding-right:22px;margin-bottom:7px}
+.qcard p{font-size:13px;color:var(--ink2);margin-bottom:7px}
+.qcard p:last-child{margin-bottom:0}
+.qcard .qwhy{color:var(--accent);font-weight:600;font-size:12.5px}
+@media (max-width:820px){.splitpane{grid-template-columns:1fr}.notecol{border-left:0;padding-left:0}}
+</style>
+
+<script>
+/* ================== helpers ================== */
+const $=(s,r=document)=>r.querySelector(s);
+const $$=(s,r=document)=>[...r.querySelectorAll(s)];
+function M(n){
+  const neg=n<-0.0001, v=Math.abs(Math.round(n*100)/100).toFixed(2), p=v.split(".");
+  return (neg?"−$":"$")+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,",")+"."+p[1];
+}
+const num=el=>{const v=parseFloat(String(el.value).replace(/[^0-9.]/g,""));return isFinite(v)?v:0};
+const LUNCH={cash:118,card:142,grat:0};
+const LUNCH_ALL=LUNCH.cash+LUNCH.card+LUNCH.grat;
+const POOL=205;
+const NAMES=["Ana","Marco","Priya","Dee","Kenji"];
+const COLS=["#e84d38","#2563eb","#1f7a4d","#b7791f","#6b5bd6"];
+/** Largest-remainder allocation so shares always sum to exactly the pool. */
+function allocate(poolCents,weights){
+  const total=weights.reduce((a,b)=>a+b,0);
+  if(total<=0)return weights.map(()=>0);
+  const raw=weights.map(w=>poolCents*w/total);
+  const base=raw.map(Math.floor);
+  let rest=poolCents-base.reduce((a,b)=>a+b,0);
+  const order=raw.map((v,i)=>[v-Math.floor(v),i]).sort((a,b)=>b[0]-a[0]);
+  for(let k=0;k<rest;k++)base[order[k%order.length][1]]++;
+  return base;
+}
+
+/* ================== tabs ================== */
+$$("#tabs button").forEach(b=>b.onclick=()=>{
+  $$("#tabs button").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));
+  $$("section[data-tab]").forEach(s=>s.classList.toggle("live",s.dataset.tab===b.dataset.go));
+  window.scrollTo({top:0});
+});
+
+/* ================== A1 · three wells ================== */
+(function(){
+  const p=$('[data-opt="a1"]');if(!p)return;
+  const f=n=>$(`[data-f="${n}"]`,p),out=n=>$(`[data-out="${n}"]`,p);
+  let scope="day";
+  $$("[data-scope] button",p).forEach(b=>b.onclick=()=>{
+    scope=b.dataset.v;$$("[data-scope] button",p).forEach(x=>x.classList.toggle("on",x===b));render();
+  });
+  $$("input",p).forEach(i=>i.addEventListener("input",render));
+  function render(){
+    const cash=num(f("cash")),card=num(f("card")),grat=num(f("grat"));
+    const day=scope==="day";
+    const ent=cash+card+grat, lun=day?LUNCH_ALL:0;
+    out("ent").textContent=M(ent);
+    out("fin").textContent=M(ent-lun);
+    const subline=$(".ln.sub",p);
+    subline.hidden=!day;
+    out("lun").textContent="−"+M(lun);
+    $(".ln span",p).textContent=day?"Entered (whole day)":"Entered (dinner only)";
+    const pool=Math.max(0,cash-(day?LUNCH.cash:0));
+    out("each").textContent=M(allocate(Math.round(pool*100),[1,1,1,1])[0]/100);
+    $(".strip .of",p).textContent="cash pool "+M(pool);
+    $(".strip .of",p).style.color=cash-(day?LUNCH.cash:0)<0?"var(--alert)":"";
+  }
+  render();
+})();
+
+/* ================== A2 · receipt tape ================== */
+(function(){
+  const p=$('[data-opt="a2"]');if(!p)return;
+  const f=n=>$(`[data-f="${n}"]`,p),out=n=>$(`[data-out="${n}"]`,p);
+  $("[data-gratcalc]",p).onclick=()=>{const b=$("[data-gratcalcbox]",p);b.hidden=!b.hidden};
+  $("[data-usegrat]",p).onclick=()=>{f("grat").value=(num(f("sub"))*0.18).toFixed(2);render()};
+  $$("input",p).forEach(i=>i.addEventListener("input",render));
+  $$('input[type="checkbox"]',p).forEach(i=>i.addEventListener("change",render));
+  function render(){
+    const cash=num(f("cash")),card=num(f("card")),grat=num(f("grat"));
+    const inside=f("gratinside").checked, minus=f("minuslunch").checked;
+    out("gratcalc").textContent=M(num(f("sub"))*0.18);
+    const ent=cash+card+(inside?0:grat);
+    const lun=minus?LUNCH_ALL:0;
+    out("lunchamt").textContent="−"+M(lun);
+    $("[data-lunchline]",p).style.opacity=minus?"1":".45";
+    out("fin").textContent=M(ent-lun);
+    const pool=Math.max(0,cash-(minus?LUNCH.cash:0));
+    out("each").textContent=M(allocate(Math.round(pool*100),[1,1,1,1])[0]/100);
+    $(".strip .of",p).textContent="cash pool "+M(pool);
+  }
+  render();
+})();
+
+/* ================== A3 · day bar ================== */
+(function(){
+  const p=$('[data-opt="a3"]');if(!p)return;
+  const f=n=>$(`[data-f="${n}"]`,p),out=n=>$(`[data-out="${n}"]`,p);
+  let annotated=false;
+  $("[data-splitday]",p).onclick=e=>{
+    annotated=!annotated;
+    e.target.previousSibling.textContent=annotated?"cash and card would be two fields here — same bar, same math · ":"cash $323.00 + card $777.00 · ";
+  };
+  $$("input",p).forEach(i=>i.addEventListener("input",render));
+  function render(){
+    const day=num(f("daytotal")),grat=Math.min(num(f("grat")),day);
+    const lunch=Math.min(LUNCH_ALL,day), dinner=Math.max(0,day-lunch);
+    const gratIn=Math.min(grat,dinner), rest=Math.max(0,dinner-gratIn);
+    const pc=v=>day>0?(v/day*100):0;
+    out("bar").innerHTML=
+      `<span class="s-lunch" style="width:${pc(lunch)}%">${pc(lunch)>16?"Lunch "+M(lunch):""}</span>`+
+      `<span class="s-grat" style="width:${pc(gratIn)}%">${pc(gratIn)>14?"grat":""}</span>`+
+      `<span class="s-dinner" style="width:${pc(rest)}%">${pc(rest)>18?"Dinner "+M(dinner):""}</span>`;
+    out("legend").innerHTML=
+      `<b><i style="background:var(--ink3)"></i>Lunch banked ${M(lunch)}</b>`+
+      `<b><i style="background:var(--green)"></i>Auto-grat ${M(gratIn)}</b>`+
+      `<b><i style="background:var(--accent)"></i>Dinner ${M(dinner)}</b>`;
+    out("fin").textContent=M(dinner);
+    const line=out("fin").closest(".c").querySelector(".mini");
+    const short=day<LUNCH_ALL;
+    line.innerHTML=`day ${M(day)} − lunch ${M(lunch)} · `+
+      (short?`<b style="color:var(--alert)">day total is under what lunch already banked</b>`:`<b class="ok">reconciles</b>`);
+  }
+  render();
+})();
+
+/* ================== A4 · guided ================== */
+(function(){
+  const p=$('[data-opt="a4"]');if(!p)return;
+  const f=n=>$(`[data-f="${n}"]`,p),out=n=>$(`[data-out="${n}"]`,p);
+  let step=0,scope="day",hasGrat=true;
+  $$("[data-scope] .pick",p).forEach(b=>b.onclick=()=>{
+    scope=b.dataset.v;$$("[data-scope] .pick",p).forEach(x=>x.classList.toggle("on",x===b));render();
+  });
+  $$("[data-gyn] button",p).forEach(b=>b.onclick=()=>{
+    hasGrat=b.dataset.v==="y";$$("[data-gyn] button",p).forEach(x=>x.classList.toggle("on",x===b));
+    $("[data-gbox]",p).hidden=!hasGrat;render();
+  });
+  $("[data-usegrat]",p).onclick=()=>{f("grat").value=(num(f("sub"))*0.18).toFixed(2);render()};
+  $("[data-next]",p).onclick=()=>{step=Math.min(2,step+1);render()};
+  $("[data-back]",p).onclick=()=>{step=Math.max(0,step-1);render()};
+  $$("input",p).forEach(i=>i.addEventListener("input",render));
+  $$('input[type="checkbox"]',p).forEach(i=>i.addEventListener("change",render));
+  function render(){
+    $$("[data-step]",p).forEach(s=>s.hidden=Number(s.dataset.step)!==step);
+    $$("[data-dots] i",p).forEach((d,i)=>d.classList.toggle("on",i===step));
+    $("[data-next]",p).textContent=step===2?"Review & save":"Next";
+    const cash=num(f("cash")),card=num(f("card")),ent=cash+card;
+    const grat=hasGrat?num(f("grat")):0, inside=f("gratinside").checked;
+    out("prevday").textContent=M(Math.max(0,ent-LUNCH_ALL));
+    out("prevshift").textContent=M(ent);
+    out("gratcalc").textContent=M(num(f("sub"))*0.18);
+    const lun=scope==="day"?LUNCH_ALL:0;
+    const fin=ent-lun+(inside?0:grat);
+    out("ent").textContent=M(ent+(inside?0:grat));
+    out("lun").textContent="−"+M(lun);
+    out("lun").closest(".ln").hidden=scope!=="day";
+    out("gratline").textContent=hasGrat?M(grat)+(inside?" (inside card)":" (added)"):"none";
+    out("fin").textContent=M(fin);
+  }
+  render();
+})();
+
+/* ================== B1 · badge on the chip ================== */
+(function(){
+  const p=$('[data-opt="b1"]');if(!p)return;
+  const CYCLE=[1,.75,.5,.25];
+  const people=NAMES.map((n,i)=>({n,on:true,w:i===4?.5:1}));
+  const roster=$("[data-roster]",p),payout=$("[data-payout]",p);
+  function render(){
+    roster.innerHTML=people.map((x,i)=>
+      `<span class="chip${x.on?" on":""}" data-i="${i}">${x.n}${x.on?`<b class="pct" data-b="${i}">${Math.round(x.w*100)}%</b>`:""}</span>`).join("");
+    $$("[data-i]",roster).forEach(c=>c.onclick=e=>{
+      if(e.target.dataset.b!==undefined){
+        const i=+e.target.dataset.b;
+        people[i].w=CYCLE[(CYCLE.indexOf(people[i].w)+1)%CYCLE.length];
+      }else{const i=+c.dataset.i;people[i].on=!people[i].on}
+      render();
+    });
+    const live=people.filter(x=>x.on);
+    const cents=allocate(POOL*100,live.map(x=>x.w));
+    // The per-person list is only worth screen space once a share is uneven —
+    // an all-100% split is fully described by "$X each" in the strip below.
+    const uneven=live.some(x=>x.w<1);
+    payout.closest(".c").hidden=!uneven;
+    payout.innerHTML=!uneven?"":live.map((x,i)=>
+      `<div class="prow"><span class="nm">${x.n}</span>${x.w<1?`<span class="sub">${Math.round(x.w*100)}% share</span>`:""}<span class="amtv">${M(cents[i]/100)}</span></div>`).join("");
+    const totalW=live.reduce((a,b)=>a+b.w,0);
+    $('[data-out="full"]',p).textContent=totalW?M(POOL/totalW):"$0.00";
+    $(".strip .slabel",p).textContent=uneven?"Full share":`Split ${live.length} ways`;
+    const partial=live.filter(x=>x.w<1).map(x=>x.n);
+    $("[data-tip]",p).innerHTML=partial.length
+      ? `<b>${partial.join(", ")}</b> ${partial.length>1?"are":"is"} on a reduced share — the pool is spread across ${totalW.toFixed(2).replace(/\.00$/,"")} shares, so everyone else goes up.`
+      : "Everyone is on a full share. Tap a badge to give somebody less.";
+  }
+  render();
+})();
+
+/* ================== B2 · hours ================== */
+(function(){
+  const p=$('[data-opt="b2"]');if(!p)return;
+  const hrs=[4,4,4,4,2],box=$("[data-hours]",p);
+  $("[data-allfull]",p).onclick=()=>{hrs.fill(4);render()};
+  function render(){
+    const total=hrs.reduce((a,b)=>a+b,0);
+    const cents=allocate(POOL*100,hrs);
+    box.innerHTML=NAMES.map((n,i)=>
+      `<div class="prow"><span class="nm">${n}</span>
+        <span class="step2"><button data-m="${i}">−</button><span class="v">${hrs[i].toFixed(1)} h</span><button data-pl="${i}">+</button></span>
+        <span class="amtv" style="min-width:64px;text-align:right">${M(cents[i]/100)}</span></div>`).join("");
+    $$("[data-m]",box).forEach(b=>b.onclick=()=>{const i=+b.dataset.m;hrs[i]=Math.max(0,hrs[i]-.5);render()});
+    $$("[data-pl]",box).forEach(b=>b.onclick=()=>{const i=+b.dataset.pl;hrs[i]=Math.min(12,hrs[i]+.5);render()});
+    $('[data-out="th"]',p).textContent=total.toFixed(1)+" h";
+    $('[data-out="ph"]',p).textContent=total?M(POOL/total)+" / h":"—";
+  }
+  render();
+})();
+
+/* ================== B3 · drag the pool ================== */
+(function(){
+  const p=$('[data-opt="b3"]');if(!p)return;
+  const bar=$("[data-bar]",p),leg=$("[data-legend]",p);
+  let w=[22.5,22.5,22.5,22.5,10];
+  const segs=[],handles=[];
+  NAMES.forEach((n,i)=>{
+    const s=document.createElement("span");s.className="wseg";s.style.background=COLS[i];
+    s.innerHTML=`<span>${n}</span><span class="wv"></span>`;bar.appendChild(s);segs.push(s);
+  });
+  for(let i=0;i<NAMES.length-1;i++){
+    const h=document.createElement("span");h.className="whandle";h.dataset.h=i;bar.appendChild(h);handles.push(h);
+    h.addEventListener("pointerdown",e=>{
+      h.setPointerCapture(e.pointerId);
+      const startX=e.clientX,a=w[i],b=w[i+1],W=bar.getBoundingClientRect().width;
+      const move=ev=>{
+        let d=(ev.clientX-startX)/W*100;
+        d=Math.max(-(a-4),Math.min(b-4,d));
+        w[i]=a+d;w[i+1]=b-d;layout();
+      };
+      const up=()=>{h.removeEventListener("pointermove",move);h.removeEventListener("pointerup",up)};
+      h.addEventListener("pointermove",move);h.addEventListener("pointerup",up);
+    });
+  }
+  $("[data-even]",p).onclick=()=>{w=NAMES.map(()=>100/NAMES.length);layout()};
+  function layout(){
+    const cents=allocate(POOL*100,w);
+    let acc=0;
+    segs.forEach((s,i)=>{
+      s.style.width=w[i]+"%";
+      s.querySelector(".wv").textContent=w[i]>9?M(cents[i]/100):"";
+      s.firstChild.style.display=w[i]>12?"":"none";
+    });
+    handles.forEach((h,i)=>{acc+=w[i];h.style.left=acc+"%"});
+    leg.innerHTML=NAMES.map((n,i)=>
+      `<div class="wl" data-d="${i}"><i style="background:${COLS[i]}"></i>${n}<span class="pc">${w[i].toFixed(0)}%</span><b>${M(cents[i]/100)}</b></div>`).join("");
+    $$("[data-d]",leg).forEach(r=>r.ondblclick=()=>{
+      const i=+r.dataset.d,give=w[i]/2;w[i]-=give;
+      const others=w.length-1;w.forEach((_,j)=>{if(j!==i)w[j]+=give/others});layout();
+    });
+    $('[data-out="sum"]',p).textContent=M(cents.reduce((a,b)=>a+b,0)/100);
+  }
+  layout();
+})();
+
+/* ================== B4 · full / helper ================== */
+(function(){
+  const p=$('[data-opt="b4"]');if(!p)return;
+  const people=NAMES.map((n,i)=>({n,w:i===4?.5:1}));
+  let policy="reflow";
+  const list=$("[data-list]",p);
+  $$("[data-policy] button",p).forEach(b=>b.onclick=()=>{
+    policy=b.dataset.v;$$("[data-policy] button",p).forEach(x=>x.classList.toggle("on",x===b));render();
+  });
+  function shares(){
+    const n=people.length,sumW=people.reduce((a,b)=>a+b.w,0);
+    if(policy==="reflow"){
+      const cents=allocate(POOL*100,people.map(x=>x.w));
+      return{cents,full:POOL/sumW,left:0};
+    }
+    const full=POOL/n;
+    const cents=people.map(x=>Math.round(full*x.w*100));
+    return{cents,full,left:POOL-cents.reduce((a,b)=>a+b,0)/100};
+  }
+  function render(){
+    const{cents,full,left}=shares();
+    list.innerHTML=people.map((x,i)=>`
+      <div class="prow">
+        <div class="top"><span class="nm">${x.n}</span>
+          <span class="amtv" style="margin-left:12px">${M(cents[i]/100)}</span>
+          <span class="seg sm" data-r="${i}"><button data-w="1" class="${x.w===1?"on":""}">Full</button><button data-w="h" class="${x.w<1?"on":""}">Helper</button></span>
+        </div>
+        ${x.w<1?`<div class="presets" data-pr="${i}">
+          <button data-v=".25" class="${x.w===.25?"on":""}">¼ share</button>
+          <button data-v=".5" class="${x.w===.5?"on":""}">½ share</button>
+          <button data-v=".75" class="${x.w===.75?"on":""}">¾ share</button>
+          <button data-v="0" class="">custom</button></div>`:""}
+      </div>`).join("");
+    $$("[data-r] button",list).forEach(b=>b.onclick=()=>{
+      const i=+b.closest("[data-r]").dataset.r;
+      people[i].w=b.dataset.w==="1"?1:.5;render();
+    });
+    $$("[data-pr] button",list).forEach(b=>b.onclick=()=>{
+      const i=+b.closest("[data-pr]").dataset.pr,v=parseFloat(b.dataset.v);
+      people[i].w=v>0?v:.6;render();
+    });
+    const freed=POOL-(POOL/people.length)*people.reduce((a,b)=>a+b.w,0);
+    $("[data-policy]",p).previousElementSibling.textContent="The other "+M(freed);
+    $('[data-out="full"]',p).textContent=M(full);
+    const helper=people.find(x=>x.w<1);
+    $('[data-out="half"]',p).textContent=helper?M(cents[people.indexOf(helper)]/100):"—";
+    $('[data-out="half"]',p).closest(".ln").firstElementChild.textContent=helper?`${helper.n} (${Math.round(helper.w*100)}%)`:"No partial shares";
+    $('[data-out="left"]',p).textContent=M(left);
+  }
+  render();
+})();
+
+/* ================== C1 · quiet line ================== */
+(function(){
+  const p=$('[data-opt="c1"]');if(!p)return;
+  const closed=$("[data-noteclosed]",p),open=$("[data-noteopen]",p),done=$("[data-notedone]",p),ta=$('[data-f="note"]',p);
+  const show=(a,b,c)=>{closed.hidden=!a;open.hidden=!b;done.hidden=!c};
+  $("[data-open]",p).onclick=()=>{show(0,1,0);ta.focus()};
+  $("[data-cancel]",p).onclick=()=>show(1,0,0);
+  $("[data-edit]",p).onclick=()=>{show(0,1,0);ta.focus()};
+  $("[data-save]",p).onclick=()=>{
+    if(!ta.value.trim())return show(1,0,0);
+    $('[data-out="preview"]',p).textContent=ta.value.trim();show(0,0,1);
+  };
+  ta.addEventListener("input",()=>$('[data-out="count"]',p).textContent=`${ta.value.length} / 280`);
+})();
+
+/* ================== C2 · reason chips ================== */
+(function(){
+  const p=$('[data-opt="c2"]');if(!p)return;
+  const REASONS=["Drawer short","Drawer over","Big party / one check","Comped tables","Square looked wrong","Staffing was odd","Other"];
+  const on=new Set(["Drawer short"]);
+  const box=$("[data-reasons]",p),ta=$('[data-f="note"]',p);
+  function render(){
+    box.innerHTML=REASONS.map(r=>`<span class="chip${on.has(r)?" on":""}" data-r="${r}">${r}</span>`).join("");
+    $$("[data-r]",box).forEach(c=>c.onclick=()=>{
+      const r=c.dataset.r;on.has(r)?on.delete(r):on.add(r);render();
+    });
+    const txt=ta.value.trim();
+    $('[data-out="preview"]',p).innerHTML=on.size||txt
+      ? `<div class="dp">${[...on].map(r=>`<span class="rchip on">${r}</span>`).join("")}${txt?`<span style="color:var(--ink2)">“${txt.slice(0,60)}${txt.length>60?"…":""}”</span>`:""}</div>`
+      : `<div class="dp"><span style="color:var(--ink3)">nothing — the row stays clean</span></div>`;
+  }
+  ta.addEventListener("input",render);
+  render();
+})();
+
+/* ================== C3 · note on a person ================== */
+(function(){
+  const p=$('[data-opt="c3"]');if(!p)return;
+  const people=NAMES.map((n,i)=>({n,share:i===4?"½ · $22.76":"full · $45.56",note:i===4?"came in 6–8 to cover Priya’s break":""}));
+  const box=$("[data-people]",p);
+  let openIdx=-1;
+  function render(){
+    box.innerHTML=people.map((x,i)=>`
+      <div class="prow" style="display:block">
+        <div class="top" style="display:flex;align-items:center;gap:9px">
+          <span class="nm">${x.n}</span><span class="sub">${x.share}</span>
+          <button class="nb" data-n="${i}">${x.note?"note ✓":"+ note"}</button>
+        </div>
+        ${openIdx===i?`<input class="plain noteline" data-in="${i}" placeholder="e.g. left at 8, covered the patio" value="${x.note.replace(/"/g,"&quot;")}">`:
+          x.note?`<div class="sub noteline" style="color:var(--blue)">“${x.note}”</div>`:""}
+      </div>`).join("");
+    $$("[data-n]",box).forEach(b=>b.onclick=()=>{openIdx=openIdx===+b.dataset.n?-1:+b.dataset.n;render();
+      const inp=$("[data-in]",box);if(inp){inp.focus();inp.setSelectionRange(inp.value.length,inp.value.length)}});
+    const inp=$("[data-in]",box);
+    if(inp)inp.addEventListener("input",()=>people[+inp.dataset.in].note=inp.value);
+  }
+  render();
+})();
+
+/* ================== C4 · raise it ================== */
+(function(){
+  const p=$('[data-opt="c4"]');if(!p)return;
+  const sheet=$("[data-sheet]",p),done=$("[data-done]",p),btn=$("[data-open]",p),ta=$('[data-f="note"]',p);
+  let sev="fyi";
+  btn.onclick=()=>{sheet.hidden=false;btn.hidden=true;ta.focus()};
+  $("[data-cancel]",p).onclick=()=>{sheet.hidden=true;btn.hidden=false};
+  $$("[data-sev] button",p).forEach(b=>b.onclick=()=>{
+    sev=b.dataset.v;$$("[data-sev] button",p).forEach(x=>x.classList.toggle("on",x===b));
+    $('[data-out="hint"]',p).textContent=sev==="fyi"
+      ?"Saves quietly with the entry — no alert."
+      :"Lands in Recorded tips tinted red with a Verify button, next to the amounts the anomaly rule already flags.";
+  });
+  $("[data-save]",p).onclick=()=>{
+    sheet.hidden=true;done.hidden=false;
+    done.classList.toggle("flagged",sev==="check");
+    $(".fchip",done).textContent=sev==="check"?"⚑ check":"note";
+    $('[data-out="preview"]',p).textContent=ta.value.trim()||"Drawer was $20 short. Recounted twice.";
+  };
+})();
+
+/* ================== D2 · expandable rows ================== */
+(function(){
+  const p=$('[data-opt="d2"]');if(!p)return;
+  $$("[data-exp]",p).forEach(row=>row.onclick=()=>{
+    const det=row.nextElementSibling;
+    const open=!det.hidden;
+    det.hidden=open;row.classList.toggle("open",!open);
+    row.querySelector(".tri").textContent=open?"▸":"▾";
+  });
+})();
+
+/* ================== D4 · list + inspector ================== */
+(function(){
+  const p=$('[data-opt="d4"]');if(!p)return;
+  const E=[
+    {t:"Wed, Aug 27 · Dinner",s:"Babytuna Sushi · entered by Dee, dictated 10:52 PM",
+     calc:[["Entered from Square (whole day)","$323.00"],["− lunch recorded 3:41 PM","−$118.00","sub"],["Dinner cash pool","$205.00","tot"]],
+     extra:[["Card → payroll","$635.00"],["of which auto-grat 18%","$216.00"]],
+     people:[["Ana","full","$45.56"],["Marco","full","$45.56"],["Priya","full","$45.56"],["Dee","full","$45.56"],["Kenji","½ · 2h","$22.76"]],
+     note:"Drawer $20 short — Marco recounted, still short. Kenji only came in 6–8 to cover Priya’s break.",flag:false},
+    {t:"Wed, Aug 27 · Lunch",s:"Babytuna Sushi · entered by Ana, typed 3:41 PM",
+     calc:[["Entered as lunch only","$118.00","tot"]],extra:[["Card → payroll","$142.00"],["Auto-grat","none"]],
+     people:[["Ana","full","$39.33"],["Priya","full","$39.33"],["Dee","full","$39.34"]],note:"",flag:false},
+    {t:"Tue, Aug 26 · Dinner",s:"Babytuna Poki & Pho · entered by Sam, typed 9:58 PM",
+     calc:[["Entered as dinner only","$612.00","tot"],["Lunch on record that day","none","sub"]],
+     extra:[["Card → payroll","$210.00"],["Auto-grat","none"]],
+     people:[["Sam","full","$489.60"],["Rey","¼ · 1.5h","$122.40"]],
+     note:"Party of 30 on the patio, one check.",flag:true}];
+  const pane=$("[data-out='insp']",p);
+  function draw(i){
+    const e=E[i];
+    pane.innerHTML=`
+      <div class="row"><div><h3>${e.t}</h3><div class="sup">${e.s}</div></div>
+        <div style="margin-left:auto;display:flex;gap:8px">${e.flag?`<span class="tbtn sm prim">Verify</span>`:""}<span class="tbtn sm">Fix entry</span></div></div>
+      <div class="cols">
+        <div class="dcard"><div class="slabel">How this number was reached</div><div class="calc" style="margin-top:8px">
+          ${e.calc.map(r=>`<div class="ln ${r[2]||""}"><span>${r[0]}</span><span>${r[1]}</span></div>`).join("")}</div>
+          <div class="hair2"></div><div class="calc">
+          ${e.extra.map(r=>`<div class="ln"><span>${r[0]}</span><span>${r[1]}</span></div>`).join("")}</div></div>
+        <div class="dcard"><div class="slabel">Who takes what</div><table class="mini2"><tbody>
+          ${e.people.map(r=>`<tr><td>${r[0]}</td><td class="r mut">${r[1]}</td><td class="r b">${r[2]}</td></tr>`).join("")}
+        </tbody></table></div>
+        <div class="dcard"><div class="slabel">Note</div>
+          <p class="ntext${e.note?"":" mut"}">${e.note||"No note on this entry."}</p></div>
+      </div>`;
+  }
+  $$("[data-e]",p).forEach(it=>it.onclick=()=>{
+    $$("[data-e]",p).forEach(x=>x.classList.toggle("on",x===it));draw(+it.dataset.e);
+  });
+  draw(0);
+})();
+</script>
+</body>
+</html>
