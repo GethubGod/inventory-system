@@ -3,8 +3,7 @@
 // Recorded tips — the dense ledger. Rows newest-first grouped by day with
 // day-total rows; tinted cash/card column groups; flagged rows get a red
 // tint, a "⚑ check" chip, and a Verify button. Fix opens a manager edit
-// dialog that updates the entry + its people directly under RLS (manager
-// edits do not go through tip_save_entry).
+// dialog that updates the entry + its people through one atomic manager RPC.
 
 import { useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
@@ -143,9 +142,6 @@ function FixDialog({
     setBusy(true);
     setError(null);
     const supabase = getSupabase();
-    // The transactional tip_save_entry RPC is service-role-only. Keep the
-    // client sequence reversible: add people, update the entry, remove people;
-    // on failure, reverse completed steps and read back the actual state.
     const original = fixEntryState(entry);
     const desired: FixEntryState = {
       cashCents,
@@ -153,58 +149,20 @@ function FixDialog({
       splitCount: peopleIds.length,
       peopleIds: [...peopleIds],
     };
-    const before = new Set(entry.peopleIds);
-    const after = new Set(peopleIds);
-    const added = peopleIds.filter((id) => !before.has(id));
-    const removed = entry.peopleIds.filter((id) => !after.has(id));
-    const updateNeeded =
-      cashCents !== entry.cashCents ||
-      cardCents !== entry.cardCents ||
-      peopleIds.length !== entry.splitCount;
-    let addedPeople = false;
-    let updatedEntry = false;
-    let removedPeople = false;
-    let failedAt = "saving the entry";
 
+    // PR #17's manager RPC supersedes the reversible client-side sequence:
+    // amounts, split_count, and the roster now commit in one transaction.
     try {
-      if (added.length > 0) {
-        failedAt = "adding the new people";
-        const { error: insertError } = await supabase.from("tip_entry_people").insert(
-          added.map((personId) => ({ tip_entry_id: entry.id, tip_employee_id: personId })),
-        );
-        if (insertError) throw new Error(insertError.message);
-        addedPeople = true;
-      }
+      const { error: fixError } = await supabase.rpc("tip_manager_fix_entry", {
+        p_entry_id: entry.id,
+        p_cash: cashCents / 100,
+        p_card: cardCents / 100,
+        p_people: peopleIds,
+      });
+      if (fixError) throw new Error(fixError.message);
 
-      if (updateNeeded) {
-        failedAt = "updating the amounts and split count";
-        const { error: updateError } = await supabase
-          .from("tip_entries")
-          .update({
-            cash_amount: cashCents / 100,
-            card_amount: cardCents / 100,
-            split_count: peopleIds.length,
-          })
-          .eq("id", entry.id);
-        if (updateError) throw new Error(updateError.message);
-        updatedEntry = true;
-      }
-
-      if (removed.length > 0) {
-        failedAt = "removing the previous people";
-        const { error: deleteError } = await supabase
-          .from("tip_entry_people")
-          .delete()
-          .eq("tip_entry_id", entry.id)
-          .in("tip_employee_id", removed);
-        if (deleteError) throw new Error(deleteError.message);
-        removedPeople = true;
-      }
-
-      // PostgREST mutations do not return affected-row counts by default, so
-      // a zero-row UPDATE/DELETE can have no error. Verify before reporting
-      // success; the catch path will roll back any steps that did land.
-      failedAt = "verifying the saved entry";
+      // Verify before reporting success. Besides guarding integration drift,
+      // this makes a missing response distinguishable from a mismatched write.
       const saved = await readFixEntryState(supabase, entry.id);
       if (!sameFixEntryState(saved, desired)) {
         throw new Error("The saved entry did not match the requested values.");
@@ -214,52 +172,6 @@ function FixDialog({
       ctx.refetch();
       onClose();
     } catch (saveError) {
-      const rollbackErrors: string[] = [];
-      const rollback = async (
-        label: string,
-        action: () => PromiseLike<{ error: { message: string } | null }>,
-      ) => {
-        try {
-          const { error: rollbackError } = await action();
-          if (rollbackError) rollbackErrors.push(`${label}: ${rollbackError.message}`);
-        } catch (rollbackError) {
-          rollbackErrors.push(
-            `${label}: ${rollbackError instanceof Error ? rollbackError.message : "request failed"}`,
-          );
-        }
-      };
-
-      // Reverse in dependency order. Restoring removed people first guarantees
-      // that even the rollback path never leaves the entry with no people.
-      if (removedPeople) {
-        await rollback("could not restore removed people", () =>
-          supabase.from("tip_entry_people").insert(
-            removed.map((personId) => ({ tip_entry_id: entry.id, tip_employee_id: personId })),
-          ),
-        );
-      }
-      if (updatedEntry) {
-        await rollback("could not restore amounts and split count", () =>
-          supabase
-            .from("tip_entries")
-            .update({
-              cash_amount: original.cashCents / 100,
-              card_amount: original.cardCents / 100,
-              split_count: original.splitCount,
-            })
-            .eq("id", entry.id),
-        );
-      }
-      if (addedPeople) {
-        await rollback("could not remove newly added people", () =>
-          supabase
-            .from("tip_entry_people")
-            .delete()
-            .eq("tip_entry_id", entry.id)
-            .in("tip_employee_id", added),
-        );
-      }
-
       const reason = saveError instanceof Error ? saveError.message : "Could not save the fix.";
       const namesById = new Map(ctx.data.employees.map((employee) => [employee.id, employee.name]));
       try {
@@ -271,24 +183,17 @@ function FixDialog({
           return;
         }
 
-        const restored = sameFixEntryState(current, original);
-        const recovery = restored
-          ? "The entry was restored to its original state."
-          : rollbackErrors.length === 0
-            ? "Rollback finished, but the entry no longer matches the state from when this dialog opened."
-            : `Rollback did not fully complete (${rollbackErrors.join("; ")}).`;
-        if (!restored) setNeedsReload(true);
+        const unchanged = sameFixEntryState(current, original);
+        if (!unchanged) setNeedsReload(true);
         setError(
-          `Save failed while ${failedAt}: ${reason} ${recovery} Current entry state: ${fixEntryStateSummary(current, namesById)}${restored ? "" : " Close this dialog and review the refreshed ledger before making another change."}`,
+          unchanged
+            ? `Could not save the fix: ${reason} No changes were applied.`
+            : `Could not save the fix: ${reason} The entry changed while the request was in progress. Current entry state: ${fixEntryStateSummary(current, namesById)} Close this dialog and review the refreshed ledger before making another change.`,
         );
       } catch (readError) {
         setNeedsReload(true);
-        const recovery =
-          rollbackErrors.length === 0
-            ? `No rollback error was reported, but the result could not be verified. The last known original state was: ${fixEntryStateSummary(original, namesById)}`
-            : `Rollback did not fully complete (${rollbackErrors.join("; ")}).`;
         setError(
-          `Save failed while ${failedAt}: ${reason} ${recovery} Could not read it back (${readError instanceof Error ? readError.message : "request failed"}); reload the ledger before trying again.`,
+          `Could not save the fix: ${reason} Could not verify the entry afterward (${readError instanceof Error ? readError.message : "request failed"}). The last known original state was: ${fixEntryStateSummary(original, namesById)} Reload the ledger before trying again.`,
         );
       }
       ctx.refetch();
