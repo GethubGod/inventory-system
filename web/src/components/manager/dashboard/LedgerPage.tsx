@@ -140,9 +140,7 @@ function FixDialog({
       if (upserts.length > 0) {
         const { error: upsertError } = await supabase
           .from("tip_entry_people")
-          // Cast dies once the regenerated database.ts (backend side of the
-          // v3 migration) knows share_weight.
-          .upsert(upserts as never, { onConflict: "tip_entry_id,tip_employee_id" });
+          .upsert(upserts, { onConflict: "tip_entry_id,tip_employee_id" });
         if (upsertError) throw new Error(upsertError.message);
       }
 
@@ -151,8 +149,6 @@ function FixDialog({
       const noteChanged = nextNote !== (entry.note ?? null);
       const { error: updateError } = await supabase
         .from("tip_entries")
-        // Cast dies once the regenerated database.ts (backend side of the
-        // v3 migration) knows the new columns.
         .update({
           cash_amount: cashCents / 100,
           card_amount: cardCents / 100,
@@ -165,7 +161,7 @@ function FixDialog({
                 note_at: nextNote === null ? null : new Date().toISOString(),
               }
             : {}),
-        } as never)
+        })
         .eq("id", entry.id);
       if (updateError) throw new Error(updateError.message);
 

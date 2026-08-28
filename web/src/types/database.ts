@@ -4261,14 +4261,21 @@ export type Database = {
           corrections_count: number
           created_at: string
           entered_by: string | null
+          entered_scope: string
           entry_method: string
           entry_session_id: string | null
           flag_verified_at: string | null
           flag_verified_by: string | null
           flagged_anomaly: boolean
+          gratuity_amount: number
           id: string
           location_id: string
           meal_period: string
+          note: string | null
+          note_at: string | null
+          raw_card_amount: number | null
+          raw_cash_amount: number | null
+          raw_gratuity_amount: number | null
           split_count: number
           updated_at: string
           voice_variant: string | null
@@ -4281,14 +4288,21 @@ export type Database = {
           corrections_count?: number
           created_at?: string
           entered_by?: string | null
+          entered_scope?: string
           entry_method: string
           entry_session_id?: string | null
           flag_verified_at?: string | null
           flag_verified_by?: string | null
           flagged_anomaly?: boolean
+          gratuity_amount?: number
           id?: string
           location_id: string
           meal_period: string
+          note?: string | null
+          note_at?: string | null
+          raw_card_amount?: number | null
+          raw_cash_amount?: number | null
+          raw_gratuity_amount?: number | null
           split_count?: number
           updated_at?: string
           voice_variant?: string | null
@@ -4301,14 +4315,21 @@ export type Database = {
           corrections_count?: number
           created_at?: string
           entered_by?: string | null
+          entered_scope?: string
           entry_method?: string
           entry_session_id?: string | null
           flag_verified_at?: string | null
           flag_verified_by?: string | null
           flagged_anomaly?: boolean
+          gratuity_amount?: number
           id?: string
           location_id?: string
           meal_period?: string
+          note?: string | null
+          note_at?: string | null
+          raw_card_amount?: number | null
+          raw_cash_amount?: number | null
+          raw_gratuity_amount?: number | null
           split_count?: number
           updated_at?: string
           voice_variant?: string | null
@@ -4339,14 +4360,17 @@ export type Database = {
       }
       tip_entry_people: {
         Row: {
+          share_weight: number
           tip_employee_id: string
           tip_entry_id: string
         }
         Insert: {
+          share_weight?: number
           tip_employee_id: string
           tip_entry_id: string
         }
         Update: {
+          share_weight?: number
           tip_employee_id?: string
           tip_entry_id?: string
         }
@@ -4855,24 +4879,50 @@ export type Database = {
         Args: { p_location_id: string }
         Returns: string
       }
-      tip_save_entry: {
-        Args: {
-          p_anomaly_reason: string
-          p_business_date: string
-          p_card: number
-          p_cash: number
-          p_corrections: number
-          p_entered_by: string
-          p_entry_method: string
-          p_flagged: boolean
-          p_location_id: string
-          p_meal_period: string
-          p_people: string[]
-          p_session_id: string
-          p_voice_variant: string
-        }
-        Returns: string
-      }
+      tip_save_entry:
+        | {
+            Args: {
+              p_anomaly_reason: string
+              p_business_date: string
+              p_card: number
+              p_cash: number
+              p_corrections: number
+              p_entered_by: string
+              p_entered_scope: string
+              p_entry_method: string
+              p_flagged: boolean
+              p_gratuity: number
+              p_location_id: string
+              p_meal_period: string
+              p_note: string
+              p_people: string[]
+              p_raw_card: number
+              p_raw_cash: number
+              p_raw_gratuity: number
+              p_session_id: string
+              p_voice_variant: string
+              p_weights: number[]
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_anomaly_reason: string
+              p_business_date: string
+              p_card: number
+              p_cash: number
+              p_corrections: number
+              p_entered_by: string
+              p_entry_method: string
+              p_flagged: boolean
+              p_location_id: string
+              p_meal_period: string
+              p_people: string[]
+              p_session_id: string
+              p_voice_variant: string
+            }
+            Returns: string
+          }
       tip_validate_entry_pin: {
         Args: {
           p_identifier_hash: string
