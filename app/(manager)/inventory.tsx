@@ -1315,6 +1315,7 @@ export default function ManagerInventoryScreen() {
     const key = `${item.inventory_item.id}-${item.location.id}`;
     const added = addedKeys[key];
     const isSelected = !!bulkSelectedIds[item.id];
+    const relativeTime = getRelativeTime(item.last_updated_at);
 
     return (
       <TouchableOpacity
@@ -1404,7 +1405,7 @@ export default function ManagerInventoryScreen() {
             style={{ marginTop: ds.spacing(10) }}
           >
             <Text className="text-gray-400" style={{ fontSize: ds.fontSize(11) }}>
-              Updated {getRelativeTime(item.last_updated_at)}
+              {relativeTime === 'Never updated' ? relativeTime : `Updated ${relativeTime}`}
             </Text>
             {item.status === 'critical' && reorderQty > 0 && !isBulkMode ? (
               <TouchableOpacity
@@ -1733,51 +1734,81 @@ export default function ManagerInventoryScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={{ paddingVertical: ds.spacing(12) }}
           >
-            {([
-              { key: 'reorder', label: 'Reorder', count: stats.reorder, color: colors.error },
-              { key: 'low', label: 'Low', count: stats.low, color: colors.warning },
-              { key: 'good', label: 'Good', count: stats.good, color: colors.success },
-              { key: 'overdue', label: 'Overdue', count: stats.overdue, color: colors.primary[500] },
-            ] as const).map((pill) => {
-              const isSelected = selectedStat === pill.key;
-              const isDimmed = selectedStat !== 'all' && !isSelected;
-              return (
-                <TouchableOpacity
-                  key={pill.key}
-                  className="rounded-2xl border"
-                  style={{
-                    paddingHorizontal: ds.spacing(16),
-                    paddingVertical: ds.spacing(10),
-                    marginRight: ds.spacing(10),
-                    minWidth: ds.spacing(88),
-                    borderColor: isSelected ? colors.primary[500] : colors.gray[200],
-                    backgroundColor: isSelected ? colors.primary[50] : colors.white,
-                    opacity: isDimmed ? 0.5 : 1,
-                  }}
-                  onPress={() =>
-                    setSelectedStat((prev) => (prev === pill.key ? 'all' : pill.key))
-                  }
-                >
-                  <View className="flex-row items-center" style={{ marginBottom: ds.spacing(2) }}>
-                    <View
-                      style={{
-                        width: ds.spacing(8),
-                        height: ds.spacing(8),
-                        borderRadius: 999,
-                        backgroundColor: pill.color,
-                        marginRight: ds.spacing(6),
-                      }}
-                    />
-                    <Text className="text-gray-500" style={{ fontSize: ds.fontSize(12) }}>
-                      {pill.label}
-                    </Text>
+            <View className="flex-row items-end">
+              {([
+                { key: 'reorder', label: 'Reorder', count: stats.reorder, color: colors.error },
+                { key: 'low', label: 'Low', count: stats.low, color: colors.warning },
+                { key: 'good', label: 'Good', count: stats.good, color: colors.success },
+                { key: 'overdue', label: 'Overdue', count: stats.overdue, color: colors.primary[500] },
+              ] as const).map((pill) => {
+                const isSelected = selectedStat === pill.key;
+                const isDimmed = selectedStat !== 'all' && !isSelected;
+                return (
+                  <View
+                    key={pill.key}
+                    style={pill.key === 'overdue' ? { alignItems: 'flex-end', flexDirection: 'row' } : undefined}
+                  >
+                    {pill.key === 'overdue' ? (
+                      <View
+                        style={{
+                          alignSelf: 'stretch',
+                          backgroundColor: colors.gray[200],
+                          marginHorizontal: ds.spacing(12),
+                          width: 1,
+                        }}
+                      />
+                    ) : null}
+                    <View>
+                      {pill.key === 'overdue' ? (
+                        <Text
+                          className="font-semibold text-gray-400"
+                          style={{
+                            fontSize: ds.fontSize(10),
+                            letterSpacing: 0.5,
+                            marginBottom: ds.spacing(6),
+                          }}
+                        >
+                          COUNT FRESHNESS
+                        </Text>
+                      ) : null}
+                      <TouchableOpacity
+                        className="rounded-2xl border"
+                        style={{
+                          paddingHorizontal: ds.spacing(16),
+                          paddingVertical: ds.spacing(10),
+                          marginRight: ds.spacing(10),
+                          minWidth: ds.spacing(88),
+                          borderColor: isSelected ? colors.primary[500] : colors.gray[200],
+                          backgroundColor: isSelected ? colors.primary[50] : colors.white,
+                          opacity: isDimmed ? 0.5 : 1,
+                        }}
+                        onPress={() =>
+                          setSelectedStat((prev) => (prev === pill.key ? 'all' : pill.key))
+                        }
+                      >
+                        <View className="flex-row items-center" style={{ marginBottom: ds.spacing(2) }}>
+                          <View
+                            style={{
+                              width: ds.spacing(8),
+                              height: ds.spacing(8),
+                              borderRadius: 999,
+                              backgroundColor: pill.color,
+                              marginRight: ds.spacing(6),
+                            }}
+                          />
+                          <Text className="text-gray-500" style={{ fontSize: ds.fontSize(12) }}>
+                            {pill.label}
+                          </Text>
+                        </View>
+                        <Text className="font-bold" style={{ fontSize: ds.fontSize(18), color: pill.color }}>
+                          {pill.count}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <Text className="font-bold" style={{ fontSize: ds.fontSize(18), color: pill.color }}>
-                    {pill.count}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
+                );
+              })}
+            </View>
           </ScrollView>
 
           <ScrollView

@@ -9,9 +9,10 @@ import { useModuleAccessGuard } from '@/hooks';
 import { colors, glassColors, glassHairlineWidth } from '@/theme/design';
 
 /**
- * Compact screen header carrying the Beta hint for the renamed surface.
- * The tab bar shows the space-constrained "Advanced" label; this header keeps
- * the full "Advanced ordering (Beta)" name visible on the screen itself.
+ * Compact screen header for the renamed surface. The tab bar shows the
+ * space-constrained "Advanced" label; this header keeps the full
+ * "Advanced ordering" name visible on the screen itself. The feature ships in
+ * 2.3, so it no longer carries a beta marker.
  */
 function AdvancedOrderingHeader() {
   const insets = useSafeAreaInsets();
@@ -19,9 +20,6 @@ function AdvancedOrderingHeader() {
   return (
     <View style={[styles.header, { paddingTop: insets.top + 6 }]}>
       <Text style={styles.headerTitle}>Advanced ordering</Text>
-      <View style={styles.betaPill}>
-        <Text style={styles.betaPillText}>BETA</Text>
-      </View>
     </View>
   );
 }
@@ -58,7 +56,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
     paddingBottom: 8,
     backgroundColor: colors.background,
     borderBottomWidth: glassHairlineWidth,
@@ -69,19 +66,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: glassColors.textPrimary,
     letterSpacing: 0.1,
-  },
-  betaPill: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    backgroundColor: 'rgba(232, 80, 58, 0.10)',
-    borderWidth: glassHairlineWidth,
-    borderColor: 'rgba(232, 80, 58, 0.18)',
-  },
-  betaPillText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: colors.primary,
-    letterSpacing: 0.6,
   },
 });

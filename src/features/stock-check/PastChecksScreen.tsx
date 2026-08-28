@@ -25,6 +25,7 @@ import {
   glassColors,
   glassRadii,
   glassSpacing,
+  glassTypography,
 } from '@/theme/design';
 import {
   buildStationCardModel,
@@ -296,18 +297,20 @@ function PastChecksScreenImpl() {
               <Text
                 style={{
                   fontSize: ds.fontSize(14),
-                  fontWeight: '800',
+                  fontWeight: '700',
                   color: glassColors.textPrimary,
                 }}
               >
                 Back
               </Text>
             </TouchableOpacity>
+            {/* Same size and weight as StackScreenHeader, so this title reads
+                as the same screen title the settings stack uses. */}
             <Text
               style={{
                 marginTop: ds.spacing(4),
-                fontSize: ds.fontSize(34),
-                fontWeight: '900',
+                fontSize: ds.fontSize(glassTypography.screenTitle),
+                fontWeight: '700',
                 color: glassColors.textPrimary,
                 letterSpacing: 0,
               }}

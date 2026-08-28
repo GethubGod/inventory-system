@@ -586,7 +586,9 @@ export function SimpleOrderScreen() {
 
   const pillClearance = getFloatingPillClearance(insets.bottom);
   const orderBarRestingBottom = pillClearance + ds.spacing(2);
-  const listBottomPadding = orderBarRestingBottom + orderBarHeight + ds.spacing(24);
+  // Pill toolbar + the pinned composer both float over the checklist, so the
+  // last row has to scroll a full row gap clear of the composer's top edge.
+  const listBottomPadding = orderBarRestingBottom + orderBarHeight + ds.spacing(32);
 
   const locationLabel = (location?.name ?? 'Location').replace(/^Babytuna\s+/i, '');
 

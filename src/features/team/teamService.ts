@@ -93,8 +93,8 @@ export function buildInviteSmsUrl(body: string, platform: 'ios' | 'android' = 'i
 export function buildInviteMessageBody(name: string, joinUrl: string): string {
   const trimmed = name.trim();
   return trimmed
-    ? `Hi ${trimmed}, here's your Babytuna Systems setup link: ${joinUrl}`
-    : `Here's your Babytuna Systems setup link: ${joinUrl}`;
+    ? `Hi ${trimmed}, here's your Smelter setup link: ${joinUrl}`
+    : `Here's your Smelter setup link: ${joinUrl}`;
 }
 
 export interface LoginCredentialInfo {

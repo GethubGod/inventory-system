@@ -7,18 +7,21 @@ import {
   View,
   type ScrollViewProps,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   GlassSurface,
   LoadingIndicator,
 } from '@/components';
+import {
+  getFloatingPillClearance,
+  getTabBarBottomInset,
+} from '@/components/navigation';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   glassColors,
   glassRadii,
   glassSpacing,
-  glassTabBarHeight,
 } from '@/theme/design';
 
 interface HomeScreenScrollProps {
@@ -55,6 +58,13 @@ export const HomeScreenScroll = memo(function HomeScreenScroll({
   keyboardShouldPersistTaps = 'handled',
 }: HomeScreenScrollProps) {
   const ds = useScaledStyles();
+  const insets = useSafeAreaInsets();
+  // Home renders under floating chrome in both shells (the manager tab bar and
+  // the employee pill), so reserve whichever is taller plus a scroll gap.
+  const bottomChrome = Math.max(
+    60 + getTabBarBottomInset(insets.bottom),
+    getFloatingPillClearance(insets.bottom),
+  );
 
   return (
     <SafeAreaView
@@ -65,7 +75,7 @@ export const HomeScreenScroll = memo(function HomeScreenScroll({
         style={{ flex: 1 }}
         contentContainerStyle={{
           paddingHorizontal: glassSpacing.screen,
-          paddingBottom: glassTabBarHeight + ds.spacing(40),
+          paddingBottom: bottomChrome + ds.spacing(28),
         }}
         showsVerticalScrollIndicator={false}
         refreshControl={refreshControl}

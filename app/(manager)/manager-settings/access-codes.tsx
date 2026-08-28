@@ -95,7 +95,9 @@ function AccessCodeField({
             keyboardType="number-pad"
             maxLength={4}
             secureTextEntry={secureTextEntry}
-            placeholder={`4-digit ${label.toLowerCase()}`}
+            // The field carries wide tracking, so keep the hint short enough
+            // to fit; the label above stays fully descriptive.
+            placeholder="4-digit code"
             placeholderTextColor={glassColors.textMuted}
             style={{
               flex: 1,
@@ -168,7 +170,7 @@ export default function ManagerAccessCodesScreen() {
 
     try {
       await Share.share({
-        message: `Your ${roleLabel.toLowerCase()} access code for Babytuna is: ${code}\n\nUse this code when creating your account.`,
+        message: `Your ${roleLabel.toLowerCase()} access code for Smelter is: ${code}\n\nUse this code when creating your account.`,
       });
     } catch {
       // Share sheet dismissed.

@@ -10,6 +10,10 @@ import {
   resolveOrderItemSupplier,
   summarizeSupplierIssues,
 } from '@/services/supplierResolver';
+import {
+  isOrderFulfillmentEligible,
+  isOrderItemFulfillmentEligible,
+} from '@/services/fulfillmentEligibility';
 
 export type FulfillmentLocationGroup = 'sushi' | 'poki';
 
@@ -120,7 +124,7 @@ function normalizeLocationGroup(locationName?: string | null, shortCode?: string
   return 'sushi';
 }
 
-async function loadOrderLaterSourceOrderItemIds(): Promise<Set<string>> {
+export async function loadQueuedOrderLaterSourceOrderItemIds(): Promise<Set<string>> {
   const ids = new Set<string>();
 
   const { data, error } = await (supabase as any)
@@ -148,34 +152,6 @@ async function loadOrderLaterSourceOrderItemIds(): Promise<Set<string>> {
   });
 
   return ids;
-}
-
-function shouldIncludeOrderItem(
-  orderItem: Record<string, unknown>,
-  options: {
-    consumedOrderItemIds: Set<string>;
-    orderLaterSourceOrderItemIds: Set<string>;
-  }
-): boolean {
-  const orderItemId = toTrimmedString(orderItem.id);
-  if (!orderItemId) return false;
-
-  if (options.consumedOrderItemIds.has(orderItemId)) return false;
-  if (options.orderLaterSourceOrderItemIds.has(orderItemId)) return false;
-
-  const statusValue = toTrimmedString(orderItem.status)?.toLowerCase();
-  if (statusValue && statusValue !== 'pending') return false;
-
-  const inputMode = orderItem.input_mode === 'remaining' ? 'remaining' : 'quantity';
-
-  if (inputMode === 'remaining') {
-    const remainingReported = toNumber(orderItem.remaining_reported, Number.NaN);
-    const decidedQuantity = toNumber(orderItem.decided_quantity, Number.NaN);
-    return Number.isFinite(remainingReported) || (Number.isFinite(decidedQuantity) && decidedQuantity > 0);
-  }
-
-  const quantity = toNumber(orderItem.quantity, 0);
-  return quantity > 0;
 }
 
 function toSupplierGroupingDebugKey(orderItem: Record<string, unknown>): string {
@@ -250,7 +226,7 @@ export async function loadPendingFulfillmentData(options?: {
   try {
     [supplierLookup, orderLaterSourceOrderItemIds] = await Promise.all([
       loadSupplierLookup(),
-      loadOrderLaterSourceOrderItemIds(),
+      loadQueuedOrderLaterSourceOrderItemIds(),
     ]);
   } catch (lookupError) {
     // If supplier lookup fails entirely, proceed with empty maps so orders
@@ -344,25 +320,20 @@ export async function loadPendingFulfillmentData(options?: {
   const unresolvedIssues: SupplierResolutionIssue[] = [];
 
   const filteredOrders = ((data || []) as unknown as OrderWithDetails[])
-    .filter((order) => {
-      const row = order as OrderWithDetails & Record<string, unknown>;
-      if (row.entry_method !== 'quick_order' && !row.quick_session_id) {
-        return true;
-      }
-
-      return row.manager_review_status === 'approved';
-    })
+    .filter((order) => isOrderFulfillmentEligible(order))
     .map((order) => {
       const rawItems = Array.isArray((order as any).order_items) ? ((order as any).order_items as any[]) : [];
 
       const nextOrderItems = rawItems.filter((orderItem) => {
-        if (!orderItem || typeof orderItem !== 'object') return false;
         const inventoryItem = orderItem.inventory_item;
-        if (!inventoryItem || typeof inventoryItem !== 'object') return false;
-
-        if (!shouldIncludeOrderItem(orderItem, { consumedOrderItemIds, orderLaterSourceOrderItemIds })) {
+        if (!isOrderItemFulfillmentEligible(orderItem, {
+          consumedOrderItemIds,
+          orderLaterSourceOrderItemIds,
+        })) {
           return false;
         }
+
+        if (!inventoryItem || typeof inventoryItem !== 'object') return false;
 
         const resolution = resolveOrderItemSupplier({
           inventoryItem: inventoryItem as Record<string, unknown>,

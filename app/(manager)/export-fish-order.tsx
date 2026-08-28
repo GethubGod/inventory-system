@@ -126,7 +126,7 @@ export default function ExportFishOrderScreen() {
     });
 
     let message = `Hi, I'd like to place an order:\n\n`;
-    message += `FISH ORDER - Babytuna\n`;
+    message += `FISH ORDER - Smelter\n`;
     message += `Date: ${today}\n\n`;
 
     if (isMultiItemFormat) {
