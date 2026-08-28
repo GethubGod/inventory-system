@@ -9,6 +9,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import { getSupabase } from "@/lib/supabase";
+import { entryUrlFor } from "@/lib/tips/entryUrl";
 
 /** Parse "#t=<token>" from the current location, browser only. */
 function readTokenFromHash(): string | null {
@@ -62,7 +63,7 @@ function QrPageInner() {
   useEffect(() => {
     if (!token || authState !== "ok") return;
     let cancelled = false;
-    const url = `${window.location.origin}/e?t=${token}`;
+    const url = entryUrlFor(token);
     QRCode.toDataURL(url, { width: 480, margin: 2 })
       .then((dataUrl) => {
         if (cancelled) return;

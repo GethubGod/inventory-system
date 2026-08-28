@@ -3,8 +3,22 @@ import type { NextConfig } from "next";
 /** Manager dashboard host. The tips app owns "/" on its own host as the staff
  *  scan screen, so the dashboard gets a host rather than a path. */
 const DASHBOARD_HOST = "dashboard.smelterpos.com";
+const TIPS_ENTRY_ORIGIN = "https://tips.smelterpos.com";
 
 const nextConfig: NextConfig = {
+  redirects() {
+    return Promise.resolve([
+      {
+        // QRs printed while the manager dashboard was the current origin
+        // used dashboard.smelterpos.com/e. Keep those stickers working while
+        // moving the token to the canonical staff host (query is preserved).
+        source: "/e",
+        has: [{ type: "host", value: DASHBOARD_HOST }],
+        destination: `${TIPS_ENTRY_ORIGIN}/e`,
+        permanent: false,
+      },
+    ]);
+  },
   rewrites() {
     return Promise.resolve({
       // beforeFiles, not a bare array: "/" is a prerendered page, and an

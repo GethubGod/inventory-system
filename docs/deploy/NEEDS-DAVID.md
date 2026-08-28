@@ -5,10 +5,10 @@ Each phase also gets a deploy checklist in `docs/deploy/phase-N.md` (staged — 
 is pushed to production by agents).
 
 ## Carry-over from tips launch (production, do whenever)
-- [ ] Set Supabase secret `ALLOWED_ORIGINS=https://tips.babytunasystems.com`
+- [ ] Keep the Supabase secret aligned with the web domains: `ALLOWED_ORIGINS=https://tips.smelterpos.com,https://dashboard.smelterpos.com,https://tips.babytunasystems.com` (the last host is the temporary legacy fallback).
 - [ ] Rotate seeded entry tokens + PINs from `/manager` (Sushi 4271, Poki 8356 are seeded fixtures)
 - [ ] Rename placeholder roster (Maria/Jose/Lena/Tom/Ken)
-- [ ] Print QR stickers — ONLY from `tips.babytunasystems.com/manager/qr` (vercel.app URL bakes wrong host)
+- [ ] Reprint QR stickers from the dashboard after this fix ships. QR/NFC links now always use `https://tips.smelterpos.com/e`, regardless of which manager or preview host generated them.
 
 ## Real-world verification (build is done with fixtures; these prove it)
 - [ ] Phase 1: send a real order-day Send All run from a physical iPhone

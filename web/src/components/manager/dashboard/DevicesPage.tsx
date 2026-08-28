@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { getSupabase } from "@/lib/supabase";
 import { TIPS_TIMEZONE } from "@/lib/tips/businessDate";
+import { entryUrlFor } from "@/lib/tips/entryUrl";
 import {
   classifyEntryTiming,
   formatLoggedAt,
@@ -49,11 +50,6 @@ function rotatedLabel(iso: string): string {
     day: "numeric",
     year: "numeric",
   }).format(new Date(iso));
-}
-
-/** Build the phone-facing entry URL a QR code encodes. Browser only. */
-function entryUrlFor(token: string): string {
-  return `${window.location.origin}/e?t=${encodeURIComponent(token)}`;
 }
 
 /** Renders the location's live entry QR as a data URL; null while pending. */

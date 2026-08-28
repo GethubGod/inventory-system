@@ -1,25 +1,60 @@
 // Wildcard origin keeps React Native / Expo clients working (no fixed web origin).
 // Set ALLOWED_ORIGINS to a comma-separated list to restrict browser callers; mobile is unchanged.
-const allowedOrigins = (Deno.env.get('ALLOWED_ORIGINS') ?? '')
-  .split(',')
+const allowedOrigins = (Deno.env.get("ALLOWED_ORIGINS") ?? "")
+  .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-function resolveAllowOrigin(req?: Request): string {
-  if (allowedOrigins.length === 0) return '*';
-  const requestOrigin = req?.headers.get('Origin')?.trim();
-  if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
-    return requestOrigin;
+/** Browser origins used by the public tip-entry flow during the domain migration. */
+export const TIP_WEB_ORIGINS = [
+  "https://tips.smelterpos.com",
+  "https://dashboard.smelterpos.com",
+  "https://tips.babytunasystems.com",
+] as const;
+
+export function resolveAllowOrigin(
+  requestOrigin: string | null,
+  configuredOrigins: readonly string[],
+  additionalOrigins: readonly string[] = [],
+): string {
+  // No configured allowlist means local/mobile-compatible wildcard mode.
+  // Product-specific additions only extend an explicit production allowlist.
+  if (configuredOrigins.length === 0) return "*";
+  const effectiveOrigins = [
+    ...new Set([...configuredOrigins, ...additionalOrigins]),
+  ];
+  const normalizedOrigin = requestOrigin?.trim();
+  if (normalizedOrigin && effectiveOrigins.includes(normalizedOrigin)) {
+    return normalizedOrigin;
   }
-  return allowedOrigins[0];
+  // Deliberately return a non-matching allow-origin for unknown browser
+  // callers; their browser blocks the response without reflecting the origin.
+  return effectiveOrigins[0];
 }
 
-export function corsHeadersForRequest(req?: Request): Record<string, string> {
+export function corsHeadersForRequest(
+  req?: Request,
+  additionalOrigins: readonly string[] = [],
+): Record<string, string> {
   return {
-    'Access-Control-Allow-Origin': resolveAllowOrigin(req),
-    'Access-Control-Allow-Headers':
-      'authorization, x-client-info, apikey, content-type',
+    "Access-Control-Allow-Origin": resolveAllowOrigin(
+      req?.headers.get("Origin") ?? null,
+      allowedOrigins,
+      additionalOrigins,
+    ),
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Max-Age": "86400",
+    Vary: "Origin",
   };
+}
+
+/** CORS policy for the staff tip-entry browser endpoints. */
+export function tipCorsHeadersForRequest(
+  req?: Request,
+): Record<string, string> {
+  return corsHeadersForRequest(req, TIP_WEB_ORIGINS);
 }
 
 /** Default headers; use corsHeadersForRequest when the incoming Request is available. */
