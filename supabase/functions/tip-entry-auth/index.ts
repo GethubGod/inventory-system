@@ -66,16 +66,30 @@ async function fetchToday(locationId: string, now: Date = new Date()) {
   const businessDate = businessDateFor(now);
   const { data, error } = await supabaseAdmin
     .from('tip_entries')
-    .select('meal_period')
+    .select('meal_period, cash_amount, card_amount, gratuity_amount')
     .eq('location_id', locationId)
     .eq('business_date', businessDate);
   if (error) console.warn('[tip-entry-auth] today fetch failed', error);
-  const meals = new Set((data ?? []).map((row: { meal_period: string }) => row.meal_period));
+  const rows = (data ?? []) as Array<{
+    meal_period: string;
+    cash_amount: unknown;
+    card_amount: unknown;
+    gratuity_amount: unknown;
+  }>;
+  const meals = new Set(rows.map((row) => row.meal_period));
+  const lunchRow = rows.find((row) => row.meal_period === 'lunch');
   return {
     businessDate,
     lunchRecorded: meals.has('lunch'),
     dinnerRecorded: meals.has('dinner'),
     defaultMeal: defaultMealPeriod(now),
+    lunch: lunchRow
+      ? {
+        cash: Number(lunchRow.cash_amount),
+        card: Number(lunchRow.card_amount),
+        gratuity: Number(lunchRow.gratuity_amount),
+      }
+      : null,
   };
 }
 
