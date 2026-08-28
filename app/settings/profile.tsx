@@ -117,7 +117,12 @@ export default function ProfileSettingsScreen() {
     setNameError(null);
     try {
       await updateMyDisplayName(trimmed);
-      if (user) setUser({ ...user, name: trimmed });
+      // Signing out or switching accounts mid-save must not be undone by this
+      // write landing afterwards.
+      const current = useAuthStore.getState().user;
+      if (current && current.id === user?.id) {
+        setUser({ ...current, name: trimmed });
+      }
       setIsEditingName(false);
     } catch (error) {
       setNameError(

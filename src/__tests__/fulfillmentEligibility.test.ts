@@ -83,14 +83,31 @@ describe('isOrderFulfillmentEligible', () => {
     })).toBe(false);
   });
 
-  test('excludes Quick Order rows that are not fulfillment-ready', () => {
-    for (const manager_review_status of [null, 'pending', 'rejected', 'changes_requested']) {
+  test('excludes any order left in an unsettled review state', () => {
+    for (const manager_review_status of ['pending', 'rejected', 'changes_requested']) {
       expect(isOrderFulfillmentEligible({
         entry_method: 'quick_order',
         quick_session_id: 'session-001',
         manager_review_status,
       })).toBe(false);
+      // Gating on the status alone means a nulled session FK, or an entry
+      // method the review pipeline predates, cannot slip past the gate.
+      expect(isOrderFulfillmentEligible({
+        entry_method: 'suggested_order',
+        quick_session_id: null,
+        manager_review_status,
+      })).toBe(false);
     }
+  });
+
+  test('treats a missing review status as settled', () => {
+    // manager_review_status is NOT NULL DEFAULT 'not_required', so it is absent
+    // only on the badge's legacy-column fallback query, which runs against a
+    // database old enough to have no review pipeline to honor.
+    expect(isOrderFulfillmentEligible({ entry_method: 'quick_order' })).toBe(true);
+    expect(
+      isOrderFulfillmentEligible({ entry_method: 'quick_order', manager_review_status: null }),
+    ).toBe(true);
   });
 });
 

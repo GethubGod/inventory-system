@@ -46,15 +46,17 @@ export default function ManagerLayout() {
   );
 
   const refreshPendingFulfillmentCount = useCallback(async () => {
+    // Overlapping refreshes can resolve out of order; only the newest one may
+    // write the badge. Losing the session counts as a newer state, so bump the
+    // generation before the early return or an in-flight request could restore
+    // a stale count after sign-out.
+    const generation = ++badgeRefreshGenerationRef.current;
+    const isCurrent = () => badgeRefreshGenerationRef.current === generation;
+
     if (!session || resolvedRole !== "manager") {
       setPendingFulfillmentCount(0);
       return;
     }
-
-    // Overlapping refreshes can resolve out of order; only the newest one may
-    // write the badge.
-    const generation = ++badgeRefreshGenerationRef.current;
-    const isCurrent = () => badgeRefreshGenerationRef.current === generation;
 
     try {
       // Match the screen's source data: scoped submitted orders, its pending
@@ -88,7 +90,14 @@ export default function ManagerLayout() {
       ]);
       let { data, error } = pendingOrderItemsResult;
 
-      if (error && (error as any).code === "42703") {
+      // 42703 is "column does not exist": a database predating the review
+      // columns, which the narrower query below still works against.
+      const isMissingColumnError =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        (error as { code?: unknown }).code === "42703";
+      if (isMissingColumnError) {
         ({ data, error } = await buildPendingOrderItemsQuery(false));
       }
 

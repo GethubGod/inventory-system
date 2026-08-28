@@ -29,28 +29,26 @@ function getJoinedOrder(value: unknown): Record<string, unknown> | null {
   return toRecord(value);
 }
 
-// A Quick Order row reaches fulfillment once review is settled: approved by a
-// manager, or skipped entirely ('not_required', e.g. manager-submitted orders).
-// Requiring 'approved' alone strands review-exempt orders forever.
+/**
+ * Review states that keep an order out of fulfillment. Gating on the status
+ * itself rather than on entry_method means a new entry method, or one whose
+ * quick_session_id was nulled by the ON DELETE SET NULL FK, cannot smuggle an
+ * unreviewed order through. 'not_required' counts as settled: the submit RPC
+ * assigns it to review-exempt orders, and treating it as unsettled stranded
+ * them invisibly forever.
+ */
+const UNSETTLED_REVIEW_STATUSES = new Set([
+  'pending',
+  'rejected',
+  'changes_requested',
+]);
+
 export function isOrderFulfillmentEligible(order: unknown): boolean {
   const row = toRecord(order);
   if (!row) return false;
 
-  // Quick and voice orders carry a review status; the session FK is ON DELETE
-  // SET NULL, so entry_method must gate on its own or a deleted session would
-  // smuggle a pending order past review.
-  const isReviewedEntry =
-    row.entry_method === 'quick_order' ||
-    row.entry_method === 'voice_order' ||
-    Boolean(row.quick_session_id);
-  if (!isReviewedEntry) {
-    return true;
-  }
-
-  return (
-    row.manager_review_status === 'approved' ||
-    row.manager_review_status === 'not_required'
-  );
+  const reviewStatus = toTrimmedString(row.manager_review_status);
+  return !(reviewStatus !== null && UNSETTLED_REVIEW_STATUSES.has(reviewStatus));
 }
 
 // This mirrors the Fulfillment data source's item-level filter. It intentionally
