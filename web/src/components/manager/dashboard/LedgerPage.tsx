@@ -3,8 +3,7 @@
 // Recorded tips — the dense ledger. Rows newest-first grouped by day with
 // day-total rows; tinted cash/card column groups; flagged rows get a red
 // tint, a "⚑ check" chip, and a Verify button. Fix opens a manager edit
-// dialog that updates the entry + its people directly under RLS (manager
-// edits do not go through tip_save_entry).
+// dialog that updates the entry + its people through one atomic manager RPC.
 
 import { useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
@@ -47,6 +46,64 @@ function parseAmountToCents(value: string): number | null {
   return Math.round(num * 100);
 }
 
+interface FixEntryState {
+  cashCents: number;
+  cardCents: number;
+  splitCount: number;
+  peopleIds: string[];
+}
+
+function fixEntryState(entry: LedgerEntry): FixEntryState {
+  return {
+    cashCents: entry.cashCents,
+    cardCents: entry.cardCents,
+    splitCount: entry.splitCount,
+    peopleIds: [...entry.peopleIds],
+  };
+}
+
+function samePeople(left: string[], right: string[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightIds = new Set(right);
+  return rightIds.size === right.length && left.every((id) => rightIds.has(id));
+}
+
+function sameFixEntryState(left: FixEntryState, right: FixEntryState): boolean {
+  return (
+    left.cashCents === right.cashCents &&
+    left.cardCents === right.cardCents &&
+    left.splitCount === right.splitCount &&
+    samePeople(left.peopleIds, right.peopleIds)
+  );
+}
+
+async function readFixEntryState(
+  supabase: ReturnType<typeof getSupabase>,
+  entryId: string,
+): Promise<FixEntryState> {
+  const { data, error } = await supabase
+    .from("tip_entries")
+    .select("cash_amount, card_amount, split_count, tip_entry_people(tip_employee_id)")
+    .eq("id", entryId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("This entry no longer exists.");
+  return {
+    cashCents: Math.round(Number(data.cash_amount) * 100),
+    cardCents: Math.round(Number(data.card_amount) * 100),
+    splitCount: data.split_count,
+    peopleIds: (data.tip_entry_people ?? []).map((person) => person.tip_employee_id),
+  };
+}
+
+function fixEntryStateSummary(state: FixEntryState, namesById: Map<string, string>): string {
+  const people =
+    state.peopleIds.length > 0
+      ? state.peopleIds.map((id) => namesById.get(id) ?? id).join(", ")
+      : "none";
+  return `Cash ${moneyFromCents(state.cashCents)}; card ${moneyFromCents(state.cardCents)}; split count ${state.splitCount}; people: ${people}.`;
+}
+
 function FixDialog({
   entry,
   ctx,
@@ -62,6 +119,7 @@ function FixDialog({
   const [peopleIds, setPeopleIds] = useState<string[]>(entry.peopleIds);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsReload, setNeedsReload] = useState(false);
 
   // Choosable people: active staff working this entry's location (or both),
   // plus anyone already on the split (so history never disappears mid-edit).
@@ -80,13 +138,20 @@ function FixDialog({
   const valid = cashCents !== null && cardCents !== null && peopleIds.length >= 1;
 
   async function save() {
-    if (!valid || busy || cashCents === null || cardCents === null) return;
+    if (!valid || busy || needsReload || cashCents === null || cardCents === null) return;
     setBusy(true);
     setError(null);
     const supabase = getSupabase();
-    // One RPC = one transaction: amounts, split_count, and the people roster
-    // land together or not at all (the old multi-call sequence could strand
-    // a mixed roster when a step failed midway).
+    const original = fixEntryState(entry);
+    const desired: FixEntryState = {
+      cashCents,
+      cardCents,
+      splitCount: peopleIds.length,
+      peopleIds: [...peopleIds],
+    };
+
+    // PR #17's manager RPC supersedes the reversible client-side sequence:
+    // amounts, split_count, and the roster now commit in one transaction.
     try {
       const { error: fixError } = await supabase.rpc("tip_manager_fix_entry", {
         p_entry_id: entry.id,
@@ -96,12 +161,42 @@ function FixDialog({
       });
       if (fixError) throw new Error(fixError.message);
 
+      // Verify before reporting success. Besides guarding integration drift,
+      // this makes a missing response distinguishable from a mismatched write.
+      const saved = await readFixEntryState(supabase, entry.id);
+      if (!sameFixEntryState(saved, desired)) {
+        throw new Error("The saved entry did not match the requested values.");
+      }
+
       toast("Entry updated");
       ctx.refetch();
       onClose();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Could not save the fix.");
-      ctx.refetch(); // show what actually landed
+      const reason = saveError instanceof Error ? saveError.message : "Could not save the fix.";
+      const namesById = new Map(ctx.data.employees.map((employee) => [employee.id, employee.name]));
+      try {
+        const current = await readFixEntryState(supabase, entry.id);
+        if (sameFixEntryState(current, desired)) {
+          toast("Entry updated");
+          ctx.refetch();
+          onClose();
+          return;
+        }
+
+        const unchanged = sameFixEntryState(current, original);
+        if (!unchanged) setNeedsReload(true);
+        setError(
+          unchanged
+            ? `Could not save the fix: ${reason} No changes were applied.`
+            : `Could not save the fix: ${reason} The entry changed while the request was in progress. Current entry state: ${fixEntryStateSummary(current, namesById)} Close this dialog and review the refreshed ledger before making another change.`,
+        );
+      } catch (readError) {
+        setNeedsReload(true);
+        setError(
+          `Could not save the fix: ${reason} Could not verify the entry afterward (${readError instanceof Error ? readError.message : "request failed"}). The last known original state was: ${fixEntryStateSummary(original, namesById)} Reload the ledger before trying again.`,
+        );
+      }
+      ctx.refetch();
       setBusy(false);
     }
   }
@@ -121,6 +216,7 @@ function FixDialog({
             value={cash}
             onChange={(event) => setCash(event.target.value)}
             inputMode="decimal"
+            disabled={busy || needsReload}
             className="rounded-well bg-well px-3.5 py-2.5 text-ink outline-none"
           />
         </label>
@@ -130,6 +226,7 @@ function FixDialog({
             value={card}
             onChange={(event) => setCard(event.target.value)}
             inputMode="decimal"
+            disabled={busy || needsReload}
             className="rounded-well bg-well px-3.5 py-2.5 text-ink outline-none"
           />
         </label>
@@ -145,6 +242,7 @@ function FixDialog({
                 key={employee.id}
                 type="button"
                 aria-pressed={selected}
+                disabled={busy || needsReload}
                 onClick={() =>
                   setPeopleIds((previous) =>
                     selected
@@ -169,13 +267,22 @@ function FixDialog({
           {moneyFromCents(cashShareCents(cashCents, peopleIds.length))} cash each
         </p>
       )}
-      {error && <p className="mt-3 text-sm text-alert">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-alert">
+          {error}
+        </p>
+      )}
 
       <div className="mt-5 flex justify-end gap-2">
         <button type="button" className={btn} onClick={onClose} disabled={busy}>
           Cancel
         </button>
-        <button type="button" className={btnPrim} onClick={() => void save()} disabled={!valid || busy}>
+        <button
+          type="button"
+          className={btnPrim}
+          onClick={() => void save()}
+          disabled={!valid || busy || needsReload}
+        >
           {busy ? "Saving…" : "Save fix"}
         </button>
       </div>

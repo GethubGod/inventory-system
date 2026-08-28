@@ -5,6 +5,7 @@ import {
   dailyTrend,
   moneyFromCents,
   rangeTotals,
+  splitTrendSeries,
   takeHomeByPerson,
   wholeDollarsFromCents,
   type LedgerEntry,
@@ -71,6 +72,56 @@ describe("dailyTrend", () => {
       { businessDate: "2026-08-07", totalCents: 75 },
       { businessDate: "2026-08-09", totalCents: 315 },
     ]);
+  });
+
+  // The Overview trend renders one series per visible location, so a
+  // per-location slice must hold only that location's days and the slices
+  // must still add up to the combined totals the topbar reports.
+  it("splits into per-location series that sum back to the combined trend", () => {
+    const entries = [
+      entry({ businessDate: "2026-08-07", locationId: "loc-sushi", cashCents: 100, cardCents: 200 }),
+      entry({ id: "e2", businessDate: "2026-08-07", locationId: "loc-poki", cashCents: 300, cardCents: 400 }),
+      entry({ id: "e3", businessDate: "2026-08-09", locationId: "loc-sushi", cashCents: 500, cardCents: 150 }),
+    ];
+
+    const sushi = dailyTrend(entries.filter((row) => row.locationId === "loc-sushi"));
+    const poki = dailyTrend(entries.filter((row) => row.locationId === "loc-poki"));
+
+    expect(sushi).toEqual([
+      { businessDate: "2026-08-07", totalCents: 300 },
+      { businessDate: "2026-08-09", totalCents: 650 },
+    ]);
+    // Poki traded only one of the two days; its series must not invent the other.
+    expect(poki).toEqual([{ businessDate: "2026-08-07", totalCents: 700 }]);
+
+    const combined = dailyTrend(entries);
+    const summed = combined.map((day) => {
+      const perLocation = [...sushi, ...poki].filter((row) => row.businessDate === day.businessDate);
+      return perLocation.reduce((total, row) => total + row.totalCents, 0);
+    });
+    expect(summed).toEqual(combined.map((day) => day.totalCents));
+  });
+});
+
+describe("splitTrendSeries", () => {
+  it("breaks a location line across a day recorded only by another location", () => {
+    const timeline = [
+      { businessDate: "2026-08-10", totalCents: 100 },
+      { businessDate: "2026-08-11", totalCents: 200 },
+      { businessDate: "2026-08-12", totalCents: 300 },
+    ];
+    const sushi = [timeline[0], timeline[2]];
+
+    expect(splitTrendSeries(sushi, timeline)).toEqual([[timeline[0]], [timeline[2]]]);
+  });
+
+  it("keeps consecutive shared-timeline days in one line", () => {
+    const timeline = [
+      { businessDate: "2026-08-10", totalCents: 100 },
+      { businessDate: "2026-08-11", totalCents: 200 },
+    ];
+
+    expect(splitTrendSeries(timeline, timeline)).toEqual([timeline]);
   });
 });
 
