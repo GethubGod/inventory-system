@@ -906,13 +906,14 @@ export function EntryForm() {
               <ScopeSwitch value={scope} onChange={setScope} disabled={saving} />
             </div>
           )}
-          <div className="grid grid-cols-3 gap-3">
-            <AmountWell label="Cash" value={cash} onChange={handleCashChange} />
-            <AmountWell label="Card" value={card} onChange={handleCardChange} />
+          <div className="grid grid-cols-3 gap-2">
+            <AmountWell label="Cash" value={cash} onChange={handleCashChange} compact />
+            <AmountWell label="Card" value={card} onChange={handleCardChange} compact />
             <AmountWell
               label="Gratuity"
               value={gratuity}
               onChange={handleGratuityChange}
+              compact
             />
           </div>
           <p className="mt-2 text-sm text-ink3">
