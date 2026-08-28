@@ -12,7 +12,15 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { ChangePasswordModal, SettingsGroup, SettingsScreenLayout } from '@/components/settings';
+import {
+  ChangePasswordModal,
+  SettingsGroup,
+  SettingsRow,
+  SettingsScreenLayout,
+  SettingsSectionLabel,
+  settingsIconPalettes,
+} from '@/components/settings';
+import { isRealAccountEmail, updateMyDisplayName } from '@/services/selfProfile';
 import { useAuthStore, useSettingsStore } from '@/store';
 import { colors } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
@@ -20,188 +28,40 @@ import {
   glassColors,
   glassHairlineWidth,
   glassRadii,
+  glassSpacing,
 } from '@/theme/design';
 
-function ProfileInfoRow({
-  label,
-  value,
-  icon,
-  right,
-}: {
-  label: string;
-  value: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  right?: React.ReactNode;
-}) {
-  const ds = useScaledStyles();
-
-  return (
-    <View
-      style={{
-        paddingHorizontal: ds.spacing(16),
-        paddingTop: ds.spacing(12),
-      }}
-    >
-      <View
-        style={{
-          paddingHorizontal: ds.spacing(14),
-          paddingVertical: ds.spacing(14),
-          borderWidth: 1,
-          borderColor: 'rgba(15, 23, 42, 0.1)',
-          borderRadius: glassRadii.button,
-          backgroundColor: glassColors.background,
-          shadowColor: 'rgba(15, 23, 42, 0.04)',
-          shadowOpacity: 1,
-          shadowRadius: 8,
-          shadowOffset: { width: 0, height: 2 },
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            flex: 1,
-            paddingRight: ds.spacing(10),
-          }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text
-              style={{
-                fontSize: ds.fontSize(11),
-                fontWeight: '700',
-                color: glassColors.textSecondary,
-                letterSpacing: 0.4,
-                textTransform: 'uppercase',
-              }}
-            >
-              {label}
-            </Text>
-            <View
-              style={{
-                marginTop: ds.spacing(8),
-                flexDirection: 'row',
-                alignItems: 'center',
-              }}
-            >
-              <View
-                style={{
-                  width: Math.max(36, ds.icon(34)),
-                  height: Math.max(36, ds.icon(34)),
-                  borderRadius: glassRadii.iconTile,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: glassColors.mediumFill,
-                }}
-              >
-                <Ionicons
-                  name={icon}
-                  size={ds.icon(17)}
-                  color={glassColors.textSecondary}
-                />
-              </View>
-              <Text
-                style={{
-                  flex: 1,
-                  marginLeft: ds.spacing(10),
-                  fontSize: ds.fontSize(15),
-                  color: glassColors.textPrimary,
-                  fontWeight: '600',
-                }}
-                numberOfLines={2}
-              >
-                {value}
-              </Text>
-            </View>
-          </View>
-        </View>
-        {right}
-      </View>
-    </View>
-  );
-}
-
-function ActionButton({
-  label,
-  icon,
-  onPress,
-  destructive = false,
-  disabled = false,
-  loading = false,
-}: {
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-  destructive?: boolean;
-  disabled?: boolean;
-  loading?: boolean;
-}) {
-  const ds = useScaledStyles();
-
-  return (
-    <TouchableOpacity
-      onPress={onPress}
-      disabled={disabled || loading}
-      activeOpacity={0.82}
-      style={{
-        minHeight: Math.max(48, ds.buttonH),
-        borderRadius: glassRadii.button,
-        borderWidth: 1,
-        borderColor: destructive
-          ? 'rgba(239, 68, 68, 0.16)'
-          : 'rgba(15, 23, 42, 0.12)',
-        backgroundColor: destructive
-          ? glassColors.dangerSoft
-          : glassColors.background,
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexDirection: 'row',
-        opacity: disabled ? 0.6 : 1,
-      }}
-    >
-      {loading ? (
-        <ActivityIndicator
-          size="small"
-          color={destructive ? glassColors.dangerText : glassColors.accent}
-        />
-      ) : (
-        <Ionicons
-          name={icon}
-          size={ds.icon(18)}
-          color={destructive ? glassColors.dangerText : glassColors.accent}
-        />
-      )}
-      <Text
-        style={{
-          marginLeft: ds.spacing(8),
-          fontSize: ds.fontSize(15),
-          fontWeight: '700',
-          color: destructive ? glassColors.dangerText : glassColors.accent,
-        }}
-      >
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-}
+/**
+ * Profile — the same grouped-card language as the rest of the settings stack:
+ * SettingsScreenLayout supplies the shared StackScreenHeader (and its back
+ * control), then an identity card followed by labelled SettingsGroup sections
+ * of SettingsRows. Editing behaviour is unchanged from the previous layout.
+ */
 
 export default function ProfileSettingsScreen() {
   const ds = useScaledStyles();
-  const { user, location, deleteSelfAccount } = useAuthStore();
+  const { user, location, deleteSelfAccount, setUser } = useAuthStore();
   const { avatarUri, setAvatarUri } = useSettingsStore();
   const [isEditingName, setIsEditingName] = useState(false);
   const [tempName, setTempName] = useState(user?.name || '');
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
-  const firstName = useMemo(
-    () => user?.name?.trim().split(/\s+/)[0] || 'User',
-    [user?.name],
+  const displayName = user?.name?.trim() || 'Unnamed User';
+  const initial = useMemo(
+    () => (displayName.trim()[0] ?? '?').toUpperCase(),
+    [displayName],
   );
+  const roleLabel = user?.role || 'employee';
+  const locationName = location?.name || null;
+  // Invite-minted accounts carry a synthetic @members.babytunasystems.com
+  // address that means nothing to the person reading it, so it is treated as
+  // "no email on file" rather than shown and truncated.
+  const realEmail = isRealAccountEmail(user?.email) ? user?.email?.trim() ?? null : null;
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -243,6 +103,37 @@ export default function ProfileSettingsScreen() {
     );
   };
 
+  const handleSaveName = async () => {
+    const trimmed = tempName.trim();
+    if (!trimmed) {
+      setNameError('Enter a name.');
+      return;
+    }
+    if (trimmed === user?.name) {
+      setIsEditingName(false);
+      return;
+    }
+    setIsSavingName(true);
+    setNameError(null);
+    try {
+      await updateMyDisplayName(trimmed);
+      if (user) setUser({ ...user, name: trimmed });
+      setIsEditingName(false);
+    } catch (error) {
+      setNameError(
+        error instanceof Error ? error.message : 'Could not update your name.',
+      );
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const handleCancelEditName = () => {
+    if (isSavingName) return;
+    setNameError(null);
+    setIsEditingName(false);
+  };
+
   const handleDeleteAccount = async () => {
     if (deleteConfirmText !== 'DELETE' || isDeletingAccount) {
       return;
@@ -259,10 +150,10 @@ export default function ProfileSettingsScreen() {
       } else {
         Alert.alert('Account deleted');
       }
-    } catch (error: any) {
+    } catch (error) {
       Alert.alert(
         'Unable to delete account',
-        error?.message || 'Please try again in a moment.',
+        error instanceof Error ? error.message : 'Please try again in a moment.',
       );
     } finally {
       setIsDeletingAccount(false);
@@ -271,98 +162,100 @@ export default function ProfileSettingsScreen() {
 
   return (
     <SettingsScreenLayout title="Profile">
-      <SettingsGroup style={{ marginTop: ds.spacing(18) }}>
-        <View
+      {/* Identity card — avatar, name, and the role/location summary line. */}
+      <SettingsGroup style={{ marginTop: ds.spacing(12) }}>
+        <TouchableOpacity
+          onPress={pickImage}
+          activeOpacity={0.82}
+          accessibilityRole="button"
+          accessibilityLabel="Change profile photo"
           style={{
-            paddingHorizontal: ds.spacing(16),
-            paddingTop: ds.spacing(18),
-            paddingBottom: ds.spacing(12),
+            flexDirection: 'row',
             alignItems: 'center',
+            paddingHorizontal: ds.spacing(16),
+            paddingVertical: ds.spacing(16),
           }}
         >
-          <TouchableOpacity
-            onPress={pickImage}
-            activeOpacity={0.82}
-            style={{ alignItems: 'center' }}
-          >
-            <View
-              style={{
-                width: Math.max(84, ds.icon(88)),
-                height: Math.max(84, ds.icon(88)),
-                borderRadius: glassRadii.round,
-                overflow: 'hidden',
-                alignItems: 'center',
-                justifyContent: 'center',
-                backgroundColor: glassColors.accent,
-              }}
-            >
-              {avatarUri ? (
-                <Image source={{ uri: avatarUri }} style={{ width: '100%', height: '100%' }} />
-              ) : (
-                <Text
-                  style={{
-                    fontSize: ds.fontSize(30),
-                    fontWeight: '800',
-                    color: glassColors.textOnPrimary,
-                  }}
-                >
-                  {firstName.charAt(0).toUpperCase()}
-                </Text>
-              )}
-            </View>
-            <Text
-              style={{
-                marginTop: ds.spacing(10),
-                fontSize: ds.fontSize(14),
-                fontWeight: '600',
-                color: glassColors.accent,
-              }}
-            >
-              Change Photo
-            </Text>
-          </TouchableOpacity>
-
-          <Text
-            style={{
-              marginTop: ds.spacing(14),
-              fontSize: ds.fontSize(22),
-              fontWeight: '700',
-              color: glassColors.textPrimary,
-            }}
-          >
-            {user?.name || 'Unnamed User'}
-          </Text>
           <View
             style={{
-              marginTop: ds.spacing(8),
-              paddingHorizontal: ds.spacing(12),
-              paddingVertical: ds.spacing(6),
-              borderRadius: glassRadii.pill,
-              backgroundColor: glassColors.mediumFill,
+              width: Math.max(56, ds.icon(56)),
+              height: Math.max(56, ds.icon(56)),
+              borderRadius: glassRadii.round,
+              overflow: 'hidden',
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: glassColors.accent,
             }}
           >
+            {avatarUri ? (
+              <Image source={{ uri: avatarUri }} style={{ width: '100%', height: '100%' }} />
+            ) : (
+              <Text
+                style={{
+                  fontSize: ds.fontSize(22),
+                  fontWeight: '700',
+                  color: glassColors.textOnPrimary,
+                }}
+              >
+                {initial}
+              </Text>
+            )}
+          </View>
+
+          <View style={{ flex: 1, minWidth: 0, marginLeft: ds.spacing(14) }}>
             <Text
+              numberOfLines={1}
               style={{
-                fontSize: ds.fontSize(12),
+                fontSize: ds.fontSize(18),
                 fontWeight: '700',
+                color: glassColors.textPrimary,
+              }}
+            >
+              {displayName}
+            </Text>
+            <Text
+              numberOfLines={1}
+              style={{
+                marginTop: ds.spacing(2),
+                fontSize: ds.fontSize(12),
                 color: glassColors.textSecondary,
                 textTransform: 'capitalize',
               }}
             >
-              {user?.role || 'employee'}
+              {locationName ? `${locationName} · ${roleLabel}` : roleLabel}
+            </Text>
+            <Text
+              style={{
+                marginTop: ds.spacing(6),
+                fontSize: ds.fontSize(12),
+                fontWeight: '600',
+                color: glassColors.accent,
+              }}
+            >
+              Change photo
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
+      </SettingsGroup>
 
-        <ProfileInfoRow
-          label="Full Name"
-          value={isEditingName ? tempName || 'Not set' : user?.name || 'Not set'}
+      <SettingsSectionLabel label="Account details" />
+
+      <SettingsGroup>
+        <SettingsRow
           icon="person-outline"
-          right={
+          iconColor={settingsIconPalettes.profile.icon}
+          iconBgColor={settingsIconPalettes.profile.background}
+          title="Full name"
+          subtitle={isEditingName ? tempName || 'Not set' : user?.name || 'Not set'}
+          showChevron={false}
+          rightElement={
             isEditingName ? (
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <TouchableOpacity
-                  onPress={() => setIsEditingName(false)}
+                  onPress={handleCancelEditName}
+                  disabled={isSavingName}
+                  accessibilityRole="button"
+                  accessibilityLabel="Cancel editing your name"
                   style={{
                     width: 40,
                     height: 40,
@@ -377,19 +270,23 @@ export default function ProfileSettingsScreen() {
                   />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => setIsEditingName(false)}
+                  onPress={handleSaveName}
+                  disabled={isSavingName}
+                  accessibilityRole="button"
+                  accessibilityLabel="Confirm your name"
                   style={{
                     width: 40,
                     height: 40,
                     alignItems: 'center',
                     justifyContent: 'center',
+                    opacity: isSavingName ? 0.5 : 1,
                   }}
                 >
-                  <Ionicons
-                    name="checkmark"
-                    size={ds.icon(18)}
-                    color={glassColors.accent}
-                  />
+                  {isSavingName ? (
+                    <ActivityIndicator size="small" color={glassColors.accent} />
+                  ) : (
+                    <Ionicons name="checkmark" size={ds.icon(18)} color={glassColors.accent} />
+                  )}
                 </TouchableOpacity>
               </View>
             ) : (
@@ -398,6 +295,8 @@ export default function ProfileSettingsScreen() {
                   setTempName(user?.name || '');
                   setIsEditingName(true);
                 }}
+                accessibilityRole="button"
+                accessibilityLabel="Edit your name"
                 style={{
                   width: 40,
                   height: 40,
@@ -419,7 +318,7 @@ export default function ProfileSettingsScreen() {
           <View
             style={{
               paddingHorizontal: ds.spacing(16),
-              paddingBottom: ds.spacing(16),
+              paddingBottom: ds.spacing(14),
             }}
           >
             <TextInput
@@ -428,6 +327,7 @@ export default function ProfileSettingsScreen() {
               autoFocus
               placeholder="Full name"
               placeholderTextColor={glassColors.textMuted}
+              accessibilityLabel="Full name"
               style={{
                 minHeight: Math.max(48, ds.buttonH),
                 borderRadius: glassRadii.button,
@@ -438,15 +338,32 @@ export default function ProfileSettingsScreen() {
                 fontSize: ds.fontSize(15),
                 color: glassColors.textPrimary,
               }}
+              editable={!isSavingName}
+              onSubmitEditing={handleSaveName}
+              returnKeyType="done"
             />
+            {nameError ? (
+              <Text
+                style={{
+                  marginTop: ds.spacing(8),
+                  fontSize: ds.fontSize(13),
+                  color: glassColors.dangerText,
+                }}
+              >
+                {nameError}
+              </Text>
+            ) : null}
           </View>
         ) : null}
 
-        <ProfileInfoRow
-          label="Email"
-          value={user?.email || 'Not set'}
+        <SettingsRow
           icon="mail-outline"
-          right={
+          iconColor={settingsIconPalettes.profile.icon}
+          iconBgColor={settingsIconPalettes.profile.background}
+          title="Email"
+          subtitle={realEmail ?? 'Not set'}
+          showChevron={false}
+          rightElement={
             <Ionicons
               name="lock-closed"
               size={ds.icon(16)}
@@ -454,11 +371,16 @@ export default function ProfileSettingsScreen() {
             />
           }
         />
-        <ProfileInfoRow
-          label="Location"
-          value={location?.name || 'Not set'}
+
+        <SettingsRow
           icon="location-outline"
-          right={
+          iconColor={settingsIconPalettes.profile.icon}
+          iconBgColor={settingsIconPalettes.profile.background}
+          title="Location"
+          subtitle={locationName ?? 'Not set'}
+          showChevron={false}
+          showBorder={false}
+          rightElement={
             <Ionicons
               name="lock-closed"
               size={ds.icon(16)}
@@ -466,33 +388,36 @@ export default function ProfileSettingsScreen() {
             />
           }
         />
-        <View
-          style={{
-            paddingHorizontal: ds.spacing(16),
-            paddingTop: ds.spacing(16),
-            paddingBottom: ds.spacing(18),
-          }}
-        >
-          <View
-            style={{
-              gap: ds.spacing(12),
-            }}
-          >
-            <ActionButton
-              label="Change Password"
-              icon="key-outline"
-              onPress={() => setShowPasswordModal(true)}
-            />
-            <ActionButton
-              label={isDeletingAccount ? 'Deleting Account...' : 'Delete Account'}
-              icon="trash-outline"
-              onPress={openDeleteConfirmation}
-              destructive
-              disabled={isDeletingAccount}
-              loading={isDeletingAccount}
-            />
-          </View>
-        </View>
+      </SettingsGroup>
+
+      <SettingsSectionLabel label="Account" />
+
+      <SettingsGroup>
+        <SettingsRow
+          icon="key-outline"
+          iconColor={settingsIconPalettes.neutral.icon}
+          iconBgColor={settingsIconPalettes.neutral.background}
+          title="Change password"
+          subtitle="Update the password you sign in with"
+          onPress={() => setShowPasswordModal(true)}
+        />
+        <SettingsRow
+          icon="trash-outline"
+          iconColor={settingsIconPalettes.danger.icon}
+          iconBgColor={settingsIconPalettes.danger.background}
+          title={isDeletingAccount ? 'Deleting account...' : 'Delete account'}
+          subtitle="Permanently removes your account and personal data"
+          onPress={openDeleteConfirmation}
+          destructive
+          disabled={isDeletingAccount}
+          showChevron={false}
+          showBorder={false}
+          rightElement={
+            isDeletingAccount ? (
+              <ActivityIndicator size="small" color={glassColors.dangerText} />
+            ) : undefined
+          }
+        />
       </SettingsGroup>
 
       <ChangePasswordModal
@@ -515,7 +440,7 @@ export default function ProfileSettingsScreen() {
             flex: 1,
             alignItems: 'center',
             justifyContent: 'center',
-            padding: ds.spacing(20),
+            padding: glassSpacing.screen,
             backgroundColor: colors.scrimStrong,
           }}
         >
@@ -555,6 +480,7 @@ export default function ProfileSettingsScreen() {
               autoCorrect={false}
               placeholder="Type DELETE"
               placeholderTextColor={glassColors.textMuted}
+              accessibilityLabel="Type DELETE to confirm"
               style={{
                 marginTop: ds.spacing(12),
                 borderRadius: glassRadii.button,
@@ -579,6 +505,8 @@ export default function ProfileSettingsScreen() {
                   }
                 }}
                 disabled={isDeletingAccount}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
                 style={{
                   flex: 1,
                   marginRight: ds.spacing(10),
@@ -603,6 +531,8 @@ export default function ProfileSettingsScreen() {
               <TouchableOpacity
                 onPress={handleDeleteAccount}
                 disabled={deleteConfirmText !== 'DELETE' || isDeletingAccount}
+                accessibilityRole="button"
+                accessibilityLabel="Permanently delete account"
                 style={{
                   flex: 1,
                   minHeight: Math.max(44, ds.buttonH - 2),

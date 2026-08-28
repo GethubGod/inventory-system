@@ -4,6 +4,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
 import { useAuthStore } from '@/store';
+import { isRealAccountEmail } from '@/services/selfProfile';
 import { useSignOutAction } from '@/hooks/useSignOutAction';
 import {
   SettingsGroup,
@@ -39,6 +40,17 @@ export default function ManagerSettingsScreen() {
     setViewMode('employee');
     router.replace('/(tabs)');
   }, [setViewMode]);
+
+  // Invite-minted accounts carry a synthetic @members.babytunasystems.com
+  // address that means nothing to the person reading it and wraps to two
+  // lines, so the display name wins and the email is only a fallback when it
+  // is a real one.
+  const signedInLabel = useMemo(() => {
+    const name = user?.name?.trim();
+    if (name) return name;
+    const email = user?.email?.trim();
+    return email && isRealAccountEmail(email) ? email : 'Unknown';
+  }, [user?.email, user?.name]);
 
   const settingsGroups = useMemo<SettingsGroupModel[]>(
     () =>
@@ -112,8 +124,15 @@ export default function ManagerSettingsScreen() {
         </SettingsGroup>
 
         <View className="items-center" style={{ marginTop: ds.spacing(8) }}>
-          <Text style={{ fontSize: ds.fontSize(11), color: glassColors.textSecondary }}>
-            Signed in as {user?.email ?? 'Unknown'}
+          <Text
+            numberOfLines={1}
+            style={{
+              fontSize: ds.fontSize(11),
+              color: glassColors.textSecondary,
+              paddingHorizontal: ds.spacing(24),
+            }}
+          >
+            Signed in as {signedInLabel}
           </Text>
         </View>
 

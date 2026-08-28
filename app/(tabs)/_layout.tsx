@@ -1,6 +1,6 @@
 import { Redirect, Tabs } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useDisplayStore, useOrderStore } from "@/store";
+import { useOrderStore } from "@/store";
 import { AuthLoadingScreen } from "@/components";
 import { useMyModules, useProtectedAuthGuard } from "@/hooks";
 import { getVisibleEmployeeTabs } from "@/store/moduleStore.helpers";
@@ -10,7 +10,6 @@ export default function TabsLayout() {
   const cartTotal = useOrderStore((state) =>
     state.getTotalCartCount("employee"),
   );
-  const theme = useDisplayStore((state) => state.theme);
   const guard = useProtectedAuthGuard();
   // Phase 3: tabs render from per-user module state (rpc get_effective_modules,
   // kept live via the user_modules realtime channel — a manager flipping a
@@ -32,9 +31,12 @@ export default function TabsLayout() {
 
   return (
     <>
-      {/* The employee surfaces are light; expo-status-bar keeps whatever the
-          dark auth screens last set, so re-assert dark glyphs here. */}
-      <StatusBar style={theme === "dark" ? "light" : "dark"} />
+      {/* The employee surfaces paint fixed light backgrounds (#F7F5F2 /
+          #F5F5F4) regardless of the stored theme, and expo-status-bar keeps
+          whatever the dark auth screens last set. Dark glyphs are the only
+          readable choice here, so assert them unconditionally — following the
+          theme preference put light glyphs on a light screen. */}
+      <StatusBar style="dark" />
       <Tabs
         screenOptions={{ headerShown: false }}
         tabBar={(props) => (
@@ -55,8 +57,8 @@ export default function TabsLayout() {
           options={{ href: modules.ordering_simple ? undefined : null, title: "Order" }}
         />
 
-        {/* Advanced ordering (Beta) — the former Quick Order surface, gated by
-            ordering_advanced. */}
+        {/* Advanced ordering — the former Quick Order surface, gated by
+            ordering_advanced. Shipping in 2.3, so no beta marker. */}
         <Tabs.Screen
           name="quick-order"
           options={{ href: modules.ordering_advanced ? undefined : null, title: "Advanced" }}
