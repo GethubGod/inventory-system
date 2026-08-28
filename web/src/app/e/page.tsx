@@ -7,7 +7,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { validateToken, TipApiError } from "@/lib/tips/api";
+import { validateToken } from "@/lib/tips/api";
+import { entrySignInErrorMessage } from "@/lib/tips/entryError";
 import {
   loadRememberedCloser,
   loadSession,
@@ -28,10 +29,21 @@ function TokenLanding() {
 
   const [attempt, setAttempt] = useState(0);
 
+  // Same shape check the in-page scanner applies: obviously-wrong tokens
+  // fail locally instead of burning a rate-limited server attempt. Derived
+  // (not effect state) so it renders without a setState-in-effect.
+  const tokenMalformed = token !== null && !/^[A-Za-z0-9_-]{16,128}$/.test(token);
+
   useEffect(() => {
     if (!token) {
       router.replace(loadSession() ? "/entry" : "/");
       return;
+    }
+    if (tokenMalformed) return;
+    // Strip ?t=<token> from the address bar/history BEFORE any network call
+    // so the QR secret can't leak via Referer or a crash mid-validation.
+    if (typeof window !== "undefined" && window.location.search.includes("t=")) {
+      window.history.replaceState(null, "", "/e");
     }
     let cancelled = false;
     const signIn = async (): Promise<"entry" | "closer"> => {
@@ -66,17 +78,13 @@ function TokenLanding() {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setErrorMessage(
-          err instanceof TipApiError && err.code === "rate_limited"
-            ? err.message
-            : "This QR code is no longer active. Ask a manager for the new one.",
-        );
+        setErrorMessage(entrySignInErrorMessage(err));
         setPhase("error");
       });
     return () => {
       cancelled = true;
     };
-  }, [token, router, attempt]);
+  }, [token, tokenMalformed, router, attempt]);
 
   // Both possible destinations are known the moment this page mounts —
   // prefetch them so the post-validation navigation is instant.
@@ -91,7 +99,7 @@ function TokenLanding() {
     setAttempt((n) => n + 1);
   };
 
-  if (phase === "checking") {
+  if (phase === "checking" && !tokenMalformed) {
     return <Splash>Checking the QR code&hellip;</Splash>;
   }
 
@@ -99,7 +107,11 @@ function TokenLanding() {
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5 pb-10">
       <div className="rounded-card bg-card p-5 text-center">
         <p className="font-bold text-ink">Couldn&rsquo;t sign you in</p>
-        <p className="mt-2 text-ink2">{errorMessage}</p>
+        <p className="mt-2 text-ink2">
+          {tokenMalformed
+            ? "This QR code is no longer active. Ask a manager for the new one."
+            : errorMessage}
+        </p>
       </div>
       <button
         type="button"
@@ -108,13 +120,15 @@ function TokenLanding() {
       >
         Back to scan
       </button>
-      <button
-        type="button"
-        onClick={retry}
-        className="mt-4 text-center text-ink2 underline"
-      >
-        Try again
-      </button>
+      {!tokenMalformed && (
+        <button
+          type="button"
+          onClick={retry}
+          className="mt-4 text-center text-ink2 underline"
+        >
+          Try again
+        </button>
+      )}
     </main>
   );
 }

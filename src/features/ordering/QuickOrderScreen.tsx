@@ -29,6 +29,7 @@ import {
   setAudioModeAsync,
   useAudioRecorder,
   useAudioRecorderState,
+  type AudioRecorder,
   type RecordingOptions,
 } from "expo-audio";
 import NetInfo from "@react-native-community/netinfo";
@@ -231,6 +232,30 @@ const QUICK_ORDER_RECORDING_OPTIONS: RecordingOptions = {
   numberOfChannels: 1,
   bitRate: 64_000,
 };
+
+function safeIsRecording(recorder: AudioRecorder): boolean {
+  try {
+    return recorder.isRecording;
+  } catch {
+    return false;
+  }
+}
+
+async function safeStopRecorder(recorder: AudioRecorder): Promise<void> {
+  try {
+    await recorder.stop();
+  } catch {
+    // Recorder may already be stopped or released.
+  }
+}
+
+function safeRecorderUri(recorder: AudioRecorder): string | null {
+  try {
+    return recorder.uri;
+  } catch {
+    return null;
+  }
+}
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -2961,12 +2986,8 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       if (maxRecordingTimerRef.current) {
         clearTimeout(maxRecordingTimerRef.current);
       }
-      if (audioRecorder.isRecording) {
-        try {
-          void audioRecorder.stop();
-        } catch {
-          // Recorder may already be stopped during unmount.
-        }
+      if (safeIsRecording(audioRecorder)) {
+        void safeStopRecorder(audioRecorder);
       }
     },
     [audioRecorder],
@@ -2975,12 +2996,8 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
   useEffect(() => {
     if (!voiceEnabled) return undefined;
     const subscription = AppState.addEventListener("change", (nextState) => {
-      if (nextState === "active" || !audioRecorder.isRecording) return;
-      try {
-        void audioRecorder.stop();
-      } catch {
-        // Recorder may already be stopped.
-      }
+      if (nextState === "active" || !safeIsRecording(audioRecorder)) return;
+      void safeStopRecorder(audioRecorder);
       applyVoiceEvent("cancel");
       setVoiceReview(null);
       setVoiceError("Recording stopped when the app moved to the background.");
@@ -5029,10 +5046,13 @@ export function QuickOrderScreen({ mode }: QuickOrderScreenProps) {
       maxRecordingTimerRef.current = null;
     }
     try {
-      if (audioRecorder.isRecording) {
-        await audioRecorder.stop();
+      if (safeIsRecording(audioRecorder)) {
+        await safeStopRecorder(audioRecorder);
       }
-      const uri = audioRecorder.uri || audioRecorderState.url || lastVoiceRecording?.uri;
+      const uri =
+        safeRecorderUri(audioRecorder) ||
+        audioRecorderState.url ||
+        lastVoiceRecording?.uri;
       await cleanupQuickOrderVoiceFile(uri);
     } catch {
       // Best effort cancellation.

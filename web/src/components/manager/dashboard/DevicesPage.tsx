@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import QRCode from "qrcode";
 import { getSupabase } from "@/lib/supabase";
 import { TIPS_TIMEZONE } from "@/lib/tips/businessDate";
+import { entryUrlFor } from "@/lib/tips/entryUrl";
 import {
   classifyEntryTiming,
   formatLoggedAt,
@@ -51,11 +52,6 @@ function rotatedLabel(iso: string): string {
   }).format(new Date(iso));
 }
 
-/** Build the phone-facing entry URL a QR code encodes. Browser only. */
-function entryUrlFor(token: string): string {
-  return `${window.location.origin}/e?t=${encodeURIComponent(token)}`;
-}
-
 /** Renders the location's live entry QR as a data URL; null while pending. */
 function useQrDataUrl(token: string | null): string | null {
   // Keyed by token so a stale image never shows for a rotated code.
@@ -95,16 +91,18 @@ function StickerSheetDialog({
     <ModalShell title={`${location.label} — entry QR`} onClose={onClose} wide>
       <div className="mt-3 max-h-[62vh] overflow-y-auto rounded-well bg-well p-3">
         <div className="qr-print-sheet mx-auto flex max-w-[430px] flex-col items-center gap-1 rounded-[6px] border border-line bg-white px-8 py-9 text-center text-[#111]">
-          <div className="text-[11px] font-bold tracking-[0.18em]">
-            <span className="text-[#e84d38]">smelter</span>
-            <span className="text-[#888]"> · tip entry</span>
+          {/* The wordmark keeps the logo's tight tracking; only the label
+              after it gets the wide letter-spacing. */}
+          <div className="flex items-baseline justify-center gap-[5px] font-bold">
+            <span className="text-[14px] tracking-[-0.02em] text-[#e84d38]">smelter</span>
+            <span className="text-[11px] tracking-[0.18em] text-[#888]">· tip entry</span>
           </div>
           <h2 className="text-[26px] font-extrabold leading-tight">{location.name}</h2>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={qrDataUrl}
             alt={`Tip entry QR code for ${location.name}`}
-            className="qr-print-code my-3 h-[230px] w-[230px]"
+            className="my-3 h-[230px] w-[230px]"
           />
           <ol className="w-full list-none space-y-2 text-left text-[13.5px] leading-snug">
             {[

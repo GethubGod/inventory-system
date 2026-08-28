@@ -14,6 +14,7 @@ import {
 } from 'react-native-safe-area-context';
 import { useShallow } from 'zustand/react/shallow';
 import { LoadingIndicator } from '@/components';
+import { getFloatingPillClearance } from '@/components/navigation';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
   ImpactFeedbackStyle,
@@ -142,11 +143,9 @@ function StockHomeScreenImpl() {
     [],
   );
 
-  const tabBarBottomInset = Math.max(
-    insets.bottom,
-    glassSpacing.tabBarBottom,
-  );
-  const actualTabBarHeight = 60 + tabBarBottomInset;
+  // Stock check is an employee surface: the floating pill toolbar hovers over
+  // the station list, so the last card has to scroll clear of it.
+  const floatingChromeClearance = getFloatingPillClearance(insets.bottom);
 
   if (!location?.id) {
     return (
@@ -275,7 +274,7 @@ function StockHomeScreenImpl() {
         contentContainerStyle={{
           paddingHorizontal: glassSpacing.screen,
           paddingTop: ds.spacing(4),
-          paddingBottom: actualTabBarHeight + ds.spacing(24),
+          paddingBottom: floatingChromeClearance + ds.spacing(24),
         }}
         ListHeaderComponent={
           <View style={{ zIndex: 10 }}>

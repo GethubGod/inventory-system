@@ -5,8 +5,7 @@
 // rows get a red tint, a "⚑ check" chip, and a Verify button. Clicking a row
 // unfolds a three-card detail panel: how the number was reached (raw →
 // −lunch → recorded, then card and gratuity), who takes what (weighted), and
-// the note. Fix opens a manager edit dialog that updates the entry + its
-// people directly under RLS (manager edits do not go through tip_save_entry).
+// the note. Fix updates every v3 field through one atomic manager RPC.
 
 import { Fragment, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
@@ -69,6 +68,113 @@ const WEIGHT_OPTIONS = [1, 0.75, 0.5, 0.25] as const;
 
 const NOTE_MAX_LENGTH = 280;
 
+interface FixEntryState {
+  cashCents: number;
+  cardCents: number;
+  gratuityCents: number;
+  enteredScope: "shift" | "day";
+  rawCashCents: number | null;
+  rawCardCents: number | null;
+  rawGratuityCents: number | null;
+  splitCount: number;
+  people: Array<{ id: string; weight: number }>;
+  note: string | null;
+}
+
+function fixEntryState(entry: LedgerEntry): FixEntryState {
+  return {
+    cashCents: entry.cashCents,
+    cardCents: entry.cardCents,
+    gratuityCents: entry.gratuityCents,
+    enteredScope: entry.enteredScope,
+    rawCashCents: entry.rawCashCents,
+    rawCardCents: entry.rawCardCents,
+    rawGratuityCents: entry.rawGratuityCents,
+    splitCount: entry.splitCount,
+    people: entry.peopleIds.map((id, index) => ({
+      id,
+      weight: entry.weights[index] ?? 1,
+    })),
+    note: entry.note,
+  };
+}
+
+function samePeople(
+  left: Array<{ id: string; weight: number }>,
+  right: Array<{ id: string; weight: number }>,
+): boolean {
+  if (left.length !== right.length) return false;
+  const rightWeights = new Map(right.map((person) => [person.id, person.weight]));
+  return (
+    rightWeights.size === right.length &&
+    left.every((person) => rightWeights.get(person.id) === person.weight)
+  );
+}
+
+function sameFixEntryState(left: FixEntryState, right: FixEntryState): boolean {
+  return (
+    left.cashCents === right.cashCents &&
+    left.cardCents === right.cardCents &&
+    left.gratuityCents === right.gratuityCents &&
+    left.enteredScope === right.enteredScope &&
+    left.rawCashCents === right.rawCashCents &&
+    left.rawCardCents === right.rawCardCents &&
+    left.rawGratuityCents === right.rawGratuityCents &&
+    left.splitCount === right.splitCount &&
+    samePeople(left.people, right.people) &&
+    left.note === right.note
+  );
+}
+
+function databaseCents(value: number | string | null): number | null {
+  if (value === null) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.round(numeric * 100) : null;
+}
+
+async function readFixEntryState(
+  supabase: ReturnType<typeof getSupabase>,
+  entryId: string,
+): Promise<FixEntryState> {
+  const { data, error } = await supabase
+    .from("tip_entries")
+    .select(
+      "cash_amount, card_amount, gratuity_amount, entered_scope, raw_cash_amount, raw_card_amount, raw_gratuity_amount, split_count, note, tip_entry_people(tip_employee_id, share_weight)",
+    )
+    .eq("id", entryId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("This entry no longer exists.");
+  return {
+    cashCents: databaseCents(data.cash_amount) ?? 0,
+    cardCents: databaseCents(data.card_amount) ?? 0,
+    gratuityCents: databaseCents(data.gratuity_amount) ?? 0,
+    enteredScope: data.entered_scope === "day" ? "day" : "shift",
+    rawCashCents: databaseCents(data.raw_cash_amount),
+    rawCardCents: databaseCents(data.raw_card_amount),
+    rawGratuityCents: databaseCents(data.raw_gratuity_amount),
+    splitCount: data.split_count,
+    people: (data.tip_entry_people ?? []).map((person) => ({
+      id: person.tip_employee_id,
+      weight: Number(person.share_weight),
+    })),
+    note: data.note,
+  };
+}
+
+function fixEntryStateSummary(state: FixEntryState, namesById: Map<string, string>): string {
+  const people =
+    state.people.length > 0
+      ? state.people
+          .map((person) => {
+            const name = namesById.get(person.id) ?? person.id;
+            return person.weight === 1 ? name : `${name} (${Math.round(person.weight * 100)}%)`;
+          })
+          .join(", ")
+      : "none";
+  return `Cash ${moneyFromCents(state.cashCents)}; card ${moneyFromCents(state.cardCents)}; gratuity ${moneyFromCents(state.gratuityCents)}; ${state.enteredScope} scope; split count ${state.splitCount}; people: ${people}; note: ${state.note ?? "none"}.`;
+}
+
 function FixDialog({
   entry,
   lunchEntry,
@@ -104,6 +210,7 @@ function FixDialog({
   const [note, setNote] = useState(entry.note ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsReload, setNeedsReload] = useState(false);
 
   // Choosable people: active staff working this entry's location (or both),
   // plus anyone already on the split (so history never disappears mid-edit).
@@ -147,79 +254,91 @@ function FixDialog({
     derivedCents !== null && !negativeAfterLunch && peopleIds.length >= 1;
 
   async function save() {
-    if (!valid || busy || derivedCents === null || cashCents === null || cardCents === null || gratuityCents === null)
+    if (
+      !valid ||
+      busy ||
+      needsReload ||
+      derivedCents === null ||
+      cashCents === null ||
+      cardCents === null ||
+      gratuityCents === null
+    ) {
       return;
+    }
     setBusy(true);
     setError(null);
     const supabase = getSupabase();
-    // PostgREST calls can't share a transaction, so order the steps to keep
-    // every intermediate state recoverable: upsert people (adds + weight
-    // changes) first, update the amounts + split_count, remove people last.
-    // An amounts-only fix (the common case) is then a single atomic UPDATE,
-    // and the entry can never pass through a zero-people state.
+    const trimmedNote = note.trim().slice(0, NOTE_MAX_LENGTH);
+    const nextNote = trimmedNote === "" ? null : trimmedNote;
+    const people = peopleIds.map((id) => ({ id, weight: weightById[id] ?? 1 }));
+    const original = fixEntryState(entry);
+    const desired: FixEntryState = {
+      cashCents: derivedCents.cash,
+      cardCents: derivedCents.card,
+      gratuityCents: derivedCents.gratuity,
+      enteredScope: scope,
+      rawCashCents: cashCents,
+      rawCardCents: cardCents,
+      rawGratuityCents: gratuityCents,
+      splitCount: peopleIds.length,
+      people,
+      note: nextNote,
+    };
+
+    // Amounts, scope, raw inputs, note, split count, roster, and weights must
+    // commit together; a partial manager correction would corrupt the ledger.
     try {
-      const before = new Set(entry.peopleIds);
-      const after = new Set(peopleIds);
-      const removed = entry.peopleIds.filter((id) => !after.has(id));
-      const beforeWeight = new Map(
-        entry.peopleIds.map((id, index) => [id, entry.weights[index] ?? 1]),
-      );
-      const upserts = peopleIds
-        .filter(
-          (id) => !before.has(id) || (weightById[id] ?? 1) !== beforeWeight.get(id),
-        )
-        .map((personId) => ({
-          tip_entry_id: entry.id,
-          tip_employee_id: personId,
-          share_weight: weightById[personId] ?? 1,
-        }));
+      const { error: fixError } = await supabase.rpc("tip_manager_fix_entry", {
+        p_entry_id: entry.id,
+        p_cash: derivedCents.cash / 100,
+        p_card: derivedCents.card / 100,
+        p_gratuity: derivedCents.gratuity / 100,
+        p_entered_scope: scope,
+        p_raw_cash: cashCents / 100,
+        p_raw_card: cardCents / 100,
+        p_raw_gratuity: gratuityCents / 100,
+        p_people: peopleIds,
+        p_weights: people.map((person) => person.weight),
+        p_note: nextNote,
+      });
+      if (fixError) throw new Error(fixError.message);
 
-      if (upserts.length > 0) {
-        const { error: upsertError } = await supabase
-          .from("tip_entry_people")
-          .upsert(upserts, { onConflict: "tip_entry_id,tip_employee_id" });
-        if (upsertError) throw new Error(upsertError.message);
-      }
-
-      const trimmedNote = note.trim().slice(0, NOTE_MAX_LENGTH);
-      const nextNote = trimmedNote === "" ? null : trimmedNote;
-      const noteChanged = nextNote !== (entry.note ?? null);
-      const { error: updateError } = await supabase
-        .from("tip_entries")
-        .update({
-          cash_amount: derivedCents.cash / 100,
-          card_amount: derivedCents.card / 100,
-          gratuity_amount: derivedCents.gratuity / 100,
-          entered_scope: scope,
-          raw_cash_amount: cashCents / 100,
-          raw_card_amount: cardCents / 100,
-          raw_gratuity_amount: gratuityCents / 100,
-          split_count: peopleIds.length,
-          ...(noteChanged
-            ? {
-                note: nextNote,
-                note_at: nextNote === null ? null : new Date().toISOString(),
-              }
-            : {}),
-        })
-        .eq("id", entry.id);
-      if (updateError) throw new Error(updateError.message);
-
-      if (removed.length > 0) {
-        const { error: deleteError } = await supabase
-          .from("tip_entry_people")
-          .delete()
-          .eq("tip_entry_id", entry.id)
-          .in("tip_employee_id", removed);
-        if (deleteError) throw new Error(deleteError.message);
+      // Verify before reporting success. Besides guarding integration drift,
+      // this makes a missing response distinguishable from a mismatched write.
+      const saved = await readFixEntryState(supabase, entry.id);
+      if (!sameFixEntryState(saved, desired)) {
+        throw new Error("The saved entry did not match the requested values.");
       }
 
       toast("Entry updated");
       ctx.refetch();
       onClose();
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Could not save the fix.");
-      ctx.refetch(); // the steps aren't atomic — show what actually landed
+      const reason = saveError instanceof Error ? saveError.message : "Could not save the fix.";
+      const namesById = new Map(ctx.data.employees.map((employee) => [employee.id, employee.name]));
+      try {
+        const current = await readFixEntryState(supabase, entry.id);
+        if (sameFixEntryState(current, desired)) {
+          toast("Entry updated");
+          ctx.refetch();
+          onClose();
+          return;
+        }
+
+        const unchanged = sameFixEntryState(current, original);
+        if (!unchanged) setNeedsReload(true);
+        setError(
+          unchanged
+            ? `Could not save the fix: ${reason} No changes were applied.`
+            : `Could not save the fix: ${reason} The entry changed while the request was in progress. Current entry state: ${fixEntryStateSummary(current, namesById)} Close this dialog and review the refreshed ledger before making another change.`,
+        );
+      } catch (readError) {
+        setNeedsReload(true);
+        setError(
+          `Could not save the fix: ${reason} Could not verify the entry afterward (${readError instanceof Error ? readError.message : "request failed"}). The last known original state was: ${fixEntryStateSummary(original, namesById)} Reload the ledger before trying again.`,
+        );
+      }
+      ctx.refetch();
       setBusy(false);
     }
   }
@@ -245,6 +364,7 @@ function FixDialog({
               key={option.value}
               type="button"
               aria-pressed={scope === option.value}
+              disabled={busy || needsReload}
               onClick={() => setScope(option.value)}
               className={`rounded-full px-3.5 py-1.5 text-[12.5px] font-semibold ${
                 scope === option.value ? "bg-accent text-white" : "bg-well text-ink2"
@@ -264,6 +384,7 @@ function FixDialog({
             value={cash}
             onChange={(event) => setCash(event.target.value)}
             inputMode="decimal"
+            disabled={busy || needsReload}
             className="rounded-well bg-well px-3.5 py-2.5 text-ink outline-none"
           />
         </label>
@@ -273,6 +394,7 @@ function FixDialog({
             value={card}
             onChange={(event) => setCard(event.target.value)}
             inputMode="decimal"
+            disabled={busy || needsReload}
             className="rounded-well bg-well px-3.5 py-2.5 text-ink outline-none"
           />
         </label>
@@ -282,6 +404,7 @@ function FixDialog({
             value={gratuity}
             onChange={(event) => setGratuity(event.target.value)}
             inputMode="decimal"
+            disabled={busy || needsReload}
             className="rounded-well bg-well px-3.5 py-2.5 text-ink outline-none"
           />
         </label>
@@ -298,6 +421,7 @@ function FixDialog({
                 <button
                   type="button"
                   aria-pressed={selected}
+                  disabled={busy || needsReload}
                   onClick={() =>
                     setPeopleIds((previous) =>
                       selected
@@ -318,6 +442,7 @@ function FixDialog({
                   <button
                     type="button"
                     aria-label={`${employee.name} share ${Math.round(weight * 100)}%`}
+                    disabled={busy || needsReload}
                     onClick={() =>
                       setWeightById((previous) => {
                         const index = WEIGHT_OPTIONS.indexOf(
@@ -351,6 +476,7 @@ function FixDialog({
           value={note}
           rows={2}
           maxLength={NOTE_MAX_LENGTH}
+          disabled={busy || needsReload}
           onChange={(event) => setNote(event.target.value.slice(0, NOTE_MAX_LENGTH))}
           className="resize-none rounded-well bg-well px-3.5 py-2.5 text-ink outline-none"
         />
@@ -376,13 +502,22 @@ function FixDialog({
           {previewWeights.some((weight) => weight < 1) ? " (weighted)" : " each"}
         </p>
       )}
-      {error && <p className="mt-3 text-sm text-alert">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-3 text-sm text-alert">
+          {error}
+        </p>
+      )}
 
       <div className="mt-5 flex justify-end gap-2">
         <button type="button" className={btn} onClick={onClose} disabled={busy}>
           Cancel
         </button>
-        <button type="button" className={btnPrim} onClick={() => void save()} disabled={!valid || busy}>
+        <button
+          type="button"
+          className={btnPrim}
+          onClick={() => void save()}
+          disabled={!valid || busy || needsReload}
+        >
           {busy ? "Saving…" : "Save fix"}
         </button>
       </div>

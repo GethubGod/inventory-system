@@ -14,8 +14,19 @@ const HEADER =
   "People on split,Names,Per-person share,Flagged,Entered by,Entry method," +
   "Gratuity,Entered scope,Raw cash,Raw card,Note,Weights";
 
+/** Prefix-guard against spreadsheet formula injection (=, +, -, @, tab, CR). */
+function formulaSafe(value: string): string {
+  return /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+}
+
 function csvField(value: string): string {
-  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  const safe = formulaSafe(value);
+  return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
+}
+
+/** Always-quoted variant (the Names column follows the mockup's format). */
+function csvFieldQuoted(value: string): string {
+  return `"${formulaSafe(value).replace(/"/g, '""')}"`;
 }
 
 function capitalize(word: string): string {
@@ -41,7 +52,7 @@ export function buildLedgerCsv(
         (entry.cashCents / 100).toFixed(2),
         (entry.cardCents / 100).toFixed(2),
         String(entry.splitCount),
-        `"${entry.peopleNames.join("; ").replace(/"/g, '""')}"`,
+        csvFieldQuoted(entry.peopleNames.join("; ")),
         // The full (weight-1) share — same figure the ledger's Per person
         // column shows. Identical to the old cash/count on all-full splits.
         (entryFullShareCents(entry) / 100).toFixed(2),

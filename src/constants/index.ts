@@ -38,7 +38,9 @@ export function getSupplierCategoryLabel(category: string): string {
 
 export const ORDER_STATUS_LABELS: Record<string, string> = {
   draft: 'Draft',
-  submitted: 'Pending',
+  // "Submitted" is what the status actually means. Calling it "Pending" made
+  // every historical order look like it was still waiting on someone.
+  submitted: 'Submitted',
   processing: 'Processing',
   fulfilled: 'Fulfilled',
   cancel_requested: 'Cancel Requested',

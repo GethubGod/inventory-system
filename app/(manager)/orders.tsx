@@ -23,11 +23,13 @@ import { useManagedRefresh } from '@/hooks/useManagedRefresh';
 
 type FilterStatus = OrderStatus | 'all';
 
+// Labels come from the shared map so the filter chips, the order cards, and
+// order history never disagree about what a status is called.
 const filterStatuses: { key: FilterStatus; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'submitted', label: 'Pending' },
-  { key: 'processing', label: 'Processing' },
-  { key: 'fulfilled', label: 'Fulfilled' },
+  { key: 'submitted', label: ORDER_STATUS_LABELS.submitted },
+  { key: 'processing', label: ORDER_STATUS_LABELS.processing },
+  { key: 'fulfilled', label: ORDER_STATUS_LABELS.fulfilled },
 ];
 
 export default function ManagerOrdersScreen() {

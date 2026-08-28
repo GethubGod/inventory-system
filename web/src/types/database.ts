@@ -4867,6 +4867,22 @@ export type Database = {
         }
         Returns: boolean
       }
+      tip_manager_fix_entry: {
+        Args: {
+          p_card: number
+          p_cash: number
+          p_entered_scope: string
+          p_entry_id: string
+          p_gratuity: number
+          p_note: string | null
+          p_people: string[]
+          p_raw_card: number
+          p_raw_cash: number
+          p_raw_gratuity: number
+          p_weights: number[]
+        }
+        Returns: undefined
+      }
       tip_revoke_location_sessions: {
         Args: { p_location_id: string }
         Returns: number

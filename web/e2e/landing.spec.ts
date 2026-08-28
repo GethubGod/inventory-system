@@ -3,7 +3,7 @@
 // that skips it on the next scan.
 
 import { expect, test } from "@playwright/test";
-import { fixtures } from "./helpers";
+import { fixtures, mintSession } from "./helpers";
 
 /** Skip the first-run carousel for specs that aren't about it. */
 async function markOnboarded(page: import("@playwright/test").Page) {
@@ -13,6 +13,16 @@ async function markOnboarded(page: import("@playwright/test").Page) {
 }
 
 test.describe("scan landing", () => {
+  test("Sushi and Poki QR tokens resolve to separate locations", async () => {
+    const { sushiToken, pokiToken } = fixtures();
+    const sushi = await mintSession(sushiToken);
+    const poki = await mintSession(pokiToken);
+
+    expect(sushi.locationName).toBe("Babytuna Sushi");
+    expect(poki.locationName).toBe("Babytuna Poki & Pho");
+    expect(sushi.locationId).not.toBe(poki.locationId);
+  });
+
   test("first visit shows onboarding once, then the scan screen", async ({
     page,
   }) => {

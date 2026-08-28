@@ -1,23 +1,36 @@
 "use client";
 
-// Overview: Trend & people — red daily cash+card line over the range, ranked
-// cash take-home bars per person, then the "Needs attention" list. Every
-// attention row navigates to the page that fixes it.
+// Overview: Trend & people — location-colored daily cash+card lines over the
+// range, ranked cash take-home bars per person, then the "Needs attention"
+// list. Every attention row navigates to the page that fixes it.
 
 import {
   dailyTrend,
   moneyFromCents,
   rangeTotals,
+  splitTrendSeries,
   takeHomeByPerson,
   wholeDollarsFromCents,
 } from "@/lib/tips/dashboardDerive";
 import { shortDayLabel, trendDayLabel } from "@/lib/tips/dashboardRange";
 import { btn, panelWrap, sectionH3 } from "./ui";
-import type { PageContext } from "./types";
+import type { LocationInfo, PageContext } from "./types";
 
 const TREND_W = 600;
 const TREND_H = 180;
 const TREND_PAD = 10;
+
+function trendColor(location: LocationInfo): string {
+  if (location.kind === "poki") return "#2563eb";
+  if (location.kind === "sushi") return "#1a1a1a";
+  return "#e84d38";
+}
+
+function trendAreaFill(location: LocationInfo): string {
+  if (location.kind === "poki") return "rgba(37,99,235,.08)";
+  if (location.kind === "sushi") return "rgba(26,26,26,.08)";
+  return "rgba(232,77,56,.08)";
+}
 
 function TrendChart({ ctx }: { ctx: PageContext }) {
   const days = dailyTrend(ctx.entries);
@@ -29,17 +42,22 @@ function TrendChart({ ctx }: { ctx: PageContext }) {
     );
   }
 
-  const max = Math.max(...days.map((day) => day.totalCents), 1);
-  const points = days.map((day, index) => {
-    const x =
-      days.length > 1
-        ? TREND_PAD + (index * (TREND_W - 2 * TREND_PAD)) / (days.length - 1)
-        : TREND_W / 2;
-    const y = TREND_H - TREND_PAD - (day.totalCents / max) * (TREND_H - 2 * TREND_PAD);
-    return [Math.round(x), Math.round(y)] as const;
-  });
-  const line = points.map((point) => point.join(",")).join(" ");
-  const area = `0,${TREND_H} ${line} ${TREND_W},${TREND_H}`;
+  const series = ctx.visibleLocations.map((location) => ({
+    location,
+    days: dailyTrend(ctx.entries.filter((entry) => entry.locationId === location.id)),
+  }));
+  const max = Math.max(...series.flatMap((item) => item.days.map((day) => day.totalCents)), 1);
+  const indexByDate = new Map(days.map((day, index) => [day.businessDate, index]));
+  const pointsFor = (seriesDays: typeof days) =>
+    seriesDays.map((day) => {
+      const index = indexByDate.get(day.businessDate) ?? 0;
+      const x =
+        days.length > 1
+          ? TREND_PAD + (index * (TREND_W - 2 * TREND_PAD)) / (days.length - 1)
+          : TREND_W / 2;
+      const y = TREND_H - TREND_PAD - (day.totalCents / max) * (TREND_H - 2 * TREND_PAD);
+      return [Math.round(x), Math.round(y)] as const;
+    });
 
   // Long ranges would smear the axis; label every nth day instead.
   const labelStep = Math.max(1, Math.ceil(days.length / 10));
@@ -51,20 +69,42 @@ function TrendChart({ ctx }: { ctx: PageContext }) {
         viewBox={`0 0 ${TREND_W} ${TREND_H}`}
         preserveAspectRatio="none"
         role="img"
-        aria-label="Daily cash + card totals"
+        aria-label={
+          series.length > 1 ? "Daily cash + card totals by location" : "Daily cash + card totals"
+        }
       >
-        <polygon points={area} fill="rgba(232,77,56,.08)" />
-        <polyline
-          points={line}
-          fill="none"
-          stroke="#e84d38"
-          strokeWidth="2.5"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-        {points.map((point, index) => (
-          <circle key={days[index].businessDate} cx={point[0]} cy={point[1]} r="3.5" fill="#e84d38" />
-        ))}
+        {series.map((item) => {
+          const points = pointsFor(item.days);
+          const color = trendColor(item.location);
+          const area = `0,${TREND_H} ${points.map((point) => point.join(",")).join(" ")} ${TREND_W},${TREND_H}`;
+          return (
+            <g key={item.location.id}>
+              {series.length === 1 && <polygon points={area} fill={trendAreaFill(item.location)} />}
+              {splitTrendSeries(item.days, days).map((segment) => (
+                <polyline
+                  key={segment[0].businessDate}
+                  points={pointsFor(segment)
+                    .map((point) => point.join(","))
+                    .join(" ")}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth="2.5"
+                  strokeLinejoin="round"
+                  strokeLinecap="round"
+                />
+              ))}
+              {points.map((point, index) => (
+                <circle
+                  key={item.days[index].businessDate}
+                  cx={point[0]}
+                  cy={point[1]}
+                  r="3.5"
+                  fill={color}
+                />
+              ))}
+            </g>
+          );
+        })}
       </svg>
       <div className="flex justify-between px-0.5 pb-2.5 pt-1.5 text-[11px] font-semibold text-ink3">
         {days.map((day, index) => (
@@ -127,14 +167,15 @@ export function OverviewPage({ ctx }: { ctx: PageContext }) {
           <b className="text-[14.5px] font-extrabold text-ink">Tips trend — {ctx.rangeLabel}</b>
           {showLegend && (
             <span className="flex items-center gap-3 text-xs text-ink2">
-              <span>
-                <span className="mr-1.5 inline-block h-[11px] w-[11px] rounded align-[-1px] bg-ink" />
-                Sushi
-              </span>
-              <span>
-                <span className="mr-1.5 inline-block h-[11px] w-[11px] rounded align-[-1px] bg-poki" />
-                Poki &amp; Pho
-              </span>
+              {ctx.visibleLocations.map((location) => (
+                <span key={location.id}>
+                  <span
+                    className="mr-1.5 inline-block h-[11px] w-[11px] rounded align-[-1px]"
+                    style={{ backgroundColor: trendColor(location) }}
+                  />
+                  {location.label}
+                </span>
+              ))}
             </span>
           )}
           <span className="ml-auto text-[12.5px] text-ink2">

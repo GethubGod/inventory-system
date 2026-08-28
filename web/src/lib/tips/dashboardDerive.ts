@@ -84,6 +84,27 @@ export function dailyTrend(entries: LedgerEntry[]): TrendDay[] {
     .map(([businessDate, totalCents]) => ({ businessDate, totalCents }));
 }
 
+/**
+ * Split one location's trend wherever the shared chart timeline contains a
+ * day that location did not record. This prevents a polyline from visually
+ * interpolating through another location's otherwise-valid data point.
+ */
+export function splitTrendSeries(series: TrendDay[], timeline: TrendDay[]): TrendDay[][] {
+  const indexByDate = new Map(timeline.map((day, index) => [day.businessDate, index]));
+  const segments: TrendDay[][] = [];
+  let previousIndex: number | undefined;
+
+  for (const day of series) {
+    const index = indexByDate.get(day.businessDate);
+    if (index === undefined) continue;
+    if (previousIndex === undefined || index !== previousIndex + 1) segments.push([]);
+    segments.at(-1)?.push(day);
+    previousIndex = index;
+  }
+
+  return segments;
+}
+
 export interface PersonTakeHome {
   id: string;
   name: string;

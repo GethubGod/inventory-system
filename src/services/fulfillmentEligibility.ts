@@ -1,34 +1,107 @@
-const QUICK_ORDER_ENTRY_METHODS = new Set([
-  'quick_order',
-  'voice_order',
-  'suggested_order',
-]);
+export interface FulfillmentOrderItemEligibilityOptions {
+  consumedOrderItemIds?: ReadonlySet<string>;
+  orderLaterSourceOrderItemIds?: ReadonlySet<string>;
+}
 
-const FULFILLMENT_READY_REVIEW_STATUSES = new Set([
-  'approved',
-  'not_required',
-]);
+const EMPTY_ORDER_ITEM_IDS: ReadonlySet<string> = new Set();
 
-function normalizeText(value: unknown): string | null {
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function toTrimmedString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
-  const trimmed = value.trim().toLowerCase();
+  const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function getField(order: unknown, key: string): unknown {
-  if (!order || typeof order !== 'object') return null;
-  return (order as Record<string, unknown>)[key];
+function toNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function getJoinedOrder(value: unknown): Record<string, unknown> | null {
+  if (Array.isArray(value)) {
+    return toRecord(value[0]);
+  }
+
+  return toRecord(value);
+}
+
+/**
+ * Review states that keep an order out of fulfillment. Gating on the status
+ * itself rather than on entry_method means a new entry method, or one whose
+ * quick_session_id was nulled by the ON DELETE SET NULL FK, cannot smuggle an
+ * unreviewed order through. 'not_required' counts as settled: the submit RPC
+ * assigns it to review-exempt orders, and treating it as unsettled stranded
+ * them invisibly forever.
+ */
+const UNSETTLED_REVIEW_STATUSES = new Set([
+  'pending',
+  'rejected',
+  'changes_requested',
+]);
+
 export function isOrderFulfillmentEligible(order: unknown): boolean {
-  const entryMethod = normalizeText(getField(order, 'entry_method'));
-  const quickSessionId = normalizeText(getField(order, 'quick_session_id'));
-  const reviewStatus = normalizeText(getField(order, 'manager_review_status'));
-  const isQuickOrder = Boolean(
-    quickSessionId || (entryMethod && QUICK_ORDER_ENTRY_METHODS.has(entryMethod))
-  );
+  const row = toRecord(order);
+  if (!row) return false;
 
-  if (!isQuickOrder) return true;
+  const reviewStatus = toTrimmedString(row.manager_review_status);
+  return !(reviewStatus !== null && UNSETTLED_REVIEW_STATUSES.has(reviewStatus));
+}
 
-  return Boolean(reviewStatus && FULFILLMENT_READY_REVIEW_STATUSES.has(reviewStatus));
+// This mirrors the Fulfillment data source's item-level filter. It intentionally
+// accepts null status because older rows predate the pending-status migration.
+export function isOrderItemFulfillmentEligible(
+  orderItem: unknown,
+  options?: FulfillmentOrderItemEligibilityOptions,
+): boolean {
+  const row = toRecord(orderItem);
+  if (!row || !toRecord(row.inventory_item)) return false;
+
+  const orderItemId = toTrimmedString(row.id);
+  if (!orderItemId) return false;
+
+  const consumedOrderItemIds = options?.consumedOrderItemIds ?? EMPTY_ORDER_ITEM_IDS;
+  if (consumedOrderItemIds.has(orderItemId)) return false;
+
+  const orderLaterSourceOrderItemIds =
+    options?.orderLaterSourceOrderItemIds ?? EMPTY_ORDER_ITEM_IDS;
+  if (orderLaterSourceOrderItemIds.has(orderItemId)) return false;
+
+  const statusValue = toTrimmedString(row.status)?.toLowerCase();
+  if (statusValue && statusValue !== 'pending') return false;
+
+  if (row.input_mode === 'remaining') {
+    const remainingReported = toNumber(row.remaining_reported, Number.NaN);
+    const decidedQuantity = toNumber(row.decided_quantity, Number.NaN);
+    return Number.isFinite(remainingReported) || (Number.isFinite(decidedQuantity) && decidedQuantity > 0);
+  }
+
+  return toNumber(row.quantity, 0) > 0;
+}
+
+// The badge reads flattened order_item rows, whereas the screen reads orders
+// with nested items. Keeping this reducer here makes both consumers use the
+// same eligibility chain before counting unique orders.
+export function getPendingFulfillmentOrderIdsFromItemRows(
+  rows: readonly unknown[],
+  options?: FulfillmentOrderItemEligibilityOptions,
+): Set<string> {
+  const orderIds = new Set<string>();
+
+  rows.forEach((value) => {
+    const row = toRecord(value);
+    if (!row) return;
+
+    const order = getJoinedOrder(row.orders);
+    if (!isOrderFulfillmentEligible(order)) return;
+    if (!isOrderItemFulfillmentEligible(row, options)) return;
+
+    const orderId = toTrimmedString(row.order_id);
+    if (orderId) orderIds.add(orderId);
+  });
+
+  return orderIds;
 }

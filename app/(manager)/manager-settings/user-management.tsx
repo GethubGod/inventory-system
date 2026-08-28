@@ -716,10 +716,14 @@ export default function UserManagementScreen() {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            // Bleed past the screen gutter so the trailing chip scrolls fully
+            // into view instead of being cut off at the right edge.
+            style={{ marginHorizontal: -glassSpacing.screen }}
             contentContainerStyle={{
               paddingTop: ds.spacing(10),
               paddingBottom: ds.spacing(2),
-              paddingRight: ds.spacing(8),
+              paddingLeft: glassSpacing.screen,
+              paddingRight: glassSpacing.screen,
             }}
           >
             {FILTER_OPTIONS.map((option) => {

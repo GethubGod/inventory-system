@@ -288,6 +288,9 @@ button:active,
 }
 
 @media print {
+  @page {
+    margin: 0.5in;
+  }
   .no-print {
     display: none !important;
   }
@@ -296,27 +299,50 @@ button:active,
     background: #ffffff;
   }
 
-  /* While the sticker View dialog is open, print ONLY the sticker sheet:
-     everything else goes invisible and the sheet is pinned to the page. */
-  body:has(.qr-print-sheet) * {
-    visibility: hidden;
+  /* While the sticker View dialog is open, print ONLY the sticker sheet.
+     Everything off the sheet's ancestor chain is taken out of the layout —
+     display:none, not visibility:hidden, since hidden boxes still paginate
+     and used to emit a blank second page. */
+  body:has(.qr-print-sheet)
+    *:not(:has(.qr-print-sheet)):not(.qr-print-sheet):not(.qr-print-sheet *) {
+    display: none !important;
   }
-  body:has(.qr-print-sheet) .qr-print-sheet,
-  body:has(.qr-print-sheet) .qr-print-sheet * {
-    visibility: visible;
+  /* Strip the modal chain (fixed backdrop, scroll clamp, padding, wells) so
+     the sheet just flows from the top of page one. */
+  body:has(.qr-print-sheet),
+  body:has(.qr-print-sheet) *:has(.qr-print-sheet) {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    width: auto !important;
+    max-width: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    z-index: auto !important;
   }
+  /* One zoom scales the whole sheet — type, QR and numbered bullets keep the
+     exact proportions of the on-screen preview instead of each being resized
+     on its own. */
   body:has(.qr-print-sheet) .qr-print-sheet {
-    position: fixed;
-    inset: 0 auto auto 50%;
-    transform: translateX(-50%);
-    width: 5.5in;
-    max-width: none;
-    margin: 0.6in 0 0;
+    zoom: 1.5;
+    margin: 0 auto !important;
     border: none;
     box-shadow: none;
+    break-inside: avoid;
   }
-  body:has(.qr-print-sheet) .qr-print-code {
-    height: 3.2in;
-    width: 3.2in;
+  /* Browsers drop backgrounds when printing, which erased the black circles
+     behind 1-4 and left the numbers floating in white. */
+  body:has(.qr-print-sheet) .qr-print-sheet,
+  body:has(.qr-print-sheet) .qr-print-sheet * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

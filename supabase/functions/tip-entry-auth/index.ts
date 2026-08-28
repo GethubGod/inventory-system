@@ -9,7 +9,7 @@
 
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
-import { corsHeadersForRequest } from '../_shared/cors.ts';
+import { tipCorsHeadersForRequest } from '../_shared/cors.ts';
 import {
   businessDateFor,
   clientIdentifier,
@@ -41,7 +41,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
 function json(req: Request, body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
+    headers: { ...tipCorsHeadersForRequest(req), 'Content-Type': 'application/json' },
   });
 }
 
@@ -135,7 +135,7 @@ async function sessionPayload(locationId: string, locationName: string, closerId
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeadersForRequest(req) });
+    return new Response('ok', { headers: tipCorsHeadersForRequest(req) });
   }
   if (req.method !== 'POST') {
     return json(req, { error: 'Method not allowed' }, 405);
@@ -211,7 +211,10 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'end_session') {
-      const session = await validateTipSession(supabaseAdmin, body.sessionToken);
+      const session = await validateTipSession(
+        supabaseAdmin,
+        typeof body.sessionToken === 'string' ? body.sessionToken : null,
+      );
       if (session) {
         const { error } = await supabaseAdmin
           .from('tip_entry_sessions')
@@ -223,7 +226,10 @@ Deno.serve(async (req) => {
     }
 
     // Everything below requires a valid entry session.
-    const session = await validateTipSession(supabaseAdmin, body.sessionToken);
+    const session = await validateTipSession(
+      supabaseAdmin,
+      typeof body.sessionToken === 'string' ? body.sessionToken : null,
+    );
     if (!session) {
       return json(req, { ok: false, code: 'session_invalid', error: 'Session expired. Scan the QR code again.' }, 401);
     }

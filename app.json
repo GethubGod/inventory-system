@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Babytuna Systems",
+    "name": "Smelter",
     "slug": "babytuna-systems",
-    "version": "2.2",
+    "version": "2.3",
     "orientation": "portrait",
     "icon": "./assets/images/app-icon.png",
     "scheme": "babytunasystems",
@@ -19,7 +19,7 @@
       "associatedDomains": ["webcredentials:tips.babytunasystems.com"],
       "supportsTablet": false,
       "bundleIdentifier": "com.babytuna.systems",
-      "buildNumber": "20",
+      "buildNumber": "21",
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -35,7 +35,7 @@
         "backgroundColor": "#000000"
       },
       "package": "com.babytuna.systems",
-      "versionCode": 20,
+      "versionCode": 21,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"

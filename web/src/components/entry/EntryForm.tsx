@@ -364,6 +364,10 @@ export function EntryForm() {
 
   const lastPayloadRef = useRef<SavePayload | null>(null);
   const finishedRef = useRef(false);
+  // Synchronous in-flight guard: the `saving` state lags a render behind the
+  // click, so two fast taps (or Save + anomaly "Save anyway") could both
+  // start a save. The ref blocks the second one in the same tick.
+  const saveInFlightRef = useRef(false);
   // Per-meal memory of the closer's selection, so switching Lunch↔Dinner and
   // back never discards manual picks (or their voice-overwrite protection).
   const savedSelectionsRef = useRef<
@@ -579,7 +583,8 @@ export function EntryForm() {
 
   const doSave = useCallback(
     async (payload: SavePayload) => {
-      if (!session) return;
+      if (!session || saveInFlightRef.current) return;
+      saveInFlightRef.current = true;
       lastPayloadRef.current = payload;
       setSaving(true);
       setSaveError(null);
@@ -610,6 +615,7 @@ export function EntryForm() {
           retryable: !duplicate,
         });
       } finally {
+        saveInFlightRef.current = false;
         setSaving(false);
       }
     },
@@ -650,8 +656,14 @@ export function EntryForm() {
       : selectedIds;
   }, [state, selectedIds]);
   const selectedWeights = orderedSelectedIds.map((id) => weightById[id] ?? 1);
+  // A meal switch in flight still has the previous meal's amounts and crew.
+  // Block saves until the requested slot has been applied.
   const canSave =
-    amountsValid && !negativeAfterLunch && selectedIds.length > 0 && !saving;
+    amountsValid &&
+    !negativeAfterLunch &&
+    selectedIds.length > 0 &&
+    !saving &&
+    !slotLoading;
 
   // Plain functions (no manual memoization) — the React Compiler handles
   // these; nesting them in useCallback fights its dependency analysis.
@@ -690,7 +702,7 @@ export function EntryForm() {
       setPickPersonWarning(true);
       return;
     }
-    if (!amountsValid || negativeAfterLunch || saving) return;
+    if (!amountsValid || negativeAfterLunch || saving || slotLoading) return;
     void doSave(
       buildPayload({
         meal,
@@ -1030,7 +1042,7 @@ export function EntryForm() {
               silently doing nothing. */}
           <button
             type="button"
-            disabled={saving || !amountsValid || negativeAfterLunch}
+            disabled={saving || slotLoading || !amountsValid || negativeAfterLunch}
             onClick={handleSaveClick}
             className={`flex-1 rounded-full py-4 font-semibold ${
               canSave ? "bg-card text-ink" : "bg-disabled text-white"

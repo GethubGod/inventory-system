@@ -65,14 +65,24 @@ function ShellInner({
   const [nav, setNav] = useState<NavId>("overview");
   // Safe to read localStorage in the initializer: the shell only mounts
   // client-side, behind ManagerApp's auth gate (never server-rendered).
-  const [collapsed, setCollapsed] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.localStorage.getItem(SIDEBAR_KEY) === "collapsed",
-  );
+  // try/catch: blocked storage (private mode, enterprise policy) throws.
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return (
+        typeof window !== "undefined" &&
+        window.localStorage.getItem(SIDEBAR_KEY) === "collapsed"
+      );
+    } catch {
+      return false;
+    }
+  });
   const toggleCollapsed = useCallback(() => {
     setCollapsed((value) => {
-      window.localStorage.setItem(SIDEBAR_KEY, value ? "open" : "collapsed");
+      try {
+        window.localStorage.setItem(SIDEBAR_KEY, value ? "open" : "collapsed");
+      } catch {
+        // Preference simply won't persist.
+      }
       return !value;
     });
   }, []);

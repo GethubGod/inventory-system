@@ -35,8 +35,12 @@ export function randomToken(bytes = 32): string {
 }
 
 export function clientIdentifier(req: Request): string {
+  // The LAST x-forwarded-for entry is the one appended by the hosting edge
+  // proxy; earlier entries are client-supplied and trivially spoofable, which
+  // would let an attacker rotate IPs to dodge the validation rate limit.
   const forwarded = req.headers.get('x-forwarded-for');
-  const ip = forwarded?.split(',')[0]?.trim() || req.headers.get('x-real-ip')?.trim() || 'unknown';
+  const chain = forwarded?.split(',').map((part) => part.trim()).filter(Boolean) ?? [];
+  const ip = chain[chain.length - 1] || req.headers.get('x-real-ip')?.trim() || 'unknown';
   return `${ip}:${req.headers.get('user-agent') ?? ''}`;
 }
 
