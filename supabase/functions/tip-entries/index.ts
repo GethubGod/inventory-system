@@ -5,7 +5,7 @@
 
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
-import { corsHeadersForRequest } from '../_shared/cors.ts';
+import { tipCorsHeadersForRequest } from '../_shared/cors.ts';
 import {
   businessDateFor,
   checkAnomaly,
@@ -35,7 +35,7 @@ const ANOMALY_HISTORY_LIMIT = 60;
 function json(req: Request, body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
+    headers: { ...tipCorsHeadersForRequest(req), 'Content-Type': 'application/json' },
   });
 }
 
@@ -95,7 +95,7 @@ async function scheduledRosterIds(locationId: string, businessDate: string, meal
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeadersForRequest(req) });
+    return new Response('ok', { headers: tipCorsHeadersForRequest(req) });
   }
   if (req.method !== 'POST') {
     return json(req, { error: 'Method not allowed' }, 405);
@@ -114,7 +114,10 @@ Deno.serve(async (req) => {
     return json(req, { ok: true });
   }
 
-  const session = await validateTipSession(supabaseAdmin, body.sessionToken);
+  const session = await validateTipSession(
+    supabaseAdmin,
+    typeof body.sessionToken === 'string' ? body.sessionToken : null,
+  );
   if (!session) {
     return json(req, { ok: false, code: 'session_invalid', error: 'Session expired. Scan the QR code again.' }, 401);
   }

@@ -12,7 +12,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
 import { z } from 'https://esm.sh/zod@3.25.76';
-import { corsHeadersForRequest } from '../_shared/cors.ts';
+import { tipCorsHeadersForRequest } from '../_shared/cors.ts';
 import { normalizeAmount, validateTipSession } from '../_shared/tips.ts';
 
 declare const Deno: {
@@ -74,7 +74,7 @@ const GEMINI_RESPONSE_SCHEMA = {
 function json(req: Request, body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeadersForRequest(req), 'Content-Type': 'application/json' },
+    headers: { ...tipCorsHeadersForRequest(req), 'Content-Type': 'application/json' },
   });
 }
 
@@ -224,7 +224,7 @@ function matchPeople(
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeadersForRequest(req) });
+    return new Response('ok', { headers: tipCorsHeadersForRequest(req) });
   }
   if (req.method !== 'POST') {
     return json(req, { ok: false, error: 'Method not allowed' }, 405);

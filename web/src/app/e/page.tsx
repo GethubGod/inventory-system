@@ -7,7 +7,8 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { validateToken, TipApiError } from "@/lib/tips/api";
+import { validateToken } from "@/lib/tips/api";
+import { entrySignInErrorMessage } from "@/lib/tips/entryError";
 import {
   loadRememberedCloser,
   loadSession,
@@ -77,11 +78,7 @@ function TokenLanding() {
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setErrorMessage(
-          err instanceof TipApiError && err.code === "rate_limited"
-            ? err.message
-            : "This QR code is no longer active. Ask a manager for the new one.",
-        );
+        setErrorMessage(entrySignInErrorMessage(err));
         setPhase("error");
       });
     return () => {
