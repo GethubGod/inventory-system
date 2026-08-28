@@ -82,4 +82,23 @@ describe("buildLedgerCsv", () => {
     );
     expect(csv.split("\n")[1].split(",")).toContain("yes");
   });
+
+  it("neutralizes spreadsheet formula injection in free-text fields", () => {
+    const csv = buildLedgerCsv(
+      [
+        entry({
+          peopleIds: ["a"],
+          peopleNames: ["=HYPERLINK(\"https://evil.example\",\"x\")"],
+          splitCount: 1,
+          enteredByName: "+1-555-0100",
+        }),
+      ],
+      (id) => LOCATION_LABELS[id],
+    );
+    const row = csv.split("\n")[1];
+    // A leading ' makes Excel/Sheets treat the cell as text, not a formula.
+    expect(row).toContain("'=HYPERLINK");
+    expect(row).toContain("'+1-555-0100");
+    expect(row).not.toContain(',=HYPERLINK');
+  });
 });

@@ -84,49 +84,24 @@ function FixDialog({
     setBusy(true);
     setError(null);
     const supabase = getSupabase();
-    // PostgREST calls can't share a transaction, so order the steps to keep
-    // every intermediate state recoverable: add people first, update the
-    // amounts + split_count, remove people last. An amounts-only fix (the
-    // common case) is then a single atomic UPDATE, and the entry can never
-    // pass through a zero-people state.
+    // One RPC = one transaction: amounts, split_count, and the people roster
+    // land together or not at all (the old multi-call sequence could strand
+    // a mixed roster when a step failed midway).
     try {
-      const before = new Set(entry.peopleIds);
-      const after = new Set(peopleIds);
-      const added = peopleIds.filter((id) => !before.has(id));
-      const removed = entry.peopleIds.filter((id) => !after.has(id));
-
-      if (added.length > 0) {
-        const { error: insertError } = await supabase.from("tip_entry_people").insert(
-          added.map((personId) => ({ tip_entry_id: entry.id, tip_employee_id: personId })),
-        );
-        if (insertError) throw new Error(insertError.message);
-      }
-
-      const { error: updateError } = await supabase
-        .from("tip_entries")
-        .update({
-          cash_amount: cashCents / 100,
-          card_amount: cardCents / 100,
-          split_count: peopleIds.length,
-        })
-        .eq("id", entry.id);
-      if (updateError) throw new Error(updateError.message);
-
-      if (removed.length > 0) {
-        const { error: deleteError } = await supabase
-          .from("tip_entry_people")
-          .delete()
-          .eq("tip_entry_id", entry.id)
-          .in("tip_employee_id", removed);
-        if (deleteError) throw new Error(deleteError.message);
-      }
+      const { error: fixError } = await supabase.rpc("tip_manager_fix_entry", {
+        p_entry_id: entry.id,
+        p_cash: cashCents / 100,
+        p_card: cardCents / 100,
+        p_people: peopleIds,
+      });
+      if (fixError) throw new Error(fixError.message);
 
       toast("Entry updated");
       ctx.refetch();
       onClose();
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Could not save the fix.");
-      ctx.refetch(); // the steps aren't atomic — show what actually landed
+      ctx.refetch(); // show what actually landed
       setBusy(false);
     }
   }

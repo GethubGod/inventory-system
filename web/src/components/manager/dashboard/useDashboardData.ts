@@ -156,8 +156,14 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
           businessDate: row.business_date,
           locationId: row.location_id,
           meal: row.meal_period as MealPeriod,
-          cashCents: Math.round(Number(row.cash_amount) * 100),
-          cardCents: Math.round(Number(row.card_amount) * 100),
+          // A malformed numeric from the DB must not turn the whole money
+          // column into $NaN — fall back to 0 and keep rendering.
+          cashCents: Number.isFinite(Number(row.cash_amount))
+            ? Math.round(Number(row.cash_amount) * 100)
+            : 0,
+          cardCents: Number.isFinite(Number(row.card_amount))
+            ? Math.round(Number(row.card_amount) * 100)
+            : 0,
           splitCount: row.split_count,
           peopleIds,
           peopleNames: peopleIds.map((id) => nameById.get(id) ?? "?"),
