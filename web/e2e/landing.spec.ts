@@ -40,7 +40,7 @@ test.describe("scan landing", () => {
       page.getByRole("heading", { name: "Scan to enter" }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Scan the sticker" }),
+      page.getByRole("button", { name: "Scan the QR code" }),
     ).toBeVisible();
     await expect(
       page.getByText("Use your camera app or scan it here."),

@@ -51,10 +51,15 @@ function timeLabel(iso: string): string {
   });
 }
 
-/** $ amount field value → cents, or null when invalid (0 .. $99,999.99). */
+/**
+ * $ amount field value → cents, or null when invalid (0 .. $99,999.99,
+ * at most two decimals — the UI must never show a figure the database
+ * would silently round).
+ */
 function parseAmountToCents(value: string): number | null {
   const stripped = value.replace(/[$,\s]/g, "");
   if (stripped === "") return null; // Number("") is 0 — a cleared field is invalid, not $0
+  if (!/^\d*(\.\d{0,2})?$/.test(stripped)) return null;
   const num = Number(stripped);
   if (!Number.isFinite(num) || num < 0 || num >= 100000) return null;
   return Math.round(num * 100);
@@ -66,17 +71,29 @@ const NOTE_MAX_LENGTH = 280;
 
 function FixDialog({
   entry,
+  lunchEntry,
   ctx,
   onClose,
 }: {
   entry: LedgerEntry;
+  /** The recorded lunch at the same location + business date, if any. */
+  lunchEntry: LedgerEntry | null;
   ctx: PageContext;
   onClose: () => void;
 }) {
   const toast = useToast();
-  const [cash, setCash] = useState((entry.cashCents / 100).toFixed(2));
-  const [card, setCard] = useState((entry.cardCents / 100).toFixed(2));
-  const [gratuity, setGratuity] = useState((entry.gratuityCents / 100).toFixed(2));
+  // The fields hold the AS-TYPED figures (same contract as the entry phone):
+  // on a whole-day row that's the raw Square number, and the dialog derives
+  // the stored shift figures against the recorded lunch before writing.
+  const [cash, setCash] = useState(
+    (((entry.enteredScope === "day" ? entry.rawCashCents : null) ?? entry.cashCents) / 100).toFixed(2),
+  );
+  const [card, setCard] = useState(
+    (((entry.enteredScope === "day" ? entry.rawCardCents : null) ?? entry.cardCents) / 100).toFixed(2),
+  );
+  const [gratuity, setGratuity] = useState(
+    (((entry.enteredScope === "day" ? entry.rawGratuityCents : null) ?? entry.gratuityCents) / 100).toFixed(2),
+  );
   const [scope, setScope] = useState<"shift" | "day">(entry.enteredScope);
   const [peopleIds, setPeopleIds] = useState<string[]>(entry.peopleIds);
   const [weightById, setWeightById] = useState<Record<string, number>>(() =>
@@ -103,14 +120,34 @@ function FixDialog({
   const cashCents = parseAmountToCents(cash);
   const cardCents = parseAmountToCents(card);
   const gratuityCents = parseAmountToCents(gratuity);
+
+  // Same derivation contract as the entry save: on day scope subtract the
+  // recorded lunch field by field; the stored figures are always shift-only
+  // and raw_* keeps what was typed. No lunch on record → nothing to subtract.
+  const lunchCents =
+    scope === "day" && lunchEntry
+      ? {
+          cash: lunchEntry.cashCents,
+          card: lunchEntry.cardCents,
+          gratuity: lunchEntry.gratuityCents,
+        }
+      : null;
+  const derivedCents =
+    cashCents !== null && cardCents !== null && gratuityCents !== null
+      ? {
+          cash: cashCents - (lunchCents?.cash ?? 0),
+          card: cardCents - (lunchCents?.card ?? 0),
+          gratuity: gratuityCents - (lunchCents?.gratuity ?? 0),
+        }
+      : null;
+  const negativeAfterLunch =
+    derivedCents !== null &&
+    (derivedCents.cash < 0 || derivedCents.card < 0 || derivedCents.gratuity < 0);
   const valid =
-    cashCents !== null &&
-    cardCents !== null &&
-    gratuityCents !== null &&
-    peopleIds.length >= 1;
+    derivedCents !== null && !negativeAfterLunch && peopleIds.length >= 1;
 
   async function save() {
-    if (!valid || busy || cashCents === null || cardCents === null || gratuityCents === null)
+    if (!valid || busy || derivedCents === null || cashCents === null || cardCents === null || gratuityCents === null)
       return;
     setBusy(true);
     setError(null);
@@ -150,10 +187,13 @@ function FixDialog({
       const { error: updateError } = await supabase
         .from("tip_entries")
         .update({
-          cash_amount: cashCents / 100,
-          card_amount: cardCents / 100,
-          gratuity_amount: gratuityCents / 100,
+          cash_amount: derivedCents.cash / 100,
+          card_amount: derivedCents.card / 100,
+          gratuity_amount: derivedCents.gratuity / 100,
           entered_scope: scope,
+          raw_cash_amount: cashCents / 100,
+          raw_card_amount: cardCents / 100,
+          raw_gratuity_amount: gratuityCents / 100,
           split_count: peopleIds.length,
           ...(noteChanged
             ? {
@@ -217,7 +257,9 @@ function FixDialog({
       )}
       <div className="mt-4 grid grid-cols-3 gap-3">
         <label className="flex flex-col gap-1">
-          <span className="section-label">Cash (split pool)</span>
+          <span className="section-label">
+            {scope === "day" ? "Cash (whole day)" : "Cash (split pool)"}
+          </span>
           <input
             value={cash}
             onChange={(event) => setCash(event.target.value)}
@@ -314,9 +356,23 @@ function FixDialog({
         />
       </label>
 
-      {cashCents !== null && peopleIds.length > 0 && (
+      {scope === "day" && derivedCents !== null && !negativeAfterLunch && (
+        <p className="mt-3 text-[12.5px] text-ink2 tabular-nums">
+          {lunchEntry
+            ? `− lunch ${moneyFromCents(lunchCents?.cash ?? 0)} cash / ${moneyFromCents(lunchCents?.card ?? 0)} card → records `
+            : "no lunch on record → records "}
+          <b className="text-ink">{moneyFromCents(derivedCents.cash)}</b> cash pool
+        </p>
+      )}
+      {negativeAfterLunch && (
+        <p className="mt-3 text-sm text-alert">
+          Lunch already recorded more than this — the whole-day figures can&apos;t
+          be below the recorded lunch.
+        </p>
+      )}
+      {derivedCents !== null && !negativeAfterLunch && peopleIds.length > 0 && (
         <p className="mt-3 text-[12.5px] text-ink2">
-          {moneyFromCents(poolFullShareCents(cashCents, previewWeights))} full share
+          {moneyFromCents(poolFullShareCents(derivedCents.cash, previewWeights))} full share
           {previewWeights.some((weight) => weight < 1) ? " (weighted)" : " each"}
         </p>
       )}
@@ -749,7 +805,16 @@ export function LedgerPage({ ctx }: { ctx: PageContext }) {
         </table>
       </div>
 
-      {fixing && <FixDialog entry={fixing} ctx={ctx} onClose={() => setFixing(null)} />}
+      {fixing && (
+        <FixDialog
+          entry={fixing}
+          lunchEntry={
+            lunchByDayLocation.get(`${fixing.businessDate}|${fixing.locationId}`) ?? null
+          }
+          ctx={ctx}
+          onClose={() => setFixing(null)}
+        />
+      )}
     </section>
   );
 }

@@ -50,12 +50,39 @@ async function clearChips(page: Page): Promise<void> {
   }
 }
 
-/** Wait for a save round-trip triggered by clicking "Save →". */
-async function save(page: Page): Promise<void> {
-  await Promise.all([
-    page.waitForResponse((response) => response.url().includes("tip-entries")),
+/** The server's stored row, as the save response reports it. */
+interface SavedEntry {
+  cash: number;
+  card: number;
+  gratuity: number;
+  enteredScope: string;
+  rawCash: number;
+  rawCard: number;
+  rawGratuity: number;
+  note: string | null;
+  people: Array<{ id: string; weight: number }>;
+  flaggedAnomaly: boolean;
+}
+
+/**
+ * Wait for a save round-trip triggered by clicking "Save →" and return what
+ * the SERVER stored — the persistence assertions must never trust the
+ * client's own rendering of its payload.
+ */
+async function save(page: Page): Promise<SavedEntry> {
+  const [response] = await Promise.all([
+    // Match the SAVE response specifically — get_slot also hits tip-entries
+    // and its response carries entry: null for an empty slot.
+    page.waitForResponse(
+      (r) =>
+        r.url().includes("tip-entries") &&
+        (r.request().postDataJSON() as { action?: string } | null)?.action === "save",
+    ),
     page.getByRole("button", { name: "Save →" }).click(),
   ]);
+  const json = (await response.json()) as { entry?: SavedEntry };
+  expect(json.entry).toBeTruthy();
+  return json.entry as SavedEntry;
 }
 
 test.describe("typed entry", () => {
@@ -98,7 +125,15 @@ test.describe("typed entry", () => {
       page.getByText("Drawer was $20 short — recounted."),
     ).toBeVisible();
 
-    await save(page);
+    const saved = await save(page);
+    // The server stored what was typed — shift scope, note included.
+    expect(saved.cash).toBe(120.5);
+    expect(saved.card).toBe(340.25);
+    expect(saved.gratuity).toBe(0);
+    expect(saved.enteredScope).toBe("shift");
+    expect(saved.rawCash).toBe(120.5);
+    expect(saved.note).toBe("Drawer was $20 short — recounted.");
+    expect(saved.people.map((p) => p.weight)).toEqual([1, 1]);
 
     // Full-screen confirmation: read-only wells, the note, and a countdown
     // that hands the phone back to the scan gate without a tap.
@@ -191,7 +226,17 @@ test.describe("typed entry", () => {
     await badge(page, "Jose", 100).click(); // → 75
     await badge(page, "Jose", 75).click(); // → 50
 
-    await save(page);
+    const saved = await save(page);
+    // The server stored the DERIVED shift figures and kept the raw ones.
+    expect(saved.cash).toBe(230);
+    expect(saved.card).toBe(60);
+    expect(saved.gratuity).toBe(50);
+    expect(saved.enteredScope).toBe("day");
+    expect(saved.rawCash).toBe(350.5);
+    expect(saved.rawCard).toBe(400.25);
+    expect(saved.rawGratuity).toBe(50);
+    expect(saved.flaggedAnomaly).toBe(false);
+    expect(saved.people.map((p) => p.weight).sort()).toEqual([0.5, 1]);
 
     // The saved screen shows the DERIVED shift figures, not what was typed:
     // cash 230.00, card 400.25 − 340.25 = 60.00, gratuity 50.00 − 0 = 50.00.

@@ -639,7 +639,17 @@ export function EntryForm() {
   const negativeAfterLunch = hasNegativeAmount(derivedAmounts);
 
   const poolCents = Math.max(0, toCents(derivedAmounts.cash));
-  const selectedWeights = selectedIds.map((id) => weightById[id] ?? 1);
+  // Allocation order is the ROSTER order (sort_order, name — the same rule
+  // the dashboard ranks by), not tap order: largest-remainder ties break by
+  // position, so every surface must order the split identically or the odd
+  // cent lands on different people on different screens.
+  const orderedSelectedIds = useMemo(() => {
+    const selected = new Set(selectedIds);
+    return state
+      ? state.roster.filter((person) => selected.has(person.id)).map((person) => person.id)
+      : selectedIds;
+  }, [state, selectedIds]);
+  const selectedWeights = orderedSelectedIds.map((id) => weightById[id] ?? 1);
   const canSave =
     amountsValid && !negativeAfterLunch && selectedIds.length > 0 && !saving;
 
@@ -656,15 +666,24 @@ export function EntryForm() {
       | "voiceVariant"
       | "correctionsCount"
     >,
-  ): SavePayload => ({
-    ...base,
-    // All three amounts go AS TYPED — the server does the subtraction.
-    gratuity: isValidAmount(gratuity) ? Number(gratuity) : 0,
-    enteredScope: base.meal === "dinner" ? scope : "shift",
-    weights: base.peopleIds.map((id) => weightById[id] ?? 1),
-    note,
-    confirmAnomaly: false,
-  });
+  ): SavePayload => {
+    // Same canonical roster ordering as the live allocation above, so the
+    // saved screen, the server, and the dashboard all see one split order.
+    const picked = new Set(base.peopleIds);
+    const peopleIds = state
+      ? state.roster.filter((person) => picked.has(person.id)).map((person) => person.id)
+      : base.peopleIds;
+    return {
+      ...base,
+      peopleIds,
+      // All three amounts go AS TYPED — the server does the subtraction.
+      gratuity: isValidAmount(gratuity) ? Number(gratuity) : 0,
+      enteredScope: base.meal === "dinner" ? scope : "shift",
+      weights: peopleIds.map((id) => weightById[id] ?? 1),
+      note,
+      confirmAnomaly: false,
+    };
+  };
 
   const handleSaveClick = () => {
     if (selectedIds.length === 0) {
@@ -963,7 +982,7 @@ export function EntryForm() {
 
         {/* Renders only when at least one share is under 100%. */}
         <PayoutList
-          people={selectedIds.map((id, index) => ({
+          people={orderedSelectedIds.map((id, index) => ({
             id,
             name:
               displayRoster.find((person) => person.id === id)?.name ?? "?",
