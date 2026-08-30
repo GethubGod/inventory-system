@@ -1,19 +1,23 @@
-// The entry form: split math, the zero-people guard, the save confirmation
-// that signs the phone out, and the duplicate-slot lockout on the next
-// session. Sessions are minted via the edge function directly (the sign-in
-// UI is covered in landing.spec.ts).
+// The entry form: cash-pool split math, the day-scope receipt, partial-share
+// badges, notes, the zero-people guard, the 10s save confirmation that signs
+// the phone out, and the duplicate-slot lockout on the next session. Sessions
+// are minted via the edge function directly (the sign-in UI is covered in
+// landing.spec.ts).
 //
 // These tests write real tip_entries rows for today's Sushi lunch + dinner
 // slots on the live backend; run e2e/cleanup.sql BEFORE and after a run —
 // entry devices can no longer overwrite recorded slots, so leftovers from a
 // previous run would leave these specs starting on the "All set" screen.
+//
+// Order matters: lunch records first so the whole-day dinner test has a
+// lunch to subtract.
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { fixtures, signInAs } from "./helpers";
 
 async function fillAmount(
   page: Page,
-  label: "Cash" | "Card",
+  label: "Cash" | "Card" | "Gratuity",
   value: string,
 ): Promise<void> {
   await page.getByLabel(`${label} amount`).fill(value);
@@ -21,10 +25,16 @@ async function fillAmount(
 
 /**
  * A roster split chip. Chips are the only buttons carrying aria-pressed,
- * which disambiguates them from the header's closer button of the same name.
+ * which disambiguates them from the header's closer button of the same name
+ * (the % badges carry aria-labels, not aria-pressed).
  */
 function chip(page: Page, name: string): Locator {
   return page.locator("button[aria-pressed]").filter({ hasText: name });
+}
+
+/** A selected chip's share badge, addressed by its accessible name. */
+function badge(page: Page, name: string, percent: number): Locator {
+  return page.getByRole("button", { name: `${name} share ${percent}%` });
 }
 
 /** The Lunch|Dinner segmented control renders as tabs. */
@@ -32,16 +42,51 @@ function mealTab(page: Page, name: "Lunch" | "Dinner"): Locator {
   return page.getByRole("tab", { name, exact: true });
 }
 
-/** Wait for a save round-trip triggered by clicking "Save →". */
-async function save(page: Page): Promise<void> {
-  await Promise.all([
-    page.waitForResponse((response) => response.url().includes("tip-entries")),
+/** Clear the schedule's pre-selected chips so the math is deterministic. */
+async function clearChips(page: Page): Promise<void> {
+  const pressed = page.locator('button[aria-pressed="true"]');
+  while ((await pressed.count()) > 0) {
+    await pressed.first().click();
+  }
+}
+
+/** The server's stored row, as the save response reports it. */
+interface SavedEntry {
+  cash: number;
+  card: number;
+  gratuity: number;
+  enteredScope: string;
+  rawCash: number;
+  rawCard: number;
+  rawGratuity: number;
+  note: string | null;
+  people: Array<{ id: string; weight: number }>;
+  flaggedAnomaly: boolean;
+}
+
+/**
+ * Wait for a save round-trip triggered by clicking "Save →" and return what
+ * the SERVER stored — the persistence assertions must never trust the
+ * client's own rendering of its payload.
+ */
+async function save(page: Page): Promise<SavedEntry> {
+  const [response] = await Promise.all([
+    // Match the SAVE response specifically — get_slot also hits tip-entries
+    // and its response carries entry: null for an empty slot.
+    page.waitForResponse(
+      (r) =>
+        r.url().includes("tip-entries") &&
+        (r.request().postDataJSON() as { action?: string } | null)?.action === "save",
+    ),
     page.getByRole("button", { name: "Save →" }).click(),
   ]);
+  const json = (await response.json()) as { entry?: SavedEntry };
+  expect(json.entry).toBeTruthy();
+  return json.entry as SavedEntry;
 }
 
 test.describe("typed entry", () => {
-  test("split math, save → confirmation signs the phone out", async ({
+  test("lunch: cash-pool split, note, 10s countdown returns to the scan gate", async ({
     page,
   }) => {
     const { sushiToken } = fixtures();
@@ -49,20 +94,14 @@ test.describe("typed entry", () => {
     await page.goto("/entry");
     await expect(page.getByRole("heading", { name: "Tips" })).toBeVisible();
 
-    // Pin the test to the dinner slot regardless of wall-clock default.
-    await mealTab(page, "Dinner").click();
-
-    // The manager's weekly schedule pre-selects today's crew; clear any
-    // pre-selected chips so the split-math scenario stays deterministic.
-    // (Chips are the only buttons carrying aria-pressed.) Re-query after
-    // every click — the chip list re-renders.
-    const pressed = page.locator('button[aria-pressed="true"]');
-    while ((await pressed.count()) > 0) {
-      await pressed.first().click();
-    }
+    await mealTab(page, "Lunch").click();
+    // Lunch has no scope switch — always records what was typed.
+    await expect(page.getByText("Whole day (Square)")).toBeHidden();
+    await clearChips(page);
 
     await fillAmount(page, "Cash", "120.50");
     await fillAmount(page, "Card", "340.25");
+    // Gratuity stays blank — blank is legal and means $0.
 
     // No people picked → strip prompts instead of computing.
     await expect(page.getByText(/Pick who.s splitting/)).toBeVisible();
@@ -70,50 +109,54 @@ test.describe("typed entry", () => {
     await chip(page, "Maria").click();
     await chip(page, "Jose").click();
 
-    // (120.50 + 340.25) / 2 = 230.375 → 230.38 (half-up, in cents).
+    // The strip reads on the CASH pool only: 120.50 / 2 = 60.25.
     await expect(page.getByText("Split 2 ways")).toBeVisible();
-    await expect(page.getByText("$230.38 each")).toBeVisible();
-    await expect(page.getByText("of $460.75")).toBeVisible();
+    await expect(page.getByText("$60.25 each")).toBeVisible();
+    await expect(page.getByText("of $120.50 cash")).toBeVisible();
+    // All-full split → no per-person card.
+    await expect(page.getByText("What each person takes")).toBeHidden();
 
-    await save(page);
+    // Attach a note, then reopen the editor to prove it round-trips.
+    await page.getByRole("button", { name: "+ Add a note" }).click();
+    await page.getByLabel("Note").fill("Drawer was $20 short — recounted.");
+    await expect(page.getByText("33 / 280")).toBeVisible();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(
+      page.getByText("Drawer was $20 short — recounted."),
+    ).toBeVisible();
 
-    // Full-screen confirmation with the numbers, then back to the scan gate.
+    const saved = await save(page);
+    // The server stored what was typed — shift scope, note included.
+    expect(saved.cash).toBe(120.5);
+    expect(saved.card).toBe(340.25);
+    expect(saved.gratuity).toBe(0);
+    expect(saved.enteredScope).toBe("shift");
+    expect(saved.rawCash).toBe(120.5);
+    expect(saved.note).toBe("Drawer was $20 short — recounted.");
+    expect(saved.people.map((p) => p.weight)).toEqual([1, 1]);
+
+    // Full-screen confirmation: read-only wells, the note, and a countdown
+    // that hands the phone back to the scan gate without a tap.
     await expect(page.getByRole("heading", { name: "Saved" })).toBeVisible();
     await expect(page.getByText("$120.50")).toBeVisible();
     await expect(page.getByText("$340.25")).toBeVisible();
-    await expect(page.getByText("2 people · $230.38 each")).toBeVisible();
-    await page.getByRole("button", { name: "Done" }).click();
+    await expect(page.getByText("2 people · $60.25 each")).toBeVisible();
+    await expect(
+      page.getByText("Drawer was $20 short — recounted."),
+    ).toBeVisible();
+    await expect(page.getByText(/Back to the scan screen in/)).toBeVisible();
 
+    // Hold ~10s: the countdown expires and the session ends on its own.
     await expect(
       page.getByRole("heading", { name: "Scan to enter" }),
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
     const stored = await page.evaluate(() =>
       window.localStorage.getItem("bt_tips_session"),
     );
     expect(stored).toBeNull();
   });
 
-  test("recorded shift is locked out for the next session", async ({
-    page,
-  }) => {
-    // Runs after the dinner save above (Playwright config is serial).
-    const { sushiToken } = fixtures();
-    await signInAs(page, sushiToken, "Maria");
-    await page.goto("/entry");
-    await expect(page.getByRole("heading", { name: "Tips" })).toBeVisible();
-
-    await expect(mealTab(page, "Dinner")).toBeDisabled();
-    await expect(
-      page.getByText(/Dinner is already recorded today/),
-    ).toBeVisible();
-    // The preset lands on the remaining shift.
-    await expect(mealTab(page, "Lunch")).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-  });
-
-  test("zero-people guard blocks, $0 amounts are legal; then all-done", async ({
+  test("dinner as whole day: receipt subtraction, negative guard, badges, derived save", async ({
     page,
   }) => {
     const { sushiToken } = fixtures();
@@ -121,23 +164,101 @@ test.describe("typed entry", () => {
     await page.goto("/entry");
     await expect(page.getByRole("heading", { name: "Tips" })).toBeVisible();
 
-    // Lunch is the remaining slot after the dinner test.
-    await fillAmount(page, "Cash", "0");
-    await fillAmount(page, "Card", "0");
+    await mealTab(page, "Dinner").click();
+    await clearChips(page);
 
-    // Amounts valid but nobody picked → warning, no save.
+    // Zero-people guard: amounts alone don't save.
+    await fillAmount(page, "Cash", "350.50");
+    await fillAmount(page, "Card", "400.25");
+    await fillAmount(page, "Gratuity", "50.00");
     await page.getByRole("button", { name: "Save →" }).click();
     await expect(page.getByText("Pick at least one person")).toBeVisible();
-
-    // Picking someone clears the warning; $0/$0 saves fine.
-    await chip(page, "Ken").click();
+    await chip(page, "Maria").click();
+    await chip(page, "Jose").click();
     await expect(page.getByText("Pick at least one person")).toBeHidden();
-    await expect(page.getByText("$0.00 each")).toBeVisible();
-    await save(page);
-    await expect(page.getByRole("heading", { name: "Saved" })).toBeVisible();
-    await page.getByRole("button", { name: "Done" }).click();
 
-    // Both slots recorded → the next session gets the all-done screen.
+    // Whole day is the default: the receipt shows its work against the
+    // recorded lunch (cash 120.50 + card 340.25 + gratuity 0 = 460.75).
+    await expect(page.getByText("Entered (whole day)")).toBeVisible();
+    await expect(page.getByText("$800.75")).toBeVisible();
+    await expect(page.getByText("− Lunch already recorded")).toBeVisible();
+    await expect(page.getByText("−$460.75")).toBeVisible();
+    await expect(page.getByText("Dinner records")).toBeVisible();
+    await expect(page.getByText("$340.00")).toBeVisible();
+
+    // The one blocking warning: typed cash below the recorded lunch cash.
+    await fillAmount(page, "Cash", "50");
+    await expect(
+      page.getByText(/Lunch already recorded more than this/),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save →" })).toBeDisabled();
+    await fillAmount(page, "Cash", "350.50");
+    await expect(
+      page.getByText(/Lunch already recorded more than this/),
+    ).toBeHidden();
+
+    // Dinner-only scope hides the lunch line and relabels the receipt.
+    await page.getByRole("tab", { name: "Dinner only" }).click();
+    await expect(page.getByText("Entered (dinner only)")).toBeVisible();
+    await expect(page.getByText("− Lunch already recorded")).toBeHidden();
+    await page.getByRole("tab", { name: "Whole day (Square)" }).click();
+
+    // Derived cash pool: 350.50 − 120.50 = 230.00. Badge cycling reshapes
+    // the shares: Jose at 50% raises Maria's full share.
+    await expect(page.getByText("of $230.00 cash")).toBeVisible();
+    await expect(page.getByText("Split 2 ways")).toBeVisible();
+    await badge(page, "Jose", 100).click(); // → 75
+    await badge(page, "Jose", 75).click(); // → 50
+    await expect(page.getByText("Full share")).toBeVisible();
+    // The full share shows in the strip and in Maria's payout row.
+    await expect(page.getByText("$153.33").first()).toBeVisible();
+    await expect(page.getByText("What each person takes")).toBeVisible();
+    await expect(page.getByText("50% share")).toBeVisible();
+    await expect(page.getByText("$76.67")).toBeVisible();
+    // Cycling badges never deselects the person.
+    await expect(chip(page, "Jose")).toHaveAttribute("aria-pressed", "true");
+
+    // Back to 100% removes the per-person card; then settle on 50%.
+    await badge(page, "Jose", 50).click(); // → 25
+    await badge(page, "Jose", 25).click(); // → 100
+    await expect(page.getByText("What each person takes")).toBeHidden();
+    await expect(page.getByText("Split 2 ways")).toBeVisible();
+    await badge(page, "Jose", 100).click(); // → 75
+    await badge(page, "Jose", 75).click(); // → 50
+
+    const saved = await save(page);
+    // The server stored the DERIVED shift figures and kept the raw ones.
+    expect(saved.cash).toBe(230);
+    expect(saved.card).toBe(60);
+    expect(saved.gratuity).toBe(50);
+    expect(saved.enteredScope).toBe("day");
+    expect(saved.rawCash).toBe(350.5);
+    expect(saved.rawCard).toBe(400.25);
+    expect(saved.rawGratuity).toBe(50);
+    expect(saved.flaggedAnomaly).toBe(false);
+    expect(saved.people.map((p) => p.weight).sort()).toEqual([0.5, 1]);
+
+    // The saved screen shows the DERIVED shift figures, not what was typed:
+    // cash 230.00, card 400.25 − 340.25 = 60.00, gratuity 50.00 − 0 = 50.00.
+    await expect(page.getByRole("heading", { name: "Saved" })).toBeVisible();
+    await expect(page.getByText("$230.00")).toBeVisible();
+    await expect(page.getByText("$60.00")).toBeVisible();
+    await expect(page.getByText("$50.00")).toBeVisible();
+    await expect(page.getByText(/full share/)).toBeVisible();
+    await expect(page.getByText(/\(50%\)/)).toBeVisible();
+
+    // Done short-circuits the countdown.
+    await page.getByRole("button", { name: "Done" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Scan to enter" }),
+    ).toBeVisible();
+  });
+
+  test("recorded shifts lock out the next session; both recorded → all done", async ({
+    page,
+  }) => {
+    // Runs after both saves above (Playwright config is serial).
+    const { sushiToken } = fixtures();
     await signInAs(page, sushiToken, "Maria");
     await page.goto("/entry");
     await expect(page.getByText("All set for today")).toBeVisible();

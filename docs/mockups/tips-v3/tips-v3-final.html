@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smelter Tips v3 — FINAL (build exactly this)</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+button{font:inherit;cursor:pointer;background:none;border:0;color:inherit}
+input,textarea{font:inherit;color:inherit}
+:root{
+  --cream:#f5f5f4;--card:#fff;--well:#ededec;--accent:#e84d38;--tint:#fbeae7;--alert:#c03520;
+  --ink:#1a1a1a;--ink2:#5f5f5f;--ink3:#9c9890;--disabled:#c9c5bc;
+  --line:rgba(0,0,0,.08);--hair:rgba(0,0,0,.06);
+  --blue:#2563eb;--green:#1f7a4d;--amber:#b7791f;
+  --cashcol:rgba(216,144,32,.06);--cardcol:rgba(37,99,235,.055);--gratcol:rgba(31,122,77,.07);--flagtint:#fdecea;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+body{font-family:var(--sans);background:#e6e7e9;color:var(--ink);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+#chrome{position:sticky;top:0;z-index:80;background:#101319;color:#e7e9ee;padding:9px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+#chrome .brand{font-weight:700}#chrome .brand i{color:var(--accent);font-style:normal}
+#chrome .sub{color:#8a93a6;font-size:12px;margin-right:auto}
+#chrome .grp{display:flex;align-items:center;gap:6px}
+#chrome .grp>span{color:#8a93a6;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em}
+#chrome .grp button{padding:5px 11px;border-radius:7px;font-size:12px;font-weight:600;color:#c6ccd8;border:1px solid #2a3040}
+#chrome .grp button[aria-pressed="true"]{background:#e7e9ee;color:#101319;border-color:#e7e9ee}
+main{padding:24px 20px 80px;max-width:1560px;margin:0 auto}
+h2{font-size:20px;letter-spacing:-.01em;margin-bottom:4px}
+.lede{color:var(--ink2);max-width:90ch;margin-bottom:18px}
+.lede b{color:var(--ink)}
+.panel{background:#fff;border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-bottom:22px}
+.ph{padding:15px 18px;border-bottom:1px solid var(--hair);display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.ph b{font-size:16px}.ph span{color:var(--ink2);font-size:12.5px}
+.pb{padding:20px;background:#f0f0f1;display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap;justify-content:center}
+.pb.flat{background:#fff;padding:0;display:block}
+.spec{padding:16px 18px;border-top:1px solid var(--hair);display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.spec h4{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);margin-bottom:7px}
+.spec li{font-size:13px;color:var(--ink2);margin-bottom:6px;list-style:none;padding-left:13px;position:relative;line-height:1.5}
+.spec li::before{content:"";position:absolute;left:0;top:8px;width:5px;height:5px;border-radius:50%;background:var(--disabled)}
+.spec li b{color:var(--ink)}
+.spec code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;background:var(--well);border-radius:5px;padding:1px 5px;color:var(--ink)}
+/* phone */
+.phone{width:372px;flex:none;background:var(--cream);border-radius:26px;border:1px solid rgba(0,0,0,.1);padding:14px 13px 12px;display:flex;flex-direction:column;gap:11px}
+.cap{width:372px;flex:none;font-size:12px;color:var(--ink2);text-align:center;margin-top:-8px}
+.phead{display:flex;align-items:center;gap:8px}
+.phead b{font-size:24px;letter-spacing:-.02em}
+.phead .pill{margin-left:auto;background:var(--card);border-radius:999px;padding:5px 11px;font-size:12px}
+.phead .who{background:var(--card);border-radius:999px;padding:4px 10px 4px 4px;font-size:12px;display:flex;align-items:center;gap:6px}
+.av{width:21px;height:21px;border-radius:50%;background:var(--accent);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center}
+.c{background:var(--card);border-radius:20px;padding:14px}
+.c.tight{padding:11px 14px}
+.row{display:flex;align-items:center;gap:10px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.chev{margin-left:auto;color:var(--ink3)}
+.slabel{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3)}
+.seg{display:flex;background:var(--well);border-radius:999px;padding:3px;gap:3px}
+.seg button{flex:1;border-radius:999px;padding:9px 6px;font-size:13.5px;font-weight:600;color:var(--ink2)}
+.seg button.on{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.07)}
+.seg button:disabled{color:var(--disabled)}
+.seg.sm button{padding:6px 8px;font-size:12px}
+.well{background:var(--well);border-radius:14px;padding:12px;display:block}
+/* The rule under the value is the "this is a field" cue — it is the only
+   thing separating an amount you can type from an amount you can only read. */
+.amt{display:flex;align-items:baseline;gap:3px;margin-top:3px;padding-bottom:4px;border-bottom:1.5px solid var(--disabled)}
+.amt:focus-within{border-bottom-color:var(--accent)}
+.amt input{caret-color:var(--accent)}
+.amt.ro{border-bottom:0;padding-bottom:0}
+.amt i{font-style:normal;font-size:15px;font-weight:700;color:var(--ink2)}
+.amt input{width:100%;background:none;border:0;outline:0;font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.amt input::placeholder{color:var(--ink3)}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.chips{display:flex;flex-wrap:wrap;gap:7px}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 12px;font-size:13px;font-weight:600;color:var(--ink2);display:flex;align-items:center;gap:6px}
+.chip.on{background:var(--tint);border-color:var(--accent);color:var(--alert)}
+.chip .pct{font-size:10.5px;font-weight:800;background:#fff;border:1px solid var(--line);border-radius:999px;padding:1px 6px;color:var(--ink2)}
+.chip.on .pct{background:var(--accent);border-color:var(--accent);color:#fff}
+.strip{background:var(--card);border-radius:20px;padding:11px 14px;display:flex;align-items:baseline;gap:8px}
+.strip b{font-size:19px;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.strip .of{margin-left:auto;color:var(--ink3);font-size:12.5px}
+.bar{display:flex;gap:9px}
+.bar button{flex:1;border-radius:999px;padding:13px;font-weight:700;font-size:14.5px;background:var(--card)}
+.bar button.prim{background:var(--accent);color:#fff;flex:1.3}
+.bar button:disabled{background:var(--disabled);color:#fff}
+.calc{border-top:1px dashed var(--line);margin-top:11px;padding-top:10px;display:grid;gap:5px;font-size:12.5px;font-variant-numeric:tabular-nums}
+.calc .ln{display:flex;color:var(--ink2)}
+.calc .ln span:last-child{margin-left:auto;font-weight:600;color:var(--ink)}
+.calc .ln.sub span:last-child{color:var(--alert)}
+.calc .ln.tot{border-top:1px solid var(--line);padding-top:6px;margin-top:2px;font-weight:800;color:var(--ink)}
+.calc .ln.tot span:last-child{font-size:15px}
+.mini{font-size:12px;color:var(--ink2)}
+.mini b{color:var(--ink)}
+.warn{background:var(--tint);color:var(--alert);border-radius:11px;padding:9px 11px;font-size:12.5px;margin-top:10px}
+.ghost{border:1px dashed var(--line);border-radius:12px;padding:11px;width:100%;text-align:center;font-size:12.5px;font-weight:600;color:var(--ink2);background:var(--card)}
+.rows{display:grid;gap:7px}
+.prow{display:flex;align-items:center;gap:10px;background:var(--well);border-radius:12px;padding:9px 11px}
+.prow .nm{font-weight:600;font-size:13.5px}
+.prow .sub{font-size:11px;color:var(--ink3)}
+.prow .amtv{margin-left:auto;font-weight:800;font-variant-numeric:tabular-nums}
+textarea{background:var(--well);border:0;border-radius:11px;padding:10px 11px;width:100%;outline:0;resize:none;font-size:13.5px;line-height:1.4}
+textarea::placeholder{color:var(--ink3)}
+.nglyph{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--blue);background:rgba(37,99,235,.09);border-radius:5px;padding:2px 6px}
+.notepreview .mini{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+[data-screen]{display:flex;flex-direction:column;gap:11px;flex:1}
+.cdbar{height:3px;border-radius:2px;background:var(--well);overflow:hidden;margin-top:7px}
+.cdbar i{display:block;height:100%;background:var(--accent);transition:width .25s linear}
+.scanh1{font-size:28px;font-weight:700;letter-spacing:-.02em}
+.qrbox{width:76px;height:76px;border-radius:14px;background:var(--well);display:flex;align-items:center;justify-content:center;flex:none;color:var(--ink)}
+.replay{font-weight:700;color:var(--accent)}
+.saved .ok16{width:54px;height:54px;border-radius:50%;background:var(--tint);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;margin:0 auto}
+/* dashboard */
+.wideframe{width:100%;overflow-x:auto}
+.tbar{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.tbar b{font-size:16px}.tbar .mini{color:var(--ink3)}
+.tbtn{border:1px solid var(--line);border-radius:8px;padding:5px 11px;font-size:12px;font-weight:700;color:var(--ink2);white-space:nowrap;cursor:pointer}
+.tbtn.sm{padding:3px 9px;font-size:11.5px}
+.tbtn.prim{background:var(--accent);border-color:var(--accent);color:#fff}
+table.ledger{width:100%;border-collapse:collapse;font-size:13px;min-width:940px}
+table.ledger th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap}
+table.ledger td{padding:10px 11px;border-bottom:1px solid var(--hair)}
+table.ledger .r{text-align:right}
+table.ledger .cash{background:var(--cashcol)}
+table.ledger .card{background:var(--cardcol)}
+table.ledger .b{font-weight:700;font-variant-numeric:tabular-nums}
+table.ledger .xb{font-weight:800;font-variant-numeric:tabular-nums}
+table.ledger .mut{color:var(--ink3);font-size:12.5px}
+table.ledger tr.daytot td{background:#fafafa;font-weight:800;color:var(--ink2);font-size:12px;padding:6px 11px;font-variant-numeric:tabular-nums}
+table.ledger tr.flag td{background:var(--flagtint)}
+.lchip{font-size:11.5px;font-weight:700;border-radius:6px;padding:2px 8px;white-space:nowrap}
+.lchip.sushi{background:var(--tint);color:var(--alert)}
+.lchip.poki{background:rgba(37,99,235,.1);color:var(--blue)}
+.scope{font-size:10px;font-weight:800;text-transform:uppercase;background:#fff;border:1px solid var(--line);border-radius:5px;padding:1px 5px;color:var(--ink2);cursor:help}
+.mark{font-size:11px;font-weight:800;color:var(--green);background:var(--gratcol);border-radius:5px;padding:1px 5px}
+.sub2{font-weight:600;font-size:11.5px;color:var(--ink3)}
+.fchip{font-size:10.5px;font-weight:800;color:var(--alert);background:#fff;border:1px solid rgba(192,53,32,.3);border-radius:6px;padding:1px 6px}
+tr.exp{cursor:pointer}tr.exp:hover td{background:#fafafa}tr.exp.open td{background:#f6f7f8}
+.tw{width:26px}.tri{color:var(--ink3);font-size:11px}
+tr.det td{background:#f6f7f8;padding:0 11px 16px}
+.detgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}
+.dcard{background:#fff;border:1px solid var(--line);border-radius:13px;padding:13px}
+.hair2{height:1px;background:var(--hair);margin:11px 0}
+table.mini2{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:7px}
+table.mini2 td{padding:4px 0;border-bottom:1px solid var(--hair)}
+table.mini2 tr.tt td{border-bottom:0;border-top:1px solid var(--line);font-weight:800;padding-top:6px}
+.ntext{font-size:12.5px;color:var(--ink2);line-height:1.5;margin-top:7px}
+.ntext.mut{color:var(--ink3)}
+</style>
+</head>
+<body>
+<header id="chrome">
+  <div class="brand"><i>smelter</i> tips</div>
+  <div class="sub">v3 <b>FINAL</b> — chosen: A1 · B1 · C1 · D2 · build exactly this</div>
+  <div class="grp"><span>lunch today</span>
+    <button data-lunch="yes" aria-pressed="true">recorded $118 / $142</button>
+    <button data-lunch="no">not recorded</button>
+  </div>
+</header>
+<main>
+
+<h2>1 · The entry phone — dinner</h2>
+<p class="lede">A1, B1 and C1 all live on this one screen. It is fully live: type in a well, tap a badge, flip the scope switch, write a note. The right-hand phone is the same screen after saving. Use the <b>lunch today</b> switch in the top bar to see the no-lunch-on-record edge case.</p>
+
+<div class="panel">
+  <div class="ph"><b>Entry form</b><span>web/src/components/entry/EntryForm.tsx</span></div>
+  <div class="pb">
+    <div class="phone" id="entry">
+      <div class="phead"><b>Tips</b><span class="pill">Wed, Aug 27</span><span class="who"><span class="av">D</span>Dee</span></div>
+      <div class="c tight row"><span class="dot"></span><b>Babytuna Sushi</b><span class="chev">›</span></div>
+      <div class="seg"><button disabled>Lunch</button><button class="on">Dinner</button></div>
+
+      <div class="c">
+        <div class="seg sm" data-scope>
+          <button class="on" data-v="day">Whole day (Square)</button>
+          <button data-v="shift">Dinner only</button>
+        </div>
+        <div class="g3" style="margin-top:11px">
+          <label class="well"><span class="slabel">Cash</span><span class="amt"><i>$</i><input data-f="cash" value="323.00" inputmode="decimal" aria-label="Cash amount"></span></label>
+          <label class="well"><span class="slabel">Card</span><span class="amt"><i>$</i><input data-f="card" value="777.00" inputmode="decimal" aria-label="Card amount"></span></label>
+          <label class="well"><span class="slabel">Gratuity</span><span class="amt"><i>$</i><input data-f="grat" value="216.00" inputmode="decimal" placeholder="0.00" aria-label="Gratuity amount"></span></label>
+        </div>
+        <div class="mini" style="margin-top:8px;color:var(--ink3)">Leave gratuity blank on a night with no large parties.</div>
+        <div class="calc" data-calc>
+          <div class="ln"><span data-out="entlabel">Entered (whole day)</span><span data-out="ent">$1,316.00</span></div>
+          <div class="ln sub" data-lunchln><span>− Lunch already recorded</span><span data-out="lun">−$260.00</span></div>
+          <div class="ln tot"><span>Dinner records</span><span data-out="fin">$1,056.00</span></div>
+        </div>
+        <div class="warn" data-warn hidden></div>
+      </div>
+
+      <div class="c">
+        <div class="row"><span class="slabel">Who’s splitting</span><span class="mini" style="margin-left:auto;color:var(--ink3)">tap a badge to change a share</span></div>
+        <div class="chips" data-roster style="margin-top:10px"></div>
+      </div>
+
+      <div class="c tight" data-payoutcard>
+        <div class="slabel">What each person takes</div>
+        <div class="rows" data-payout style="margin-top:9px"></div>
+      </div>
+
+      <div class="strip"><span class="slabel" data-out="striplabel">Full share</span><b data-out="each">$45.56</b><span class="of" data-out="pool">of $205.00 cash</span></div>
+
+      <div data-noteclosed><button class="ghost" data-open>+ Add a note</button></div>
+      <div class="c" data-noteopen hidden>
+        <div class="row"><span class="slabel">Note</span><span class="mini" style="margin-left:auto;color:var(--ink3)" data-out="count">0 / 280</span></div>
+        <textarea data-f="note" rows="3" placeholder="Drawer was $20 short — Marco recounted, still short." style="margin-top:7px"></textarea>
+        <div class="row" style="margin-top:9px;gap:8px">
+          <button class="ghost" style="width:auto;padding:7px 14px" data-cancel>Cancel</button>
+          <button class="ghost" style="width:auto;padding:7px 14px;border-style:solid;background:var(--tint);border-color:var(--accent);color:var(--alert)" data-savenote>Save</button>
+        </div>
+      </div>
+      <div class="c tight notepreview" data-notedone hidden>
+        <div class="row"><span class="nglyph">note</span><span class="mini" data-out="notepreview"></span><button style="font-weight:700;color:var(--accent);margin-left:auto" data-edit>edit</button></div>
+      </div>
+
+      <div class="bar"><button class="prim">Speak it in</button><button data-save>Save</button></div>
+    </div>
+
+    <div class="phone saved" id="flow">
+      <div data-screen="saved">
+        <div style="padding:22px 6px 0;text-align:center">
+          <div class="ok16">✓</div>
+          <b style="display:block;font-size:26px;margin-top:14px">Saved</b>
+          <div class="mini" style="margin-top:4px">Dinner · Wed, Aug 27</div>
+        </div>
+        <div class="c">
+          <div class="row"><span class="dot"></span><b>Babytuna Sushi</b></div>
+          <div class="g3" style="margin-top:12px">
+            <div class="well"><span class="slabel">Cash</span><div class="amt ro"><i>$</i><b style="font-size:17px">205.00</b></div></div>
+            <div class="well"><span class="slabel">Card</span><div class="amt ro"><i>$</i><b style="font-size:17px">635.00</b></div></div>
+            <div class="well"><span class="slabel">Gratuity</span><div class="amt ro"><i>$</i><b style="font-size:17px">216.00</b></div></div>
+          </div>
+          <div class="mini" style="margin-top:11px">5 people · full share <b>$45.56</b>, Kenji <b>$22.78</b> (50%)</div>
+          <div class="mini" style="margin-top:3px;color:var(--ink3)">Ana, Marco, Priya, Dee, Kenji</div>
+          <div class="row" style="margin-top:11px"><span class="nglyph">note</span><span class="mini" style="flex:1">Drawer $20 short — Marco recounted.</span></div>
+        </div>
+        <div style="flex:1"></div>
+        <div>
+          <div class="mini" style="text-align:center;color:var(--ink3)">Back to the scan screen in <b data-out="cd">10</b>s</div>
+          <div class="cdbar"><i data-out="cdbar" style="width:100%"></i></div>
+        </div>
+        <div class="bar"><button data-done>Done</button></div>
+      </div>
+
+      <div data-screen="scan" hidden>
+        <div style="padding:34px 4px 0">
+          <h1 class="scanh1">Scan to enter</h1>
+          <p class="mini" style="margin-top:6px">Every entry starts with the QR code by the register</p>
+        </div>
+        <div class="c row" style="align-items:flex-start;gap:14px;margin-top:14px">
+          <span class="qrbox"><svg width="46" height="46" viewBox="0 0 56 56" fill="none" stroke="currentColor" stroke-width="3" aria-hidden>
+            <rect x="6" y="6" width="16" height="16" rx="3"/><rect x="34" y="6" width="16" height="16" rx="3"/><rect x="6" y="34" width="16" height="16" rx="3"/>
+            <rect x="11.5" y="11.5" width="5" height="5" fill="currentColor" stroke="none"/><rect x="39.5" y="11.5" width="5" height="5" fill="currentColor" stroke="none"/>
+            <rect x="11.5" y="39.5" width="5" height="5" fill="currentColor" stroke="none"/><rect x="34" y="34" width="6" height="6" fill="currentColor" stroke="none"/>
+            <rect x="44" y="34" width="6" height="6" fill="currentColor" stroke="none"/><rect x="34" y="44" width="6" height="6" fill="currentColor" stroke="none"/></svg></span>
+          <div style="padding-top:4px"><b>Two ways to scan</b><p class="mini" style="margin-top:3px;color:var(--ink2)">Use your camera app or scan it here.</p></div>
+        </div>
+        <div style="flex:1"></div>
+        <div class="bar"><button class="prim" style="flex:1">Scan the QR code</button></div>
+      </div>
+    </div>
+    <div class="cap">Confirmation holds 10s, then hands the phone back to the scan gate · <button class="replay" data-replay>replay</button></div>
+  </div>
+  <div class="spec">
+    <div>
+      <h4>A1 · gratuity + scope</h4>
+      <ul>
+        <li>Labelled <b>Gratuity</b> — not "auto-grat". Third well, visually <b>identical</b> to Cash and Card: no green, no tint of any kind. Blank is legal and means <code>0</code>. <b>No 18%-of-subtotal calculator</b>.</li>
+        <li>All three amounts carry a <b>rule under the value</b> that turns accent-red on focus. That underline is the only thing marking them as typeable — it is not decoration.</li>
+        <li>Scope switch sits directly above the wells with <b>no label over it</b>, defaults to <b>Whole day</b> on dinner, and is hidden entirely on lunch.</li>
+        <li>On <b>Whole day</b>: subtract today’s recorded lunch <b>field by field</b> (cash−cash, card−card, grat−grat) at this location. The receipt shows entered → −lunch → records.</li>
+        <li>Save stores <b>both</b> the typed figures and the derived shift figures.</li>
+      </ul>
+    </div>
+    <div>
+      <h4>B1 · partial shares</h4>
+      <ul>
+        <li>Badge on each selected chip: tapping cycles <b>100 → 75 → 50 → 25</b> and wraps. Tapping the chip body still toggles the person on/off.</li>
+        <li>Pool is distributed <b>by weight</b>: full share = <code>pool ÷ Σweights</code>. Kenji at 50% raises everyone else from $41.00 to $45.56.</li>
+        <li>“What each person takes” <b>only renders when at least one share is under 100%</b>. All-full nights show nothing but the strip.</li>
+        <li>Strip label: <code>Split N ways</code> when even, <code>Full share</code> when uneven.</li>
+        <li>Largest-remainder allocation — the shares must sum to the pool exactly, to the cent.</li>
+      </ul>
+    </div>
+    <div>
+      <h4>C1 · note + edge cases</h4>
+      <ul>
+        <li>Dashed “+ Add a note” under the strip → textarea (280 max, live counter) → Cancel / Attach → one-line preview with an <b>edit</b> affordance. Empty text on Attach collapses back to the dashed button.</li>
+        <li>Never required; no note = no column noise on the dashboard.</li>
+        <li>The note’s confirm button reads <b>Save</b>, not "Attach".</li>
+        <li><b>Lunch not on record + Whole day</b>: <b>show the closer nothing</b> — no banner, no extra tap. It still saves <b>flagged</b> with reason <code>day_total_no_lunch</code> for the manager. Nothing at the register can fix it, so it is not the closer’s problem to read.</li>
+        <li><b>Subtraction goes negative</b>: the one warning that does show — red, with <b>Save disabled</b> until it is fixed.</li>
+        <li><b>Saved screen</b>: the same three wells as the entry form (Cash · Card · Gratuity, same grid, same type) but read-only — <b>no underline</b>, since nothing on it is typeable. Holds <b>10 seconds</b> with a visible countdown, then hands the phone back to the scan gate; <b>Done</b> skips the wait.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<h2>2 · Recorded tips — D2</h2>
+<p class="lede">Today’s columns stay exactly as they are; the row unfolds. Click any row. The detail panel is where the new data lives — the arithmetic that produced the number, the gratuity, the per-person weighted table, and the note in full.</p>
+
+<div class="panel">
+  <div class="ph"><b>Recorded tips</b><span>web/src/components/manager/dashboard/LedgerPage.tsx</span></div>
+  <div class="pb flat"><div class="wideframe" id="ledger">
+    <div class="tbar"><b>Recorded tips</b><span class="mini">Aug 21 – Aug 27 · 14 records · click a row for the breakdown</span><span class="tbtn" style="margin-left:auto">Export CSV</span></div>
+    <table class="ledger">
+      <thead><tr><th></th><th>Business date</th><th>Restaurant</th><th>Meal</th><th class="r cash">Cash pool</th><th>Split between</th><th class="r cash">Per person</th><th class="r card">Card → payroll</th><th>Entered by</th><th></th></tr></thead>
+      <tbody>
+        <tr class="daytot"><td colspan="4">Wed, Aug 27</td><td class="r cash">$323.00</td><td class="cash"></td><td class="cash"></td><td class="r card">$777.00</td><td colspan="2"></td></tr>
+        <tr class="exp open" data-exp>
+          <td class="tw"><span class="tri">▾</span></td><td>Wed, Aug 27</td><td><span class="lchip sushi">Sushi</span></td><td>Dinner</td>
+          <td class="r cash b"><span class="scope" title="Entered as a whole-day total, lunch subtracted">day −lunch</span> $205.00</td>
+          <td>5 names <span class="mark">1 partial</span></td>
+          <td class="r cash xb">$45.56 <span class="sub2">full share</span></td>
+          <td class="r card">$635.00</td><td class="mut">Dee · dictated</td>
+          <td class="r"><span class="nglyph">note</span></td>
+        </tr>
+        <tr class="det"><td></td><td colspan="9">
+          <div class="detgrid">
+            <div class="dcard">
+              <div class="slabel">How this number was reached</div>
+              <div class="calc" style="margin-top:8px;border:0;padding:0">
+                <div class="ln"><span>Entered from Square (whole day)</span><span>$323.00</span></div>
+                <div class="ln sub"><span>− lunch recorded 3:41 PM</span><span>−$118.00</span></div>
+                <div class="ln tot"><span>Dinner cash pool</span><span>$205.00</span></div>
+              </div>
+              <div class="hair2"></div>
+              <div class="calc" style="border:0;padding:0;margin:0">
+                <div class="ln"><span>Card → payroll</span><span>$635.00</span></div>
+                <div class="ln"><span>Gratuity</span><span>$216.00</span></div>
+              </div>
+            </div>
+            <div class="dcard">
+              <div class="slabel">Who takes what</div>
+              <table class="mini2"><tbody>
+                <tr><td>Ana</td><td class="r mut">full</td><td class="r b">$45.56</td></tr>
+                <tr><td>Marco</td><td class="r mut">full</td><td class="r b">$45.56</td></tr>
+                <tr><td>Priya</td><td class="r mut">full</td><td class="r b">$45.55</td></tr>
+                <tr><td>Dee</td><td class="r mut">full</td><td class="r b">$45.55</td></tr>
+                <tr><td>Kenji</td><td class="r mut">50%</td><td class="r b">$22.78</td></tr>
+                <tr class="tt"><td>Pool</td><td></td><td class="r b">$205.00</td></tr>
+              </tbody></table>
+            </div>
+            <div class="dcard">
+              <div class="slabel">Note · Dee, 10:52 PM</div>
+              <p class="ntext">Drawer $20 short — Marco recounted, still short. Kenji only came in 6–8 to cover Priya’s break.</p>
+              <div class="row" style="margin-top:11px;gap:8px"><span class="tbtn sm">Fix entry</span></div>
+            </div>
+          </div>
+        </td></tr>
+        <tr class="exp" data-exp>
+          <td class="tw"><span class="tri">▸</span></td><td>Wed, Aug 27</td><td><span class="lchip sushi">Sushi</span></td><td>Lunch</td>
+          <td class="r cash b">$118.00</td><td>3 names</td><td class="r cash xb">$39.33</td><td class="r card">$142.00</td><td class="mut">Ana · typed</td><td></td>
+        </tr>
+        <tr class="det" hidden><td></td><td colspan="9"><div class="detgrid">
+          <div class="dcard"><div class="slabel">How this number was reached</div><div class="calc" style="margin-top:8px;border:0;padding:0"><div class="ln tot"><span>Entered as lunch only</span><span>$118.00</span></div></div><div class="hair2"></div><div class="calc" style="border:0;padding:0;margin:0"><div class="ln"><span>Card → payroll</span><span>$142.00</span></div><div class="ln"><span>Gratuity</span><span>none</span></div></div></div>
+          <div class="dcard"><div class="slabel">Who takes what</div><table class="mini2"><tbody><tr><td>Ana</td><td class="r mut">full</td><td class="r b">$39.33</td></tr><tr><td>Priya</td><td class="r mut">full</td><td class="r b">$39.33</td></tr><tr><td>Dee</td><td class="r mut">full</td><td class="r b">$39.34</td></tr><tr class="tt"><td>Pool</td><td></td><td class="r b">$118.00</td></tr></tbody></table></div>
+          <div class="dcard"><div class="slabel">Note</div><p class="ntext mut">No note on this entry.</p><div class="row" style="margin-top:11px"><span class="tbtn sm">Fix entry</span></div></div>
+        </div></td></tr>
+        <tr class="exp flag" data-exp>
+          <td class="tw"><span class="tri">▸</span></td><td>Tue, Aug 26</td><td><span class="lchip poki">Poki &amp; Pho</span></td><td>Dinner</td>
+          <td class="r b">$822.00 <span class="fchip">⚑ check</span></td><td>2 names <span class="mark">1 partial</span></td><td class="r xb">$657.60 <span class="sub2">full share</span></td><td class="r">$210.00</td><td class="mut">Sam · typed</td><td class="r"><span class="tbtn sm prim">Verify</span></td>
+        </tr>
+        <tr class="det" hidden><td></td><td colspan="9"><div class="detgrid">
+          <div class="dcard"><div class="slabel">How this number was reached</div><div class="calc" style="margin-top:8px;border:0;padding:0"><div class="ln"><span>Entered from Square (whole day)</span><span>$822.00</span></div><div class="ln sub"><span>− lunch recorded</span><span>nothing on record</span></div><div class="ln tot"><span>Dinner cash pool</span><span>$822.00</span></div></div><p class="ntext" style="color:var(--alert)">Flagged <code>day_total_no_lunch</code> — a whole-day total was entered with no lunch to subtract.</p></div>
+          <div class="dcard"><div class="slabel">Who takes what</div><table class="mini2"><tbody><tr><td>Sam</td><td class="r mut">full</td><td class="r b">$657.60</td></tr><tr><td>Rey</td><td class="r mut">25%</td><td class="r b">$164.40</td></tr><tr class="tt"><td>Pool</td><td></td><td class="r b">$822.00</td></tr></tbody></table></div>
+          <div class="dcard"><div class="slabel">Note · Sam, 9:58 PM</div><p class="ntext">Party of 30 on the patio, one check.</p><div class="row" style="margin-top:11px;gap:8px"><span class="tbtn sm prim">Verify</span><span class="tbtn sm">Fix entry</span></div></div>
+        </div></td></tr>
+      </tbody>
+    </table>
+  </div></div>
+  <div class="spec">
+    <div><h4>Columns</h4><ul>
+      <li>Existing columns keep their existing widths and tints. <b>Two additions only</b>: a caret column at the left and a note/action cell at the right.</li>
+      <li>Cash cell gains a <code>day −lunch</code> badge when the entry was recorded from a whole-day total; hover shows the raw figure.</li>
+      <li>“Split between” shows <code>N names</code> + a <code>1 partial</code> mark when any weight &lt; 1; “Per person” shows the full share with a <code>full share</code> caption instead of a flat average.</li>
+      <li>Gratuity gets <b>no top-level column</b> — it lives in the detail panel and the CSV.</li>
+    </ul></div>
+    <div><h4>Detail panel</h4><ul>
+      <li>Three cards: <b>how this number was reached</b> (raw → −lunch → recorded, then card + grat), <b>who takes what</b> (every name, weight, dollars, and a Pool total that must equal the cash pool), <b>note</b> (author + time, or “No note on this entry.”).</li>
+      <li>Flagged rows: keep the red tint and Verify; a flagged row <b>auto-opens</b> its detail when the range first loads.</li>
+      <li>Fix dialog gains gratuity, the scope switch, per-person weights and the note.</li>
+    </ul></div>
+    <div><h4>Everything else</h4><ul>
+      <li>CSV export gains <code>auto_grat</code>, <code>entered_scope</code>, <code>raw_cash</code>, <code>raw_card</code>, <code>note</code>, and a per-person weight column.</li>
+      <li>Overview take-home-by-person must use the same weighted allocation, not <code>cash ÷ split_count</code>.</li>
+      <li>Voice entry is unchanged in this phase: it still fills cash / card / people only.</li>
+    </ul></div>
+  </div>
+</div>
+
+</main>
+<script>
+const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
+function M(n){const neg=n<-0.0001,v=Math.abs(Math.round(n*100)/100).toFixed(2),p=v.split(".");
+  return (neg?"−$":"$")+p[0].replace(/\B(?=(\d{3})+(?!\d))/g,",")+"."+p[1]}
+const num=el=>{const v=parseFloat(String(el.value).replace(/[^0-9.]/g,""));return isFinite(v)?v:0};
+function allocate(poolCents,weights){
+  const total=weights.reduce((a,b)=>a+b,0);
+  if(total<=0||poolCents<=0)return weights.map(()=>0);
+  const raw=weights.map(w=>poolCents*w/total),base=raw.map(Math.floor);
+  let rest=poolCents-base.reduce((a,b)=>a+b,0);
+  const order=raw.map((v,i)=>[v-Math.floor(v),i]).sort((a,b)=>b[0]-a[0]);
+  for(let k=0;k<rest;k++)base[order[k%order.length][1]]++;
+  return base;
+}
+/* lunch-on-record scenario */
+let LUNCH={cash:118,card:142,grat:0},hasLunch=true;
+$$("[data-lunch]").forEach(b=>b.onclick=()=>{
+  hasLunch=b.dataset.lunch==="yes";
+  $$("[data-lunch]").forEach(x=>x.setAttribute("aria-pressed",String(x===b)));
+  LUNCH=hasLunch?{cash:118,card:142,grat:0}:{cash:0,card:0,grat:0};
+  render();
+});
+/* entry screen */
+const P=$("#entry"),f=n=>$(`[data-f="${n}"]`,P),out=n=>$(`[data-out="${n}"]`,P);
+const CYCLE=[1,.75,.5,.25];
+const people=["Ana","Marco","Priya","Dee","Kenji"].map((n,i)=>({n,on:true,w:i===4?.5:1}));
+let scope="day";
+$$("[data-scope] button",P).forEach(b=>b.onclick=()=>{
+  scope=b.dataset.v;$$("[data-scope] button",P).forEach(x=>x.classList.toggle("on",x===b));render();
+});
+$$("input",P).forEach(i=>i.addEventListener("input",render));
+/* note */
+const closed=$("[data-noteclosed]",P),open=$("[data-noteopen]",P),done=$("[data-notedone]",P),ta=f("note");
+const show=(a,b,c)=>{closed.hidden=!a;open.hidden=!b;done.hidden=!c};
+$("[data-open]",P).onclick=()=>{show(0,1,0);ta.focus()};
+$("[data-cancel]",P).onclick=()=>show(1,0,0);
+$("[data-edit]",P).onclick=()=>{show(0,1,0);ta.focus()};
+$("[data-savenote]",P).onclick=()=>{
+  if(!ta.value.trim())return show(1,0,0);
+  out("notepreview").textContent=ta.value.trim();show(0,0,1);
+};
+ta.addEventListener("input",()=>out("count").textContent=`${ta.value.length} / 280`);
+
+function render(){
+  const cash=num(f("cash")),card=num(f("card")),grat=num(f("grat")),day=scope==="day";
+  const sub=day?LUNCH:{cash:0,card:0,grat:0};
+  const nc=cash-sub.cash,nd=card-sub.card,ng=grat-sub.grat;
+  out("entlabel").textContent=day?"Entered (whole day)":"Entered (dinner only)";
+  out("ent").textContent=M(cash+card+grat);
+  $("[data-lunchln]",P).hidden=!day;
+  out("lun").textContent="−"+M(sub.cash+sub.card+sub.grat);
+  out("fin").textContent=M(nc+nd+ng);
+
+  // Only the blocking case is surfaced. A whole-day dinner with no lunch on
+  // record still saves FLAGGED for the manager — the closer is never told,
+  // because there is nothing they can do about it at the register.
+  const negative=nc<0||nd<0||ng<0;
+  const warn=$("[data-warn]",P);
+  warn.hidden=!negative;
+  warn.innerHTML="Lunch already recorded more than this. Check the Square report — <b>Save is off until this is fixed.</b>";
+  $("[data-save]",P).disabled=negative;
+
+  /* roster + weights */
+  $("[data-roster]",P).innerHTML=people.map((x,i)=>
+    `<span class="chip${x.on?" on":""}" data-i="${i}">${x.n}${x.on?`<b class="pct" data-b="${i}">${Math.round(x.w*100)}%</b>`:""}</span>`).join("");
+  $$("[data-i]",P).forEach(c=>c.onclick=e=>{
+    if(e.target.dataset.b!==undefined){const i=+e.target.dataset.b;people[i].w=CYCLE[(CYCLE.indexOf(people[i].w)+1)%CYCLE.length]}
+    else{const i=+c.dataset.i;people[i].on=!people[i].on}
+    render();
+  });
+  const live=people.filter(x=>x.on),pool=Math.max(0,nc);
+  const cents=allocate(Math.round(pool*100),live.map(x=>x.w));
+  const uneven=live.some(x=>x.w<1);
+  $("[data-payoutcard]",P).hidden=!uneven||live.length===0;
+  $("[data-payout]",P).innerHTML=!uneven?"":live.map((x,i)=>
+    `<div class="prow"><span class="nm">${x.n}</span>${x.w<1?`<span class="sub">${Math.round(x.w*100)}% share</span>`:""}<span class="amtv">${M(cents[i]/100)}</span></div>`).join("");
+  const sumW=live.reduce((a,b)=>a+b.w,0);
+  out("striplabel").textContent=uneven?"Full share":`Split ${live.length} ways`;
+  out("each").textContent=sumW?M(pool/sumW):"$0.00";
+  out("pool").textContent="of "+M(pool)+" cash";
+}
+render();
+/* confirmation → scan gate */
+(function(){
+  const F=$("#flow"),saved=$('[data-screen="saved"]',F),scan=$('[data-screen="scan"]',F);
+  const HOLD=10; let left=HOLD,timer=null;
+  function tick(){
+    left-=1;
+    $('[data-out="cd"]',F).textContent=Math.max(0,left);
+    $('[data-out="cdbar"]',F).style.width=Math.max(0,left/HOLD*100)+"%";
+    if(left<=0)finish();
+  }
+  function finish(){clearInterval(timer);timer=null;saved.hidden=true;scan.hidden=false}
+  function start(){
+    clearInterval(timer);left=HOLD;saved.hidden=false;scan.hidden=true;
+    $('[data-out="cd"]',F).textContent=HOLD;$('[data-out="cdbar"]',F).style.width="100%";
+    timer=setInterval(tick,1000);
+  }
+  $("[data-done]",F).onclick=finish;
+  $("[data-replay]").onclick=start;
+  start();
+})();
+
+/* ledger rows */
+$$("[data-exp]",$("#ledger")).forEach(row=>row.onclick=()=>{
+  const det=row.nextElementSibling,isOpen=!det.hidden;
+  det.hidden=isOpen;row.classList.toggle("open",!isOpen);
+  row.querySelector(".tri").textContent=isOpen?"▸":"▾";
+});
+</script>
+</body>
+</html>

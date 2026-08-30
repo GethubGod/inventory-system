@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Babytuna Tip Dashboard — final mockup · 3 versions</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+button{font:inherit;cursor:pointer;background:none;border:0;color:inherit}
+input,select{font:inherit}
+body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+:root{--blue:#2563eb;--red:#e84d38;--redDeep:#c03520;--redTint:#fdecea;--amber:#b7791f;--green:#1f7a4d}
+
+/* ================= meta chrome (mockup-only controls) ================= */
+#chrome{position:sticky;top:0;z-index:60;background:#101319;color:#e7e9ee;display:flex;align-items:center;gap:16px;padding:8px 16px;font-size:12.5px;flex-wrap:wrap}
+#chrome .brandnote{color:#8a93a6;margin-right:auto}
+#chrome .grp{display:flex;align-items:center;gap:6px}
+#chrome .grp>span{color:#8a93a6;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+#chrome .grp button{padding:5px 12px;border-radius:7px;color:#c6ccd8;border:1px solid #2a3040;font-weight:600;font-size:12.5px}
+#chrome .grp button[aria-pressed="true"]{background:#e7e9ee;color:#101319;border-color:#e7e9ee}
+
+/* ================= theme variables per version ================= */
+body[data-v="v1"]{--bg:#eef0f3;--panel:#ffffff;--ink:#10141c;--sec:#5a6270;--mut:#98a0ac;--line:#e2e5ea;--hair:#edeff2;--well:#e9ebef;--rad:12px;--radIn:9px;--shadow:0 1px 2px rgba(16,20,28,.06),0 4px 14px rgba(16,20,28,.05);--btnPrimBg:#10141c;--btnPrimFg:#fff}
+body[data-v="v2"]{--bg:#f5f5f4;--panel:#ffffff;--ink:#1a1a1a;--sec:#5f5f5f;--mut:#9c9890;--line:rgba(0,0,0,.08);--hair:rgba(0,0,0,.06);--well:#ededec;--rad:20px;--radIn:14px;--shadow:none;--btnPrimBg:#e84d38;--btnPrimFg:#fff}
+body[data-v="v3"]{--bg:#f6f7f8;--panel:#ffffff;--ink:#171a1f;--sec:#565d68;--mut:#9aa1ab;--line:#e4e7eb;--hair:#eef0f3;--well:#eef0f2;--rad:10px;--radIn:8px;--shadow:0 1px 2px rgba(23,26,31,.05);--btnPrimBg:#171a1f;--btnPrimFg:#fff}
+
+/* ================= app shell — full width ================= */
+#app{display:flex;min-height:calc(100vh - 37px)}
+#sidenav{display:flex;flex-direction:column;width:216px;flex:none;padding:18px 12px;position:sticky;top:37px;height:calc(100vh - 37px)}
+#content{flex:1;min-width:0;padding:0 28px 60px}
+#sidenav .logo{font-weight:700;font-size:15px;padding:4px 10px 16px;letter-spacing:.01em}
+#sidenav .logo span{color:var(--red)}
+#sidenav button.nav{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:9px 12px;border-radius:9px;font-size:13.5px;font-weight:600;margin-bottom:2px}
+#sidenav .navdot{width:7px;height:7px;border-radius:50%;background:var(--red);margin-left:auto}
+#sidenav .foot{margin-top:auto;font-size:11.5px;padding:10px}
+body[data-v="v1"] #sidenav,body[data-v="v2"] #sidenav{background:var(--panel);border-right:1px solid var(--line)}
+body[data-v="v1"] #sidenav .logo,body[data-v="v2"] #sidenav .logo{color:var(--ink)}
+body[data-v="v1"] #sidenav button.nav,body[data-v="v2"] #sidenav button.nav{color:var(--sec)}
+body[data-v="v1"] #sidenav button.nav:hover,body[data-v="v2"] #sidenav button.nav:hover{background:var(--well);color:var(--ink)}
+body[data-v="v1"] #sidenav button.nav[aria-current="true"]{background:var(--well);color:var(--ink);box-shadow:inset 3px 0 0 #10141c}
+body[data-v="v2"] #sidenav button.nav{border-radius:999px}
+body[data-v="v2"] #sidenav button.nav[aria-current="true"]{background:#fbeae7;color:#c03520}
+body[data-v="v1"] #sidenav .foot,body[data-v="v2"] #sidenav .foot{color:var(--mut)}
+body[data-v="v3"] #sidenav{background:#15181d}
+body[data-v="v3"] #sidenav .logo{color:#fff}
+body[data-v="v3"] #sidenav button.nav{color:#aeb5c0}
+body[data-v="v3"] #sidenav button.nav:hover{background:#1d2129;color:#e7e9ee}
+body[data-v="v3"] #sidenav button.nav[aria-current="true"]{background:#242a34;color:#fff;box-shadow:inset 3px 0 0 #e84d38}
+body[data-v="v3"] #sidenav .foot{color:#5c6472}
+/* nav icons + collapse */
+#sidenav .nico{width:18px;height:18px;flex:none}
+#sidenav .nico svg{width:100%;height:100%;display:block}
+#sidenav .snhead{display:flex;align-items:center;gap:6px}
+#sidenav .snhead .logo{flex:1;min-width:0;white-space:nowrap;overflow:hidden}
+#sidenav .sntoggle{width:26px;height:26px;border-radius:7px;font-weight:800;font-size:13px;color:inherit;opacity:.65;flex:none}
+#sidenav .sntoggle:hover{opacity:1}
+#sidenav .logomin{display:none}
+#sidenav.collapsed{width:66px;padding:18px 9px}
+#sidenav.collapsed .nlbl,#sidenav.collapsed .navdot,#sidenav.collapsed .logofull,#sidenav.collapsed .pmeta,#sidenav.collapsed .lgtxt{display:none}
+#sidenav.collapsed .logomin{display:inline}
+#sidenav.collapsed .snhead{flex-direction:column;gap:8px}
+#sidenav.collapsed button.nav{justify-content:center;padding:10px 0}
+#sidenav.collapsed .profile{justify-content:center;padding:8px 0}
+#sidenav.collapsed .logout{justify-content:center;padding:9px 0}
+/* profile + logout */
+#sidenav .foot{margin-top:auto;padding:10px 4px 4px;display:flex;flex-direction:column;gap:8px}
+.profile{display:flex;align-items:center;gap:10px;padding:8px 8px;border-radius:10px}
+.profile .avatar{width:32px;height:32px;border-radius:50%;background:var(--red);color:#fff;font-weight:800;font-size:14px;display:flex;align-items:center;justify-content:center;flex:none}
+.profile .pmeta{min-width:0;line-height:1.3}
+.profile .pmeta b{display:block;font-size:13px}
+.profile .pmeta span{font-size:11px;opacity:.75;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.logout{display:flex;align-items:center;gap:9px;width:100%;padding:9px 12px;border-radius:9px;font-size:13px;font-weight:700;border:1px solid transparent}
+body[data-v="v1"] .logout,body[data-v="v2"] .logout{color:var(--redDeep);border-color:rgba(192,53,32,.3)}
+body[data-v="v1"] .logout:hover,body[data-v="v2"] .logout:hover{background:var(--redTint)}
+body[data-v="v2"] .logout{border-radius:999px}
+body[data-v="v3"] .logout{color:#f2b8ae;border-color:#3a2f2d}
+body[data-v="v3"] .logout:hover{background:#2a2023}
+body[data-v="v1"] .profile .pmeta b,body[data-v="v2"] .profile .pmeta b{color:var(--ink)}
+body[data-v="v3"] .profile .pmeta b{color:#fff}
+
+/* ================= top bar ================= */
+.topbar{display:flex;align-items:baseline;gap:14px;padding:24px 0 4px;flex-wrap:wrap}
+.topbar h1{font-size:21px;font-weight:800;letter-spacing:-.01em}
+.kpis{display:flex;gap:18px;margin-left:auto;align-items:baseline;flex-wrap:wrap}
+.kpi{font-size:13px;color:var(--sec)}
+.kpi b{color:var(--ink);font-size:15px;font-weight:800}
+.kpi .flagpill{background:var(--redTint);color:var(--redDeep);border:1px solid rgba(192,53,32,.25);border-radius:999px;padding:2px 10px;font-weight:700;font-size:12.5px}
+
+/* ================= toolbar ================= */
+.toolbar{position:sticky;top:37px;z-index:40;display:flex;align-items:center;gap:12px;padding:10px 14px;margin:12px 0 20px;background:var(--panel);border:1px solid var(--line);border-radius:var(--rad);box-shadow:var(--shadow);flex-wrap:wrap}
+body[data-v="v1"] .toolbar{background:rgba(255,255,255,.82);backdrop-filter:saturate(1.5) blur(14px);-webkit-backdrop-filter:saturate(1.5) blur(14px)}
+.weeknav{display:flex;align-items:center;gap:6px}
+.weeknav .arrow{width:28px;height:28px;border:1px solid var(--line);border-radius:8px;font-weight:700;color:var(--sec)}
+.weeknav .arrow:disabled{opacity:.3;cursor:default}
+.rangebtn{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:6px 13px;font-weight:700;font-size:13.5px;background:var(--panel)}
+.rangebtn:hover{border-color:var(--mut)}
+.rangebtn .chev{color:var(--mut);font-size:10px}
+body[data-v="v2"] .rangebtn,body[data-v="v2"] .weeknav .arrow{border-radius:999px;border-color:transparent;background:var(--well)}
+.seg{display:flex;background:var(--well);border-radius:10px;padding:3px;gap:2px}
+.seg button{padding:5px 14px;border-radius:8px;font-weight:600;font-size:13px;color:var(--sec)}
+.seg button[aria-pressed="true"]{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(16,20,28,.14)}
+body[data-v="v2"] .seg{border-radius:999px}
+body[data-v="v2"] .seg button{border-radius:999px}
+body[data-v="v2"] .seg button[aria-pressed="true"]{box-shadow:none}
+.toolbar .sp{margin-left:auto}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:6px 14px;font-weight:600;font-size:13px;color:var(--ink)}
+.btn:hover{border-color:var(--mut)}
+.btn.prim{background:var(--btnPrimBg);color:var(--btnPrimFg);border-color:var(--btnPrimBg)}
+.btn.danger{color:var(--redDeep);border-color:rgba(192,53,32,.3)}
+body[data-v="v2"] .btn{border-radius:999px;border-color:transparent;background:var(--well)}
+body[data-v="v2"] .btn.prim{background:#e84d38}
+body[data-v="v2"] .btn.danger{background:var(--redTint)}
+
+/* ================= sections / pages ================= */
+.sec{margin:0 0 30px;display:none}
+.sec.show{display:block}
+.sec>.shead{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.sec>.shead h3{font-size:16px;font-weight:800;letter-spacing:-.01em}
+body[data-v="v2"] .sec>.shead h3{font-size:15px}
+.sec>.shead .subcount{color:var(--mut);font-size:12.5px;font-weight:600}
+.info{width:20px;height:20px;border-radius:50%;border:1px solid var(--line);color:var(--mut);font-size:11px;font-weight:800;font-style:italic;font-family:Georgia,serif;line-height:1;flex:none}
+.info:hover{color:var(--ink);border-color:var(--mut)}
+.panelwrap{background:var(--panel);border:1px solid var(--line);border-radius:var(--rad);box-shadow:var(--shadow);overflow:hidden}
+
+/* ================= tables — fluid, scroll only when genuinely narrow ================= */
+.tablewrap{overflow-x:auto}
+table.led{width:100%;border-collapse:collapse;font-size:13px;min-width:740px}
+table.led.logt{min-width:620px}
+table.led th{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--sec);font-weight:700;text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--panel);white-space:nowrap}
+table.led th.r,table.led td.r{text-align:right}
+table.led td{padding:8px 12px;border-bottom:1px solid var(--hair);white-space:nowrap;vertical-align:middle}
+table.led td.money{font-variant-numeric:tabular-nums;font-weight:600}
+table.led td.money.big{font-weight:800}
+table.led td .names{color:var(--sec)}
+table.led td .names b{color:var(--ink);font-weight:600}
+table.led td .cnt{color:var(--mut);font-size:11.5px;margin-left:4px}
+table.led tr.daytotal td{background:var(--well);font-weight:800;font-size:12.5px;border-bottom:1px solid var(--line);padding:6px 12px}
+table.led tr.daytotal td:first-child{color:var(--sec);font-weight:700}
+table.led .by{color:var(--sec);font-size:12.5px}
+table.led .by .meth{color:var(--mut)}
+.minibtn{border:1px solid var(--line);border-radius:8px;padding:4px 11px;font-size:12px;font-weight:600;background:var(--panel);color:var(--ink)}
+.minibtn:hover{border-color:var(--mut)}
+.minibtn.verify,.minibtn.dangerb{border-color:rgba(192,53,32,.4);color:var(--redDeep)}
+body[data-v="v2"] .minibtn{border-radius:999px}
+.flagchip{display:inline-flex;align-items:center;gap:4px;background:var(--redTint);color:var(--redDeep);border-radius:6px;font-size:10.5px;font-weight:800;padding:2px 7px;margin-left:6px;text-transform:uppercase;letter-spacing:.03em}
+/* strong table color — final choice */
+.locname{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;font-weight:700;color:#fff}
+tr.loc-sushi .locname,.schedline.sushi .locchip{background:#1a1a1a}
+tr.loc-poki .locname,.schedline.poki .locchip{background:var(--blue)}
+td.cashcol{background:rgba(216,144,32,.06)}
+td.cardcol{background:rgba(37,99,235,.055)}
+tr.flagged td{background:var(--redTint)}
+
+/* ================= entry log ================= */
+.logkpis{display:flex;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.logkpi{background:var(--well);border-radius:var(--radIn);padding:8px 14px;font-size:12.5px;color:var(--sec)}
+.logkpi b{display:block;font-size:16px;color:var(--ink);font-weight:800;margin-top:1px}
+.logkpi.bad b{color:var(--redDeep)}
+.tdot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.t-ok .tdot{background:var(--green)}
+.t-late .tdot{background:var(--amber)}
+.t-next .tdot{background:var(--redDeep)}
+.t-ok{color:var(--green);font-weight:600}
+.t-late{color:var(--amber);font-weight:600}
+.t-next{color:var(--redDeep);font-weight:600}
+tr.missrow td{background:var(--redTint);color:var(--redDeep);font-weight:600}
+
+/* ================= staff & schedule — fluid day grid ================= */
+.addrow{display:flex;align-items:flex-end;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.addrow label{display:flex;flex-direction:column;gap:4px;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--sec)}
+.addrow input,.addrow select,.works-sel{border:1px solid var(--line);border-radius:var(--radIn);padding:6px 10px;font-size:13.5px;background:var(--panel);color:var(--ink)}
+.addrow input{width:180px}
+.legend{margin-left:auto;display:flex;gap:14px;align-items:center;font-size:12px;color:var(--sec)}
+.legend .sw{display:inline-block;width:11px;height:11px;border-radius:4px;margin-right:5px;vertical-align:-1px}
+.staffscroll{overflow-x:auto}
+.staffhead{display:grid;grid-template-columns:132px 112px 1fr 128px;gap:0 10px;padding:9px 16px;border-bottom:1px solid var(--line);font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--sec);font-weight:700;align-items:end;min-width:860px}
+.dayhead{display:grid;grid-template-columns:54px repeat(7,minmax(52px,1fr));gap:6px}
+.dayhead span{text-align:center}
+.staffrow{display:grid;grid-template-columns:132px 112px 1fr 128px;gap:0 10px;padding:10px 16px;border-bottom:1px solid var(--hair);align-items:center;min-width:860px}
+.staffrow:last-child{border-bottom:0}
+.staffrow .nm{font-weight:700}
+.staffrow .nm .inact{display:inline-block;background:var(--well);color:var(--mut);border-radius:5px;font-size:10px;font-weight:800;padding:1px 6px;margin-left:6px;text-transform:uppercase}
+.staffrow.isoff .nm,.staffrow.isoff .schedlines{opacity:.4}
+.schedlines{display:flex;flex-direction:column;gap:7px}
+.schedline{display:grid;grid-template-columns:54px repeat(7,minmax(52px,1fr));gap:6px;align-items:center}
+.locchip{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;border-radius:6px;padding:3px 0;text-align:center;color:#fff}
+.daycell{display:flex;gap:4px;justify-content:center;background:var(--well);border-radius:8px;padding:4px}
+.daycell button{flex:1;max-width:34px;height:24px;font-size:11px;font-weight:800;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--mut);line-height:1}
+.schedline.sushi .daycell button[aria-pressed="true"]{background:#1a1a1a;color:#fff;border-color:#1a1a1a}
+.schedline.poki .daycell button[aria-pressed="true"]{background:var(--blue);color:#fff;border-color:var(--blue)}
+.daycell button:disabled{opacity:.4;cursor:default}
+.staffacts{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.staffacts .shifts{color:var(--sec);font-weight:700;font-size:12px}
+.staffacts .actbtns{display:flex;gap:6px;flex-wrap:wrap}
+
+/* ================= device access ================= */
+.accessgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+@media(max-width:940px){.accessgrid{grid-template-columns:1fr}}
+.access{background:var(--panel);border:1px solid var(--line);border-radius:var(--rad);box-shadow:var(--shadow);overflow:hidden}
+.access .ahead{display:flex;align-items:center;gap:9px;padding:13px 18px;border-bottom:1px solid var(--line)}
+.access .ahead h4{font-size:14.5px;font-weight:800}
+.access .ahead .dot{width:8px;height:8px;border-radius:50%}
+.access .ahead .dot.ok{background:var(--green)}
+.access .ahead .dot.warn{background:var(--amber)}
+.access .ahead .status{margin-left:auto;font-size:12px;color:var(--sec);font-weight:600}
+.access .body{padding:14px 18px;display:flex;flex-direction:column;gap:14px}
+.qrrow{display:flex;gap:14px;align-items:center}
+.qrbox{width:64px;height:64px;flex:none;border:1px solid var(--line);border-radius:10px;padding:7px;background:#fff}
+.qrmeta{flex:1;min-width:0}
+.qrmeta b{display:block;font-size:13.5px}
+.qrmeta .sub{color:var(--sec);font-size:12.5px;margin-top:1px}
+.qracts{display:flex;gap:8px;flex:none}
+.sessrow{background:var(--well);border-radius:var(--radIn);padding:11px 14px;display:flex;align-items:center;gap:12px}
+.sessrow .sess{flex:1;font-size:12.5px;color:var(--sec)}
+.sessrow .sess b{color:var(--ink);font-size:13.5px;display:block}
+.scanline{font-size:12px;color:var(--mut);display:flex;gap:14px;flex-wrap:wrap}
+.scanline span b{color:var(--sec);font-weight:600}
+
+/* ================= overview visualizations ================= */
+.vizhead{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.vizhead b{font-size:14.5px;font-weight:800}
+.vizhead .vlegend{display:flex;gap:12px;font-size:12px;color:var(--sec);align-items:center}
+.vizhead .vlegend .sw{display:inline-block;width:11px;height:11px;border-radius:4px;margin-right:5px;vertical-align:-1px}
+.vizhead .vtotals{margin-left:auto;font-size:12.5px;color:var(--sec)}
+.vizhead .vtotals b{font-size:13px}
+/* option C — trend + people */
+.trendwrap{display:grid;grid-template-columns:1.7fr 1fr;gap:0}
+@media(max-width:900px){.trendwrap{grid-template-columns:1fr}}
+.trendbox{padding:20px 18px 10px;min-width:0}
+.tsvg{width:100%;height:200px;display:block}
+.tlbls{display:flex;justify-content:space-between;font-size:11px;color:var(--mut);font-weight:600;padding:6px 2px 10px}
+.people{border-left:1px solid var(--line);padding:16px 18px}
+@media(max-width:900px){.people{border-left:0;border-top:1px solid var(--line)}}
+.people h5{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--sec);font-weight:800;margin-bottom:12px}
+.prow{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.prow .pname{width:56px;flex:none;font-weight:700;font-size:12.5px}
+.prow .pbarw{flex:1;background:var(--well);border-radius:6px;height:18px;overflow:hidden}
+.prow .pbar{height:100%;background:var(--ink);border-radius:6px;opacity:.85}
+.prow .pval{width:74px;flex:none;text-align:right;font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums}
+.prow .pshift{color:var(--mut);font-size:11px;margin-left:4px}
+/* needs attention */
+.attn{background:var(--panel);border:1px solid var(--line);border-radius:var(--rad);box-shadow:var(--shadow);overflow:hidden}
+.attn .arow{display:flex;align-items:center;gap:12px;padding:12px 17px;border-bottom:1px solid var(--hair);font-size:13.5px}
+.attn .arow:last-child{border-bottom:0}
+.attn .arow .adot{width:8px;height:8px;border-radius:50%;flex:none}
+.attn .arow .adot.red{background:var(--red)}
+.attn .arow .adot.amber{background:var(--amber)}
+.attn .arow .go{margin-left:auto}
+
+/* ================= popover & toast ================= */
+#pop{position:absolute;z-index:80;max-width:320px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 6px 24px rgba(16,20,28,.16);padding:12px 14px;font-size:12.5px;color:var(--sec);line-height:1.5;display:none}
+#pop b{color:var(--ink)}
+#pop .ptitle{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);font-weight:800;margin-bottom:8px}
+#pop .ropt{display:flex;align-items:baseline;gap:10px;width:100%;text-align:left;padding:8px 10px;border-radius:9px;font-size:13.5px;font-weight:600;color:var(--ink)}
+#pop .ropt:hover{background:var(--well)}
+#pop .ropt .rlbl{flex:none}
+#pop .ropt .rdates{color:var(--mut);font-size:12px;font-weight:500;margin-left:auto}
+#pop .ropt[aria-pressed="true"]{background:var(--well);box-shadow:inset 3px 0 0 var(--btnPrimBg)}
+#toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#15181d;color:#fff;border-radius:999px;padding:9px 18px;font-size:13px;font-weight:600;opacity:0;transition:opacity .18s;pointer-events:none;z-index:90;white-space:nowrap}
+#toast.show{opacity:1}
+</style>
+</head>
+<body data-v="v2">
+
+<div id="chrome">
+  <span class="brandnote">Babytuna · Tip Dashboard mockup — sample data, not wired to live</span>
+  <div class="grp" id="vtabs">
+    <span>Version</span>
+    <button data-vv="v1" aria-pressed="false">1 · Modern A</button>
+    <button data-vv="v2" aria-pressed="true">2 · App style</button>
+    <button data-vv="v3" aria-pressed="false">3 · Dark sidebar</button>
+  </div>
+</div>
+
+<div id="app">
+  <aside id="sidenav">
+    <div class="snhead">
+      <div class="logo"><span class="logofull">Babytuna <span>·</span> Tips</span><span class="logomin">B<span>·</span></span></div>
+      <button class="sntoggle" id="snToggle" aria-label="Collapse sidebar">‹</button>
+    </div>
+    <button class="nav" data-nav="overview" aria-current="true" title="Overview"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M6 15l4-5 3 3 5-7"/></svg></span><span class="nlbl">Overview</span><span class="navdot"></span></button>
+    <button class="nav" data-nav="ledger" title="Recorded tips"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M3 14h18M9 4v16"/></svg></span><span class="nlbl">Recorded tips</span></button>
+    <button class="nav" data-nav="staff" title="Staff &amp; schedule"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19c.8-3 3-4.5 5.5-4.5S13.7 16 14.5 19"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.7c2.3.2 4.1 1.6 4.8 4.3"/></svg></span><span class="nlbl">Staff &amp; schedule</span></button>
+    <button class="nav" data-nav="logdev" title="Devices &amp; entry log"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M14 14h3v3h-3zM18 18h3v3h-3z"/></svg></span><span class="nlbl">Devices &amp; entry log</span></button>
+    <div class="foot">
+      <div class="profile"><span class="avatar">D</span><span class="pmeta"><b>David</b><span>david@babytuna.com</span></span></div>
+      <button class="logout" id="logoutBtn" title="Log out"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg></span><span class="lgtxt">Log out</span></button>
+    </div>
+  </aside>
+
+  <div id="content">
+    <header class="topbar">
+      <h1>Tip Dashboard</h1>
+      <div class="kpis" id="kpis"></div>
+    </header>
+
+    <div class="toolbar">
+      <div class="weeknav">
+        <button class="arrow" id="wPrev" aria-label="Previous week">‹</button>
+        <button class="rangebtn" id="rangeBtn" aria-haspopup="true"><span id="wLbl"></span><span class="chev">▼</span></button>
+        <button class="arrow" id="wNext" aria-label="Next week">›</button>
+      </div>
+      <div class="seg" id="locseg">
+        <button data-loc="both" aria-pressed="true">Both</button>
+        <button data-loc="sushi" aria-pressed="false">Sushi</button>
+        <button data-loc="poki" aria-pressed="false">Poki &amp; Pho</button>
+      </div>
+      <span class="sp"></span>
+      <button class="btn" id="csvBtn">Export CSV</button>
+    </div>
+
+    <section class="sec" id="sec-overview">
+      <div class="panelwrap" id="ovviz" style="margin-bottom:26px"></div>
+      <div class="shead"><h3>Needs attention</h3></div>
+      <div class="attn" id="attn"></div>
+    </section>
+
+    <section class="sec" id="sec-ledger">
+      <div class="shead">
+        <h3>Recorded tips</h3>
+        <span class="subcount" id="recCount"></span>
+        <button class="info" data-info="ledger" aria-label="About recorded tips">i</button>
+      </div>
+      <div class="panelwrap tablewrap">
+        <table class="led">
+          <thead>
+            <tr>
+              <th>Business date</th><th>Restaurant</th><th>Meal</th>
+              <th class="r">Cash</th><th>Split between</th><th class="r">Per person</th>
+              <th class="r">Card → payroll</th><th>Entered by</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="recBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="sec" id="sec-access">
+      <div class="shead">
+        <h3>Device access</h3>
+        <button class="info" data-info="access" aria-label="About device access">i</button>
+      </div>
+      <div class="accessgrid" id="access"></div>
+    </section>
+
+    <section class="sec" id="sec-log">
+      <div class="shead">
+        <h3>Entry log</h3>
+        <span class="subcount">when each shift actually got recorded</span>
+        <button class="info" data-info="log" aria-label="About the entry log">i</button>
+      </div>
+      <div class="panelwrap">
+        <div class="logkpis" id="logkpis"></div>
+        <div class="tablewrap">
+          <table class="led logt">
+            <thead><tr>
+              <th>Business date</th><th>Restaurant</th><th>Meal</th><th>Entered by</th><th>Method</th><th>Logged at</th><th>Timing</th>
+            </tr></thead>
+            <tbody id="logBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="sec" id="sec-staff">
+      <div class="shead">
+        <h3>Staff &amp; schedule</h3>
+        <button class="info" data-info="staff" aria-label="About staff scheduling">i</button>
+      </div>
+      <div class="panelwrap">
+        <form class="addrow" id="addForm">
+          <label>New hire's name <input name="name" required placeholder="e.g. Dana" autocomplete="off"></label>
+          <label>Works at
+            <select name="works">
+              <option value="sushi">Sushi</option>
+              <option value="poki">Poki &amp; Pho</option>
+              <option value="both">Both</option>
+            </select>
+          </label>
+          <button class="btn prim">Add</button>
+          <span class="legend"><span><span class="sw" style="background:#1a1a1a"></span>Sushi</span><span><span class="sw" style="background:#2563eb"></span>Poki &amp; Pho</span><span style="color:var(--mut)">L = lunch · D = dinner</span></span>
+        </form>
+        <div class="staffscroll">
+          <div class="staffhead">
+            <span>Name</span><span>Works at</span>
+            <span class="dayhead"><span></span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></span>
+            <span>Shifts / wk</span>
+          </div>
+          <div id="staffBody"></div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<div id="pop" role="dialog"></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+/* ============================ sample data ============================ */
+var LOCS={sushi:'Sushi',poki:'Poki & Pho'};
+var STAFF=[
+  {id:'maria',name:'Maria',works:'sushi',active:true,sched:{sushi:{mon:'LD',wed:'L',thu:'D',fri:'LD',sun:'D'}}},
+  {id:'jose',name:'Jose',works:'sushi',active:true,sched:{sushi:{tue:'D',wed:'LD',thu:'D',fri:'D',sat:'D'}}},
+  {id:'lena',name:'Lena',works:'poki',active:true,sched:{poki:{mon:'LD',wed:'D',thu:'L',sat:'L',sun:'LD'}}},
+  {id:'tom',name:'Tom',works:'poki',active:true,sched:{poki:{tue:'LD',thu:'D',fri:'D',sat:'LD',sun:'D'}}},
+  {id:'ken',name:'Ken',works:'both',active:true,sched:{sushi:{mon:'D',wed:'D',sat:'LD',sun:'L'},poki:{tue:'D',fri:'LD'}}},
+  {id:'rey',name:'Rey',works:'both',active:true,sched:{sushi:{tue:'LD',sun:'D'},poki:{mon:'L',fri:'D',sat:'D'}}},
+  {id:'aiko',name:'Aiko',works:'sushi',active:false,sched:{sushi:{}}}
+];
+var DAYS=['mon','tue','wed','thu','fri','sat','sun'];
+/* records: cash/card in cents; at = display time; dm = minutes after close (lunch 3 PM, dinner 10 PM); nd = logged next day */
+var WEEK0=[
+  {day:'Sun Aug 2',loc:'sushi',meal:'Dinner',cash:39800,card:64200,people:['Maria','Jose'],by:'Maria',meth:'dictated',at:'10:28 PM',dm:28,aug:true},
+  {day:'Sun Aug 2',loc:'poki',meal:'Dinner',cash:18150,card:36400,people:['Lena','Tom'],by:'Tom',meth:'typed',at:'10:47 PM',dm:47,aug:true},
+  {day:'Sat Aug 1',loc:'sushi',meal:'Dinner',cash:35250,card:58100,people:['Jose','Ken','Rey'],by:'Ken',meth:'typed',at:'10:09 PM',dm:9,aug:true},
+  {day:'Sat Aug 1',loc:'poki',meal:'Dinner',cash:19900,card:37250,people:['Lena','Rey'],by:'Rey',meth:'dictated',at:'10:51 PM',dm:51,aug:true},
+  {day:'Fri Jul 31',loc:'sushi',meal:'Dinner',cash:33400,card:54800,people:['Maria','Jose','Ken'],by:'Jose',meth:'typed',at:'10:22 PM',dm:22},
+  {day:'Fri Jul 31',loc:'poki',meal:'Dinner',cash:18475,card:34600,people:['Tom','Rey'],by:'Tom',meth:'typed',at:'11:12 PM',dm:72},
+  {day:'Thu Jul 30',loc:'sushi',meal:'Dinner',cash:30900,card:49750,people:['Maria','Ken'],by:'Maria',meth:'dictated',at:'10:16 PM',dm:16},
+  {day:'Wed Jul 29',loc:'poki',meal:'Dinner',cash:15700,card:30250,people:['Lena','Tom'],by:'Lena',meth:'typed',at:'10:39 PM',dm:39}
+];
+var WEEK1=[
+  {day:'Sun Aug 9',loc:'sushi',meal:'Dinner',cash:41200,card:68850,people:['Maria','Jose','Ken'],by:'Maria',meth:'dictated',at:'10:24 PM',dm:24,aug:true},
+  {day:'Sun Aug 9',loc:'sushi',meal:'Lunch',cash:9625,card:21000,people:['Ken'],by:'Ken',meth:'typed',at:'3:18 PM',dm:18,aug:true},
+  {day:'Sun Aug 9',loc:'poki',meal:'Dinner',cash:18800,card:40275,people:['Lena','Tom'],by:'Lena',meth:'typed',at:'10:41 PM',dm:41,aug:true},
+  {day:'Sat Aug 8',loc:'sushi',meal:'Dinner',cash:36650,card:59400,people:['Jose','Ken','Rey'],by:'Ken',meth:'typed',at:'10:12 PM',dm:12,aug:true},
+  {day:'Sat Aug 8',loc:'poki',meal:'Dinner',cash:20575,card:38800,people:['Lena','Tom','Rey'],by:'Rey',meth:'dictated',at:'11:05 PM',dm:65,aug:true},
+  {day:'Sat Aug 8',loc:'poki',meal:'Lunch',cash:7400,card:16525,people:['Lena'],by:'Lena',meth:'typed',at:'10:05 AM',dm:1145,nd:true,aug:true},
+  {day:'Fri Aug 7',loc:'sushi',meal:'Dinner',cash:310000,card:61000,people:['Maria','Jose'],by:'Jose',meth:'dictated',at:'10:31 PM',dm:31,flag:'3.1× the 4-week median — tap Verify after checking the drawer count',aug:true},
+  {day:'Fri Aug 7',loc:'sushi',meal:'Lunch',cash:8850,card:17400,people:['Maria'],by:'Maria',meth:'typed',at:'3:07 PM',dm:7,aug:true},
+  {day:'Fri Aug 7',loc:'poki',meal:'Dinner',cash:19725,card:35150,people:['Tom','Rey'],by:'Tom',meth:'typed',at:'10:44 PM',dm:44,aug:true},
+  {day:'Thu Aug 6',loc:'sushi',meal:'Dinner',cash:34400,card:56125,people:['Maria','Jose','Ken'],by:'Maria',meth:'dictated',at:'10:19 PM',dm:19,aug:true},
+  {day:'Thu Aug 6',loc:'poki',meal:'Dinner',cash:17250,card:33900,people:['Lena','Tom'],by:'Tom',meth:'typed',at:'10:52 PM',dm:52,aug:true},
+  {day:'Thu Aug 6',loc:'poki',meal:'Lunch',cash:6875,card:14250,people:['Lena'],by:'Lena',meth:'typed',at:'3:26 PM',dm:26,aug:true},
+  {day:'Wed Aug 5',loc:'sushi',meal:'Dinner',cash:29850,card:47300,people:['Jose','Ken'],by:'Jose',meth:'typed',at:'10:37 PM',dm:37,aug:true},
+  {day:'Wed Aug 5',loc:'poki',meal:'Dinner',cash:16400,card:31075,people:['Lena','Rey'],by:'Lena',meth:'dictated',at:'11:58 PM',dm:118,aug:true},
+  {day:'Tue Aug 4',loc:'sushi',meal:'Dinner',cash:31200,card:52450,people:['Jose','Rey'],by:'Rey',meth:'typed',at:'10:15 PM',dm:15,aug:true},
+  {day:'Tue Aug 4',loc:'sushi',meal:'Lunch',cash:7950,card:15300,people:['Rey'],by:'Rey',meth:'typed',at:'3:41 PM',dm:41,aug:true},
+  {day:'Tue Aug 4',loc:'poki',meal:'Dinner',cash:15925,card:29800,people:['Ken','Tom'],by:'Ken',meth:'dictated',at:'10:33 PM',dm:33,aug:true},
+  {day:'Mon Aug 3',loc:'sushi',meal:'Dinner',cash:27600,card:44150,people:['Maria','Ken'],by:'Maria',meth:'typed',at:'10:21 PM',dm:21,aug:true},
+  {day:'Mon Aug 3',loc:'poki',meal:'Dinner',cash:14800,card:27650,people:['Tom','Lena'],by:'Lena',meth:'typed',at:'10:58 PM',dm:58,aug:true},
+  {day:'Mon Aug 3',loc:'poki',meal:'Lunch',cash:6250,card:12900,people:['Rey'],by:'Rey',meth:'typed',at:'3:12 PM',dm:12,aug:true}
+];
+var MISSING=[{day:'Wed Aug 5',loc:'poki',meal:'Lunch',aug:true}];
+var RANGES={
+  week1:{lbl:'Aug 3 – 9, 2026',pick:'This week',recs:function(){return WEEK1},miss:function(){return MISSING}},
+  week0:{lbl:'Jul 27 – Aug 2, 2026',pick:'Last week',recs:function(){return WEEK0},miss:function(){return []}},
+  month:{lbl:'August 2026',pick:'This month',recs:function(){return WEEK1.concat(WEEK0.filter(function(r){return r.aug}))},miss:function(){return MISSING}},
+  year:{lbl:'2026 — year to date',pick:'This year',recs:function(){return WEEK1.concat(WEEK0)},miss:function(){return MISSING}}
+};
+var RANGEORDER=['week1','week0','month','year'];
+var ACCESS={
+ sushi:{rotated:'Aug 8, 2026',printed:true,phones:3,lastScan:'Sun 10:24 PM',scans:['Maria · Sun 10:01 PM','Ken · Sun 2:55 PM','Ken · Sat 9:48 PM']},
+ poki:{rotated:'Aug 8, 2026',printed:false,phones:2,lastScan:'Sun 10:12 PM',scans:['Lena · Sun 10:12 PM','Rey · Sat 10:31 PM']}
+};
+var INFO={
+ ledger:'<b>Cash</b> is pooled and handed out nightly — the per-person column is what each name takes home. <b>Card</b> tips ride payroll. A flagged row is unusually large against the 4-week history: check the drawer count, then Verify. Fix reopens a recorded shift for correction.',
+ log:'<b>Logged at</b> is the moment the closer saved the entry on the phone. Timing compares it to close — lunch closes 3 PM, dinner 10 PM. Green ≤ 45 min, amber later that night, red = next day or never logged.',
+ staff:'Scheduled people come <b>pre-selected</b> on the phone when the closer records that day\'s shift — they can still add or remove anyone before saving. Unscheduled staff sit at the bottom of the picker. People with recorded history can only be deactivated; Delete exists for someone added by mistake.',
+ access:'Each restaurant signs in by scanning its <b>QR sticker</b> — one scan per entry, the phone signs out after saving. Rotating replaces the sticker immediately; only a hash is stored, so print right after rotating. Sign out all is for a lost phone.'
+};
+
+/* ============================ state ============================ */
+var st={range:'week1',loc:'both',nav:'overview'};
+var PAGES={overview:['sec-overview'],ledger:['sec-ledger'],staff:['sec-staff'],logdev:['sec-access','sec-log']};
+
+/* ============================ utils ============================ */
+function $(s,c){return (c||document).querySelector(s)}
+function $$(s,c){return [].slice.call((c||document).querySelectorAll(s))}
+function money(c){return '$'+(c/100).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}
+function kmoney(c){return '$'+Math.round(c/100).toLocaleString('en-US')}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')}
+function toast(m){var t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._h);t._h=setTimeout(function(){t.classList.remove('show')},2200)}
+function timing(r){
+  if(r.nd)return {cls:'t-next',txt:'next day · '+r.at};
+  if(r.dm<=45)return {cls:'t-ok',txt:'+'+r.dm+' min after close'};
+  return {cls:'t-late',txt:'+'+(r.dm>=60?Math.round(r.dm/60*10)/10+' hr':r.dm+' min')+' after close'};
+}
+function recsNow(){return RANGES[st.range].recs().filter(function(r){return st.loc==='both'||r.loc===st.loc})}
+function missNow(){return RANGES[st.range].miss().filter(function(m){return st.loc==='both'||m.loc===st.loc})}
+function shortDay(d){var p=d.split(' ');return p[0]+' '+p[2]}
+function chronoDays(){
+  var seen={},out=[];
+  RANGES[st.range].recs().slice().reverse().forEach(function(r){if(!seen[r.day]){seen[r.day]=1;out.push(r.day)}});
+  return out;
+}
+
+/* ============================ renders ============================ */
+function renderKpis(){
+  var rs=recsNow(),cash=0,card=0,flags=0;
+  rs.forEach(function(r){cash+=r.cash;card+=r.card;if(r.flag)flags++});
+  $('#kpis').innerHTML=
+    (flags?'<span class="kpi"><span class="flagpill">⚑ '+flags+' flagged</span></span>':'')+
+    '<span class="kpi">Cash pool <b>'+money(cash)+'</b></span>'+
+    '<span class="kpi">Card logged <b>'+money(card)+'</b></span>'+
+    '<span class="kpi">'+rs.length+' records</span>';
+  $('#wLbl').textContent=RANGES[st.range].lbl;
+  $('#wPrev').disabled=st.range!=='week1';
+  $('#wNext').disabled=st.range!=='week0';
+  $('#recCount').textContent=rs.length+' records';
+}
+function renderLedger(){
+  var rs=recsNow(),html='',day=null,dc=0,dd=0;
+  function totalRow(){if(day===null)return;html+='<tr class="daytotal"><td colspan="3">'+esc(day)+' — day total</td><td class="r money cashcol">'+money(dc)+'</td><td class="cashcol"></td><td class="cashcol"></td><td class="r money cardcol">'+money(dd)+'</td><td></td><td></td></tr>'}
+  rs.forEach(function(r){
+    if(r.day!==day){totalRow();day=r.day;dc=0;dd=0}
+    dc+=r.cash;dd+=r.card;
+    var per=money(Math.round(r.cash/r.people.length));
+    html+='<tr class="rec loc-'+r.loc+(r.flag?' flagged':'')+'">'+
+      '<td>'+esc(r.day)+'</td>'+
+      '<td><span class="locname">'+LOCS[r.loc]+'</span></td>'+
+      '<td>'+r.meal+'</td>'+
+      '<td class="r money cashcol">'+money(r.cash)+(r.flag?'<span class="flagchip">⚑ check</span>':'')+'</td>'+
+      '<td class="cashcol"><span class="names"><b>'+r.people.join(', ')+'</b><span class="cnt">· '+r.people.length+'</span></span></td>'+
+      '<td class="r money big cashcol">'+per+'</td>'+
+      '<td class="r money cardcol">'+money(r.card)+'</td>'+
+      '<td class="by">'+esc(r.by)+' <span class="meth">· '+r.meth+'</span></td>'+
+      '<td class="r"><button class="minibtn" data-fix="1">Fix</button>'+(r.flag?' <button class="minibtn verify" data-verify="1" title="'+esc(r.flag)+'">Verify</button>':'')+'</td>'+
+    '</tr>';
+  });
+  totalRow();
+  if(!rs.length)html='<tr><td colspan="9" style="text-align:center;color:var(--mut);padding:26px">No records in this range for this filter</td></tr>';
+  $('#recBody').innerHTML=html;
+}
+function renderLog(){
+  var rs=recsNow().slice(),ms=missNow(),html='';
+  var ok=rs.filter(function(r){return !r.nd&&r.dm<=45}).length;
+  var total=rs.length+ms.length;
+  var dms=rs.filter(function(r){return !r.nd}).map(function(r){return r.dm}).sort(function(a,b){return a-b});
+  var med=dms.length?dms[Math.floor(dms.length/2)]:0;
+  $('#logkpis').innerHTML=
+    '<span class="logkpi">Logged on time (≤ 45 min)<b>'+(total?Math.round(ok/total*100):0)+'%</b></span>'+
+    '<span class="logkpi">Median time after close<b>'+med+' min</b></span>'+
+    '<span class="logkpi'+(ms.length?' bad':'')+'">Missing in this range<b>'+ms.length+'</b></span>';
+  ms.forEach(function(m){
+    html+='<tr class="missrow"><td>'+esc(m.day)+'</td><td>'+LOCS[m.loc]+'</td><td>'+m.meal+'</td><td colspan="3">—</td><td>not logged</td></tr>';
+  });
+  rs.forEach(function(r){
+    var t=timing(r);
+    html+='<tr class="rec loc-'+r.loc+'"><td>'+esc(r.day)+'</td><td><span class="locname">'+LOCS[r.loc]+'</span></td><td>'+r.meal+'</td>'+
+      '<td>'+esc(r.by)+'</td><td class="by">'+r.meth+'</td><td class="money">'+r.at+'</td>'+
+      '<td class="'+t.cls+'"><span class="tdot"></span>'+t.txt+'</td></tr>';
+  });
+  $('#logBody').innerHTML=html;
+}
+function schedCells(s,loc){
+  var sc=(s.sched[loc])||{},html='';
+  DAYS.forEach(function(d){
+    var v=sc[d]||'';
+    html+='<span class="daycell">'+
+      '<button data-sch="'+s.id+':'+loc+':'+d+':L" aria-pressed="'+(v.indexOf('L')>=0)+'"'+(s.active?'':' disabled')+'>L</button>'+
+      '<button data-sch="'+s.id+':'+loc+':'+d+':D" aria-pressed="'+(v.indexOf('D')>=0)+'"'+(s.active?'':' disabled')+'>D</button>'+
+    '</span>';
+  });
+  return html;
+}
+function renderStaff(){
+  var html='';
+  STAFF.forEach(function(s){
+    var locs=s.works==='both'?['sushi','poki']:[s.works];
+    var show=locs.filter(function(l){return st.loc==='both'||l===st.loc});
+    if(!show.length)return;
+    var lines=show.map(function(l){
+      return '<div class="schedline '+l+'"><span class="locchip '+l+'">'+(l==='sushi'?'Sushi':'Poki')+'</span>'+schedCells(s,l)+'</div>';
+    }).join('');
+    var shifts=0;show.forEach(function(l){var sc=s.sched[l]||{};DAYS.forEach(function(d){shifts+=(sc[d]||'').length})});
+    html+='<div class="staffrow'+(s.active?'':' isoff')+'">'+
+      '<span class="nm">'+esc(s.name)+(s.active?'':'<span class="inact">inactive</span>')+'</span>'+
+      '<span><select class="works-sel" data-works="'+s.id+'"'+(s.active?'':' disabled')+'>'+
+        '<option value="sushi"'+(s.works==='sushi'?' selected':'')+'>Sushi</option>'+
+        '<option value="poki"'+(s.works==='poki'?' selected':'')+'>Poki &amp; Pho</option>'+
+        '<option value="both"'+(s.works==='both'?' selected':'')+'>Both</option></select></span>'+
+      '<span class="schedlines">'+lines+'</span>'+
+      '<span class="staffacts"><span class="shifts">'+shifts+' shifts</span><span class="actbtns">'+
+        (s.active?'<button class="minibtn" data-act="rename" data-id="'+s.id+'">Rename</button><button class="minibtn dangerb" data-act="deact" data-id="'+s.id+'">Deactivate</button>'
+                 :'<button class="minibtn" data-act="react" data-id="'+s.id+'">Reactivate</button>')+
+      '</span></span></div>';
+  });
+  $('#staffBody').innerHTML=html;
+}
+function qrSvg(){
+  return '<svg viewBox="0 0 21 21" width="100%" height="100%" aria-hidden="true"><rect width="21" height="21" fill="#fff"/><path fill="#111" d="M0 0h7v7H0zM2 2h3v3H2zM14 0h7v7h-7zM16 2h3v3h-3zM0 14h7v7H0zM2 16h3v3H2zM9 0h2v3H9zM9 4h3v2H9zM13 9h2v2h-2zM9 9h2v3H9zM16 9h5v2h-5zM9 14h2v2H9zM12 12h3v3h-3zM16 13h2v4h-2zM19 14h2v3h-2zM9 18h4v3H9zM14 18h3v2h-3zM18 19h3v2h-3z"/></svg>';
+}
+function renderAccess(){
+  var html='';
+  ['sushi','poki'].forEach(function(l){
+    var a=ACCESS[l];
+    html+='<div class="access"><div class="ahead"><span class="dot '+(a.printed?'ok':'warn')+'"></span><h4>'+LOCS[l]+'</h4>'+
+      '<span class="status">'+(a.printed?'Sticker active':'Rotated — not printed yet')+'</span></div>'+
+      '<div class="body">'+
+        '<div class="qrrow"><span class="qrbox">'+qrSvg()+'</span>'+
+          '<span class="qrmeta"><b>QR sticker</b><span class="sub">Rotated '+a.rotated+(a.printed?' · printed':' · <span style="color:var(--amber);font-weight:600">print it — old sticker is dead</span>')+'</span></span>'+
+          '<span class="qracts"><button class="btn" data-acc="print:'+l+'">Print</button><button class="btn" data-acc="rotate:'+l+'">Rotate…</button></span></div>'+
+        '<div class="sessrow"><span class="sess"><b>'+a.phones+' phones scanned in this week</b>Last scan '+a.lastScan+' · sessions end after each save</span>'+
+          '<button class="btn danger" data-acc="signout:'+l+'">Sign out all</button></div>'+
+        '<div class="scanline">'+a.scans.map(function(x){return '<span><b>'+esc(x.split(' · ')[0])+'</b> · '+esc(x.split(' · ')[1])+'</span>'}).join('')+'</div>'+
+      '</div></div>';
+  });
+  $('#access').innerHTML=html;
+}
+
+/* ---------- overview visualizations ---------- */
+function vizHead(title){
+  var rs=recsNow(),cash=0,card=0;
+  rs.forEach(function(r){cash+=r.cash;card+=r.card});
+  var legend=(st.loc==='both')
+    ?'<span class="vlegend"><span><span class="sw" style="background:#1a1a1a"></span>Sushi</span><span><span class="sw" style="background:#2563eb"></span>Poki &amp; Pho</span></span>'
+    :'';
+  return '<div class="vizhead"><b>'+title+' — '+RANGES[st.range].lbl+'</b>'+legend+
+    '<span class="vtotals">Cash <b>'+kmoney(cash)+'</b> · Card <b>'+kmoney(card)+'</b> · '+rs.length+' records</span></div>';
+}
+function ovTrend(){
+  var days=chronoDays(),rs=recsNow();
+  var per={};days.forEach(function(d){per[d]=0});
+  rs.forEach(function(r){per[r.day]+=r.cash+r.card});
+  var vals=days.map(function(d){return per[d]});
+  var max=Math.max.apply(null,vals.concat([1]));
+  var W=600,H=180,PAD=10;
+  var pts=vals.map(function(v,i){
+    var x=days.length>1?PAD+i*(W-2*PAD)/(days.length-1):W/2;
+    var y=H-PAD-(v/max)*(H-2*PAD);
+    return [Math.round(x),Math.round(y)];
+  });
+  var line=pts.map(function(p){return p.join(',')}).join(' ');
+  var area='0,'+H+' '+line+' '+W+','+H;
+  var svg='<svg class="tsvg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'+
+    '<polygon points="'+area+'" fill="rgba(232,77,56,.08)"/>'+
+    '<polyline points="'+line+'" fill="none" stroke="#e84d38" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>'+
+    pts.map(function(p,i){return '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="3.5" fill="#e84d38"/>'}).join('')+
+    '</svg>';
+  var lbls='<div class="tlbls">'+days.map(function(d){return '<span>'+shortDay(d)+'</span>'}).join('')+'</div>';
+  /* top earners: cash share per person */
+  var take={},shifts={};
+  rs.forEach(function(r){
+    var share=Math.round(r.cash/r.people.length);
+    r.people.forEach(function(p){take[p]=(take[p]||0)+share;shifts[p]=(shifts[p]||0)+1});
+  });
+  var ppl=Object.keys(take).map(function(p){return {n:p,c:take[p],s:shifts[p]}}).sort(function(a,b){return b.c-a.c}).slice(0,6);
+  var pmax=ppl.length?ppl[0].c:1;
+  var phtml='<div class="people"><h5>Cash take-home by person</h5>';
+  ppl.forEach(function(p){
+    phtml+='<div class="prow"><span class="pname">'+esc(p.n)+'</span><span class="pbarw"><span class="pbar" style="width:'+Math.max(4,Math.round(p.c/pmax*100))+'%;display:block"></span></span><span class="pval">'+kmoney(p.c)+'<span class="pshift">· '+p.s+'</span></span></div>';
+  });
+  phtml+='</div>';
+  return '<div class="trendwrap"><div class="trendbox">'+svg+lbls+'</div>'+phtml+'</div>';
+}
+function renderOverview(){
+  $('#ovviz').innerHTML=vizHead('Tips trend')+ovTrend();
+  var rs=recsNow(),ms=missNow(),rows='';
+  rs.forEach(function(r){if(r.flag)rows+='<div class="arow"><span class="adot red"></span><span><b>'+esc(r.day)+' · '+LOCS[r.loc]+' dinner</b> — cash '+money(r.cash)+' looks unusually large</span><button class="btn go" data-goto="ledger">Review</button></div>'});
+  ms.forEach(function(m){rows+='<div class="arow"><span class="adot red"></span><span><b>'+esc(m.day)+' · '+LOCS[m.loc]+' '+m.meal.toLowerCase()+'</b> was never logged</span><button class="btn go" data-goto="logdev">See log</button></div>'});
+  if(!ACCESS.poki.printed)rows+='<div class="arow"><span class="adot amber"></span><span><b>Poki &amp; Pho QR</b> was rotated but the new sticker isn\'t printed yet</span><button class="btn go" data-goto="logdev">Devices</button></div>';
+  if(!rows)rows='<div class="arow"><span class="adot" style="background:var(--green)"></span>Nothing needs attention in this range.</div>';
+  $('#attn').innerHTML=rows;
+}
+function renderAll(){renderKpis();renderLedger();renderLog();renderStaff();renderAccess();renderOverview()}
+
+/* ============================ nav / version ============================ */
+function applyNav(){
+  $$('#sidenav .nav').forEach(function(b){b.setAttribute('aria-current',b.dataset.nav===st.nav)});
+  $$('.sec').forEach(function(s){s.classList.remove('show')});
+  (PAGES[st.nav]||[]).forEach(function(id){var el=document.getElementById(id);if(el)el.classList.add('show')});
+}
+$('#vtabs').addEventListener('click',function(e){
+  var b=e.target.closest('button[data-vv]');if(!b)return;
+  document.body.dataset.v=b.dataset.vv;
+  $$('#vtabs button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});
+  window.scrollTo(0,0);
+});
+$('#sidenav').addEventListener('click',function(e){
+  var b=e.target.closest('button[data-nav]');if(!b)return;
+  st.nav=b.dataset.nav;applyNav();window.scrollTo(0,0);
+});
+
+/* ============================ toolbar events ============================ */
+$('#locseg').addEventListener('click',function(e){
+  var b=e.target.closest('button[data-loc]');if(!b)return;
+  st.loc=b.dataset.loc;
+  $$('#locseg button').forEach(function(x){x.setAttribute('aria-pressed',x===b)});
+  renderAll();
+});
+$('#wPrev').addEventListener('click',function(){if(st.range==='week1'){st.range='week0';renderAll()}});
+$('#wNext').addEventListener('click',function(){if(st.range==='week0'){st.range='week1';renderAll()}});
+$('#csvBtn').addEventListener('click',function(){toast('CSV exported — '+recsNow().length+' rows ('+RANGES[st.range].lbl+')')});
+$('#rangeBtn').addEventListener('click',function(e){
+  var pop=$('#pop');
+  var html='<div class="ptitle">Time frame</div>';
+  RANGEORDER.forEach(function(k){
+    html+='<button class="ropt" data-range="'+k+'" aria-pressed="'+(st.range===k)+'"><span class="rlbl">'+RANGES[k].pick+'</span><span class="rdates">'+RANGES[k].lbl+'</span></button>';
+  });
+  pop.innerHTML=html;
+  pop.style.display='block';
+  var r=e.currentTarget.getBoundingClientRect();
+  pop.style.left=(r.left+window.scrollX)+'px';
+  pop.style.top=(r.bottom+window.scrollY+8)+'px';
+  e.stopPropagation();
+});
+
+/* ============================ global click handling ============================ */
+document.addEventListener('click',function(e){
+  var t=e.target;
+  var pop=$('#pop');
+  var ro=t.closest('[data-range]');
+  if(ro){st.range=ro.dataset.range;pop.style.display='none';renderAll();return}
+  var go=t.closest('[data-goto]');if(go){st.nav=go.dataset.goto;applyNav();window.scrollTo(0,0);return}
+  if(t.closest('[data-fix]')){toast('Fix would reopen this shift on the entry phone (mockup)');return}
+  var v=t.closest('[data-verify]');if(v){var tr=v.closest('tr');tr.classList.remove('flagged');v.remove();tr.querySelector('.flagchip').remove();toast('Entry verified — flag cleared');return}
+  var sch=t.closest('[data-sch]');if(sch){
+    var p=sch.dataset.sch.split(':'),s=STAFF.find(function(x){return x.id===p[0]});
+    var sc=s.sched[p[1]]||(s.sched[p[1]]={});var cur=sc[p[2]]||'';
+    sc[p[2]]=cur.indexOf(p[3])>=0?cur.replace(p[3],''):cur+p[3];
+    renderStaff();return;
+  }
+  var act=t.closest('[data-act]');if(act){
+    var s2=STAFF.find(function(x){return x.id===act.dataset.id});
+    if(act.dataset.act==='deact'){s2.active=false;toast(s2.name+' deactivated — history stays')}
+    else if(act.dataset.act==='react'){s2.active=true;toast(s2.name+' reactivated')}
+    else{toast('Rename (mockup)')}
+    renderStaff();return;
+  }
+  var acc=t.closest('[data-acc]');if(acc){
+    var a=acc.dataset.acc.split(':');
+    if(a[0]==='print'){ACCESS[a[1]].printed=true;renderAccess();renderOverview();toast('Print dialog would open — sticker marked printed')}
+    else if(a[0]==='rotate'){toast('Rotate kills the old sticker immediately — confirm dialog in the real app')}
+    else{toast('All '+LOCS[a[1]]+' phone sessions revoked (mockup)')}
+    return;
+  }
+  var inf=t.closest('.info');
+  if(inf){
+    pop.innerHTML=INFO[inf.dataset.info];
+    pop.style.display='block';
+    var r=inf.getBoundingClientRect();
+    pop.style.left=Math.min(r.left+window.scrollX,window.scrollX+document.documentElement.clientWidth-340)+'px';
+    pop.style.top=(r.bottom+window.scrollY+8)+'px';
+    e.stopPropagation();return;
+  }
+  if(!t.closest('#pop'))pop.style.display='none';
+});
+$('#addForm').addEventListener('submit',function(e){
+  e.preventDefault();
+  var f=e.target,name=f.name.value.trim();if(!name)return;
+  var id=name.toLowerCase().replace(/[^a-z]/g,'')+Math.floor(Math.random()*999);
+  var works=f.works.value,sched={};(works==='both'?['sushi','poki']:[works]).forEach(function(l){sched[l]={}});
+  STAFF.push({id:id,name:name,works:works,active:true,sched:sched});
+  f.reset();renderStaff();toast(name+' added — tick their shifts so the phone pre-selects them');
+});
+
+$('#snToggle').addEventListener('click',function(){
+  var sn=$('#sidenav'),c=sn.classList.toggle('collapsed');
+  this.textContent=c?'›':'‹';
+  this.setAttribute('aria-label',c?'Expand sidebar':'Collapse sidebar');
+});
+$('#logoutBtn').addEventListener('click',function(){toast('Signed out (mockup) — real app returns to the sign-in card')});
+
+renderAll();applyNav();
+</script>
+</body>
+</html>

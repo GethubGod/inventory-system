@@ -29,11 +29,25 @@ export interface RosterPerson {
   scheduled: boolean;
 }
 
+/** The recorded lunch row's shift-only figures, for day-scope subtraction. */
+export interface LunchAmounts {
+  cash: number;
+  card: number;
+  gratuity: number;
+}
+
 export interface TodayStatus {
   businessDate: string;
   lunchRecorded: boolean;
   dinnerRecorded: boolean;
   defaultMeal: MealPeriod;
+  /**
+   * Today's recorded lunch at this location, null when nothing is recorded
+   * (that case saves flagged, silently to the closer). Read defensively —
+   * an older server omits the field and the client degrades to "no
+   * subtraction available".
+   */
+  lunch: LunchAmounts | null;
 }
 
 export interface SessionState {
@@ -47,8 +61,16 @@ export interface SlotEntry {
   id: string;
   businessDate: string;
   meal: MealPeriod;
+  /** Stored shift-only figures (already net of lunch on a day-scope save). */
   cash: number;
   card: number;
+  gratuity: number;
+  enteredScope: "shift" | "day";
+  /** What the closer typed; equals the stored figures on a shift save. */
+  rawCash: number;
+  rawCard: number;
+  rawGratuity: number;
+  note: string | null;
   splitCount: number;
   entryMethod: "typed" | "voice";
   voiceVariant: VoiceVariant | null;
@@ -57,6 +79,8 @@ export interface SlotEntry {
   flaggedAnomaly: boolean;
   updatedAt: string;
   peopleIds: string[];
+  /** Additive to peopleIds: each person's share weight in (0,1]. */
+  people: Array<{ id: string; weight: number }>;
 }
 
 export interface SaveResult {
@@ -211,7 +235,12 @@ export async function setCloser(sessionToken: string, closerId: string): Promise
 export async function getSlot(
   sessionToken: string,
   meal: MealPeriod,
-): Promise<{ businessDate: string; entry: SlotEntry | null; scheduledIds: string[] }> {
+): Promise<{
+  businessDate: string;
+  entry: SlotEntry | null;
+  scheduledIds: string[];
+  today: TodayStatus | null;
+}> {
   const json = await callFunction("tip-entries", { action: "get_slot", sessionToken, meal });
   return {
     businessDate: json.businessDate as string,
@@ -219,14 +248,26 @@ export async function getSlot(
     // Who the schedule says works this meal — used to re-seed pre-selection
     // when the closer switches meals. Older servers omit it.
     scheduledIds: Array.isArray(json.scheduledIds) ? (json.scheduledIds as string[]) : [],
+    // Fresh today-status (with the recorded lunch figures) so a meal switch
+    // updates the day-scope subtraction without a state round-trip. Older
+    // servers omit it.
+    today: (json.today as TodayStatus | undefined) ?? null,
   };
 }
 
 export interface SavePayload {
   meal: MealPeriod;
+  /** All three amounts AS TYPED — the server does the day-scope subtraction. */
   cash: number;
   card: number;
+  /** 0 when the well was left blank. */
+  gratuity: number;
+  enteredScope: "shift" | "day";
   peopleIds: string[];
+  /** Share weights positional against peopleIds, each in (0,1]. */
+  weights: number[];
+  /** Trimmed, ≤280 chars, null when empty. */
+  note: string | null;
   entryMethod: "typed" | "voice";
   voiceVariant: VoiceVariant | null;
   correctionsCount: number;

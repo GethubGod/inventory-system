@@ -22,6 +22,14 @@ function entry(overrides: Partial<LedgerEntry>): LedgerEntry {
     splitCount: 1,
     peopleIds: [],
     peopleNames: [],
+    weights: [],
+    gratuityCents: 0,
+    enteredScope: "shift",
+    rawCashCents: null,
+    rawCardCents: null,
+    rawGratuityCents: null,
+    note: null,
+    noteAt: null,
     enteredById: null,
     enteredByName: null,
     entryMethod: "typed",
@@ -148,12 +156,58 @@ describe("takeHomeByPerson", () => {
     ]);
   });
 
-  it("uses split_count for the share even when it disagrees with the name list", () => {
-    // The DB derives split_count from the people array at save; trust it.
+  it("allocates the whole pool to the people actually on the split", () => {
+    // v3: shares come from the weighted allocation over the people list —
+    // nothing stays in the drawer, and split_count is headcount only.
     const people = takeHomeByPerson([
       entry({ cashCents: 300, splitCount: 3, peopleIds: ["a"], peopleNames: ["A"] }),
     ]);
-    expect(people[0].cents).toBe(100);
+    expect(people[0].cents).toBe(300);
+  });
+
+  it("weights the shares: one 50% person raises everyone else", () => {
+    // The handoff's $205 vector: 45.56 / 45.56 / 45.55 / 45.55 / 22.78.
+    const people = takeHomeByPerson([
+      entry({
+        cashCents: 20500,
+        splitCount: 5,
+        peopleIds: ["ana", "marco", "priya", "dee", "kenji"],
+        peopleNames: ["Ana", "Marco", "Priya", "Dee", "Kenji"],
+        weights: [1, 1, 1, 1, 0.5],
+      }),
+    ]);
+    const byName = new Map(people.map((p) => [p.name, p.cents]));
+    expect(byName.get("Ana")).toBe(4556);
+    expect(byName.get("Marco")).toBe(4556);
+    expect(byName.get("Priya")).toBe(4555);
+    expect(byName.get("Dee")).toBe(4555);
+    expect(byName.get("Kenji")).toBe(2278);
+    expect(people.reduce((sum, p) => sum + p.cents, 0)).toBe(20500);
+  });
+
+  it("accumulates mixed weights across a range", () => {
+    const people = takeHomeByPerson([
+      entry({
+        cashCents: 82200,
+        splitCount: 2,
+        peopleIds: ["sam", "rey"],
+        peopleNames: ["Sam", "Rey"],
+        weights: [1, 0.25],
+      }),
+      entry({
+        id: "e2",
+        businessDate: "2026-08-08",
+        cashCents: 11800,
+        splitCount: 2,
+        peopleIds: ["sam", "rey"],
+        peopleNames: ["Sam", "Rey"],
+        weights: [0.5, 1],
+      }),
+    ]);
+    const byName = new Map(people.map((p) => [p.name, p]));
+    // 82200 → Sam 65760, Rey 16440; 11800 over [0.5, 1] → Sam 3933, Rey 7867.
+    expect(byName.get("Sam")).toEqual({ id: "sam", name: "Sam", cents: 69693, shifts: 2 });
+    expect(byName.get("Rey")).toEqual({ id: "rey", name: "Rey", cents: 24307, shifts: 2 });
   });
 
   it("breaks ties by name", () => {

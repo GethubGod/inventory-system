@@ -1,9 +1,11 @@
 // Shared helpers for the tip-entry edge functions.
 //
-// The pure logic here (business date, anomaly rule) MIRRORS the canonical,
-// unit-tested implementations in web/src/lib/tips/businessDate.ts and
-// web/src/lib/tips/anomaly.ts. Keep them in sync — edge functions cannot
-// import from web/ (separate deploy bundles) and vice versa.
+// The pure logic here (business date, anomaly rule, weighted allocation, day
+// scope) MIRRORS the canonical, unit-tested implementations in
+// web/src/lib/tips/businessDate.ts, web/src/lib/tips/anomaly.ts,
+// web/src/lib/tips/split.ts, and web/src/lib/tips/dayScope.ts. Keep them in
+// sync — edge functions cannot import from web/ (separate deploy bundles) and
+// vice versa.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -48,7 +50,7 @@ export function clientIdentifier(req: Request): string {
  */
 export async function validateTipSession(
   admin: any,
-  sessionToken: string | null | undefined,
+  sessionToken: unknown,
 ): Promise<TipSession | null> {
   if (typeof sessionToken !== 'string' || sessionToken.length < 16 || sessionToken.length > 128) {
     return null;
@@ -217,6 +219,121 @@ export function normalizeAmount(value: unknown): number | null {
   if (typeof num !== 'number' || !Number.isFinite(num)) return null;
   if (num < 0 || num >= 100000) return null;
   return Math.round(num * 100) / 100;
+}
+
+// Weighted allocation (Tips v3 partial shares). Unlike the legacy equal
+// split, the allocated shares must sum to the pool EXACTLY — nothing stays in
+// the drawer beyond what largest-remainder cannot avoid (which is nothing).
+// Half-up rounding is wrong here: it can pay out more than the pool.
+//
+// MIRROR of web/src/lib/tips/split.ts (canonical + unit tested there). Keep
+// both copies in sync.
+
+export function toCents(amount: number): number {
+  return Math.round(amount * 100);
+}
+
+export function fromCents(cents: number): number {
+  return cents / 100;
+}
+
+/**
+ * Split poolCents across weights by largest remainder.
+ *
+ * raw_i = poolCents * w_i / sum(w); everyone gets floor(raw_i); the leftover
+ * cents go one at a time to the largest fractional parts, ties broken by the
+ * person's position in the split (earlier wins). Returns integer cents,
+ * positional with weights, summing exactly to poolCents. A pool of 0 or an
+ * empty/zero weight list allocates all zeros.
+ */
+export function allocatePoolCents(
+  poolCents: number,
+  weights: number[],
+): number[] {
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  if (!Number.isFinite(poolCents) || poolCents <= 0 || totalWeight <= 0) {
+    return weights.map(() => 0);
+  }
+  const raw = weights.map((w) => (poolCents * w) / totalWeight);
+  const base = raw.map(Math.floor);
+  const rest = poolCents - base.reduce((sum, c) => sum + c, 0);
+  const order = raw
+    .map((value, index) => [value - Math.floor(value), index] as const)
+    .sort((a, b) => b[0] - a[0]);
+  for (let k = 0; k < rest; k++) {
+    base[order[k % order.length][1]] += 1;
+  }
+  return base;
+}
+
+/**
+ * The "full share" a weight-1 person takes, in cents, for display: the strip,
+ * the ledger's Per person column, and the saved screen all print this.
+ * round(poolCents / sum(weights)), half-up — display only; the money that is
+ * actually assigned comes from allocatePoolCents.
+ */
+export function fullShareCents(poolCents: number, weights: number[]): number {
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  if (!Number.isFinite(poolCents) || poolCents <= 0 || totalWeight <= 0) {
+    return 0;
+  }
+  return Math.round(poolCents / totalWeight);
+}
+
+// Day-scope subtraction (Tips v3). A dinner entered as "Whole day (Square)"
+// stores shift-only figures: what the closer typed minus what lunch already
+// recorded, field by field (cash−cash, card−card, gratuity−gratuity), against
+// today's lunch row at the same location. The server recomputes this on save
+// and is authoritative; the client copy only drives the live receipt and the
+// blocking negative warning.
+//
+// MIRROR of web/src/lib/tips/dayScope.ts (canonical + unit tested there). Keep
+// both copies in sync.
+
+export type EnteredScope = 'shift' | 'day';
+
+export interface MealAmounts {
+  cash: number;
+  card: number;
+  gratuity: number;
+}
+
+export interface DerivedAmounts {
+  /** Shift-only figures in dollars, cent-exact. May be negative. */
+  derived: MealAmounts;
+  /** True when a lunch row existed and was subtracted. */
+  subtracted: boolean;
+}
+
+/**
+ * Derive the shift-only amounts from what the closer typed.
+ *
+ * On scope "day" with a lunch row on record, each field is typed − lunch,
+ * computed in integer cents. On scope "shift", or on "day" with no lunch
+ * recorded (the flagged day_total_no_lunch case), the typed figures pass
+ * through unchanged and `subtracted` is false.
+ */
+export function deriveShiftAmounts(
+  typed: MealAmounts,
+  scope: EnteredScope,
+  lunch: MealAmounts | null,
+): DerivedAmounts {
+  if (scope !== 'day' || lunch === null) {
+    return { derived: { ...typed }, subtracted: false };
+  }
+  return {
+    derived: {
+      cash: fromCents(toCents(typed.cash) - toCents(lunch.cash)),
+      card: fromCents(toCents(typed.card) - toCents(lunch.card)),
+      gratuity: fromCents(toCents(typed.gratuity) - toCents(lunch.gratuity)),
+    },
+    subtracted: true,
+  };
+}
+
+/** True when any derived field is negative — the one blocking entry state. */
+export function hasNegativeAmount(amounts: MealAmounts): boolean {
+  return amounts.cash < 0 || amounts.card < 0 || amounts.gratuity < 0;
 }
 
 /**

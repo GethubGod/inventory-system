@@ -5,11 +5,14 @@
 // fields are quoted only when they need it.
 
 import { csvDayLabel } from "./dashboardRange";
-import { cashShareCents, type LedgerEntry } from "./dashboardDerive";
+import { entryFullShareCents, type LedgerEntry } from "./dashboardDerive";
 
+// Existing columns keep their exact positions so old sheets don't break; the
+// Tips v3 columns (gratuity, scope, raw figures, note, weights) append after.
 const HEADER =
   "Business date,Restaurant,Meal,Cash (split pool),Card (logged only)," +
-  "People on split,Names,Per-person share,Flagged,Entered by,Entry method";
+  "People on split,Names,Per-person share,Flagged,Entered by,Entry method," +
+  "Gratuity,Entered scope,Raw cash,Raw card,Note,Weights";
 
 /** Prefix-guard against spreadsheet formula injection (=, +, -, @, tab, CR). */
 function formulaSafe(value: string): string {
@@ -50,10 +53,24 @@ export function buildLedgerCsv(
         (entry.cardCents / 100).toFixed(2),
         String(entry.splitCount),
         csvFieldQuoted(entry.peopleNames.join("; ")),
-        (cashShareCents(entry.cashCents, entry.splitCount) / 100).toFixed(2),
+        // The full (weight-1) share — same figure the ledger's Per person
+        // column shows. Identical to the old cash/count on all-full splits.
+        (entryFullShareCents(entry) / 100).toFixed(2),
         entry.flaggedRaw ? "yes" : "no",
         csvField(entry.enteredByName ?? ""),
         entry.entryMethod,
+        (entry.gratuityCents / 100).toFixed(2),
+        entry.enteredScope,
+        // Raw (as-typed) figures exist only on rows saved since Tips v3.
+        entry.rawCashCents === null ? "" : (entry.rawCashCents / 100).toFixed(2),
+        entry.rawCardCents === null ? "" : (entry.rawCardCents / 100).toFixed(2),
+        csvField(entry.note ?? ""),
+        // Percentages positional with Names, e.g. "100; 100; 75".
+        `"${entry.peopleIds
+          .map((_, index) =>
+            String(Math.round((entry.weights[index] ?? 1) * 100)),
+          )
+          .join("; ")}"`,
       ].join(","),
     );
   }

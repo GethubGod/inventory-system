@@ -19,23 +19,36 @@ import {
   isSessionInvalid,
   saveEntry,
   TipApiError,
+  type LunchAmounts,
   type SavePayload,
   type SessionState,
+  type SlotEntry,
 } from "@/lib/tips/api";
 import { anomalyMessage, type AnomalyResult } from "@/lib/tips/anomaly";
 import { formatBusinessDate } from "@/lib/tips/businessDate";
+import {
+  deriveShiftAmounts,
+  enteredTotal,
+  hasNegativeAmount,
+  type EnteredScope,
+  type MealAmounts,
+} from "@/lib/tips/dayScope";
+import { moneyFromCents } from "@/lib/tips/dashboardDerive";
 import { formatMoney } from "@/lib/tips/format";
 import { mealPreset } from "@/lib/tips/mealPreset";
-import { perPersonShare } from "@/lib/tips/split";
 import {
   clearSession,
   loadSession,
   type StoredSession,
 } from "@/lib/tips/session";
+import { allocatePoolCents, fullShareCents, toCents } from "@/lib/tips/split";
 import type { MealPeriod, VoiceVariant } from "@/types/database";
 import { AmountWell, isValidAmount } from "./AmountWell";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { RosterChips } from "./RosterChips";
+import { NoteField } from "./NoteField";
+import { PayoutList } from "./PayoutList";
+import { RosterChips, nextWeight } from "./RosterChips";
+import { ScopeSwitch } from "./ScopeSwitch";
 import { Segmented } from "./Segmented";
 import { SplitStrip } from "./SplitStrip";
 import { VoiceSheet, type VoiceApplyResult } from "./VoiceSheet";
@@ -46,7 +59,7 @@ const MEAL_OPTIONS = [
 ] as const;
 
 /** How long the saved confirmation lingers before returning to the scan gate. */
-const SAVED_SCREEN_MS = 4000;
+const SAVED_SCREEN_MS = 10000;
 
 interface VoiceMeta {
   variant: VoiceVariant;
@@ -110,32 +123,67 @@ function CheckIcon({ size = 14 }: { size?: number }) {
 }
 
 /**
- * Full-screen post-save confirmation. Lingers a few seconds, then ends the
- * session and sends the phone back to the scan gate; "Done" skips the wait.
+ * Full-screen post-save confirmation. Holds SAVED_SCREEN_MS with a visible
+ * countdown over a draining progress bar, then ends the session and sends
+ * the phone back to the scan gate; "Done" skips the wait. The three wells
+ * mirror the entry form's grid but are read-only — no editable underline.
  */
 function SavedScreen({
   payload,
+  entry,
+  lunch,
   locationName,
   businessDate,
   splitNames,
   onFinished,
 }: {
   payload: SavePayload;
+  /** The saved row from the server — its derived figures are authoritative. */
+  entry: SlotEntry | null;
+  /** The lunch figures in scope at save time (client-side fallback only). */
+  lunch: LunchAmounts | null;
   locationName: string;
   businessDate: string;
   splitNames: string[];
   onFinished: () => void;
 }) {
+  const totalSeconds = Math.round(SAVED_SCREEN_MS / 1000);
+  const [secondsLeft, setSecondsLeft] = useState(totalSeconds);
+
   useEffect(() => {
     const timer = setTimeout(onFinished, SAVED_SCREEN_MS);
-    return () => clearTimeout(timer);
+    const ticker = setInterval(
+      () => setSecondsLeft((current) => Math.max(0, current - 1)),
+      1000,
+    );
+    return () => {
+      clearTimeout(timer);
+      clearInterval(ticker);
+    };
   }, [onFinished]);
 
-  const total = payload.cash + payload.card;
+  // Prefer the server's stored (derived) figures; fall back to deriving
+  // client-side from what was typed when an older server omits them.
+  const amounts: MealAmounts = entry
+    ? { cash: entry.cash, card: entry.card, gratuity: entry.gratuity ?? 0 }
+    : deriveShiftAmounts(
+        { cash: payload.cash, card: payload.card, gratuity: payload.gratuity },
+        payload.enteredScope,
+        lunch,
+      ).derived;
+
   const count = payload.peopleIds.length;
-  // Same cent-exact rounding as the live split strip — float division can
-  // disagree with it by a cent (e.g. $100 / 3).
-  const perPerson = perPersonShare(payload.cash, payload.card, count);
+  const poolCents = Math.max(0, toCents(amounts.cash));
+  const weights = payload.weights.length === count ? payload.weights : Array(count).fill(1);
+  const shares = allocatePoolCents(poolCents, weights);
+  const fullShare = fullShareCents(poolCents, weights);
+  const reduced = payload.peopleIds
+    .map((id, index) => ({
+      name: splitNames[index] ?? "",
+      weight: weights[index] ?? 1,
+      cents: shares[index] ?? 0,
+    }))
+    .filter((person) => person.weight < 1);
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-8 pt-20">
@@ -155,35 +203,69 @@ function SavedScreen({
           <span className="h-2 w-2 shrink-0 rounded-full bg-accent" />
           <p className="font-bold text-ink">{locationName}</p>
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid grid-cols-3 gap-3">
           <div className="rounded-well bg-well p-3">
             <div className="section-label">Cash</div>
             <p className="mt-1 text-xl font-bold text-ink">
-              {formatMoney(payload.cash)}
+              {formatMoney(amounts.cash)}
             </p>
           </div>
           <div className="rounded-well bg-well p-3">
             <div className="section-label">Card</div>
             <p className="mt-1 text-xl font-bold text-ink">
-              {formatMoney(payload.card)}
+              {formatMoney(amounts.card)}
+            </p>
+          </div>
+          <div className="rounded-well bg-well p-3">
+            <div className="section-label">Gratuity</div>
+            <p className="mt-1 text-xl font-bold text-ink">
+              {formatMoney(amounts.gratuity)}
             </p>
           </div>
         </div>
         <p className="mt-4 text-ink2">
-          {count === 1
-            ? `${splitNames[0] ?? "1 person"} takes ${formatMoney(total)}`
-            : `${count} people · ${formatMoney(perPerson)} each`}
+          {count === 1 ? (
+            `${splitNames[0] ?? "1 person"} takes ${moneyFromCents(poolCents)}`
+          ) : reduced.length > 0 ? (
+            <>
+              {count} people · full share <b>{moneyFromCents(fullShare)}</b>
+              {reduced.map((person) => (
+                <span key={person.name}>
+                  , {person.name} <b>{moneyFromCents(person.cents)}</b> (
+                  {Math.round(person.weight * 100)}%)
+                </span>
+              ))}
+            </>
+          ) : (
+            `${count} people · ${moneyFromCents(fullShare)} each`
+          )}
         </p>
         {count > 1 && splitNames.length > 0 && (
           <p className="mt-1 text-sm text-ink3">{splitNames.join(", ")}</p>
+        )}
+        {payload.note && (
+          <div className="mt-3 flex items-center gap-2">
+            <span className="rounded-[5px] bg-poki/10 px-1.5 py-0.5 text-[10px] font-extrabold uppercase tracking-[0.06em] text-poki">
+              note
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm text-ink2">
+              {payload.note}
+            </span>
+          </div>
         )}
       </div>
 
       <div className="flex-1" />
 
       <p className="text-center text-sm text-ink3">
-        Signing this phone out&hellip; next entry starts with a scan
+        Back to the scan screen in <b className="text-ink2">{secondsLeft}</b>s
       </p>
+      <div className="mt-2 h-[3px] overflow-hidden rounded-[2px] bg-well">
+        <div
+          className="h-full bg-accent transition-[width] duration-1000 ease-linear"
+          style={{ width: `${(secondsLeft / totalSeconds) * 100}%` }}
+        />
+      </div>
       <button
         type="button"
         onClick={onFinished}
@@ -238,7 +320,15 @@ export function EntryForm() {
   const [allDone, setAllDone] = useState(false);
   const [cash, setCash] = useState("");
   const [card, setCard] = useState("");
+  const [gratuity, setGratuity] = useState("");
+  // Whole-day vs shift-only Square number. Dinner only — lunch always
+  // records what was typed. Defaults to whole day per the approved mockup.
+  const [scope, setScope] = useState<EnteredScope>("day");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // Share weight per person id (1 | 0.75 | 0.5 | 0.25). Kept independent of
+  // selection so deselecting and reselecting someone keeps their badge.
+  const [weightById, setWeightById] = useState<Record<string, number>>({});
+  const [note, setNote] = useState<string | null>(null);
   // Who the manager's schedule says works each meal today. Seeds the chip
   // pre-selection and floats scheduled people to the top of the picker.
   const [scheduledByMeal, setScheduledByMeal] = useState<
@@ -264,6 +354,8 @@ export function EntryForm() {
     anomaly: AnomalyResult;
   } | null>(null);
   const [savedPayload, setSavedPayload] = useState<SavePayload | null>(null);
+  // The row the server stored — its derived figures drive the saved screen.
+  const [savedEntry, setSavedEntry] = useState<SlotEntry | null>(null);
   const [pickPersonWarning, setPickPersonWarning] = useState(false);
 
   const [showVoice, setShowVoice] = useState(false);
@@ -412,6 +504,12 @@ export function EntryForm() {
           );
           setMeal(meal);
         } else {
+          // A fresher today-status (with the recorded lunch figures) rides
+          // along on get_slot — keep the day-scope subtraction current.
+          if (slot.today) {
+            const freshToday = slot.today;
+            setState((prev) => (prev ? { ...prev, today: freshToday } : prev));
+          }
           setScheduledByMeal((prev) => ({ ...prev, [next]: slot.scheduledIds }));
           const saved = savedSelectionsRef.current[next];
           if (saved) {
@@ -498,6 +596,7 @@ export function EntryForm() {
         }
         setPendingAnomaly(null);
         setVoiceMeta(null);
+        setSavedEntry(result.entry);
         setSavedPayload(payload);
       } catch (error) {
         if (isSessionInvalid(error)) {
@@ -523,42 +622,115 @@ export function EntryForm() {
     [session, router, applyAlreadyRecorded],
   );
 
-  const amountsValid = isValidAmount(cash) && isValidAmount(card);
-  // slotLoading: a meal switch is mid-flight — saving now would send the NEW
-  // meal with the OLD meal's crew (and possibly stale amounts).
-  const canSave = amountsValid && selectedIds.length > 0 && !saving && !slotLoading;
+  // Blank gratuity is legal and means $0 — only a half-typed "." is invalid.
+  const amountsValid =
+    isValidAmount(cash) &&
+    isValidAmount(card) &&
+    (gratuity === "" || isValidAmount(gratuity));
 
-  const handleSaveClick = useCallback(() => {
+  // Day-scope derivation drives the live receipt and the one blocking
+  // warning. The server recomputes all of this on save and is authoritative.
+  const typedAmounts: MealAmounts = {
+    cash: isValidAmount(cash) ? Number(cash) : 0,
+    card: isValidAmount(card) ? Number(card) : 0,
+    gratuity: isValidAmount(gratuity) ? Number(gratuity) : 0,
+  };
+  const lunchAmounts = state?.today.lunch ?? null;
+  const effectiveScope: EnteredScope = meal === "dinner" ? scope : "shift";
+  const { derived: derivedAmounts } = deriveShiftAmounts(
+    typedAmounts,
+    effectiveScope,
+    lunchAmounts,
+  );
+  const negativeAfterLunch = hasNegativeAmount(derivedAmounts);
+
+  const poolCents = Math.max(0, toCents(derivedAmounts.cash));
+  // Allocation order is the ROSTER order (sort_order, name — the same rule
+  // the dashboard ranks by), not tap order: largest-remainder ties break by
+  // position, so every surface must order the split identically or the odd
+  // cent lands on different people on different screens.
+  const orderedSelectedIds = useMemo(() => {
+    const selected = new Set(selectedIds);
+    return state
+      ? state.roster.filter((person) => selected.has(person.id)).map((person) => person.id)
+      : selectedIds;
+  }, [state, selectedIds]);
+  const selectedWeights = orderedSelectedIds.map((id) => weightById[id] ?? 1);
+  // A meal switch in flight still has the previous meal's amounts and crew.
+  // Block saves until the requested slot has been applied.
+  const canSave =
+    amountsValid &&
+    !negativeAfterLunch &&
+    selectedIds.length > 0 &&
+    !saving &&
+    !slotLoading;
+
+  // Plain functions (no manual memoization) — the React Compiler handles
+  // these; nesting them in useCallback fights its dependency analysis.
+  const buildPayload = (
+    base: Pick<
+      SavePayload,
+      | "meal"
+      | "cash"
+      | "card"
+      | "peopleIds"
+      | "entryMethod"
+      | "voiceVariant"
+      | "correctionsCount"
+    >,
+  ): SavePayload => {
+    // Same canonical roster ordering as the live allocation above, so the
+    // saved screen, the server, and the dashboard all see one split order.
+    const picked = new Set(base.peopleIds);
+    const peopleIds = state
+      ? state.roster.filter((person) => picked.has(person.id)).map((person) => person.id)
+      : base.peopleIds;
+    return {
+      ...base,
+      peopleIds,
+      // All three amounts go AS TYPED — the server does the subtraction.
+      gratuity: isValidAmount(gratuity) ? Number(gratuity) : 0,
+      enteredScope: base.meal === "dinner" ? scope : "shift",
+      weights: peopleIds.map((id) => weightById[id] ?? 1),
+      note,
+      confirmAnomaly: false,
+    };
+  };
+
+  const handleSaveClick = () => {
     if (selectedIds.length === 0) {
       setPickPersonWarning(true);
       return;
     }
-    if (!amountsValid || saving || slotLoading) return;
-    void doSave({
-      meal,
-      cash: Number(cash),
-      card: Number(card),
-      peopleIds: selectedIds,
-      entryMethod: voiceMeta ? "voice" : "typed",
-      voiceVariant: voiceMeta?.variant ?? null,
-      correctionsCount: voiceMeta?.corrections ?? 0,
-      confirmAnomaly: false,
-    });
-  }, [selectedIds, amountsValid, saving, slotLoading, doSave, meal, cash, card, voiceMeta]);
+    if (!amountsValid || negativeAfterLunch || saving || slotLoading) return;
+    void doSave(
+      buildPayload({
+        meal,
+        cash: Number(cash),
+        card: Number(card),
+        peopleIds: selectedIds,
+        entryMethod: voiceMeta ? "voice" : "typed",
+        voiceVariant: voiceMeta?.variant ?? null,
+        correctionsCount: voiceMeta?.corrections ?? 0,
+      }),
+    );
+  };
 
-  const handleVoiceApply = useCallback(
-    (result: VoiceApplyResult) => {
-      setShowVoice(false);
-      setMeal(result.meal);
-      setCash(result.cash);
-      setCard(result.card);
-      setSelectedIds(result.peopleIds);
-      setPickPersonWarning(false);
-      setVoiceMeta({
-        variant: result.variant,
-        corrections: result.correctionsCount,
-      });
-      void doSave({
+  const handleVoiceApply = (result: VoiceApplyResult) => {
+    setShowVoice(false);
+    setMeal(result.meal);
+    setCash(result.cash);
+    setCard(result.card);
+    setSelectedIds(result.peopleIds);
+    setPickPersonWarning(false);
+    setVoiceMeta({
+      variant: result.variant,
+      corrections: result.correctionsCount,
+    });
+    // Voice still fills cash/card/people only — the typed gratuity, scope,
+    // weights and note ride along unchanged.
+    void doSave(
+      buildPayload({
         meal: result.meal,
         cash: Number(result.cash),
         card: Number(result.card),
@@ -566,11 +738,9 @@ export function EntryForm() {
         entryMethod: "voice",
         voiceVariant: result.variant,
         correctionsCount: result.correctionsCount,
-        confirmAnomaly: false,
-      });
-    },
-    [doSave],
-  );
+      }),
+    );
+  };
 
   const markTouched = useCallback((field: "cash" | "card" | "people") => {
     setTouchedFields((prev) =>
@@ -594,6 +764,10 @@ export function EntryForm() {
     [markTouched],
   );
 
+  const handleGratuityChange = useCallback((value: string) => {
+    setGratuity(value);
+  }, []);
+
   const togglePerson = useCallback(
     (id: string) => {
       setPickPersonWarning(false);
@@ -606,6 +780,11 @@ export function EntryForm() {
     },
     [markTouched],
   );
+
+  /** Cycle a selected person's share badge: 100 → 75 → 50 → 25 → 100. */
+  const cycleWeight = useCallback((id: string) => {
+    setWeightById((prev) => ({ ...prev, [id]: nextWeight(prev[id] ?? 1) }));
+  }, []);
 
   // Scheduled people sort first for the current meal; unscheduled staff sink
   // to the bottom. Stable sort keeps the server's sort_order/name order
@@ -653,6 +832,8 @@ export function EntryForm() {
     return (
       <SavedScreen
         payload={savedPayload}
+        entry={savedEntry}
+        lunch={lunchAmounts}
         locationName={state.location.name}
         businessDate={state.today.businessDate}
         splitNames={savedPayload.peopleIds
@@ -730,20 +911,81 @@ export function EntryForm() {
 
         {/* Amounts */}
         <div className="bg-card rounded-card p-4">
-          <div className="grid grid-cols-2 gap-3">
-            <AmountWell label="Cash" value={cash} onChange={handleCashChange} />
-            <AmountWell label="Card" value={card} onChange={handleCardChange} />
+          {/* Scope sits directly above the wells with no label over it —
+              dinner only. Lunch always records what was typed. */}
+          {meal === "dinner" && (
+            <div className="mb-3">
+              <ScopeSwitch value={scope} onChange={setScope} disabled={saving} />
+            </div>
+          )}
+          <div className="grid grid-cols-3 gap-2">
+            <AmountWell label="Cash" value={cash} onChange={handleCashChange} compact />
+            <AmountWell label="Card" value={card} onChange={handleCardChange} compact />
+            <AmountWell
+              label="Gratuity"
+              value={gratuity}
+              onChange={handleGratuityChange}
+              compact
+            />
           </div>
+          <p className="mt-2 text-sm text-ink3">
+            Leave gratuity blank on a night with no large parties.
+          </p>
+          {meal === "dinner" && (
+            <div className="mt-3 grid gap-1 border-t border-dashed border-line pt-2.5 text-sm tabular-nums">
+              <div className="flex text-ink2">
+                <span>
+                  {scope === "day" ? "Entered (whole day)" : "Entered (dinner only)"}
+                </span>
+                <span className="ml-auto font-semibold text-ink">
+                  {formatMoney(enteredTotal(typedAmounts))}
+                </span>
+              </div>
+              {scope === "day" && (
+                <div className="flex text-ink2">
+                  <span>&minus; Lunch already recorded</span>
+                  <span className="ml-auto font-semibold text-alert">
+                    &minus;
+                    {formatMoney(
+                      lunchAmounts ? enteredTotal(lunchAmounts) : 0,
+                    )}
+                  </span>
+                </div>
+              )}
+              <div className="mt-0.5 flex border-t border-line pt-1.5 font-extrabold text-ink">
+                <span>Dinner records</span>
+                <span className="ml-auto text-base">
+                  {formatMoney(enteredTotal(derivedAmounts))}
+                </span>
+              </div>
+            </div>
+          )}
+          {/* The one warning the entry screen ever shows. A whole-day dinner
+              with no lunch on record says NOTHING here — it saves flagged
+              for the manager. */}
+          {negativeAfterLunch && (
+            <div className="mt-3 rounded-well bg-tint p-3 text-sm text-alert">
+              Lunch already recorded more than this. Check the Square report —{" "}
+              <b>Save is off until this is fixed.</b>
+            </div>
+          )}
         </div>
 
         {/* Roster */}
         <div className="bg-card rounded-card p-4">
-          <div className="section-label">Who&apos;s splitting</div>
+          <div className="flex items-baseline">
+            <div className="section-label">Who&apos;s splitting</div>
+            <span className="ml-auto text-sm text-ink3">
+              tap a badge to change a share
+            </span>
+          </div>
           <div className="mt-3">
             <RosterChips
               roster={displayRoster}
               selectedIds={selectedIds}
               onToggle={togglePerson}
+              weights={weightById}
+              onCycleWeight={cycleWeight}
             />
           </div>
           {pickPersonWarning && (
@@ -751,11 +993,20 @@ export function EntryForm() {
           )}
         </div>
 
-        <SplitStrip
-          cash={isValidAmount(cash) ? Number(cash) : 0}
-          card={isValidAmount(card) ? Number(card) : 0}
-          count={selectedIds.length}
+        {/* Renders only when at least one share is under 100%. */}
+        <PayoutList
+          people={orderedSelectedIds.map((id, index) => ({
+            id,
+            name:
+              displayRoster.find((person) => person.id === id)?.name ?? "?",
+            weight: selectedWeights[index] ?? 1,
+            cents: allocatePoolCents(poolCents, selectedWeights)[index] ?? 0,
+          }))}
         />
+
+        <SplitStrip poolCents={poolCents} weights={selectedWeights} />
+
+        <NoteField note={note} onChange={setNote} />
       </div>
 
       {/* Sticky bottom bar */}
@@ -791,7 +1042,7 @@ export function EntryForm() {
               silently doing nothing. */}
           <button
             type="button"
-            disabled={saving || slotLoading || !amountsValid}
+            disabled={saving || slotLoading || !amountsValid || negativeAfterLunch}
             onClick={handleSaveClick}
             className={`flex-1 rounded-full py-4 font-semibold ${
               canSave ? "bg-card text-ink" : "bg-disabled text-white"
