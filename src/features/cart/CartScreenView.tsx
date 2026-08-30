@@ -1279,7 +1279,7 @@ export function CartScreenView({
                   backgroundColor: glassColors.mediumFill,
                 }}
               >
-                <BrandLogo variant="inline" size={20} colorMode="light" />
+                <BrandLogo variant="inline" size={20} />
               </View>
               <View className="flex-1">
                 <View className="flex-row items-center">
@@ -1521,7 +1521,7 @@ export function CartScreenView({
                           justifyContent: 'center',
                         }}
                       >
-                        <BrandLogo variant="inline" size={18} colorMode="light" />
+                        <BrandLogo variant="inline" size={18} />
                       </View>
                       <View className="flex-1 ml-4">
                         <Text style={{ fontSize: ds.fontSize(16), fontWeight: '600', color: glassColors.textPrimary }}>

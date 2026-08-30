@@ -809,7 +809,6 @@ export function QuickSearchScreenView({ mode }: QuickSearchScreenViewProps) {
                       <BrandLogo
                         variant="inline"
                         size={16}
-                        colorMode={isSelected ? "dark" : "light"}
                       />
                     </View>
                     <Text

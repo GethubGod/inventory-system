@@ -16,7 +16,9 @@
       "**/*"
     ],
     "ios": {
-      "associatedDomains": ["webcredentials:tips.babytunasystems.com"],
+      "associatedDomains": [
+        "webcredentials:tips.babytunasystems.com"
+      ],
       "supportsTablet": false,
       "bundleIdentifier": "com.babytuna.systems",
       "buildNumber": "21",
@@ -31,8 +33,8 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/app-icon.png",
-        "backgroundColor": "#000000"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
       },
       "package": "com.babytuna.systems",
       "versionCode": 21,

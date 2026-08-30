@@ -145,7 +145,7 @@ export default function LoginScreen() {
       >
         <Pressable className="flex-1 px-6 pt-10 pb-8" onPress={Keyboard.dismiss}>
           <View className="items-center mb-6">
-            <AuthLogoHeader size={128} />
+            <AuthLogoHeader size={64} />
           </View>
 
           <View

@@ -6,6 +6,7 @@
 
 import { useState, type FormEvent } from "react";
 import { getSupabase } from "@/lib/supabase";
+import { SmelterLogo } from "@/components/Logo";
 
 export default function DashboardLoginCard() {
   const [email, setEmail] = useState("");
@@ -32,7 +33,7 @@ export default function DashboardLoginCard() {
   return (
     <div className="w-full max-w-md mx-auto mt-16 px-5">
       <div className="bg-card rounded-card p-6">
-        <p className="wordmark mb-1">smelter</p>
+        <SmelterLogo height={26} className="mb-2" />
         <h1 className="text-xl font-bold text-ink mb-5">Dashboard</h1>
         <form onSubmit={onSubmit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1">

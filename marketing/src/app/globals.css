@@ -26,15 +26,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Product wordmark — minimalist lowercase "smelter" in accent red. */
-.wordmark {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  text-transform: lowercase;
-  color: var(--color-accent);
-}
-
 /* Uppercase 11px letter-spaced section label used across cards. */
 .section-label {
   font-size: 11px;

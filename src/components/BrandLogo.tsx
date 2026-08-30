@@ -3,36 +3,17 @@ import { Image, StyleProp, View, ViewStyle } from 'react-native';
 import { useDisplayStore } from '@/store';
 
 type BrandLogoVariant = 'header' | 'footer' | 'inline';
-type BrandLogoColorMode = 'light' | 'dark';
 
 interface BrandLogoProps {
   variant?: BrandLogoVariant;
   size?: number;
-  colorMode?: BrandLogoColorMode;
   style?: StyleProp<ViewStyle>;
 }
 
-const BLACK_LOGO = require('../../assets/images/babytuna-logo-black.png');
-const LIGHT_LOGO = require('../../assets/images/babytuna-logo.png');
-
-function resolveLogoAspectRatio(source: any): number {
-  const resolver = (Image as any).resolveAssetSource;
-  if (typeof resolver === 'function') {
-    const meta = resolver(source);
-    if (meta?.width > 0 && meta?.height > 0) {
-      return meta.width / meta.height;
-    }
-  }
-
-  if (source && typeof source === 'object' && source.width > 0 && source.height > 0) {
-    return source.width / source.height;
-  }
-
-  return 1;
-}
-
-const BLACK_LOGO_ASPECT_RATIO = resolveLogoAspectRatio(BLACK_LOGO);
-const LIGHT_LOGO_ASPECT_RATIO = resolveLogoAspectRatio(LIGHT_LOGO);
+// The delivered mark, used as-is on every background. Only the area outside its
+// circle is transparent, so the white inside the swirl stays white on the black
+// auth screens. See brand/README.md.
+const MARK = require('../../assets/images/smelter-mark.png');
 
 const DEFAULT_SIZE: Record<BrandLogoVariant, number> = {
   header: 28,
@@ -41,8 +22,8 @@ const DEFAULT_SIZE: Record<BrandLogoVariant, number> = {
 };
 
 const VARIANT_OPACITY: Record<BrandLogoVariant, number> = {
-  header: 0.9,
-  footer: 0.7,
+  header: 1,
+  footer: 0.85,
   inline: 1,
 };
 
@@ -52,28 +33,16 @@ const LOGO_SCALE_MULTIPLIER = {
   large: 1.15,
 } as const;
 
-export function BrandLogo({
-  variant = 'inline',
-  size,
-  colorMode = 'light',
-  style,
-}: BrandLogoProps) {
+export function BrandLogo({ variant = 'inline', size, style }: BrandLogoProps) {
   const uiScale = useDisplayStore((state) => state.uiScale);
   const baseSize = size ?? DEFAULT_SIZE[variant];
   const resolvedSize = Math.round(baseSize * LOGO_SCALE_MULTIPLIER[uiScale]);
-  const source = colorMode === 'dark' ? LIGHT_LOGO : BLACK_LOGO;
-  const aspectRatio =
-    colorMode === 'dark' ? LIGHT_LOGO_ASPECT_RATIO : BLACK_LOGO_ASPECT_RATIO;
 
   return (
     <View style={[{ opacity: VARIANT_OPACITY[variant] }, style]} pointerEvents="none">
       <Image
-        source={source}
-        style={{
-          width: resolvedSize * aspectRatio,
-          height: resolvedSize,
-          resizeMode: 'contain',
-        }}
+        source={MARK}
+        style={{ width: resolvedSize, height: resolvedSize, resizeMode: 'contain' }}
       />
     </View>
   );

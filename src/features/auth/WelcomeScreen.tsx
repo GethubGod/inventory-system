@@ -62,7 +62,7 @@ export default function WelcomeScreen() {
     <AuthScreenShell>
       <View style={{ flex: 1, justifyContent: 'center' }}>
         <View style={{ alignItems: 'center', marginBottom: 32 }}>
-          <AuthLogoHeader size={128} />
+          <AuthLogoHeader size={64} />
         </View>
 
         {showPaste ? (

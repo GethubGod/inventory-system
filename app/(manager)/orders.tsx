@@ -329,7 +329,7 @@ export default function ManagerOrdersScreen() {
                       isSelected ? 'bg-primary-500' : 'bg-gray-200'
                     }`}
                   >
-                    <BrandLogo variant="inline" size={18} colorMode={isSelected ? 'dark' : 'light'} />
+                    <BrandLogo variant="inline" size={18} />
                   </View>
                   <Text className="flex-1 text-gray-900 font-medium">{loc.name}</Text>
                   {isSelected && <Ionicons name="checkmark" size={18} color={colors.primary[500]} />}

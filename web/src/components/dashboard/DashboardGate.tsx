@@ -10,6 +10,7 @@ import type { Session } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
 import DashboardLoginCard from "@/components/dashboard/DashboardLoginCard";
 import DashboardShell from "@/components/dashboard/DashboardShell";
+import { SmelterLogo } from "@/components/Logo";
 
 export default function DashboardGate({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -77,7 +78,7 @@ export default function DashboardGate({ children }: { children: ReactNode }) {
     return (
       <div className="w-full max-w-md mx-auto mt-16 px-5">
         <div className="bg-card rounded-card p-6 flex flex-col gap-4">
-          <p className="wordmark">smelter</p>
+          <SmelterLogo height={26} />
           <p className="text-ink font-semibold">Managers only</p>
           <p className="text-ink2 text-sm">
             This account doesn&apos;t have manager access. Ask a manager if you

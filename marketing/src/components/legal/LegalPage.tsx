@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { SmelterLogo } from "@/components/Logo";
 
 export function LegalPage({
   title,
@@ -13,7 +14,7 @@ export function LegalPage({
   return (
     <main className="mx-auto w-full max-w-3xl px-5 py-10 sm:py-14">
       <article className="rounded-card bg-card px-6 py-8 sm:px-10">
-        <p className="wordmark mb-3">smelter</p>
+        <SmelterLogo height={26} className="mb-3" />
         <h1 className="text-3xl font-bold tracking-tight text-ink">{title}</h1>
         {effectiveDate && (
           <p className="mt-2 text-sm text-ink2">Effective {effectiveDate}</p>

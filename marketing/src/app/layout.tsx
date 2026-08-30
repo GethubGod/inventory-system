@@ -2,8 +2,17 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://smelterpos.com"),
   title: "smelter",
   description: "smelter — restaurant operations tools",
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+  },
+  openGraph: {
+    title: "smelter",
+    images: ["/brand/smelter-lockup.png"],
+  },
 };
 
 export const viewport: Viewport = {
