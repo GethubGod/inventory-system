@@ -6,6 +6,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { SmelterLogo } from "@/components/Logo";
 
 interface NavItem {
   label: string;
@@ -93,7 +94,7 @@ export default function DashboardShell({
       {/* Desktop sidebar */}
       <aside className="hidden md:flex w-60 shrink-0 flex-col gap-6 border-r border-hairline px-4 py-6 sticky top-0 h-dvh">
         <div className="px-2">
-          <p className="wordmark">smelter</p>
+          <SmelterLogo height={26} />
           <p className="text-lg font-bold text-ink">Dashboard</p>
         </div>
         <nav className="flex flex-col gap-1.5">
@@ -113,7 +114,7 @@ export default function DashboardShell({
       <div className="md:hidden px-5 pt-5">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="wordmark">smelter</p>
+            <SmelterLogo height={26} />
             <p className="text-lg font-bold text-ink">Dashboard</p>
           </div>
           <button

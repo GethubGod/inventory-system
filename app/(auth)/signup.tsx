@@ -187,7 +187,7 @@ export default function SignUpScreen() {
         >
           <View className="px-6">
             <View className="items-center pt-2 mb-6">
-              <AuthLogoHeader size={128} />
+              <AuthLogoHeader size={64} />
             </View>
 
             <View

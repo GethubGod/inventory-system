@@ -103,7 +103,7 @@ export default function CompleteProfileScreen() {
       >
         <View className="flex-1 px-6 pt-10 pb-8">
           <View className="items-center mb-6">
-            <AuthLogoHeader size={120} />
+            <AuthLogoHeader size={60} />
           </View>
 
           <View

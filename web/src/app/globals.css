@@ -41,15 +41,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Product wordmark — minimalist lowercase "smelter" in accent red. */
-.wordmark {
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  text-transform: lowercase;
-  color: var(--color-accent);
-}
-
 /* Snappy controls: no double-tap zoom delay, no gray tap flash, and a
    subtle physical press on every button — instant feedback everywhere. */
 button,

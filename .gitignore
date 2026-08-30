@@ -12,3 +12,4 @@ supabase/.temp/
 expo-env.d.ts
 # @end expo-cli
 .vercel
+__pycache__/

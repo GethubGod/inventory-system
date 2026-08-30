@@ -137,7 +137,7 @@ export function ConfirmLocationBottomSheet({
                         justifyContent: 'center',
                       }}
                     >
-                      <BrandLogo variant="inline" size={18} colorMode="light" />
+                      <BrandLogo variant="inline" size={18} />
                     </View>
                     <View style={{ flex: 1, marginLeft: ds.spacing(12) }}>
                       <Text style={{ fontSize: ds.fontSize(16), fontWeight: '500', color: colors.textPrimary }}>
@@ -200,7 +200,7 @@ export function ConfirmLocationBottomSheet({
                     justifyContent: 'center',
                   }}
                 >
-                  <BrandLogo variant="inline" size={18} colorMode="light" />
+                  <BrandLogo variant="inline" size={18} />
                 </View>
                 <View style={{ flex: 1, marginLeft: ds.spacing(12) }}>
                   <Text style={{ fontSize: ds.fontSize(17), fontWeight: '600', color: colors.textPrimary }} numberOfLines={1}>

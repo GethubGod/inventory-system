@@ -32,6 +32,7 @@ import {
   useToast,
 } from "./ui";
 import type { LocationInfo, PageContext } from "./types";
+import { SmelterLogo } from "@/components/Logo";
 
 /** "Sun 10:24 PM" — LA weekday + time for scan rows. */
 function scanLabel(iso: string): string {
@@ -91,11 +92,13 @@ function StickerSheetDialog({
     <ModalShell title={`${location.label} — entry QR`} onClose={onClose} wide>
       <div className="mt-3 max-h-[62vh] overflow-y-auto rounded-well bg-well p-3">
         <div className="qr-print-sheet mx-auto flex max-w-[430px] flex-col items-center gap-1 rounded-[6px] border border-line bg-white px-8 py-9 text-center text-[#111]">
-          {/* The wordmark keeps the logo's tight tracking; only the label
+          {/* The lockup keeps the logo's own proportions; only the label
               after it gets the wide letter-spacing. */}
-          <div className="flex items-baseline justify-center gap-[5px] font-bold">
-            <span className="text-[14px] tracking-[-0.02em] text-[#e84d38]">smelter</span>
-            <span className="text-[11px] tracking-[0.18em] text-[#888]">· tip entry</span>
+          <div className="flex items-center justify-center gap-[6px]">
+            <SmelterLogo height={20} />
+            <span className="text-[11px] font-bold tracking-[0.18em] text-[#888]">
+              · tip entry
+            </span>
           </div>
           <h2 className="text-[26px] font-extrabold leading-tight">{location.name}</h2>
           {/* eslint-disable-next-line @next/next/no-img-element */}

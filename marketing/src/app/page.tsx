@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SmelterLogo } from "@/components/Logo";
 
 // Placeholder home page while the real marketing site is designed: the
 // wordmark, a one-line status, and construction icons bobbing above it.
@@ -14,8 +15,9 @@ export default function HomePage() {
         <span className="float-icon [animation-delay:-2.2s]">🔨</span>
       </div>
 
-      <h1 className="wordmark !text-[clamp(48px,10vw,76px)] leading-none">
-        smelter
+      <h1 className="leading-none">
+        <SmelterLogo height={64} />
+        <span className="sr-only">smelter</span>
       </h1>
       <p className="mt-4 text-[17px] text-ink2">site is being built</p>
 

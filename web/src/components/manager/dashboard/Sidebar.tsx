@@ -5,6 +5,7 @@
 // mockup.
 
 import type { NavId } from "./types";
+import { SmelterLogo, SmelterMark } from "@/components/Logo";
 
 const NAV_ITEMS: Array<{ id: NavId; label: string; icon: React.ReactNode }> = [
   {
@@ -84,7 +85,11 @@ export function Sidebar({
           collapsed ? "justify-center" : "justify-between"
         }`}
       >
-        {!collapsed && <p className="wordmark px-2">smelter</p>}
+        {collapsed ? (
+          <SmelterMark size={24} />
+        ) : (
+          <SmelterLogo height={26} className="px-2" />
+        )}
         <button
           type="button"
           onClick={onToggleCollapsed}
