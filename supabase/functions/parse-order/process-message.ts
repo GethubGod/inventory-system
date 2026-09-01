@@ -140,8 +140,10 @@ export async function processQuickOrderMessage(
       ? (prompt) => input.callLlm!(prompt, intentRouteModel)
       : undefined,
   });
-  const llmIntentRoute = llmIntentRouting?.route ?? null;
-  if (llmIntentRouting?.classification) {
+  const llmIntentRoute = llmIntentRouting && !llmIntentRouting.llmFailed
+    ? llmIntentRouting.route
+    : null;
+  if (llmIntentRouting?.classification && !llmIntentRouting.llmFailed) {
     classification = llmIntentRouting.classification;
   }
 
