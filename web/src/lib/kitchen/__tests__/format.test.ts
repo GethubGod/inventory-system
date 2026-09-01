@@ -22,10 +22,12 @@ describe("formatAge", () => {
     expect(isOldRequest(180_001)).toBe(true);
   });
 
-  it("counts undo seconds down to zero", () => {
+  it("counts undo seconds down to zero and never above the window", () => {
     expect(undoSecondsLeft(10_000, 4_100)).toBe(6);
     expect(undoSecondsLeft(10_000, 10_000)).toBe(0);
     expect(undoSecondsLeft(10_000, 12_000)).toBe(0);
+    // A stale one-second clock right after the tap must not read 7s.
+    expect(undoSecondsLeft(10_000, 3_200)).toBe(6);
   });
 
   it("describes requests and tags", () => {

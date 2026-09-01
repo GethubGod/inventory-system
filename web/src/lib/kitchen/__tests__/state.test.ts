@@ -106,6 +106,48 @@ describe("send lifecycle", () => {
   });
 });
 
+describe("stale fetches", () => {
+  it("a fetch issued before a row arrived cannot erase that row", () => {
+    // Fetch starts (seq 0), then the RPC result lands, then the empty
+    // fetch response arrives.
+    let state = EMPTY_STATE;
+    const since = state.seq;
+    state = applyServerRow(state, server({ id: "new" }));
+    state = applyFetch(state, [], since);
+    expect(Object.keys(state.byId)).toEqual(["new"]);
+    // A fetch issued after the row was applied is authoritative again.
+    state = applyFetch(state, [], state.seq);
+    expect(state.byId).toEqual({});
+  });
+
+  it("a fetch issued before an optimistic update cannot downgrade it", () => {
+    let state = applyFetch(EMPTY_STATE, [server({ id: "a" })]);
+    const since = state.seq;
+    state = setUndoWindow(
+      applyServerRow(state, server({ id: "a", status: "ready" })),
+      "a",
+      T0 + 6_000,
+    );
+    state = applyFetch(state, [server({ id: "a", status: "queued" })], since);
+    expect(state.byId.a.status).toBe("ready");
+    expect(state.undoUntil.a).toBe(T0 + 6_000);
+    // The next fresh fetch wins.
+    state = applyFetch(
+      state,
+      [server({ id: "a", status: "queued" })],
+      state.seq,
+    );
+    expect(state.byId.a.status).toBe("queued");
+    expect(state.undoUntil).toEqual({});
+  });
+
+  it("removeServerRow forgets the row's sequence stamp", () => {
+    let state = applyServerRow(EMPTY_STATE, server({ id: "x" }));
+    state = removeServerRow(state, "x");
+    expect(state.seenSeq).toEqual({});
+  });
+});
+
 describe("chefLogRows", () => {
   it("lists open server rows and pending sends newest first, hides closed rows", () => {
     let state = applyFetch(EMPTY_STATE, [
@@ -114,9 +156,14 @@ describe("chefLogRows", () => {
       server({ id: "gone", status: "cleared", createdAt: T0 + 200 }),
       server({ id: "cancelled", status: "cancelled", createdAt: T0 + 300 }),
     ]);
-    state = startPending(state, pending({ clientKey: "p", createdAt: T0 + 50 }));
+    state = startPending(
+      state,
+      pending({ clientKey: "p", createdAt: T0 + 50 }),
+    );
     expect(
-      chefLogRows(state).map((row) => (row.kind === "server" ? row.id : row.clientKey)),
+      chefLogRows(state).map((row) =>
+        row.kind === "server" ? row.id : row.clientKey,
+      ),
     ).toEqual(["ready", "p", "old"]);
   });
 });
@@ -135,7 +182,10 @@ describe("kitchenQueueRows", () => {
       "mine",
       "b",
     ]);
-    expect(kitchenQueueRows(state, T0 + 6_001).map((r) => r.id)).toEqual(["a", "b"]);
+    expect(kitchenQueueRows(state, T0 + 6_001).map((r) => r.id)).toEqual([
+      "a",
+      "b",
+    ]);
     expect(openQueuedCount(state)).toBe(2);
   });
 

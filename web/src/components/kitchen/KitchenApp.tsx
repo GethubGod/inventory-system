@@ -153,43 +153,37 @@ export default function KitchenApp({
 
   return (
     <div className="max-w-[430px] mx-auto px-4 pt-3.5 pb-24 min-h-dvh">
-      <div className="flex items-center justify-between mb-3.5 gap-3">
-        <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-center justify-between mb-2.5 gap-3">
+        <div className="flex items-center gap-2.5">
           <SmelterLogo height={26} />
           <span className="text-[13px] font-semibold text-ink2">Kitchen</span>
         </div>
-        <div className="flex items-center gap-2 min-w-0">
-          <span
-            className="text-xs text-ink2 truncate"
-            title={`${access.identity.displayName} ${formatTag(access.identity.tag)}`}
-          >
-            <span className="font-semibold text-ink">{access.identity.displayName}</span>{" "}
-            {formatTag(access.identity.tag)}
-          </span>
-          <button
-            type="button"
-            onClick={onSignOut}
-            className="bg-card rounded-full px-3 py-1.5 text-xs font-semibold text-ink2 shrink-0"
-          >
-            Sign out
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="bg-card rounded-full px-3 py-1.5 text-xs font-semibold text-ink2 shrink-0"
+        >
+          Sign out
+        </button>
       </div>
 
-      {location ? (
-        <div className="flex items-center justify-between mb-3 text-xs text-ink3">
-          <span>{location.name}</span>
-          {switchable ? (
-            <button
-              type="button"
-              onClick={() => pickLocation(null)}
-              className="font-semibold text-ink2 underline"
-            >
-              Change
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      {/* Who is signed in (name and @tag stamp every request) and where. */}
+      <div className="flex items-center justify-between gap-3 mb-3.5 text-xs text-ink3">
+        <p className="truncate min-w-0">
+          <span className="font-semibold text-ink">{access.identity.displayName}</span>{" "}
+          <span className="text-ink2">{formatTag(access.identity.tag)}</span>
+          {location ? <span> · {location.name}</span> : null}
+        </p>
+        {location && switchable ? (
+          <button
+            type="button"
+            onClick={() => pickLocation(null)}
+            className="font-semibold text-ink2 underline shrink-0"
+          >
+            Change
+          </button>
+        ) : null}
+      </div>
 
       {location ? (
         <LiveScreens

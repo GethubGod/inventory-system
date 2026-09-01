@@ -179,8 +179,8 @@ test("name + PIN sign-in lands on the chef screen with the username and tag", as
   await page.getByRole("button", { name: "Sign in" }).click();
   await openSushi(page);
   await expect(page.getByRole("heading", { name: "Kitchen request" })).toBeVisible();
-  await expect(page.getByText("Chef E2E")).toBeVisible();
-  await expect(page.getByText("@chef e2e")).toBeVisible();
+  // Identity line: username, @tag (the login handle), location.
+  await expect(page.getByText(/Chef E2E @chef e2e · Babytuna Sushi/)).toBeVisible();
   // A chef-only account gets no screen switcher.
   await expect(page.getByRole("tab", { name: "Kitchen display" })).toHaveCount(0);
 });

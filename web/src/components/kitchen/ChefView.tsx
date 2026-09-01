@@ -97,7 +97,7 @@ function LogRow({
       <div className="flex-1 min-w-0">
         <p className="text-[15px] font-bold text-ink">{title}</p>
         {row.status === "ready" ? (
-          <p className="text-xs text-ink3 mt-0.5">
+          <p className="text-xs text-ink3 mt-0.5 truncate">
             Ready — go grab it{row.readyByName ? ` · ${row.readyByName}` : ""}
           </p>
         ) : (

@@ -60,15 +60,24 @@ export interface KitchenRequestsApi {
   send: (item: KitchenItem, quantity: number) => string;
   retry: (clientKey: string) => void;
   dismiss: (clientKey: string) => void;
-  act: (request: ServerRequest, action: UpdateAction) => Promise<KitchenApiError | null>;
+  act: (
+    request: ServerRequest,
+    action: UpdateAction,
+  ) => Promise<KitchenApiError | null>;
 }
 
 function newClientKey(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
     return crypto.randomUUID();
   }
   // Very old WebViews only. Still unique enough for an idempotency key.
-  const hex = () => Math.floor(Math.random() * 0x10000).toString(16).padStart(4, "0");
+  const hex = () =>
+    Math.floor(Math.random() * 0x10000)
+      .toString(16)
+      .padStart(4, "0");
   return `${hex()}${hex()}-${hex()}-4${hex().slice(1)}-a${hex().slice(1)}-${hex()}${hex()}${hex()}`;
 }
 
@@ -102,20 +111,23 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
     stateRef.current = state;
   }, [state]);
 
-  const reload = useCallback(
-    (): Promise<void> =>
-      Promise.all([fetchKitchenItems(locationId), fetchOpenRequests(locationId)]).then(
-        ([nextItems, rows]) => {
-          setItems(nextItems);
-          setState((prev) => applyFetch(prev, rows));
-          setLoadError(null);
-        },
-        (error: unknown) => {
-          setLoadError(toKitchenApiError(error).message);
-        },
-      ),
-    [locationId],
-  );
+  const reload = useCallback((): Promise<void> => {
+    // Anything applied after this point outranks the response (see applyFetch).
+    const since = stateRef.current.seq;
+    return Promise.all([
+      fetchKitchenItems(locationId),
+      fetchOpenRequests(locationId),
+    ]).then(
+      ([nextItems, rows]) => {
+        setItems(nextItems);
+        setState((prev) => applyFetch(prev, rows, since));
+        setLoadError(null);
+      },
+      (error: unknown) => {
+        setLoadError(toKitchenApiError(error).message);
+      },
+    );
+  }, [locationId]);
 
   // Initial fetch + realtime feed.
   useEffect(() => {
@@ -150,7 +162,11 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
   useEffect(() => {
     const interval = channel === "live" ? LIVE_POLL_MS : DOWN_POLL_MS;
     const timer = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState !== "visible"
+      )
+        return;
       void reload();
     }, interval);
     return () => clearInterval(timer);
@@ -200,7 +216,11 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
   const retry = useCallback(
     (clientKey: string) => {
       const current = stateRef.current.pending[clientKey];
-      if (!current || current.status !== "failed" || inFlight.current.has(clientKey)) {
+      if (
+        !current ||
+        current.status !== "failed" ||
+        inFlight.current.has(clientKey)
+      ) {
         return;
       }
       const now = Date.now();
@@ -221,25 +241,45 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
   }, []);
 
   const act = useCallback(
-    async (request: ServerRequest, action: UpdateAction): Promise<KitchenApiError | null> => {
+    async (
+      request: ServerRequest,
+      action: UpdateAction,
+    ): Promise<KitchenApiError | null> => {
       const now = Date.now();
       // Optimistic local transition; the server row replaces it on success.
       setState((prev) => {
         const current = prev.byId[request.id] ?? request;
         switch (action) {
           case "ready": {
-            const next = applyServerRow(prev, { ...current, status: "ready", readyAt: now });
+            const next = applyServerRow(prev, {
+              ...current,
+              status: "ready",
+              readyAt: now,
+            });
             return setUndoWindow(next, request.id, now + UNDO_WINDOW_MS);
           }
           case "undo_ready":
             return clearUndoWindow(
-              applyServerRow(prev, { ...current, status: "queued", readyAt: null, readyByName: null }),
+              applyServerRow(prev, {
+                ...current,
+                status: "queued",
+                readyAt: null,
+                readyByName: null,
+              }),
               request.id,
             );
           case "cancel":
-            return applyServerRow(prev, { ...current, status: "cancelled", closedAt: now });
+            return applyServerRow(prev, {
+              ...current,
+              status: "cancelled",
+              closedAt: now,
+            });
           case "clear":
-            return applyServerRow(prev, { ...current, status: "cleared", closedAt: now });
+            return applyServerRow(prev, {
+              ...current,
+              status: "cleared",
+              closedAt: now,
+            });
         }
       });
       try {
@@ -249,7 +289,9 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
       } catch (error: unknown) {
         const apiError = toKitchenApiError(error);
         // Roll back to what we knew, then let the next fetch settle it.
-        setState((prev) => clearUndoWindow(applyServerRow(prev, request), request.id));
+        setState((prev) =>
+          clearUndoWindow(applyServerRow(prev, request), request.id),
+        );
         void reload();
         return apiError;
       }
@@ -266,7 +308,17 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
         : "down";
 
   return useMemo(
-    () => ({ state, items, loadError, connectivity, reload, send, retry, dismiss, act }),
+    () => ({
+      state,
+      items,
+      loadError,
+      connectivity,
+      reload,
+      send,
+      retry,
+      dismiss,
+      act,
+    }),
     [state, items, loadError, connectivity, reload, send, retry, dismiss, act],
   );
 }

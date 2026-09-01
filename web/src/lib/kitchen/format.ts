@@ -18,9 +18,18 @@ export function isOldRequest(elapsedMs: number): boolean {
   return elapsedMs > OLD_REQUEST_MS;
 }
 
-/** Whole seconds left in an undo window, floored at 0. */
-export function undoSecondsLeft(undoUntil: number, now: number): number {
-  return Math.max(0, Math.ceil((undoUntil - now) / 1000));
+/**
+ * Whole seconds left in an undo window, clamped to [0, window]. The clock
+ * that drives the display ticks once a second, so right after a tap `now`
+ * can lag the window start; the cap keeps the label from reading 7s.
+ */
+export function undoSecondsLeft(
+  undoUntil: number,
+  now: number,
+  windowMs: number = UNDO_WINDOW_MS,
+): number {
+  const seconds = Math.ceil((undoUntil - now) / 1000);
+  return Math.min(Math.ceil(windowMs / 1000), Math.max(0, seconds));
 }
 
 /** "2 fried shrimp" for buttons and toasts. */
