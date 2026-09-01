@@ -117,7 +117,7 @@ function LiveScreens({
         <ChefView
           requests={requests}
           selfUserId={access.identity.userId}
-          canManage={access.modules.kitchen_display}
+          canManage={access.isManager}
         />
       ) : (
         <KitchenDisplayView requests={requests} />

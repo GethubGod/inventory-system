@@ -141,6 +141,8 @@ async function withTimeout<T>(promise: PromiseLike<T>, ms: number): Promise<T> {
 export interface KitchenAccess {
   identity: KitchenIdentity;
   modules: KitchenModules;
+  /** profiles.role = manager (may cancel or clear anyone's request). */
+  isManager: boolean;
   defaultLocationId: string | null;
   locations: KitchenLocation[];
 }
@@ -148,7 +150,7 @@ export interface KitchenAccess {
 /** Everything the gate needs to decide which screen (if any) to show. */
 export async function fetchKitchenAccess(userId: string): Promise<KitchenAccess> {
   const supabase = getSupabase();
-  const [modulesResult, userResult, locationsResult, identityResult] =
+  const [modulesResult, userResult, locationsResult, identityResult, managerResult] =
     await Promise.all([
       supabase.rpc("get_effective_modules", { p_user_id: userId }),
       supabase
@@ -162,11 +164,13 @@ export async function fetchKitchenAccess(userId: string): Promise<KitchenAccess>
         .eq("active", true)
         .order("name"),
       supabase.rpc("kitchen_actor_identity", { p_user_id: userId }),
+      supabase.rpc("current_user_is_manager"),
     ]);
   if (modulesResult.error) throw toKitchenApiError(modulesResult.error);
   if (userResult.error) throw toKitchenApiError(userResult.error);
   if (locationsResult.error) throw toKitchenApiError(locationsResult.error);
   if (identityResult.error) throw toKitchenApiError(identityResult.error);
+  if (managerResult.error) throw toKitchenApiError(managerResult.error);
 
   const modules: KitchenModules = { kitchen_requests: false, kitchen_display: false };
   for (const row of modulesResult.data ?? []) {
@@ -182,6 +186,7 @@ export async function fetchKitchenAccess(userId: string): Promise<KitchenAccess>
       tag: identityRow?.tag?.trim() || "unknown",
     },
     modules,
+    isManager: managerResult.data === true,
     defaultLocationId: userResult.data?.default_location_id ?? null,
     locations: (locationsResult.data ?? []).map((row) => ({
       id: row.id,
