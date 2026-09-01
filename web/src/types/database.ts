@@ -4877,21 +4877,15 @@ export type Database = {
       get_effective_modules: {
         Args: { p_user_id: string }
         Returns: {
-          module_key: string
           enabled: boolean
+          module_key: string
         }[]
       }
       kitchen_actor_identity: {
         Args: { p_user_id: string }
-        Returns: {
-          display_name: string
-          tag: string
-        }[]
+        Returns: Record<string, unknown>
       }
-      kitchen_module_enabled: {
-        Args: { p_key: string }
-        Returns: boolean
-      }
+      kitchen_module_enabled: { Args: { p_key: string }; Returns: boolean }
       kitchen_send_request: {
         Args: {
           p_client_key: string

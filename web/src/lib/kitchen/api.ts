@@ -178,12 +178,19 @@ export async function fetchKitchenAccess(userId: string): Promise<KitchenAccess>
       modules[row.module_key] = row.enabled === true;
     }
   }
-  const identityRow = identityResult.data?.[0];
+  // Single-record function: PostgREST returns one object, not an array.
+  const identityRow: Record<string, unknown> =
+    identityResult.data && typeof identityResult.data === "object"
+      ? identityResult.data
+      : {};
+  const displayName =
+    typeof identityRow.display_name === "string" ? identityRow.display_name.trim() : "";
+  const tag = typeof identityRow.tag === "string" ? identityRow.tag.trim() : "";
   return {
     identity: {
       userId,
-      displayName: identityRow?.display_name?.trim() || "Unknown",
-      tag: identityRow?.tag?.trim() || "unknown",
+      displayName: displayName || "Unknown",
+      tag: tag || "unknown",
     },
     modules,
     isManager: managerResult.data === true,

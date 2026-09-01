@@ -86,7 +86,7 @@ test("chef sends, kitchen sees it live, marks ready, chef sees READY, got it cle
   await expect(chef.getByRole("dialog")).toBeHidden({ timeout: 5_000 });
   const chefRow = chef.locator("div", { hasText: /^2 Fried Shrimp/ }).first();
   await expect(chef.getByText("2 Fried Shrimp")).toBeVisible();
-  await expect(chef.getByText("SENT")).toBeVisible();
+  await expect(chef.getByText("SENT", { exact: true })).toBeVisible();
 
   // Stamped with who sent it, live on the display within the realtime budget.
   const queueRow = display.getByRole("button", { name: "Mark 2 Fried Shrimp done" });
@@ -95,7 +95,7 @@ test("chef sends, kitchen sees it live, marks ready, chef sees READY, got it cle
 
   await queueRow.click();
   await expect(display.getByText(/Undo · \ds/)).toBeVisible();
-  await expect(chef.getByText("READY")).toBeVisible({ timeout: 3_000 });
+  await expect(chef.getByText("READY", { exact: true })).toBeVisible({ timeout: 3_000 });
   await expect(chef.getByRole("button", { name: "Got it" })).toBeVisible();
   await expect(chefRow).toBeVisible();
 
@@ -119,12 +119,12 @@ test("kitchen undo puts the request back in the queue and the chef sees SENT aga
   const queueRow = display.getByRole("button", { name: "Mark 1 Sushi Rice done" });
   await expect(queueRow).toBeVisible({ timeout: 3_000 });
   await queueRow.click();
-  await expect(chef.getByText("READY")).toBeVisible({ timeout: 3_000 });
+  await expect(chef.getByText("READY", { exact: true })).toBeVisible({ timeout: 3_000 });
 
   await display.getByRole("button", { name: /Undo ready/ }).click();
   await expect(display.getByRole("button", { name: "Mark 1 Sushi Rice done" })).toBeVisible();
-  await expect(chef.getByText("SENT")).toBeVisible({ timeout: 3_000 });
-  await expect(chef.getByText("READY")).toBeHidden();
+  await expect(chef.getByText("SENT", { exact: true })).toBeVisible({ timeout: 3_000 });
+  await expect(chef.getByText("READY", { exact: true })).toBeHidden();
 });
 
 test("chef cancel removes the request from the kitchen queue", async ({ browser }) => {

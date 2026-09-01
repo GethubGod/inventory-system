@@ -102,16 +102,8 @@ export async function ensureKitchenFixture(): Promise<KitchenFixture> {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  const { data: locationRows, error: locationError } = await admin
-    .from("locations")
-    .select("id, short_code")
-    .in("short_code", ["sushi", "pokipho"]);
-  if (locationError) throw new Error(locationError.message);
-  const sushi = locationRows?.find((row) => row.short_code === "sushi")?.id;
-  const pokipho = locationRows?.find((row) => row.short_code === "pokipho")?.id;
-  if (!sushi || !pokipho) {
-    throw new Error("Fixture needs the sushi and pokipho locations (see e2e/kitchen.setup.sql).");
-  }
+  const sushi = await ensureLocation(admin, "sushi", "Babytuna Sushi");
+  const pokipho = await ensureLocation(admin, "pokipho", "Babytuna Poki & Pho");
 
   const users = {} as KitchenFixture["users"];
   for (const [key, spec] of Object.entries(KITCHEN_USERS) as Array<
@@ -172,6 +164,28 @@ export async function ensureKitchenFixture(): Promise<KitchenFixture> {
 
   cached = { supabaseUrl, anonKey, users, locations: { sushi, pokipho }, admin };
   return cached;
+}
+
+/** The local stack's schema is DDL-only; mirror production's two locations. */
+async function ensureLocation(
+  admin: SupabaseClient,
+  shortCode: string,
+  name: string,
+): Promise<string> {
+  const { data: existing, error: findError } = await admin
+    .from("locations")
+    .select("id")
+    .eq("short_code", shortCode)
+    .limit(1);
+  if (findError) throw new Error(`locations: ${findError.message}`);
+  if (existing && existing.length > 0) return existing[0].id;
+  const { data: created, error: insertError } = await admin
+    .from("locations")
+    .insert({ name, short_code: shortCode, location_key: shortCode, active: true })
+    .select("id")
+    .single();
+  if (insertError) throw new Error(`locations: ${insertError.message}`);
+  return created.id;
 }
 
 async function ensureAuthUser(admin: SupabaseClient, spec: KitchenFixtureUser): Promise<string> {

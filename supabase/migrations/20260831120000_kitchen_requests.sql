@@ -568,6 +568,10 @@ revoke all on table public.kitchen_requests from anon;
 grant select, insert, update, delete on table public.kitchen_items to authenticated;
 grant select on table public.kitchen_requests to authenticated;
 revoke insert, update, delete on table public.kitchen_requests from authenticated;
+-- Edge functions and admin tooling use the service role; say so explicitly
+-- instead of relying on default privileges.
+grant all on table public.kitchen_items to service_role;
+grant all on table public.kitchen_requests to service_role;
 
 -- ---------------------------------------------------------------------------
 -- Realtime publication. The harness does not provide the publication, so
