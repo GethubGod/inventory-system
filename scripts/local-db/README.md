@@ -110,6 +110,20 @@ inside the window: Tuna `scale 1.5`, Salmon `set_qty 8`, and Nori `add 3`.
 The fixture also asserts that Tuna's stored generated quantity remains `4` and
 that the additive Nori line was never inserted into `order_checklist_items`.
 
+### Kitchen requests fixture
+
+After a kept migration run, execute the kitchen requests fixture:
+
+```sh
+docker exec -i <container-name> psql -U postgres -d postgres \
+  -v ON_ERROR_STOP=1 < scripts/local-db/kitchen_requests_fixture.sql
+```
+
+It checks the six seeded items, module defaults, RPC errors and transitions,
+idempotent sends, actor identity, location scope, suspension, and RLS for
+display, no-module, and anonymous users. It ends with
+`PASS: kitchen requests fixture assertions all held` and rolls back.
+
 ## What this does NOT prove
 
 - **No gotrue / real auth.** `auth` is a stub: only `auth.users(id, email,

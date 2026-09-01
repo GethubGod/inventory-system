@@ -48,6 +48,8 @@ const MODULE_KEYS = new Set([
   "stock_check",
   "tips",
   "fulfillment",
+  "kitchen_requests",
+  "kitchen_display",
 ]);
 
 function jsonResponse(
