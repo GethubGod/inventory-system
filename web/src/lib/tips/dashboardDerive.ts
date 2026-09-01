@@ -38,6 +38,8 @@ export interface LedgerEntry {
   flagged: boolean;
   /** flagged_anomaly as stored, regardless of verification. */
   flaggedRaw: boolean;
+  /** When a manager verified the row; null until then. */
+  flagVerifiedAt: string | null;
   anomalyReason: string | null;
   createdAt: string; // ISO timestamp of the save (powers the entry log)
 }

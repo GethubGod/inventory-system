@@ -6,12 +6,12 @@
 
 import {
   dailyTrend,
-  moneyFromCents,
   rangeTotals,
   splitTrendSeries,
   takeHomeByPerson,
   wholeDollarsFromCents,
 } from "@/lib/tips/dashboardDerive";
+import { flagReasons } from "@/lib/tips/flagRules";
 import { shortDayLabel, trendDayLabel } from "@/lib/tips/dashboardRange";
 import { btn, panelWrap, sectionH3 } from "./ui";
 import type { LocationInfo, PageContext } from "./types";
@@ -164,7 +164,7 @@ export function OverviewPage({ ctx }: { ctx: PageContext }) {
     <section className="mb-8">
       <div className={`${panelWrap} mb-[26px]`}>
         <div className="flex flex-wrap items-center gap-3.5 border-b border-line px-4 py-3.5">
-          <b className="text-[14.5px] font-extrabold text-ink">Tips trend — {ctx.rangeLabel}</b>
+          <b className="text-[14.5px] font-extrabold text-ink">Tips trend, {ctx.rangeLabel}</b>
           {showLegend && (
             <span className="flex items-center gap-3 text-xs text-ink2">
               {ctx.visibleLocations.map((location) => (
@@ -207,7 +207,9 @@ export function OverviewPage({ ctx }: { ctx: PageContext }) {
                 {shortDayLabel(entry.businessDate)} ·{" "}
                 {ctx.locationById.get(entry.locationId)?.label ?? "?"} {entry.meal}
               </b>{" "}
-              — cash {moneyFromCents(entry.cashCents)} looks unusually large
+              {flagReasons(entry, ctx.flagRules)
+                .map((reason) => reason.text)
+                .join(" ") || "needs a look"}
             </span>
             <button type="button" className={`${btn} ml-auto`} onClick={() => ctx.navigate("ledger")}>
               Review
@@ -239,7 +241,7 @@ export function OverviewPage({ ctx }: { ctx: PageContext }) {
           >
             <span className="h-2 w-2 flex-none rounded-full bg-warnamber" aria-hidden />
             <span className="min-w-0 text-ink2">
-              <b className="text-ink">{location.label} QR</b> has never been rotated — mint a
+              <b className="text-ink">{location.label} QR</b> has never been rotated. Mint a
               QR code so closers can scan in
             </span>
             <button type="button" className={`${btn} ml-auto`} onClick={() => ctx.navigate("logdev")}>

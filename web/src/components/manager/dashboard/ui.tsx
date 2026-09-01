@@ -101,61 +101,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
  * The ⓘ button. All explanatory copy lives behind these — never as visible
  * paragraphs on the page.
  */
-export function InfoButton({ label, children }: { label: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: MouseEvent) => {
-      if (buttonRef.current?.contains(event.target as Node)) return;
-      setOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("click", close);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("click", close);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-
-  return (
-    <>
-      <button
-        ref={buttonRef}
-        type="button"
-        aria-label={label}
-        aria-expanded={open}
-        onClick={() => {
-          const rect = buttonRef.current?.getBoundingClientRect();
-          if (rect) {
-            setPos({
-              left: Math.min(rect.left, window.innerWidth - 340),
-              top: rect.bottom + 8,
-            });
-          }
-          setOpen((value) => !value);
-        }}
-        className="h-5 w-5 flex-none rounded-full border border-line font-serif text-[11px] font-extrabold italic leading-none text-ink3 hover:border-ink3 hover:text-ink"
-      >
-        i
-      </button>
-      {open && pos && (
-        <div
-          role="dialog"
-          className="fixed z-[80] max-w-[320px] rounded-[14px] border border-line bg-card px-3.5 py-3 text-[12.5px] leading-relaxed text-ink2 shadow-[0_6px_24px_rgba(16,20,28,0.16)] [&_b]:text-ink"
-          style={{ left: pos.left, top: pos.top }}
-        >
-          {children}
-        </div>
-      )}
-    </>
-  );
-}
+export { InfoButton } from "@/components/InfoButton";
 
 /* ---------- centered modal ---------- */
 

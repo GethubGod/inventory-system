@@ -16,6 +16,7 @@ import {
   thisWeek,
   type DashboardRange,
 } from "@/lib/tips/dashboardRange";
+import { applyFlagRules } from "@/lib/tips/flagRules";
 import { deriveMissingShifts } from "@/lib/tips/schedule";
 import { DevicesPage } from "./DevicesPage";
 import { LedgerPage } from "./LedgerPage";
@@ -25,6 +26,7 @@ import { StaffPage } from "./StaffPage";
 import { Toolbar } from "./Toolbar";
 import { btn, ToastProvider, useToast } from "./ui";
 import { useDashboardData } from "./useDashboardData";
+import { useFlagRules } from "./useFlagRules";
 import type { LocFilter, NavId, PageContext } from "./types";
 
 const SIDEBAR_KEY = "bt_dash_sidebar";
@@ -88,6 +90,7 @@ function ShellInner({
   }, []);
 
   const { data, loading, error, refetch } = useDashboardData(range);
+  const [flagRules, setFlagRules] = useFlagRules();
 
   const navigate = useCallback((next: NavId) => {
     setNav(next);
@@ -100,7 +103,10 @@ function ShellInner({
       (location) => loc === "both" || location.kind === loc,
     );
     const visibleIds = new Set(visibleLocations.map((location) => location.id));
-    const entries = data.entries.filter((entry) => visibleIds.has(entry.locationId));
+    // "Needs attention" follows the manager's flag rules on every page.
+    const entries = data.entries
+      .filter((entry) => visibleIds.has(entry.locationId))
+      .map((entry) => applyFlagRules(entry, flagRules));
     const bounds = rangeBounds(range);
     const missing = deriveMissingShifts({
       schedules: data.schedules,
@@ -128,8 +134,10 @@ function ShellInner({
       userId,
       navigate,
       refetch,
+      flagRules,
+      setFlagRules,
     };
-  }, [data, loc, range, today, userId, navigate, refetch]);
+  }, [data, loc, range, today, userId, navigate, refetch, flagRules, setFlagRules]);
 
   const totals = ctx ? rangeTotals(ctx.entries) : null;
   const attention = Boolean(
@@ -151,7 +159,7 @@ function ShellInner({
       (locationId) => ctx.locationById.get(locationId)?.label ?? locationId,
     );
     downloadCsv(`smelter-tips_${bounds.start}_${bounds.end}.csv`, csv);
-    toast(`CSV exported — ${ctx.entries.length} rows (${ctx.rangeLabel})`);
+    toast(`CSV exported: ${ctx.entries.length} rows (${ctx.rangeLabel})`);
   }, [ctx, range, toast]);
 
   return (

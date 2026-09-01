@@ -4,13 +4,16 @@
 // segmented (time-of-day preset; recorded shifts locked out), cash/card
 // amounts, roster split chips, live split strip, and the sticky
 // "Speak it in" / "Save" bar. Voice entry opens the VoiceSheet, whose result
-// feeds the same save flow (including the anomaly confirm). A successful
-// save shows a full-screen confirmation, then ends the session and returns
-// to the scan gate — one QR scan per entry.
+// fills the form and scrolls to the split so the closer checks who gets what
+// before pressing Save. A successful save shows a full-screen confirmation
+// (with a way back to edit), then ends the session and returns to the scan
+// gate. One QR scan per entry.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/Avatar";
+import { InfoButton } from "@/components/InfoButton";
+import { SmelterLogo } from "@/components/Logo";
 import {
   endSession,
   fetchState,
@@ -86,11 +89,11 @@ function MicIcon() {
   );
 }
 
-function ChevronRightIcon() {
+function ChevronRightIcon({ size = 18 }: { size?: number }) {
   return (
     <svg
-      width="18"
-      height="18"
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -125,8 +128,9 @@ function CheckIcon({ size = 14 }: { size?: number }) {
 /**
  * Full-screen post-save confirmation. Holds SAVED_SCREEN_MS with a visible
  * countdown over a draining progress bar, then ends the session and sends
- * the phone back to the scan gate; "Done" skips the wait. The three wells
- * mirror the entry form's grid but are read-only — no editable underline.
+ * the phone back to the scan gate; "Done" skips the wait and "Go back and
+ * edit" returns to the filled-in form (the same session may re-save the
+ * slot). The three wells mirror the entry form's grid but are read-only.
  */
 function SavedScreen({
   payload,
@@ -136,6 +140,7 @@ function SavedScreen({
   businessDate,
   splitNames,
   onFinished,
+  onEdit,
 }: {
   payload: SavePayload;
   /** The saved row from the server — its derived figures are authoritative. */
@@ -146,6 +151,7 @@ function SavedScreen({
   businessDate: string;
   splitNames: string[];
   onFinished: () => void;
+  onEdit: () => void;
 }) {
   const totalSeconds = Math.round(SAVED_SCREEN_MS / 1000);
   const [secondsLeft, setSecondsLeft] = useState(totalSeconds);
@@ -266,13 +272,25 @@ function SavedScreen({
           style={{ width: `${(secondsLeft / totalSeconds) * 100}%` }}
         />
       </div>
-      <button
-        type="button"
-        onClick={onFinished}
-        className="mt-4 w-full rounded-full bg-card py-4 font-semibold text-ink active:bg-well"
-      >
-        Done
-      </button>
+      <div className="mt-4 flex gap-3">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex-1 rounded-full border border-line bg-card py-4 font-semibold text-ink2 active:bg-well"
+        >
+          Go back and edit
+        </button>
+        <button
+          type="button"
+          onClick={onFinished}
+          className="flex-1 rounded-full bg-card py-4 font-semibold text-ink active:bg-well"
+        >
+          Done
+        </button>
+      </div>
+      <div className="mt-6 flex justify-center">
+        <SmelterLogo height={24} />
+      </div>
     </main>
   );
 }
@@ -358,11 +376,22 @@ export function EntryForm() {
   const [savedEntry, setSavedEntry] = useState<SlotEntry | null>(null);
   const [pickPersonWarning, setPickPersonWarning] = useState(false);
 
+  // Set by "Go back and edit": the saved meal stays editable and the other
+  // meal locks, so one scan still records one shift.
+  const [editingSavedMeal, setEditingSavedMeal] = useState<MealPeriod | null>(null);
+  // Fields the closer changed by hand after a voice result was reviewed;
+  // each counts as one more correction on the eventual save.
+  const [postVoiceEdits, setPostVoiceEdits] = useState<Set<"cash" | "card" | "people">>(
+    () => new Set(),
+  );
   const [showVoice, setShowVoice] = useState(false);
   const [showLocationDialog, setShowLocationDialog] = useState(false);
   const [voiceMeta, setVoiceMeta] = useState<VoiceMeta | null>(null);
 
   const lastPayloadRef = useRef<SavePayload | null>(null);
+  // The split readout: voice results scroll here so the closer sees who gets
+  // what before saving.
+  const splitRef = useRef<HTMLDivElement | null>(null);
   const finishedRef = useRef(false);
   // Synchronous in-flight guard: the `saving` state lags a render behind the
   // click, so two fast taps (or Save + anomaly "Save anyway") could both
@@ -711,7 +740,7 @@ export function EntryForm() {
         peopleIds: selectedIds,
         entryMethod: voiceMeta ? "voice" : "typed",
         voiceVariant: voiceMeta?.variant ?? null,
-        correctionsCount: voiceMeta?.corrections ?? 0,
+        correctionsCount: voiceMeta ? voiceMeta.corrections + postVoiceEdits.size : 0,
       }),
     );
   };
@@ -727,23 +756,45 @@ export function EntryForm() {
       variant: result.variant,
       corrections: result.correctionsCount,
     });
-    // Voice still fills cash/card/people only — the typed gratuity, scope,
-    // weights and note ride along unchanged.
-    void doSave(
-      buildPayload({
-        meal: result.meal,
-        cash: Number(result.cash),
-        card: Number(result.card),
-        peopleIds: result.peopleIds,
-        entryMethod: "voice",
-        voiceVariant: result.variant,
-        correctionsCount: result.correctionsCount,
-      }),
-    );
+    setPostVoiceEdits(new Set());
+    // Voice may have switched the shift without going through changeMeal.
+    // Confirm that slot with the server so the day-scope subtraction uses
+    // today's recorded lunch and a slot saved meanwhile locks here too.
+    if (result.meal !== meal && session) {
+      const token = session.token;
+      void getSlot(token, result.meal)
+        .then((slot) => {
+          if (slot.entry) {
+            applyAlreadyRecorded(result.meal);
+            return;
+          }
+          if (slot.today) {
+            const freshToday = slot.today;
+            setState((prev) => (prev ? { ...prev, today: freshToday } : prev));
+          }
+          setScheduledByMeal((prev) => ({ ...prev, [result.meal]: slot.scheduledIds }));
+        })
+        .catch((error: unknown) => {
+          if (isSessionInvalid(error)) {
+            clearSession();
+            router.replace("/");
+          }
+        });
+    }
+    // Voice fills cash/card/people only; the typed gratuity, scope, weights
+    // and note stay as they were. Nothing is saved yet: the closer still
+    // hands out the cash in person, so bring the split into view and let
+    // them press Save once it looks right.
+    window.setTimeout(() => {
+      splitRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
   };
 
   const markTouched = useCallback((field: "cash" | "card" | "people") => {
     setTouchedFields((prev) =>
+      prev.has(field) ? prev : new Set(prev).add(field),
+    );
+    setPostVoiceEdits((prev) =>
       prev.has(field) ? prev : new Set(prev).add(field),
     );
   }, []);
@@ -797,6 +848,12 @@ export function EntryForm() {
     );
   }, [state, scheduledByMeal, meal]);
 
+  // Recorded shifts are locked; while editing a just-saved shift the other
+  // one locks too (one scan, one shift).
+  const lockedMeals: MealPeriod[] = editingSavedMeal
+    ? [...new Set<MealPeriod>([...disabledMeals, editingSavedMeal === "lunch" ? "dinner" : "lunch"])]
+    : disabledMeals;
+
   if (loading) {
     return (
       <main className="max-w-md mx-auto px-5 min-h-dvh flex items-center justify-center">
@@ -846,6 +903,11 @@ export function EntryForm() {
           )
           .filter(Boolean)}
         onFinished={finishSession}
+        onEdit={() => {
+          setEditingSavedMeal(savedPayload.meal);
+          setSavedPayload(null);
+          setSavedEntry(null);
+        }}
       />
     );
   }
@@ -881,16 +943,16 @@ export function EntryForm() {
           </div>
         </header>
 
-        {/* Location */}
+        {/* Location: a pill the size of the date and closer chips. */}
         <button
           type="button"
           onClick={() => setShowLocationDialog(true)}
-          className="w-full bg-card rounded-card p-4 flex items-center gap-3 text-left"
+          className="bg-card rounded-full px-3 py-1.5 text-sm text-ink inline-flex items-center gap-2"
         >
           <span className="w-2 h-2 rounded-full bg-accent shrink-0" aria-hidden />
-          <span className="font-semibold text-ink">{state.location.name}</span>
-          <span className="ml-auto text-ink3">
-            <ChevronRightIcon />
+          <span className="font-semibold">{state.location.name}</span>
+          <span className="text-ink3">
+            <ChevronRightIcon size={14} />
           </span>
         </button>
 
@@ -900,14 +962,16 @@ export function EntryForm() {
           value={meal}
           onChange={(next) => void changeMeal(next)}
           disabled={slotLoading}
-          disabledValues={disabledMeals}
+          disabledValues={lockedMeals}
+          disabledHints={{
+            lunch: disabledMeals.includes("lunch")
+              ? "Lunch is already recorded for today."
+              : "Scan the QR code again to enter lunch.",
+            dinner: disabledMeals.includes("dinner")
+              ? "Dinner is already recorded for today."
+              : "Scan the QR code again to enter dinner.",
+          }}
         />
-        {disabledMeals.length === 1 && (
-          <p className="text-sm text-ink3">
-            {disabledMeals[0] === "lunch" ? "Lunch" : "Dinner"} is already
-            recorded today — ask a manager if it needs a fix
-          </p>
-        )}
 
         {/* Amounts */}
         <div className="bg-card rounded-card p-4">
@@ -926,11 +990,9 @@ export function EntryForm() {
               value={gratuity}
               onChange={handleGratuityChange}
               compact
+              hint="Leave gratuity blank on a night with no large parties."
             />
           </div>
-          <p className="mt-2 text-sm text-ink3">
-            Leave gratuity blank on a night with no large parties.
-          </p>
           {meal === "dinner" && (
             <div className="mt-3 grid gap-1 border-t border-dashed border-line pt-2.5 text-sm tabular-nums">
               <div className="flex text-ink2">
@@ -943,7 +1005,7 @@ export function EntryForm() {
               </div>
               {scope === "day" && (
                 <div className="flex text-ink2">
-                  <span>&minus; Lunch already recorded</span>
+                  <span>Lunch amount</span>
                   <span className="ml-auto font-semibold text-alert">
                     &minus;
                     {formatMoney(
@@ -965,7 +1027,7 @@ export function EntryForm() {
               for the manager. */}
           {negativeAfterLunch && (
             <div className="mt-3 rounded-well bg-tint p-3 text-sm text-alert">
-              Lunch already recorded more than this. Check the Square report —{" "}
+              Lunch already recorded more than this. Check the Square report.{" "}
               <b>Save is off until this is fixed.</b>
             </div>
           )}
@@ -973,11 +1035,12 @@ export function EntryForm() {
 
         {/* Roster */}
         <div className="bg-card rounded-card p-4">
-          <div className="flex items-baseline">
+          <div className="flex items-center gap-1.5">
             <div className="section-label">Who&apos;s splitting</div>
-            <span className="ml-auto text-sm text-ink3">
-              tap a badge to change a share
-            </span>
+            <InfoButton label="About splitting">
+              Tap a name to add or remove them. Tap the % badge on a selected name to
+              give them a smaller share.
+            </InfoButton>
           </div>
           <div className="mt-3">
             <RosterChips
@@ -1004,7 +1067,9 @@ export function EntryForm() {
           }))}
         />
 
-        <SplitStrip poolCents={poolCents} weights={selectedWeights} />
+        <div ref={splitRef}>
+          <SplitStrip poolCents={poolCents} weights={selectedWeights} />
+        </div>
 
         <NoteField note={note} onChange={setNote} />
       </div>

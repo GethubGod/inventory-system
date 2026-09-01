@@ -35,6 +35,7 @@ function entry(overrides: Partial<LedgerEntry>): LedgerEntry {
     entryMethod: "typed",
     flagged: false,
     flaggedRaw: false,
+    flagVerifiedAt: null,
     anomalyReason: null,
     createdAt: "2026-08-08T05:28:00Z",
     ...overrides,

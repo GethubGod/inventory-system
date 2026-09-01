@@ -3,8 +3,8 @@
 // Toggleable name pills for "who's splitting". Selected = filled accent red.
 // Selected chips carry a % badge (Tips v3 partial shares): tapping the badge
 // cycles 100 → 75 → 50 → 25 → 100 without toggling the person; tapping the
-// chip body still toggles selection. The badge is its own hit target (≥28px)
-// even though it renders small.
+// chip body still toggles selection. The badge is its own hit target (≥36px)
+// and reads at chip-text size so it is easy to hit with a thumb.
 
 import type { RosterPerson } from "@/lib/tips/api";
 
@@ -56,9 +56,9 @@ export function RosterChips({
                 type="button"
                 aria-label={`${person.name} share ${Math.round(weight * 100)}%`}
                 onClick={() => onCycleWeight(person.id)}
-                className="flex min-h-[28px] min-w-[28px] items-center rounded-full rounded-l-none bg-accent pl-1 pr-2.5 text-white"
+                className="flex min-h-[40px] min-w-[44px] items-center rounded-full rounded-l-none bg-accent pl-1 pr-2.5 text-white"
               >
-                <span className="rounded-full bg-white px-1.5 py-0.5 text-[10.5px] font-extrabold text-alert">
+                <span className="rounded-full bg-white px-2 py-1 text-[13px] font-extrabold leading-none text-alert">
                   {Math.round(weight * 100)}%
                 </span>
               </button>
