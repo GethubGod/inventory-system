@@ -77,6 +77,16 @@ load_schema() {
   else
     echo "==> Loading production public-schema baseline"
     psql_in -v ON_ERROR_STOP=1 -q -X < "$BASELINE"
+    # The snapshot carries policies but not grants. Production has Supabase's
+    # default grants (RLS does the gating); later migrations revoke what they
+    # need to, exactly as they did in production.
+    echo "==> Applying Supabase default grants"
+    psql_in -v ON_ERROR_STOP=1 -q -X <<'SQL'
+grant usage on schema public to anon, authenticated, service_role;
+grant all on all tables in schema public to anon, authenticated, service_role;
+grant all on all sequences in schema public to anon, authenticated, service_role;
+grant all on all functions in schema public to anon, authenticated, service_role;
+SQL
   fi
 
   psql_in -q -X -c "create table if not exists public._full_stack_applied (name text primary key, applied_at timestamptz not null default now());"
