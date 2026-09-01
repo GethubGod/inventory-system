@@ -10,7 +10,7 @@
 // quick-order-voice-stream.
 
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2?no-dts';
 import { getTipSessionById, sha256Hex } from '../_shared/tips.ts';
 
 declare const Deno: {

@@ -7,7 +7,7 @@
 // account and the client exchanges it with auth.verifyOtp for a real
 // Supabase session. Secrets are never stored or logged here.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2?no-dts";
 import { corsHeadersForRequest } from "../_shared/cors.ts";
 import { normalizeLoginName } from "../_shared/loginNames.ts";
 

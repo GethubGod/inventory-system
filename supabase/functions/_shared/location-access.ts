@@ -1,4 +1,4 @@
-import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2?no-dts';
 
 /**
  * Returns true when the user may read/write data for the given location.

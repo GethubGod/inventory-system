@@ -1,5 +1,5 @@
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2?no-dts';
 import { corsHeaders, corsHeadersForRequest } from '../_shared/cors.ts';
 import { userCanAccessLocation } from '../_shared/location-access.ts';
 import { PARSER_VERSION } from './orchestrator.ts';
@@ -1423,7 +1423,7 @@ function stripIgnoredQuickOrderPhrases(message: string, phrases: string[]): stri
     if (!trimmed) continue;
     result = result.replace(new RegExp(`\\b${escapeRegExp(trimmed)}\\b`, 'gi'), ' ');
   }
-  return result.replace(/\s+/g, ' ').trim();
+  return result.replace(/[^\S\r\n]+/g, ' ').trim();
 }
 
 function escapeRegExp(value: string): string {
