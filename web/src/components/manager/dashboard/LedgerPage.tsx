@@ -16,6 +16,7 @@ import {
   type LedgerEntry,
 } from "@/lib/tips/dashboardDerive";
 import { shortDayLabel } from "@/lib/tips/dashboardRange";
+import { FIX_ENTRY_RPC, FIX_ENTRY_SELECT } from "@/lib/tips/dashboardQueries";
 import { fullShareCents as poolFullShareCents } from "@/lib/tips/split";
 import {
   btn,
@@ -138,9 +139,7 @@ async function readFixEntryState(
 ): Promise<FixEntryState> {
   const { data, error } = await supabase
     .from("tip_entries")
-    .select(
-      "cash_amount, card_amount, gratuity_amount, entered_scope, raw_cash_amount, raw_card_amount, raw_gratuity_amount, split_count, note, tip_entry_people(tip_employee_id, share_weight)",
-    )
+    .select(FIX_ENTRY_SELECT)
     .eq("id", entryId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -288,7 +287,7 @@ function FixDialog({
     // Amounts, scope, raw inputs, note, split count, roster, and weights must
     // commit together; a partial manager correction would corrupt the ledger.
     try {
-      const { error: fixError } = await supabase.rpc("tip_manager_fix_entry", {
+      const { error: fixError } = await supabase.rpc(FIX_ENTRY_RPC, {
         p_entry_id: entry.id,
         p_cash: derivedCents.cash / 100,
         p_card: derivedCents.card / 100,

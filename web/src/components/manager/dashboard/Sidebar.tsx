@@ -1,8 +1,9 @@
 "use client";
 
-// Collapsible sidebar: 216px full ↔ 66px icon rail. Pages, then profile +
-// Log out pinned to the bottom. Nav icons come straight from the approved
-// mockup.
+// Collapsible sidebar: 216px full ↔ 66px icon rail. Brand row with a quiet
+// collapse control, pages, then profile + Log out pinned to the bottom. Nav
+// icons and the toggle treatment come from the approved mockup
+// (docs/mockups/tips-dashboard/tip-dashboard-final.html, #sidenav).
 
 import type { NavId } from "./types";
 import { SmelterLogo, SmelterMark } from "@/components/Logo";
@@ -74,28 +75,31 @@ export function Sidebar({
   profileEmail: string;
   onSignOut: () => void;
 }) {
+  const toggleLabel = collapsed ? "Expand sidebar" : "Collapse sidebar";
   return (
     <aside
       className={`sticky top-0 flex h-screen flex-none flex-col border-r border-line bg-card ${
         collapsed ? "w-[66px] px-[9px]" : "w-[216px] px-3"
       } py-[18px]`}
     >
+      {/* Brand row. The lockup is never padded or constrained: its box is
+          its exact rendered size, so the artwork cannot be squashed. The
+          toggle is a quiet icon button at the far edge; in the rail it
+          stacks under the mark. */}
       <div
-        className={`mb-3 flex items-center ${
-          collapsed ? "justify-center" : "justify-between"
+        className={`mb-4 flex ${
+          collapsed ? "flex-col items-center gap-2" : "items-center gap-1.5 pl-1.5"
         }`}
       >
-        {collapsed ? (
-          <SmelterMark size={24} />
-        ) : (
-          <SmelterLogo height={26} className="px-2" />
-        )}
+        {collapsed ? <SmelterMark size={28} /> : <SmelterLogo height={28} />}
+        {!collapsed && <span className="min-w-0 flex-1" />}
         <button
           type="button"
           onClick={onToggleCollapsed}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="flex h-9 w-9 flex-none items-center justify-center rounded-[10px] border border-line bg-well text-ink2 hover:bg-tint hover:text-ink"
+          aria-label={toggleLabel}
+          aria-expanded={!collapsed}
+          title={toggleLabel}
+          className="flex h-7 w-7 flex-none items-center justify-center rounded-[7px] text-ink2 opacity-70 transition-[opacity,background-color] hover:bg-well hover:opacity-100 focus-visible:opacity-100"
         >
           <svg
             viewBox="0 0 24 24"
@@ -105,10 +109,9 @@ export function Sidebar({
             strokeLinecap="round"
             strokeLinejoin="round"
             aria-hidden
-            className={`h-[18px] w-[18px] ${collapsed ? "rotate-180" : ""}`}
+            className={`h-4 w-4 ${collapsed ? "rotate-180" : ""}`}
           >
-            <path d="M11 7l-5 5 5 5" />
-            <path d="M18 7l-5 5 5 5" />
+            <path d="M15 6l-6 6 6 6" />
           </svg>
         </button>
       </div>
