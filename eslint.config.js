@@ -8,6 +8,7 @@ module.exports = defineConfig([
       '.claude/**',
       'docs/mockups/**',
       'scripts/google-sheets-sync.js',
+      'scripts/flood-test/**',
       'scripts/scratch_query.ts',
       'web/**',
       'marketing/**',
