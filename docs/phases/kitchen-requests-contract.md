@@ -48,7 +48,7 @@ exists`, `create or replace`).
 ```sql
 public.kitchen_items (
   id           uuid primary key default gen_random_uuid(),
-  location_id  uuid null references public.locations(id) on delete cascade, -- null = every location
+  location_id  uuid null references public.locations(id) on delete restrict, -- null = every location
   name         text not null check (length(btrim(name)) between 1 and 60),
   unit         text not null check (length(btrim(unit)) between 1 and 24),
   sort_order   integer not null default 0,
@@ -82,8 +82,9 @@ public.kitchen_requests (
   closed_at          timestamptz,                        -- cleared or cancelled at
   updated_at         timestamptz not null default now()  -- trigger set_updated_at
 )
-create index kitchen_requests_location_open_idx on public.kitchen_requests (location_id, status, created_at);
-create index kitchen_requests_requester_idx on public.kitchen_requests (requested_by, created_at desc);
+create index kitchen_requests_open_idx on public.kitchen_requests (location_id, created_at) where status in ('queued','ready');
+-- plus CHECKs: name/tag lengths 1..200, and status <-> timestamps agree
+-- (queued: no ready_at/closed_at; ready: ready_at only; cleared: both; cancelled: closed_at only).
 alter table public.kitchen_requests replica identity full;
 alter publication supabase_realtime add table public.kitchen_requests;  -- guarded like user_modules
 alter publication supabase_realtime add table public.kitchen_items;
@@ -105,6 +106,8 @@ Tempura Batter/batches, Salmon/filets.
   null or equals `p_location_id`. Applies to managers too (works-at rule).
 - `kitchen_actor_identity(p_user_id uuid, out display_name text, out tag text)`
   the username/tag rule from Decisions. Never returns null for either.
+  Callable only for yourself or by a manager (`42501` otherwise): it reads
+  login handles as the owner and must not be a directory of them.
 
 Grants: execute to `authenticated` and `service_role`; revoke from `public`, `anon`.
 
@@ -112,22 +115,30 @@ Grants: execute to `authenticated` and `service_role`; revoke from `public`, `an
 
 ### `kitchen_send_request(p_client_key uuid, p_item_id uuid, p_quantity integer, p_location_id uuid) returns public.kitchen_requests`
 
-1. `auth.uid()` required, else `42501` `not_signed_in`.
-2. `kitchen_module_enabled('kitchen_requests')` else `42501` `kitchen_requests_disabled`.
-3. `kitchen_user_location_ok(p_location_id)` else `42501` `location_not_allowed`.
-4. Item must exist, be active, and have `location_id` null or `= p_location_id`,
+1. `auth.uid()` required, else `42501` `not_signed_in`. Null `p_client_key`
+   is `22023` `invalid_client_key`.
+2. **Replay first.** If a row with `client_key = p_client_key` exists: return
+   it when `requested_by = auth.uid()` and item/quantity/location match the
+   arguments; `42501` `client_key_conflict` otherwise. A retry of a request
+   that already landed succeeds even if the item was deactivated or the
+   user's location changed since, so a retry can never be pushed into
+   minting a new key (and a duplicate).
+3. `kitchen_module_enabled('kitchen_requests')` else `42501` `kitchen_requests_disabled`.
+4. `kitchen_user_location_ok(p_location_id)` else `42501` `location_not_allowed`.
+5. Item must exist, be active, and have `location_id` null or `= p_location_id`,
    else `22023` `item_unavailable`.
-5. `p_quantity` between 1 and 999 else `22023` `invalid_quantity`.
-6. If a row with `client_key = p_client_key` exists: return it when
-   `requested_by = auth.uid()` (idempotent replay), else `42501` `client_key_conflict`.
+6. `p_quantity` between 1 and 999 else `22023` `invalid_quantity`.
 7. Insert with `item_name`/`unit` snapshotted from the item and
    `requested_by_name`/`requested_by_tag` from `kitchen_actor_identity(auth.uid())`.
    On `unique_violation` (concurrent replay) re-select by `client_key` and return.
 
 ### `kitchen_update_request(p_request_id uuid, p_action text) returns public.kitchen_requests`
 
-Locks the row `for update`. Unknown id → `P0002` `request_not_found`.
-Location must pass `kitchen_user_location_ok`, else `42501` `location_not_allowed`.
+Gate first: signed in (`42501` `not_signed_in`) and holding either kitchen
+module or the manager role, not suspended (`42501` `not_allowed`), and a
+known action (`22023` `unknown_action`). Then locks the row `for update`.
+Unknown id → `P0002` `request_not_found`. Location must pass
+`kitchen_user_location_ok`, else `42501` `location_not_allowed`.
 
 | action | from → to | who | side effects |
 | --- | --- | --- | --- |
@@ -145,14 +156,23 @@ The client keys on `message` (the code) and shows `hint`.
 
 ## RLS
 
-- `kitchen_items`: select to `authenticated` when
-  `kitchen_module_enabled('kitchen_requests') or kitchen_module_enabled('kitchen_display') or current_user_is_manager()`;
-  insert/update/delete to `authenticated` when `current_user_is_manager()`.
+- `kitchen_items`: select to `authenticated` when manager, or when either
+  kitchen module is on **and** the item is global or at a location the user
+  works at; insert/update/delete when `current_user_is_manager()` (insert
+  also pins `created_by` to the caller or null).
 - `kitchen_requests`: select to `authenticated` when the same module test
   passes **and** `kitchen_user_location_ok(location_id)`. No insert/update/delete
   policies; writes go through the RPCs only. `revoke insert, update, delete on
   public.kitchen_requests from authenticated`.
-- `revoke all ... from anon` on both tables.
+- `revoke all on table ... from anon, authenticated` on both tables first
+  (production's default privileges grant ALL, including truncate/trigger),
+  then grant back exactly: items select/insert/update/delete, requests
+  select; `grant all ... to service_role` explicitly.
+- Realtime does not RLS-filter DELETE events; nothing deletes these rows
+  (no delete grant, FKs restrict), so none are expected. Do not add a delete path
+  without revisiting this.
+- Deactivating a location hides its open requests from everyone (the
+  `active` test is part of `kitchen_user_location_ok`); close them out first.
 
 ## Client reads (web)
 

@@ -2,24 +2,9 @@
 -- location-scoped request queue with server-owned status transitions.
 
 -- ---------------------------------------------------------------------------
--- Module keys and role defaults.
+-- Module role defaults. (The user_modules CHECK constraint swap is at the end
+-- of the file so its ACCESS EXCLUSIVE lock on a hot table is held briefly.)
 -- ---------------------------------------------------------------------------
-alter table public.user_modules
-  drop constraint if exists user_modules_module_key_check;
-
-alter table public.user_modules
-  add constraint user_modules_module_key_check check (
-    module_key in (
-      'ordering_simple',
-      'ordering_advanced',
-      'stock_check',
-      'tips',
-      'fulfillment',
-      'kitchen_requests',
-      'kitchen_display'
-    )
-  );
-
 create or replace function public.get_effective_modules(p_user_id uuid)
 returns table(module_key text, enabled boolean)
 language plpgsql
@@ -84,7 +69,7 @@ grant execute on function public.get_effective_modules(uuid) to authenticated;
 -- ---------------------------------------------------------------------------
 create table if not exists public.kitchen_items (
   id uuid primary key default gen_random_uuid(),
-  location_id uuid references public.locations(id) on delete cascade,
+  location_id uuid references public.locations(id) on delete restrict,
   name text not null check (length(btrim(name)) between 1 and 60),
   unit text not null check (length(btrim(unit)) between 1 and 24),
   sort_order integer not null default 0,
@@ -110,23 +95,34 @@ create table if not exists public.kitchen_requests (
   unit text not null,
   quantity integer not null check (quantity between 1 and 999),
   requested_by uuid references auth.users(id) on delete set null,
-  requested_by_name text not null,
-  requested_by_tag text not null,
+  requested_by_name text not null
+    check (length(requested_by_name) between 1 and 200),
+  requested_by_tag text not null
+    check (length(requested_by_tag) between 1 and 200),
   status text not null default 'queued'
     check (status in ('queued', 'ready', 'cleared', 'cancelled')),
   created_at timestamptz not null default now(),
   ready_at timestamptz,
   ready_by uuid references auth.users(id) on delete set null,
-  ready_by_name text,
+  ready_by_name text check (ready_by_name is null or length(ready_by_name) between 1 and 200),
   closed_at timestamptz,
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  -- Timestamps always agree with the status, whoever writes the row.
+  constraint kitchen_requests_status_timestamps_check check (
+    case status
+      when 'queued' then ready_at is null and closed_at is null
+      when 'ready' then ready_at is not null and closed_at is null
+      when 'cleared' then ready_at is not null and closed_at is not null
+      when 'cancelled' then ready_at is null and closed_at is not null
+      else false
+    end
+  )
 );
 
-create index if not exists kitchen_requests_location_open_idx
-  on public.kitchen_requests (location_id, status, created_at);
-
-create index if not exists kitchen_requests_requester_idx
-  on public.kitchen_requests (requested_by, created_at desc);
+-- The open-queue read: location + status in (queued, ready), ordered by age.
+create index if not exists kitchen_requests_open_idx
+  on public.kitchen_requests (location_id, created_at)
+  where status in ('queued', 'ready');
 
 alter table public.kitchen_requests replica identity full;
 
@@ -207,11 +203,23 @@ create or replace function public.kitchen_actor_identity(
   out display_name text,
   out tag text
 )
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
+begin
+  if p_user_id is null then
+    raise exception 'p_user_id is required' using errcode = '22004';
+  end if;
+
+  -- Reads login handles as the owner: only for yourself, or as a manager.
+  -- The request RPCs call this for auth.uid() only.
+  if auth.uid() is distinct from p_user_id
+    and not public.current_user_is_manager() then
+    raise exception 'not authorized to read this identity' using errcode = '42501';
+  end if;
+
   select
     coalesce(
       nullif(btrim(li.display_name), ''),
@@ -227,11 +235,13 @@ as $$
       split_part(lower(au.email), '@', 1),
       'unknown'
     )
+  into display_name, tag
   from (values (1)) as singleton(n)
   left join auth.users au on au.id = p_user_id
   left join public.login_identities li on li.user_id = p_user_id
   left join public.profiles p on p.id = p_user_id
   left join public.users u on u.id = p_user_id;
+end;
 $$;
 
 revoke all on function public.kitchen_module_enabled(text) from public, anon;
@@ -269,6 +279,32 @@ begin
       using errcode = '42501', hint = 'Sign in before sending a kitchen request.';
   end if;
 
+  if p_client_key is null then
+    raise exception '%', 'invalid_client_key'
+      using errcode = '22023', hint = 'A client key is required.';
+  end if;
+
+  -- Replay first: a retry of a request that already landed returns that
+  -- row no matter what changed since (item deactivated, location moved).
+  select *
+  into v_request
+  from public.kitchen_requests
+  where client_key = p_client_key;
+
+  if found then
+    if v_request.requested_by is distinct from v_uid then
+      raise exception '%', 'client_key_conflict'
+        using errcode = '42501', hint = 'This client key belongs to another user.';
+    end if;
+    if v_request.item_id <> p_item_id
+      or v_request.quantity <> p_quantity
+      or v_request.location_id <> p_location_id then
+      raise exception '%', 'client_key_conflict'
+        using errcode = '42501', hint = 'This client key was already used for a different request.';
+    end if;
+    return v_request;
+  end if;
+
   if not public.kitchen_module_enabled('kitchen_requests') then
     raise exception '%', 'kitchen_requests_disabled'
       using errcode = '42501', hint = 'Kitchen requests are not enabled for this user.';
@@ -294,20 +330,6 @@ begin
   if p_quantity is null or p_quantity not between 1 and 999 then
     raise exception '%', 'invalid_quantity'
       using errcode = '22023', hint = 'Quantity must be between 1 and 999.';
-  end if;
-
-  select *
-  into v_request
-  from public.kitchen_requests
-  where client_key = p_client_key;
-
-  if found then
-    if v_request.requested_by = v_uid then
-      return v_request;
-    end if;
-
-    raise exception '%', 'client_key_conflict'
-      using errcode = '42501', hint = 'This client key belongs to another user.';
   end if;
 
   select * into v_actor from public.kitchen_actor_identity(v_uid);
@@ -347,12 +369,17 @@ begin
         raise;
       end if;
 
-      if v_request.requested_by = v_uid then
-        return v_request;
+      if v_request.requested_by is distinct from v_uid then
+        raise exception '%', 'client_key_conflict'
+          using errcode = '42501', hint = 'This client key belongs to another user.';
       end if;
-
-      raise exception '%', 'client_key_conflict'
-        using errcode = '42501', hint = 'This client key belongs to another user.';
+      if v_request.item_id <> p_item_id
+        or v_request.quantity <> p_quantity
+        or v_request.location_id <> p_location_id then
+        raise exception '%', 'client_key_conflict'
+          using errcode = '42501', hint = 'This client key was already used for a different request.';
+      end if;
+      return v_request;
   end;
 
   return v_request;
@@ -374,6 +401,27 @@ declare
   v_request public.kitchen_requests%rowtype;
   v_actor record;
 begin
+  if v_uid is null then
+    raise exception '%', 'not_signed_in'
+      using errcode = '42501', hint = 'Sign in before changing a kitchen request.';
+  end if;
+
+  -- Same gate as the select policy: no kitchen access (or suspended) means
+  -- no changes, even to a request you sent earlier.
+  if not (
+    public.kitchen_module_enabled('kitchen_requests')
+    or public.kitchen_module_enabled('kitchen_display')
+    or public.current_user_is_manager()
+  ) then
+    raise exception '%', 'not_allowed'
+      using errcode = '42501', hint = 'Kitchen access is required for this action.';
+  end if;
+
+  if p_action is null or p_action not in ('ready', 'undo_ready', 'cancel', 'clear') then
+    raise exception '%', 'unknown_action'
+      using errcode = '22023', hint = 'Unknown kitchen request action.';
+  end if;
+
   select *
   into v_request
   from public.kitchen_requests
@@ -494,8 +542,8 @@ begin
     return v_request;
   end if;
 
-  raise exception '%', 'invalid_transition'
-    using errcode = '22023', hint = format('The request is currently %s.', v_request.status);
+  raise exception '%', 'unknown_action'
+    using errcode = '22023', hint = 'Unknown kitchen request action.';
 end;
 $$;
 
@@ -521,9 +569,14 @@ on public.kitchen_items
 for select
 to authenticated
 using (
-  public.kitchen_module_enabled('kitchen_requests')
-  or public.kitchen_module_enabled('kitchen_display')
-  or public.current_user_is_manager()
+  public.current_user_is_manager()
+  or (
+    (
+      public.kitchen_module_enabled('kitchen_requests')
+      or public.kitchen_module_enabled('kitchen_display')
+    )
+    and (location_id is null or public.kitchen_user_location_ok(location_id))
+  )
 );
 
 drop policy if exists kitchen_items_insert_manager on public.kitchen_items;
@@ -531,7 +584,10 @@ create policy kitchen_items_insert_manager
 on public.kitchen_items
 for insert
 to authenticated
-with check (public.current_user_is_manager());
+with check (
+  public.current_user_is_manager()
+  and (created_by is null or created_by = auth.uid())
+);
 
 drop policy if exists kitchen_items_update_manager on public.kitchen_items;
 create policy kitchen_items_update_manager
@@ -562,12 +618,13 @@ using (
   and public.kitchen_user_location_ok(location_id)
 );
 
-revoke all on table public.kitchen_items from anon;
-revoke all on table public.kitchen_requests from anon;
+-- Production's default privileges grant ALL (including truncate, references,
+-- trigger) on new tables; strip them and grant back exactly what is needed.
+revoke all on table public.kitchen_items from anon, authenticated;
+revoke all on table public.kitchen_requests from anon, authenticated;
 
 grant select, insert, update, delete on table public.kitchen_items to authenticated;
 grant select on table public.kitchen_requests to authenticated;
-revoke insert, update, delete on table public.kitchen_requests from authenticated;
 -- Edge functions and admin tooling use the service role; say so explicitly
 -- instead of relying on default privileges.
 grant all on table public.kitchen_items to service_role;
@@ -596,3 +653,23 @@ begin
   end;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Module keys. Last, so the ACCESS EXCLUSIVE lock on user_modules is short.
+-- The new list is a superset of the old one, so existing rows always pass.
+-- ---------------------------------------------------------------------------
+alter table public.user_modules
+  drop constraint if exists user_modules_module_key_check;
+
+alter table public.user_modules
+  add constraint user_modules_module_key_check check (
+    module_key in (
+      'ordering_simple',
+      'ordering_advanced',
+      'stock_check',
+      'tips',
+      'fulfillment',
+      'kitchen_requests',
+      'kitchen_display'
+    )
+  );

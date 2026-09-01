@@ -48,6 +48,7 @@ function scopeLabel(
 
 function ItemRow({
   item,
+  revision,
   locations,
   status,
   canMoveUp,
@@ -56,6 +57,8 @@ function ItemRow({
   onMove,
 }: {
   item: KitchenItemRecord;
+  /** Bumped by the parent each time a save for this row settles. */
+  revision: number;
   locations: LocationOption[];
   status: RowStatus | undefined;
   canMoveUp: boolean;
@@ -63,19 +66,16 @@ function ItemRow({
   onSave: (id: string, patch: ItemPatch) => void;
   onMove: (id: string, direction: "up" | "down") => void;
 }) {
-  // Drafts follow the confirmed record: when a save lands (or rolls back)
-  // the parent passes new values and the draft re-syncs during render.
+  // Drafts re-sync to the stored record when a save settles (success or
+  // failure), except for the field being edited right now.
   const [name, setName] = useState(item.name);
   const [unit, setUnit] = useState(item.unit);
-  const [syncedName, setSyncedName] = useState(item.name);
-  const [syncedUnit, setSyncedUnit] = useState(item.unit);
-  if (item.name !== syncedName) {
-    setSyncedName(item.name);
-    setName(item.name);
-  }
-  if (item.unit !== syncedUnit) {
-    setSyncedUnit(item.unit);
-    setUnit(item.unit);
+  const [focused, setFocused] = useState<"name" | "unit" | null>(null);
+  const [syncedRevision, setSyncedRevision] = useState(revision);
+  if (revision !== syncedRevision) {
+    setSyncedRevision(revision);
+    if (focused !== "name") setName(item.name);
+    if (focused !== "unit") setUnit(item.unit);
   }
   const inputClasses =
     "bg-well rounded-well px-3 py-2 text-ink text-sm outline-none w-full";
@@ -113,7 +113,9 @@ function ItemRow({
           value={name}
           aria-label={`Name for ${item.name}`}
           onChange={(e) => setName(e.target.value)}
+          onFocus={() => setFocused("name")}
           onBlur={() => {
+            setFocused(null);
             const next = name.trim();
             if (!next) {
               setName(item.name);
@@ -137,7 +139,9 @@ function ItemRow({
           value={unit}
           aria-label={`Unit for ${item.name}`}
           onChange={(e) => setUnit(e.target.value)}
+          onFocus={() => setFocused("unit")}
           onBlur={() => {
+            setFocused(null);
             const next = unit.trim();
             if (!next) {
               setUnit(item.unit);
@@ -192,8 +196,16 @@ export default function KitchenItemsPage() {
   const [newScope, setNewScope] = useState<string>(ALL_SCOPE);
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
-  // Per-row save queue: writes for one item run strictly in order.
-  const saveChains = useRef<Map<string, Promise<unknown>>>(new Map());
+  const [revisionById, setRevisionById] = useState<Record<string, number>>({});
+  // All writes run strictly in order, and each one reads the latest
+  // confirmed list when it starts (not when it was clicked).
+  const writeChain = useRef<Promise<unknown>>(Promise.resolve());
+  const confirmed = useRef<KitchenItemRecord[] | null>(null);
+
+  function commit(next: KitchenItemRecord[]) {
+    confirmed.current = next;
+    setItems(next);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -211,6 +223,7 @@ export default function KitchenItemsPage() {
           setLoadError(locationResult.error.message);
           return;
         }
+        confirmed.current = rows;
         setItems(rows);
         setLocations(locationResult.data ?? []);
       })
@@ -225,65 +238,52 @@ export default function KitchenItemsPage() {
     };
   }, []);
 
-  function queue(id: string, work: () => Promise<void>): void {
-    const previous = saveChains.current.get(id) ?? Promise.resolve();
-    const run = previous.then(work, work);
-    saveChains.current.set(
-      id,
-      run.catch(() => undefined),
-    );
+  function queue(work: () => Promise<void>): void {
+    const run = writeChain.current.then(work, work);
+    writeChain.current = run.catch(() => undefined);
+  }
+
+  function settle(id: string, status: RowStatus) {
+    setStatusById((prev) => ({ ...prev, [id]: status }));
+    setRevisionById((prev) => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
   }
 
   function save(id: string, patch: ItemPatch) {
     setStatusById((prev) => ({ ...prev, [id]: { kind: "saving" } }));
-    queue(id, async () => {
+    queue(async () => {
       try {
         const stored = await updateKitchenItem(id, patch);
-        setItems((prev) =>
-          prev ? prev.map((i) => (i.id === id ? stored : i)) : prev,
-        );
-        setStatusById((prev) => ({ ...prev, [id]: { kind: "saved" } }));
+        const latest = confirmed.current ?? [];
+        commit(latest.map((i) => (i.id === id ? stored : i)));
+        settle(id, { kind: "saved" });
       } catch (err: unknown) {
-        // Roll the draft back to what is actually stored.
-        setItems((prev) =>
-          prev ? prev.map((i) => (i.id === id ? { ...i } : i)) : prev,
-        );
-        setStatusById((prev) => ({
-          ...prev,
-          [id]: {
-            kind: "error",
-            message: `Couldn't save: ${err instanceof Error ? err.message : "unknown error"}`,
-          },
-        }));
+        settle(id, {
+          kind: "error",
+          message: `Couldn't save: ${err instanceof Error ? err.message : "unknown error"}`,
+        });
       }
     });
   }
 
   function move(id: string, direction: "up" | "down") {
-    if (!items) return;
-    const next = reorderItems(items, id, direction);
-    if (!next) return;
     setStatusById((prev) => ({ ...prev, [id]: { kind: "saving" } }));
-    queue(id, async () => {
+    queue(async () => {
+      // Computed when it runs, from the rows every earlier write confirmed.
+      const latest = confirmed.current ?? [];
+      const next = reorderItems(latest, id, direction);
+      if (!next) {
+        setStatusById((prev) => ({ ...prev, [id]: { kind: "saved" } }));
+        return;
+      }
       try {
         await saveKitchenItemOrder(next);
-        setItems((prev) =>
-          prev
-            ? prev.map((item) => {
-                const moved = next.find((n) => n.id === item.id);
-                return moved ? { ...item, sort_order: moved.sort_order } : item;
-              })
-            : prev,
-        );
-        setStatusById((prev) => ({ ...prev, [id]: { kind: "saved" } }));
+        commit(next);
+        settle(id, { kind: "saved" });
       } catch (err: unknown) {
-        setStatusById((prev) => ({
-          ...prev,
-          [id]: {
-            kind: "error",
-            message: `Couldn't reorder: ${err instanceof Error ? err.message : "unknown error"}`,
-          },
-        }));
+        settle(id, {
+          kind: "error",
+          message: `Couldn't reorder: ${err instanceof Error ? err.message : "unknown error"}`,
+        });
       }
     });
   }
@@ -305,8 +305,7 @@ export default function KitchenItemsPage() {
     setAddError(null);
     try {
       const created = await createKitchenItem(input, nextSortOrder(items));
-      setItems((prev) => (prev ? [...prev, created] : [created]));
-      setNewName("");
+      commit([...(confirmed.current ?? []), created]);
       setNewUnit("");
     } catch (err: unknown) {
       setAddError(err instanceof Error ? err.message : "Couldn't add the item");
@@ -370,6 +369,7 @@ export default function KitchenItemsPage() {
                     <ItemRow
                       key={item.id}
                       item={item}
+                      revision={revisionById[item.id] ?? 0}
                       locations={locations}
                       status={statusById[item.id]}
                       canMoveUp={index > 0}

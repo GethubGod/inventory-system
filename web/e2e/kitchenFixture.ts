@@ -338,3 +338,27 @@ export async function replaySendAs(
   }
   return { id: row.id, status: row.status };
 }
+
+/** Read requests at a location as a signed-in user through PostgREST (RLS applies). */
+export async function selectRequestsAs(
+  fixture: KitchenFixture,
+  who: KitchenUserKey,
+  locationId: string,
+): Promise<number> {
+  const user = fixture.users[who];
+  const client = createClient(fixture.supabaseUrl, fixture.anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { error: signInError } = await client.auth.signInWithPassword({
+    email: user.email,
+    password: user.password,
+  });
+  if (signInError) throw new Error(signInError.message);
+  const { data, error } = await client
+    .from("kitchen_requests")
+    .select("id")
+    .eq("location_id", locationId);
+  await client.auth.signOut();
+  if (error) throw new Error(error.message);
+  return data?.length ?? 0;
+}

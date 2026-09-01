@@ -4,7 +4,11 @@
 // server decides access on every call.
 
 import { isKitchenView } from "@/lib/kitchen/access";
-import type { KitchenView, PendingRequest } from "@/lib/kitchen/types";
+import type {
+  KitchenErrorCode,
+  KitchenView,
+  PendingRequest,
+} from "@/lib/kitchen/types";
 
 const LOCATION_KEY = "smelter_kitchen_location";
 const VIEW_KEY = "smelter_kitchen_view";
@@ -41,16 +45,32 @@ export function saveRememberedView(view: KitchenView): void {
 }
 
 /**
- * Unacknowledged sends survive a refresh or a crash mid-send: on the next
- * load they are replayed with the same client key, which the server treats
- * idempotently, so nothing is lost and nothing duplicates. Keyed per user
- * and location so another account on the same phone never inherits them.
+ * Unacknowledged sends survive a refresh or a crash mid-send. On the next
+ * load the hook first asks the server which of these keys already landed,
+ * then replays the ones that were still in flight (same client key, so
+ * nothing duplicates) and restores the ones that had already failed for a
+ * manual Retry. Keyed per user and location so another account on the same
+ * phone never inherits them.
  */
 function pendingKey(userId: string, locationId: string): string {
   return `${PENDING_PREFIX}:${userId}:${locationId}`;
 }
 
-function isPersistedPending(value: unknown): value is PendingRequest {
+interface PersistedPending {
+  clientKey: string;
+  locationId: string;
+  itemId: string;
+  itemName: string;
+  unit: string;
+  quantity: number;
+  createdAt: number;
+  startedAt: number;
+  attempts: number;
+  status: "sending" | "failed";
+  error: { code: KitchenErrorCode; message: string } | null;
+}
+
+function isPersistedPending(value: unknown): value is PersistedPending {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
   return (
@@ -61,7 +81,8 @@ function isPersistedPending(value: unknown): value is PendingRequest {
     typeof record.unit === "string" &&
     typeof record.quantity === "number" &&
     typeof record.createdAt === "number" &&
-    typeof record.attempts === "number"
+    typeof record.attempts === "number" &&
+    (record.status === "sending" || record.status === "failed")
   );
 }
 
@@ -82,11 +103,17 @@ export function loadPendingSends(
       itemName: item.itemName,
       unit: item.unit,
       quantity: item.quantity,
-      status: "failed" as const,
-      startedAt: item.createdAt,
+      status: item.status,
+      startedAt:
+        typeof item.startedAt === "number" ? item.startedAt : item.createdAt,
       createdAt: item.createdAt,
       attempts: item.attempts,
-      error: null,
+      error:
+        item.error &&
+        typeof item.error === "object" &&
+        typeof item.error.message === "string"
+          ? { code: item.error.code, message: item.error.message }
+          : null,
     }));
   } catch {
     return [];
@@ -96,7 +123,7 @@ export function loadPendingSends(
 export function savePendingSends(
   userId: string,
   locationId: string,
-  pendings: PendingRequest[],
+  pendings: readonly PendingRequest[],
 ): void {
   const store = storage();
   if (!store) return;
@@ -105,19 +132,18 @@ export function savePendingSends(
     store.removeItem(key);
     return;
   }
-  store.setItem(
-    key,
-    JSON.stringify(
-      pendings.map((item) => ({
-        clientKey: item.clientKey,
-        locationId: item.locationId,
-        itemId: item.itemId,
-        itemName: item.itemName,
-        unit: item.unit,
-        quantity: item.quantity,
-        createdAt: item.createdAt,
-        attempts: item.attempts,
-      })),
-    ),
-  );
+  const persisted: PersistedPending[] = pendings.map((item) => ({
+    clientKey: item.clientKey,
+    locationId: item.locationId,
+    itemId: item.itemId,
+    itemName: item.itemName,
+    unit: item.unit,
+    quantity: item.quantity,
+    createdAt: item.createdAt,
+    startedAt: item.startedAt,
+    attempts: item.attempts,
+    status: item.status,
+    error: item.error,
+  }));
+  store.setItem(key, JSON.stringify(persisted));
 }

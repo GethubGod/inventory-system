@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   EMPTY_STATE,
   applyFetch,
+  applyOptimisticRow,
   applyServerRow,
   chefLogRows,
   clearUndoWindow,
@@ -152,14 +153,49 @@ describe("stale fetches", () => {
     expect(state.undoUntil).toEqual({});
   });
 
-  it("an older fetch response never replaces a newer one", () => {
-    let state = applyFetch(EMPTY_STATE, [server({ id: "a" })], 0);
-    state = applyServerRow(state, server({ id: "b" }));
-    // Newer fetch (issued at seq 1) applied first, then the older one arrives.
-    state = applyFetch(state, [server({ id: "a" }), server({ id: "b" })], 1);
-    const after = applyFetch(state, [], 0);
+  it("an older fetch generation never replaces a newer one, even at the same seq", () => {
+    // Two fetches issued back to back at seq 0 (mount, then channel live).
+    let state = EMPTY_STATE;
+    state = applyFetch(state, [server({ id: "new" })], 0, 2); // B completes first
+    const after = applyFetch(state, [], 0, 1); // A's empty snapshot arrives late
     expect(after).toBe(state);
-    expect(Object.keys(after.byId).sort()).toEqual(["a", "b"]);
+    expect(Object.keys(after.byId)).toEqual(["new"]);
+    // A newer generation still applies.
+    expect(Object.keys(applyFetch(state, [], 0, 3).byId)).toEqual([]);
+  });
+
+  it("a fetch never replaces an optimistic row, even with an equal timestamp", () => {
+    let state = applyFetch(EMPTY_STATE, [server({ id: "a", updatedAt: T0 })]);
+    state = setUndoWindow(
+      applyOptimisticRow(
+        state,
+        server({ id: "a", status: "ready", updatedAt: T0 }),
+      ),
+      "a",
+      T0 + 6_000,
+    );
+    // Poll started after the optimistic write returns the old queued row.
+    state = applyFetch(
+      state,
+      [server({ id: "a", status: "queued", updatedAt: T0 })],
+      state.seq,
+    );
+    expect(state.byId.a.status).toBe("ready");
+    expect(state.undoUntil.a).toBe(T0 + 6_000);
+    // The RPC reply settles it and keeps the undo window.
+    state = applyServerRow(
+      state,
+      server({ id: "a", status: "ready", updatedAt: T0 + 3 }),
+    );
+    expect(state.optimistic).toEqual({});
+    expect(state.undoUntil.a).toBe(T0 + 6_000);
+    // Now a fresh fetch is authoritative again.
+    state = applyFetch(
+      state,
+      [server({ id: "a", status: "queued", updatedAt: T0 + 9 })],
+      state.seq,
+    );
+    expect(state.byId.a.status).toBe("queued");
   });
 
   it("removeServerRow forgets the row's sequence stamp", () => {
@@ -214,23 +250,28 @@ describe("row ordering by updatedAt", () => {
 });
 
 describe("hydratePending", () => {
-  it("restores persisted sends as in-flight attempts without clobbering live ones", () => {
+  it("replays in-flight sends, keeps explicit failures failed, never clobbers live ones", () => {
     const live = pending({ clientKey: "live", status: "failed" });
     let state = startPending(EMPTY_STATE, live);
     state = hydratePending(
       state,
       [
-        pending({ clientKey: "old", status: "failed", attempts: 2 }),
+        pending({ clientKey: "inflight", status: "sending", attempts: 2 }),
+        pending({ clientKey: "failed", status: "failed", error: NET_ERROR }),
         pending({ clientKey: "live" }),
       ],
       T0 + 99,
     );
     expect(state.pending.live).toBe(live);
-    expect(state.pending.old).toMatchObject({
+    expect(state.pending.inflight).toMatchObject({
       status: "sending",
       startedAt: T0 + 99,
       attempts: 2,
       error: null,
+    });
+    expect(state.pending.failed).toMatchObject({
+      status: "failed",
+      error: NET_ERROR,
     });
     expect(hydratePending(state, [], T0)).toBe(state);
   });

@@ -1,10 +1,11 @@
 "use client";
 
 // Live request list for one location: initial fetch, realtime feed, polling
-// while the feed is down, refetch on reconnect/foreground, replay of sends
-// persisted by a previous page load, and the optimistic actions both screens
-// use. State transitions are the pure functions in lib/kitchen/state; this
-// hook only wires them to Supabase, storage and the clock.
+// while the feed is down, refetch on reconnect/foreground, reconciliation and
+// replay of sends persisted by a previous page load, and the optimistic
+// actions both screens use. State transitions are the pure functions in
+// lib/kitchen/state; this hook only wires them to Supabase, storage and the
+// clock.
 
 import {
   useCallback,
@@ -18,6 +19,7 @@ import {
   describeKitchenError,
   fetchKitchenItems,
   fetchOpenRequests,
+  fetchRequestsByClientKeys,
   sendKitchenRequest,
   subscribeToKitchenRequests,
   toKitchenApiError,
@@ -29,6 +31,7 @@ import { UNDO_WINDOW_MS } from "@/lib/kitchen/format";
 import {
   EMPTY_STATE,
   applyFetch,
+  applyOptimisticRow,
   applyServerRow,
   clearUndoWindow,
   dismissPending,
@@ -94,6 +97,23 @@ function subscribeOnline(onChange: () => void): () => void {
   };
 }
 
+function optimisticFor(
+  current: ServerRequest,
+  action: UpdateAction,
+  now: number,
+): ServerRequest {
+  switch (action) {
+    case "ready":
+      return { ...current, status: "ready", readyAt: now };
+    case "undo_ready":
+      return { ...current, status: "queued", readyAt: null, readyByName: null };
+    case "cancel":
+      return { ...current, status: "cancelled", closedAt: now };
+    case "clear":
+      return { ...current, status: "cleared", closedAt: now };
+  }
+}
+
 /**
  * Mount one instance per user + location (key the component by both): the
  * list, items, channel and persisted sends all belong to that pair.
@@ -119,25 +139,33 @@ export function useKitchenRequests(
     () => true,
   );
   const inFlight = useRef<Set<string>>(new Set());
-  const actionChains = useRef<Map<string, Promise<unknown>>>(new Map());
-  const replayed = useRef(false);
-  // Latest state for event handlers (retry, reload) without re-creating callbacks.
+  /** Per request id: the last settled server row from this device's own actions. */
+  const actionChains = useRef<Map<string, Promise<ServerRequest | null>>>(
+    new Map(),
+  );
+  const fetchGen = useRef(0);
+  const reconciled = useRef(false);
+  // Latest state for event handlers without re-creating callbacks. Written
+  // in an effect, so read it only where a one-render lag is harmless.
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
-  // Unacknowledged sends outlive the page (replayed on the next load).
+  // Unacknowledged sends outlive the page (reconciled on the next load).
+  // send/retry also persist synchronously before their RPC starts.
   useEffect(() => {
     savePendingSends(userId, locationId, Object.values(state.pending));
   }, [state.pending, userId, locationId]);
 
   const reload = useCallback((): Promise<void> => {
-    // Anything applied after this point outranks the response (see applyFetch).
+    // Rows applied after this point outrank the response, and a response
+    // from an earlier reload never replaces this one (see applyFetch).
     const since = stateRef.current.seq;
+    const gen = ++fetchGen.current;
     const requests = fetchOpenRequests(locationId).then(
       (rows) => {
-        setState((prev) => applyFetch(prev, rows, since));
+        setState((prev) => applyFetch(prev, rows, since, gen));
         setRequestsError(null);
       },
       (error: unknown) => {
@@ -181,13 +209,39 @@ export function useKitchenRequests(
       });
   }, []);
 
-  // Initial fetch, realtime feed, and replay of persisted sends.
+  // Initial fetch, realtime feed, and reconciliation of persisted sends:
+  // ask the server which keys already landed (any status) before replaying
+  // the ones that were still in flight when the last page went away.
   useEffect(() => {
     void reload();
-    if (!replayed.current) {
-      replayed.current = true;
-      for (const pending of Object.values(stateRef.current.pending)) {
-        if (pending.status === "sending") runSend(pending);
+    if (!reconciled.current) {
+      reconciled.current = true;
+      const persisted = Object.values(stateRef.current.pending);
+      if (persisted.length > 0) {
+        fetchRequestsByClientKeys(
+          locationId,
+          persisted.map((pending) => pending.clientKey),
+        )
+          .then((rows) => {
+            const landed = new Set(rows.map((row) => row.clientKey));
+            setState((prev) =>
+              rows.reduce((acc, row) => applyServerRow(acc, row), prev),
+            );
+            for (const pending of persisted) {
+              if (
+                !landed.has(pending.clientKey) &&
+                pending.status === "sending"
+              ) {
+                runSend(pending);
+              }
+            }
+          })
+          .catch(() => {
+            // Could not ask: replay in-flight ones anyway, the key is idempotent.
+            for (const pending of persisted) {
+              if (pending.status === "sending") runSend(pending);
+            }
+          });
       }
     }
     const unsubscribe = subscribeToKitchenRequests(locationId, {
@@ -247,11 +301,16 @@ export function useKitchenRequests(
         attempts: 1,
         error: null,
       };
+      // Persist before the request leaves: a crash right now still replays.
+      savePendingSends(userId, locationId, [
+        ...Object.values(stateRef.current.pending),
+        pending,
+      ]);
       setState((prev) => startPending(prev, pending));
       runSend(pending);
       return pending.clientKey;
     },
-    [locationId, runSend],
+    [locationId, runSend, userId],
   );
 
   const retry = useCallback(
@@ -272,10 +331,16 @@ export function useKitchenRequests(
         attempts: current.attempts + 1,
         error: null,
       };
+      savePendingSends(userId, locationId, [
+        ...Object.values(stateRef.current.pending).filter(
+          (p) => p.clientKey !== clientKey,
+        ),
+        attempt,
+      ]);
       setState((prev) => retryPending(prev, clientKey, now));
       runSend(attempt);
     },
-    [runSend],
+    [locationId, runSend, userId],
   );
 
   const dismiss = useCallback((clientKey: string) => {
@@ -287,66 +352,53 @@ export function useKitchenRequests(
       request: ServerRequest,
       action: UpdateAction,
     ): Promise<KitchenApiError | null> => {
-      // One action at a time per request: a tap and its undo cannot overtake
-      // each other on the wire.
+      // One action at a time per request. Each step rebases on the row the
+      // previous step settled on (its RPC reply, or the pre-action row when
+      // it failed), never on an effect-lagged ref.
       const previous =
-        actionChains.current.get(request.id) ?? Promise.resolve();
-      const run = previous.then(async () => {
-        const now = Date.now();
-        const current = stateRef.current.byId[request.id] ?? request;
-        // Optimistic local transition. It keeps the server updatedAt it was
-        // built from, so the RPC reply (newer) replaces it and any older
-        // stray message is ignored.
-        let optimistic: ServerRequest;
-        switch (action) {
-          case "ready":
-            optimistic = { ...current, status: "ready", readyAt: now };
-            break;
-          case "undo_ready":
-            optimistic = {
-              ...current,
-              status: "queued",
-              readyAt: null,
-              readyByName: null,
-            };
-            break;
-          case "cancel":
-            optimistic = { ...current, status: "cancelled", closedAt: now };
-            break;
-          case "clear":
-            optimistic = { ...current, status: "cleared", closedAt: now };
-            break;
-        }
-        setState((prev) => {
-          const next = applyServerRow(prev, optimistic);
-          return action === "ready"
-            ? setUndoWindow(next, request.id, now + UNDO_WINDOW_MS)
-            : action === "undo_ready"
-              ? clearUndoWindow(next, request.id)
-              : next;
-        });
-        try {
-          const row = await updateKitchenRequest(request.id, action);
-          setState((prev) => applyServerRow(prev, row));
-          return null;
-        } catch (error: unknown) {
-          const apiError = toKitchenApiError(error);
-          // Roll back only if the optimistic row is still what we show;
-          // a newer server row that arrived meanwhile is the truth.
-          setState((prev) =>
-            prev.byId[request.id] === optimistic
-              ? clearUndoWindow(applyServerRow(prev, current), request.id)
-              : prev,
-          );
-          void reload();
-          return apiError;
-        }
-      });
+        actionChains.current.get(request.id) ?? Promise.resolve(null);
+      const step = previous.then(
+        async (
+          settled,
+        ): Promise<{ row: ServerRequest; error: KitchenApiError | null }> => {
+          const now = Date.now();
+          const current =
+            settled ?? stateRef.current.byId[request.id] ?? request;
+          const optimistic = optimisticFor(current, action, now);
+          setState((prev) => {
+            const next = applyOptimisticRow(prev, optimistic);
+            return action === "ready"
+              ? setUndoWindow(next, request.id, now + UNDO_WINDOW_MS)
+              : action === "undo_ready"
+                ? clearUndoWindow(next, request.id)
+                : next;
+          });
+          try {
+            const row = await updateKitchenRequest(request.id, action);
+            setState((prev) => applyServerRow(prev, row));
+            return { row, error: null };
+          } catch (error: unknown) {
+            const apiError = toKitchenApiError(error);
+            // Roll back only if the optimistic row is still what we show;
+            // a newer server row that arrived meanwhile is the truth.
+            setState((prev) =>
+              prev.byId[request.id] === optimistic
+                ? clearUndoWindow(applyServerRow(prev, current), request.id)
+                : prev,
+            );
+            void reload();
+            return { row: current, error: apiError };
+          }
+        },
+      );
       actionChains.current.set(
         request.id,
-        run.catch(() => undefined),
+        step.then(
+          (result) => result.row,
+          () => null,
+        ),
       );
-      return run;
+      return step.then((result) => result.error);
     },
     [reload],
   );

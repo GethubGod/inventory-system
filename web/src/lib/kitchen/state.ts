@@ -4,11 +4,15 @@
 // idempotency client key. Everything here is deterministic and unit tested;
 // the hook in components/kitchen wires it to Supabase.
 //
-// Two ordering rules keep the picture honest when messages race:
+// Ordering rules that keep the picture honest when messages race:
 // - Per row, a newer server `updatedAt` always wins (a late RPC reply can
 //   never overwrite a realtime event that came after it).
+// - A row with an optimistic local write in flight is never replaced by a
+//   fetch snapshot; only an individual server row (RPC reply, realtime) or
+//   the explicit rollback settles it.
 // - Per fetch, a snapshot only outranks rows applied before it was issued
-//   (`seq` stamps), and an older snapshot never replaces a newer one.
+//   (`seq` stamps), and a snapshot from an older fetch generation never
+//   replaces a newer one.
 
 import type {
   LogRequest,
@@ -31,8 +35,10 @@ export interface RequestsState {
   seq: number;
   /** id -> seq at which this device last applied an individual update. */
   seenSeq: Record<string, number>;
-  /** `sinceSeq` of the most recent snapshot applied; older snapshots are ignored. */
-  fetchMark: number;
+  /** ids whose local row is an optimistic write awaiting its RPC reply. */
+  optimistic: Record<string, true>;
+  /** Generation of the most recent fetch applied; older generations are ignored. */
+  fetchGen: number;
 }
 
 export const EMPTY_STATE: RequestsState = {
@@ -41,39 +47,48 @@ export const EMPTY_STATE: RequestsState = {
   undoUntil: {},
   seq: 0,
   seenSeq: {},
-  fetchMark: -1,
+  optimistic: {},
+  fetchGen: 0,
 };
 
 /**
  * Merge a fetch of open rows. `sinceSeq` is `state.seq` from when the fetch
- * was issued; rows updated locally after that keep their local version, and
- * rows created after that survive even when the (stale) fetch omits them.
- * A response from a fetch issued before an already-applied one is dropped.
+ * was issued and `gen` its issue order; rows updated locally after the
+ * fetch started keep their local version, rows created after that survive
+ * even when the (stale) fetch omits them, optimistic rows are left alone,
+ * and a response from an older generation than one already applied is dropped.
  */
 export function applyFetch(
   state: RequestsState,
   rows: ServerRequest[],
   sinceSeq: number = state.seq,
+  gen: number = state.fetchGen + 1,
 ): RequestsState {
-  if (sinceSeq < state.fetchMark) return state;
+  if (gen < state.fetchGen) return state;
   const byId: Record<string, ServerRequest> = {};
   const seenSeq: Record<string, number> = {};
+  const keepLocal = (
+    id: string,
+    local: ServerRequest,
+    incoming?: ServerRequest,
+  ) =>
+    id in state.optimistic ||
+    (state.seenSeq[id] ?? 0) > sinceSeq ||
+    (incoming !== undefined && local.updatedAt > incoming.updatedAt);
   for (const row of rows) {
     const local = state.byId[row.id];
-    const localSeq = state.seenSeq[row.id] ?? 0;
-    if (local && (localSeq > sinceSeq || local.updatedAt > row.updatedAt)) {
+    if (local && keepLocal(row.id, local, row)) {
       byId[row.id] = local;
-      seenSeq[row.id] = localSeq;
+      if (row.id in state.seenSeq) seenSeq[row.id] = state.seenSeq[row.id];
     } else {
       byId[row.id] = row;
     }
   }
   for (const [id, local] of Object.entries(state.byId)) {
     if (id in byId) continue;
-    const localSeq = state.seenSeq[id] ?? 0;
-    if (localSeq > sinceSeq) {
+    if (keepLocal(id, local)) {
       byId[id] = local;
-      seenSeq[id] = localSeq;
+      if (id in state.seenSeq) seenSeq[id] = state.seenSeq[id];
     }
   }
   return {
@@ -82,13 +97,15 @@ export function applyFetch(
     undoUntil: pruneUndo(state.undoUntil, byId),
     seq: state.seq,
     seenSeq,
-    fetchMark: sinceSeq,
+    optimistic: state.optimistic,
+    fetchGen: Math.max(gen, state.fetchGen),
   };
 }
 
 /**
- * Upsert one server row (RPC result, realtime INSERT/UPDATE, optimistic
- * write). A row older than the one held is ignored.
+ * Upsert one server row (RPC result, realtime INSERT/UPDATE). A row older
+ * than the one held is ignored. Any server row settles an optimistic write
+ * for that id.
  */
 export function applyServerRow(
   state: RequestsState,
@@ -96,15 +113,38 @@ export function applyServerRow(
 ): RequestsState {
   const existing = state.byId[row.id];
   if (existing && existing.updatedAt > row.updatedAt) return state;
+  return upsert(state, row, false);
+}
+
+/** Upsert an optimistic local transition; fetches leave it alone until settled. */
+export function applyOptimisticRow(
+  state: RequestsState,
+  row: ServerRequest,
+): RequestsState {
+  return upsert(state, row, true);
+}
+
+function upsert(
+  state: RequestsState,
+  row: ServerRequest,
+  optimistic: boolean,
+): RequestsState {
   const byId = { ...state.byId, [row.id]: row };
   const seq = state.seq + 1;
+  let flags = state.optimistic;
+  if (optimistic) flags = { ...flags, [row.id]: true };
+  else if (row.id in flags) {
+    flags = { ...flags };
+    delete flags[row.id];
+  }
   return {
     byId,
     pending: dropAcknowledged(state.pending, [row]),
     undoUntil: pruneUndo(state.undoUntil, byId),
     seq,
     seenSeq: { ...state.seenSeq, [row.id]: seq },
-    fetchMark: state.fetchMark,
+    optimistic: flags,
+    fetchGen: state.fetchGen,
   };
 }
 
@@ -117,13 +157,16 @@ export function removeServerRow(
   delete byId[id];
   const seenSeq = { ...state.seenSeq };
   delete seenSeq[id];
+  const optimistic = { ...state.optimistic };
+  delete optimistic[id];
   return {
     byId,
     pending: state.pending,
     undoUntil: pruneUndo(state.undoUntil, byId),
     seq: state.seq + 1,
     seenSeq,
-    fetchMark: state.fetchMark,
+    optimistic,
+    fetchGen: state.fetchGen,
   };
 }
 
@@ -137,7 +180,11 @@ export function startPending(
   };
 }
 
-/** Restore sends persisted by a previous page load; each will be replayed. */
+/**
+ * Restore sends persisted by a previous page load. Ones that were still in
+ * flight come back as "sending" (the hook replays them); ones the chef had
+ * already seen fail stay failed and wait for a manual Retry.
+ */
 export function hydratePending(
   state: RequestsState,
   pendings: PendingRequest[],
@@ -147,12 +194,10 @@ export function hydratePending(
   const pending = { ...state.pending };
   for (const item of pendings) {
     if (item.clientKey in pending) continue;
-    pending[item.clientKey] = {
-      ...item,
-      status: "sending",
-      startedAt: now,
-      error: null,
-    };
+    pending[item.clientKey] =
+      item.status === "failed"
+        ? { ...item, startedAt: item.startedAt || item.createdAt }
+        : { ...item, status: "sending", startedAt: now, error: null };
   }
   return { ...state, pending };
 }

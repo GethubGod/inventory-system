@@ -243,6 +243,8 @@ $$;
 reset role;
 
 -- Sending without a user is refused before any request input is read.
+-- (A real anon caller is stopped earlier by the missing EXECUTE grant; see
+-- the anon RPC assertions near the end. This checks the in-function guard.)
 select set_config('request.jwt.claim.sub', '', false);
 set role authenticated;
 do $$
@@ -790,6 +792,378 @@ begin
   end;
 
   raise notice 'ok: anon selects fail for both kitchen tables or return zero rows';
+end;
+$$;
+reset role;
+
+
+-- ===========================================================================
+-- Boundary assertions added after the adversarial review.
+-- ===========================================================================
+
+-- A chef (kitchen_requests only) cannot mark food ready; the display user
+-- (kitchen_display only) cannot place orders.
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000002', false);
+set role authenticated;
+do $$
+declare
+  v_item uuid;
+  v_request public.kitchen_requests%rowtype;
+begin
+  select id into v_item from public.kitchen_items where name = 'Fried Shrimp';
+  select * into v_request from public.kitchen_send_request(
+    'cccccccc-1000-4000-8000-000000000030', v_item, 2, 'bbbbbbbb-1000-4000-8000-000000000001');
+  begin
+    perform public.kitchen_update_request(v_request.id, 'ready');
+    raise exception 'FAIL: chef must not mark ready';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' or sqlerrm <> 'not_allowed' then
+        raise exception 'FAIL: expected 42501 not_allowed for chef ready, got % %', sqlstate, sqlerrm;
+      end if;
+  end;
+  raise notice 'ok: a chef without kitchen_display cannot mark ready';
+end;
+$$;
+reset role;
+
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000003', false);
+set role authenticated;
+do $$
+declare
+  v_item uuid;
+begin
+  select id into v_item from public.kitchen_items where name = 'Fried Shrimp';
+  begin
+    perform public.kitchen_send_request(
+      'cccccccc-1000-4000-8000-000000000031', v_item, 1, 'bbbbbbbb-1000-4000-8000-000000000001');
+    raise exception 'FAIL: display user must not send';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' or sqlerrm <> 'kitchen_requests_disabled' then
+        raise exception 'FAIL: expected kitchen_requests_disabled for display send, got % %', sqlstate, sqlerrm;
+      end if;
+  end;
+  raise notice 'ok: a display user without kitchen_requests cannot send';
+end;
+$$;
+reset role;
+
+-- Losing the module, or being suspended, blocks cancel/clear on your own request.
+update public.user_modules set enabled = false
+where user_id = 'aaaaaaaa-1000-4000-8000-000000000002' and module_key = 'kitchen_requests';
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000002', false);
+set role authenticated;
+do $$
+declare
+  v_id uuid;
+  v_count integer;
+begin
+  select count(*) into v_count from public.kitchen_requests;
+  if v_count <> 0 then
+    raise exception 'FAIL: module-less ex-chef should read zero rows, got %', v_count;
+  end if;
+  -- The id is known from earlier (persisted client state); RLS hides it now.
+  select id into v_id from public.kitchen_requests where client_key = 'cccccccc-1000-4000-8000-000000000030';
+  if v_id is not null then
+    raise exception 'FAIL: RLS should hide the row from a module-less user';
+  end if;
+end;
+$$;
+reset role;
+do $$
+declare
+  v_id uuid;
+begin
+  select id into v_id from public.kitchen_requests where client_key = 'cccccccc-1000-4000-8000-000000000030';
+  perform set_config('kitchen_fixture.request_id', v_id::text, false);
+end;
+$$;
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000002', false);
+set role authenticated;
+do $$
+begin
+  begin
+    perform public.kitchen_update_request(current_setting('kitchen_fixture.request_id')::uuid, 'cancel');
+    raise exception 'FAIL: module-less requester must not cancel';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' or sqlerrm <> 'not_allowed' then
+        raise exception 'FAIL: expected not_allowed for module-less cancel, got % %', sqlstate, sqlerrm;
+      end if;
+  end;
+  raise notice 'ok: a requester whose module was revoked cannot cancel';
+end;
+$$;
+reset role;
+update public.user_modules set enabled = true
+where user_id = 'aaaaaaaa-1000-4000-8000-000000000002' and module_key = 'kitchen_requests';
+-- Suspension changes are allowed only in service contexts (no JWT subject).
+select set_config('request.jwt.claim.sub', '', false);
+update public.profiles set is_suspended = true where id = 'aaaaaaaa-1000-4000-8000-000000000002';
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000002', false);
+set role authenticated;
+do $$
+begin
+  begin
+    perform public.kitchen_update_request(current_setting('kitchen_fixture.request_id')::uuid, 'cancel');
+    raise exception 'FAIL: suspended requester must not cancel';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' or sqlerrm <> 'not_allowed' then
+        raise exception 'FAIL: expected not_allowed for suspended cancel, got % %', sqlstate, sqlerrm;
+      end if;
+  end;
+  raise notice 'ok: a suspended requester cannot cancel or clear';
+end;
+$$;
+reset role;
+select set_config('request.jwt.claim.sub', '', false);
+update public.profiles set is_suspended = false where id = 'aaaaaaaa-1000-4000-8000-000000000002';
+
+-- Direct DML on kitchen_requests is refused for authenticated; anon cannot call the RPCs.
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000002', false);
+set role authenticated;
+do $$
+declare
+  v_item uuid;
+begin
+  select id into v_item from public.kitchen_items where name = 'Fried Shrimp';
+  begin
+    insert into public.kitchen_requests (client_key, location_id, item_id, item_name, unit, quantity, requested_by_name, requested_by_tag)
+    values ('cccccccc-1000-4000-8000-000000000032', 'bbbbbbbb-1000-4000-8000-000000000001', v_item, 'x', 'y', 1, 'n', 't');
+    raise exception 'FAIL: direct insert must be refused';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' then raise exception 'FAIL: expected 42501 on insert, got % %', sqlstate, sqlerrm; end if;
+  end;
+  begin
+    update public.kitchen_requests set status = 'ready' where client_key = 'cccccccc-1000-4000-8000-000000000030';
+    raise exception 'FAIL: direct update must be refused';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' then raise exception 'FAIL: expected 42501 on update, got % %', sqlstate, sqlerrm; end if;
+  end;
+  begin
+    delete from public.kitchen_requests where client_key = 'cccccccc-1000-4000-8000-000000000030';
+    raise exception 'FAIL: direct delete must be refused';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' then raise exception 'FAIL: expected 42501 on delete, got % %', sqlstate, sqlerrm; end if;
+  end;
+  begin
+    truncate public.kitchen_requests;
+    raise exception 'FAIL: truncate must be refused';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' then raise exception 'FAIL: expected 42501 on truncate, got % %', sqlstate, sqlerrm; end if;
+  end;
+  raise notice 'ok: authenticated cannot insert, update, delete or truncate kitchen_requests directly';
+end;
+$$;
+reset role;
+
+select set_config('request.jwt.claim.sub', '', false);
+set role anon;
+do $$
+begin
+  begin
+    perform public.kitchen_send_request(
+      'cccccccc-1000-4000-8000-000000000033', 'dddddddd-1000-4000-8000-000000000010', 1,
+      'bbbbbbbb-1000-4000-8000-000000000001');
+    raise exception 'FAIL: anon must not execute kitchen_send_request';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' then raise exception 'FAIL: expected 42501 for anon send, got % %', sqlstate, sqlerrm; end if;
+  end;
+  begin
+    perform public.kitchen_update_request('cccccccc-1000-4000-8000-000000000030', 'cancel');
+    raise exception 'FAIL: anon must not execute kitchen_update_request';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' then raise exception 'FAIL: expected 42501 for anon update, got % %', sqlstate, sqlerrm; end if;
+  end;
+  raise notice 'ok: anon cannot execute the kitchen RPCs';
+end;
+$$;
+reset role;
+
+-- A manager may cancel someone else's request; identity is stamped from the
+-- login handle when there is one and from the normalised name otherwise.
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000001', false);
+set role authenticated;
+do $$
+declare
+  v_request public.kitchen_requests%rowtype;
+  v_item uuid;
+begin
+  select * into v_request from public.kitchen_requests
+  where client_key = 'cccccccc-1000-4000-8000-000000000030';
+  if v_request.requested_by_name <> 'Chef Login Display' or v_request.requested_by_tag <> 'chef-handle' then
+    raise exception 'FAIL: chef identity should come from login_identities, got % / %',
+      v_request.requested_by_name, v_request.requested_by_tag;
+  end if;
+  select * into v_request from public.kitchen_update_request(v_request.id, 'cancel');
+  if v_request.status <> 'cancelled' then
+    raise exception 'FAIL: manager should be able to cancel another user''s request';
+  end if;
+
+  select id into v_item from public.kitchen_items where name = 'Sushi Rice';
+  select * into v_request from public.kitchen_send_request(
+    'cccccccc-1000-4000-8000-000000000034', v_item, 1, 'bbbbbbbb-1000-4000-8000-000000000002');
+  if v_request.requested_by_name <> 'Manager Fixture' or v_request.requested_by_tag <> 'manager fixture' then
+    raise exception 'FAIL: manager identity should fall back to the normalised name, got % / %',
+      v_request.requested_by_name, v_request.requested_by_tag;
+  end if;
+  raise notice 'ok: managers can cancel others'' requests; identity uses the handle or the normalised name';
+end;
+$$;
+reset role;
+
+-- Replay beats validation: a retry of a stored request succeeds even after the
+-- item was deactivated, and a mismatched replay is a conflict, never a second row.
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000002', false);
+set role authenticated;
+do $$
+declare
+  v_item uuid;
+  v_first public.kitchen_requests%rowtype;
+begin
+  select id into v_item from public.kitchen_items where name = 'Salmon';
+  select * into v_first from public.kitchen_send_request(
+    'cccccccc-1000-4000-8000-000000000035', v_item, 4, 'bbbbbbbb-1000-4000-8000-000000000001');
+  perform set_config('kitchen_fixture.salmon_item', v_item::text, false);
+  perform set_config('kitchen_fixture.salmon_request', v_first.id::text, false);
+end;
+$$;
+reset role;
+update public.kitchen_items set active = false where id = current_setting('kitchen_fixture.salmon_item')::uuid;
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000002', false);
+set role authenticated;
+do $$
+declare
+  v_item uuid := current_setting('kitchen_fixture.salmon_item')::uuid;
+  v_replay public.kitchen_requests%rowtype;
+  v_count integer;
+begin
+  select * into v_replay from public.kitchen_send_request(
+    'cccccccc-1000-4000-8000-000000000035', v_item, 4, 'bbbbbbbb-1000-4000-8000-000000000001');
+  if v_replay.id <> current_setting('kitchen_fixture.salmon_request')::uuid or v_replay.status <> 'queued' then
+    raise exception 'FAIL: replay after item deactivation should return the stored row';
+  end if;
+  begin
+    perform public.kitchen_send_request(
+      'cccccccc-1000-4000-8000-000000000035', v_item, 5, 'bbbbbbbb-1000-4000-8000-000000000001');
+    raise exception 'FAIL: mismatched replay must be a conflict';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' or sqlerrm <> 'client_key_conflict' then
+        raise exception 'FAIL: expected client_key_conflict for mismatched replay, got % %', sqlstate, sqlerrm;
+      end if;
+  end;
+  select count(*) into v_count from public.kitchen_requests
+  where client_key = 'cccccccc-1000-4000-8000-000000000035';
+  if v_count <> 1 then raise exception 'FAIL: replay produced % rows', v_count; end if;
+  begin
+    perform public.kitchen_send_request(
+      null, v_item, 1, 'bbbbbbbb-1000-4000-8000-000000000001');
+    raise exception 'FAIL: null client key must be refused';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '22023' or sqlerrm <> 'invalid_client_key' then
+        raise exception 'FAIL: expected invalid_client_key, got % %', sqlstate, sqlerrm;
+      end if;
+  end;
+  begin
+    perform public.kitchen_update_request(v_replay.id, 'explode');
+    raise exception 'FAIL: unknown action must be refused';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '22023' or sqlerrm <> 'unknown_action' then
+        raise exception 'FAIL: expected unknown_action, got % %', sqlstate, sqlerrm;
+      end if;
+  end;
+  raise notice 'ok: replay returns the stored row even after item deactivation; mismatch, null key and unknown action are refused';
+end;
+$$;
+reset role;
+update public.kitchen_items set active = true where id = current_setting('kitchen_fixture.salmon_item')::uuid;
+
+-- kitchen_actor_identity is not a directory: only self, or a manager.
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000002', false);
+set role authenticated;
+do $$
+declare
+  v_name text;
+  v_tag text;
+begin
+  select display_name, tag into v_name, v_tag
+  from public.kitchen_actor_identity('aaaaaaaa-1000-4000-8000-000000000002');
+  if v_name <> 'Chef Login Display' or v_tag <> 'chef-handle' then
+    raise exception 'FAIL: self identity wrong: % / %', v_name, v_tag;
+  end if;
+  begin
+    perform public.kitchen_actor_identity('aaaaaaaa-1000-4000-8000-000000000001');
+    raise exception 'FAIL: chef must not read another user''s identity';
+  exception
+    when others then
+      if sqlerrm like 'FAIL:%' then raise; end if;
+      if sqlstate <> '42501' then raise exception 'FAIL: expected 42501 reading another identity, got % %', sqlstate, sqlerrm; end if;
+  end;
+  raise notice 'ok: kitchen_actor_identity refuses other users for non-managers';
+end;
+$$;
+reset role;
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000001', false);
+set role authenticated;
+do $$
+declare
+  v_name text;
+begin
+  select display_name into v_name from public.kitchen_actor_identity('aaaaaaaa-1000-4000-8000-000000000002');
+  if v_name <> 'Chef Login Display' then raise exception 'FAIL: manager identity read wrong: %', v_name; end if;
+  raise notice 'ok: managers may read any identity';
+end;
+$$;
+reset role;
+
+-- Items scoped to another location are hidden from non-managers.
+insert into public.kitchen_items (name, unit, sort_order, location_id)
+values ('Location Two Special', 'trays', 99, 'bbbbbbbb-1000-4000-8000-000000000002');
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000003', false);
+set role authenticated;
+do $$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count from public.kitchen_items where name = 'Location Two Special';
+  if v_count <> 0 then raise exception 'FAIL: location-one display saw a location-two item'; end if;
+  raise notice 'ok: item RLS hides other locations'' items from non-managers';
+end;
+$$;
+reset role;
+select set_config('request.jwt.claim.sub', 'aaaaaaaa-1000-4000-8000-000000000001', false);
+set role authenticated;
+do $$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count from public.kitchen_items where name = 'Location Two Special';
+  if v_count <> 1 then raise exception 'FAIL: manager should see the location-two item'; end if;
+  raise notice 'ok: managers see every location''s items';
 end;
 $$;
 reset role;

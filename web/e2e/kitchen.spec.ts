@@ -12,6 +12,7 @@ import {
   ensureKitchenFixture,
   kitchenItemId,
   replaySendAs,
+  selectRequestsAs,
   type KitchenFixture,
   type KitchenUserKey,
 } from "./kitchenFixture";
@@ -244,31 +245,79 @@ test("offline send fails loudly; retry with the same key lands exactly once", as
   expect(await countRequestsBy(fixture, chefId)).toBe(1);
 });
 
-test("a send interrupted by a page reload is replayed, not lost or duplicated", async ({
+test("a send interrupted by a page reload is replayed with the same key, not lost or duplicated", async ({
   browser,
 }) => {
   const chef = await chefPage(browser);
   const chefId = fixture.users.chef.id;
-  // Go offline so the attempt is persisted as unacknowledged, then reload
-  // online: the page replays the same client key on its own.
-  await chef.context().setOffline(true);
-  await sendFromSheet(chef, "Tempura Batter");
-  await expect(chef.getByText("Didn’t send — 1 tempura batter")).toBeVisible({
-    timeout: 15_000,
+  const sentKeys: string[] = [];
+  chef.on("request", (request) => {
+    if (request.url().includes("/rpc/kitchen_send_request")) {
+      const body = JSON.parse(request.postData() ?? "{}") as {
+        p_client_key?: unknown;
+      };
+      if (typeof body.p_client_key === "string")
+        sentKeys.push(body.p_client_key);
+    }
   });
-  await chef.context().setOffline(false);
+  // Hold the first attempt so it is still in flight (never reaches the
+  // server), then reload mid-send. The route stays registered across the
+  // reload (unrouting would release the held request); after the flag
+  // flips, later attempts go through.
+  let hold = true;
+  await chef.route("**/rpc/kitchen_send_request", async (route) => {
+    if (!hold) {
+      await route.continue();
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 30_000));
+    await route.abort().catch(() => undefined);
+  });
+  await sendFromSheet(chef, "Tempura Batter");
+  await expect(chef.getByText("Sending to kitchen…")).toBeVisible();
+  await expect.poll(() => sentKeys.length).toBe(1);
+  expect(await countRequestsBy(fixture, chefId)).toBe(0);
+  hold = false;
   await chef.reload();
   await openSushi(chef);
+  // The page replays the persisted attempt on its own, with the same key.
   await expect(chef.getByText("1 Tempura Batter")).toBeVisible({
     timeout: 10_000,
   });
   await expect(chef.getByText("SENT", { exact: true })).toBeVisible({
     timeout: 10_000,
   });
+  // Replayed with the very same key: one distinct key across both page
+  // loads, one row on the server.
+  expect(sentKeys.length).toBeGreaterThanOrEqual(2);
+  expect(new Set(sentKeys).size).toBe(1);
   expect(await countRequestsBy(fixture, chefId)).toBe(1);
   await chef.reload();
   await openSushi(chef);
   await expect(chef.getByText("1 Tempura Batter")).toHaveCount(1);
+  expect(await countRequestsBy(fixture, chefId)).toBe(1);
+});
+
+test("an explicitly failed send is restored after reload and waits for a manual retry", async ({
+  browser,
+}) => {
+  const chef = await chefPage(browser);
+  const chefId = fixture.users.chef.id;
+  await chef.context().setOffline(true);
+  await sendFromSheet(chef, "Sushi Rice");
+  await expect(chef.getByText("Didn’t send — 1 sushi rice")).toBeVisible({
+    timeout: 15_000,
+  });
+  await chef.context().setOffline(false);
+  await chef.reload();
+  await openSushi(chef);
+  await expect(chef.getByText("1 Sushi Rice")).toBeVisible();
+  await expect(chef.getByRole("button", { name: "Retry" })).toBeVisible();
+  expect(await countRequestsBy(fixture, chefId)).toBe(0);
+  await chef.getByRole("button", { name: "Retry" }).click();
+  await expect(chef.getByText("SENT", { exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
   expect(await countRequestsBy(fixture, chefId)).toBe(1);
 });
 
@@ -277,17 +326,22 @@ test("a removed item is refused with the server's reason and no retry", async ({
 }) => {
   const chef = await chefPage(browser);
   const salmonId = await kitchenItemId(fixture, "Salmon");
+  // Open the sheet first, then pull the item: the chef is mid-request when
+  // the manager deactivates it, and the server (not the grid) says no.
+  await chef.getByRole("button", { name: "Salmon" }).click();
+  await expect(chef.getByRole("dialog")).toBeVisible();
   await fixture.admin
     .from("kitchen_items")
     .update({ active: false })
     .eq("id", salmonId);
   try {
-    // The grid still shows Salmon (loaded before the change); the server says no.
-    await sendFromSheet(chef, "Salmon");
+    await chef.getByRole("button", { name: /^Send 1 / }).click();
     await expect(chef.getByText(/Didn’t send — 1 salmon/)).toBeVisible({
       timeout: 15_000,
     });
-    await expect(chef.getByRole("dialog").getByText(/unavailable/i)).toBeVisible();
+    await expect(
+      chef.getByRole("dialog").getByText(/unavailable/i),
+    ).toBeVisible();
     await expect(chef.getByRole("button", { name: "Retry now" })).toHaveCount(
       0,
     );
@@ -358,4 +412,13 @@ test("a display pinned to the other location never sees this kitchen's requests"
   await expect(
     poki.getByText("All caught up.", { exact: false }),
   ).toBeVisible();
+
+  // Not just the UI filter: asking PostgREST directly for Sushi rows as the
+  // Poki account returns nothing (RLS), while the chef sees the row.
+  expect(
+    await selectRequestsAs(fixture, "pokiDisplay", fixture.locations.sushi),
+  ).toBe(0);
+  expect(await selectRequestsAs(fixture, "chef", fixture.locations.sushi)).toBe(
+    1,
+  );
 });

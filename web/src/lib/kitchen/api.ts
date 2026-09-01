@@ -53,9 +53,11 @@ const KNOWN_CODES: ReadonlySet<string> = new Set<KitchenErrorCode>([
   "location_not_allowed",
   "item_unavailable",
   "invalid_quantity",
+  "invalid_client_key",
   "client_key_conflict",
   "request_not_found",
   "invalid_transition",
+  "unknown_action",
   "not_allowed",
 ]);
 
@@ -116,8 +118,13 @@ export function describeKitchenError(error: unknown): string {
       return "The kitchen never confirmed. Check Wi-Fi and retry.";
     case "network":
       return "Couldn't reach smelter. Check Wi-Fi and retry.";
+    case "client_key_conflict":
+    case "invalid_client_key":
+    case "unknown_action":
+      return "That request couldn't be processed. Start a new one.";
     default:
-      return apiError.message || "Something went wrong. Retry.";
+      // Never echo a raw database message on the floor.
+      return "Something went wrong. Retry.";
   }
 }
 
@@ -242,6 +249,30 @@ export async function fetchOpenRequests(
     .in("status", ["queued", "ready"])
     .gte("created_at", since)
     .order("created_at");
+  if (error) throw toKitchenApiError(error);
+  const rows: ServerRequest[] = [];
+  for (const row of data ?? []) {
+    const request = toServerRequest(row);
+    if (request) rows.push(request);
+  }
+  return rows;
+}
+
+/**
+ * Rows for the given client keys at this location, whatever their status.
+ * Used on load to reconcile sends persisted by a previous page before any
+ * of them is replayed.
+ */
+export async function fetchRequestsByClientKeys(
+  locationId: string,
+  clientKeys: readonly string[],
+): Promise<ServerRequest[]> {
+  if (clientKeys.length === 0) return [];
+  const { data, error } = await getSupabase()
+    .from("kitchen_requests")
+    .select("*")
+    .eq("location_id", locationId)
+    .in("client_key", [...clientKeys]);
   if (error) throw toKitchenApiError(error);
   const rows: ServerRequest[] = [];
   for (const row of data ?? []) {
