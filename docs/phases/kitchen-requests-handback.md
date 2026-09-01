@@ -36,11 +36,11 @@ Decision trail: `kitchen-requests-trail.tsv`. Demo shots:
 | --- | --- | --- |
 | Web typecheck | `cd web && npm run typecheck` | green |
 | Web lint | `npm run lint` | green (0 problems) |
-| Web unit | `npm run test` | 24 files, 269 tests, green |
+| Web unit | `npm run test` | 24 files, 270 tests, green |
 | Web build | `npm run build` | green, `/kitchen` and `/dashboard/kitchen` prerendered |
-| Migration + SQL fixture | local full stack (`scripts/local-db/full-stack.sh up`) then `scripts/local-db/kitchen_requests_fixture.sql` | `PASS: kitchen requests fixture assertions all held` |
-| E2E (10 scenarios) | `web/e2e/kitchen.spec.ts` against the local stack, see `web/e2e/README.md` "Kitchen suite" | 10/10, three consecutive runs |
-| Cross-vendor review | Codex Sol reviewed the frontend twice; Claude (Opus) adversarially reviewed the migration | findings and fixes in the trail |
+| Migration + SQL fixture | local full stack (`scripts/local-db/full-stack.sh up`) then `scripts/local-db/kitchen_requests_fixture.sql` | 29 `ok:` assertions, `PASS: kitchen requests fixture assertions all held`; migration applied twice (idempotent) |
+| E2E (10 scenarios) | `web/e2e/kitchen.spec.ts` against the local stack, see `web/e2e/README.md` "Kitchen suite" | 10/10, three consecutive runs on commit 0b328a8 |
+| Cross-vendor review | Codex Sol reviewed the frontend twice (9 + 8 findings); Claude (Opus) adversarially reviewed the migration (1 blocker, 4 majors, minors) | every finding fixed and re-verified; details in the trail |
 
 Not verified: nothing was deployed; the mobile app is untouched (it ignores
 the new module keys, `src/services/userModules.ts`).
@@ -82,6 +82,11 @@ migration. `full-stack.sh` skips that file and applied everything else.
   the strict CSP in `next.config.ts`. Not present in production builds.
 - `kitchen_user_location_ok` needs a `public.users` row for the account;
   all 13 production profiles have one (invite acceptance creates it).
+- Deactivating a location hides its open requests from everyone (the works-at
+  check includes `active`); clear them out first. Documented in the contract.
+- Next dev (Turbopack) served a stale bundle after a large multi-file rewrite
+  once; a whole E2E run and a probe chased a phantom. Restart `next dev` after
+  big refactors before trusting E2E results (noted in `web/e2e/README.md`).
 
 ## What to test on the floor
 

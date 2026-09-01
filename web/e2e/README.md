@@ -72,3 +72,7 @@ above nothing touches production. `PORT=3100` keeps the suite's dev server
 apart from any `npm run dev` on 3000 that points at the live project.
 Without `E2E_KITCHEN=1` the suite skips itself, so the default `npm run
 test:e2e` run is unchanged.
+
+Gotcha: after a large multi-file rewrite, restart the dev server before
+running the suite. Turbopack once kept serving the previous bundle and the
+failures pointed at code that no longer existed.
