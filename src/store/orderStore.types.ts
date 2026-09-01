@@ -272,6 +272,8 @@ export interface OrderState {
   lastOrderedCacheBySupplier: LastOrderedCacheBySupplier;
   isFulfillmentLoading: boolean;
   isPastOrderSyncing: boolean;
+  /** Changes whenever a supplier fulfillment completes locally. */
+  fulfillmentDataRevision: number;
 
   // Cart actions (location-aware)
   addToCart: (

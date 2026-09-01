@@ -46,6 +46,9 @@ export default function InviteScreen() {
   const ds = useScaledStyles();
   const [name, setName] = useState('');
   const [group, setGroup] = useState<InviteLocationGroup>('sushi');
+  const [defaultToggles, setDefaultToggles] = useState<EmployeeInviteDefaults>(
+    getBuiltInEmployeeDefaults(),
+  );
   const [toggles, setToggles] = useState<EmployeeInviteDefaults>(getBuiltInEmployeeDefaults());
   const [expiresInHours, setExpiresInHours] = useState(168);
   const [busy, setBusy] = useState(false);
@@ -57,7 +60,10 @@ export default function InviteScreen() {
     let cancelled = false;
     getEmployeeInviteDefaults()
       .then((defaults) => {
-        if (!cancelled) setToggles(defaults);
+        if (!cancelled) {
+          setDefaultToggles(defaults);
+          setToggles(defaults);
+        }
       })
       .catch(() => {
         // Built-ins already in place.
@@ -76,25 +82,32 @@ export default function InviteScreen() {
 
   const handleCreate = async () => {
     if (!canSubmit) return;
+    const invitedName = name.trim();
+    const selectedGroup = group;
+    const selectedExpiresInHours = expiresInHours;
     setBusy(true);
     setError(null);
     try {
       const invite = await createInvite({
-        invitedName: name.trim(),
+        invitedName,
         role: 'employee',
-        expiresInHours,
+        expiresInHours: selectedExpiresInHours,
         modulePreset: { ...toggles },
-        locationGroup: group,
+        locationGroup: selectedGroup,
       });
+      setName('');
+      setGroup('sushi');
+      setToggles({ ...defaultToggles });
+      setExpiresInHours(168);
       const expiryLabel =
-        EXPIRY_OPTIONS.find((option) => option.hours === expiresInHours)?.label ?? '7 days';
+        EXPIRY_OPTIONS.find((option) => option.hours === selectedExpiresInHours)?.label ?? '7 days';
       router.replace({
         pathname: '/(manager)/manager-settings/team-invite-link',
         params: {
-          name: name.trim(),
+          name: invitedName,
           joinUrl: invite.joinUrl,
           expiryLabel,
-          group,
+          group: selectedGroup,
         },
       } as Parameters<typeof router.replace>[0]);
     } catch (createError) {

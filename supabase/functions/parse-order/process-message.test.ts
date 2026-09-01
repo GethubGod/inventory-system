@@ -184,3 +184,16 @@ Deno.test('a successful LLM intent route keeps the existing route-only response'
   assertEqual(result.metrics?.parse_mode_used, 'llm_only_fallback', 'successful route metrics mode');
   assert(result.assistant_message?.includes('recent order') === true, 'successful route should keep the history response');
 });
+
+Deno.test('a malformed LLM router reply falls back to the deterministic parser', async () => {
+  let callCount = 0;
+  const malformedLlm: LlmCallback = async () => {
+    callCount += 1;
+    return 'not-json';
+  };
+  const result = await processQuickOrderMessage(createInput(ORDER_TEXT, ALIAS_CATALOG, malformedLlm, EMPLOYEE_ALIASES));
+
+  assert(callCount >= 1, 'LLM intent router should have been called');
+  assertOrderItems(result);
+  assertEqual(result.metrics?.parse_mode_used, 'deterministic_only', 'malformed route parse mode');
+});

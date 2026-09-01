@@ -21,6 +21,7 @@ export default function ManagerLayout() {
   const session = useAuthStore((s) => s.session);
   const locations = useAuthStore((s) => s.locations);
   const fetchPastOrders = useOrderStore((s) => s.fetchPastOrders);
+  const fulfillmentDataRevision = useOrderStore((s) => s.fulfillmentDataRevision);
   const insets = useSafeAreaInsets();
   const [pendingFulfillmentCount, setPendingFulfillmentCount] = useState(0);
   const badgeRefreshGenerationRef = useRef(0);
@@ -123,7 +124,7 @@ export default function ManagerLayout() {
 
   useEffect(() => {
     void refreshPendingFulfillmentCount();
-  }, [refreshPendingFulfillmentCount]);
+  }, [fulfillmentDataRevision, refreshPendingFulfillmentCount]);
 
   useEffect(() => {
     if (!session || resolvedRole !== "manager") {

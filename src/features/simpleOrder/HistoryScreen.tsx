@@ -177,8 +177,8 @@ export function HistoryScreen() {
       <View style={{ paddingTop: ds.spacing(24) }}>
         <EmptyStateCard
           icon="receipt-outline"
-          title="No orders yet"
-          message="Orders you send show up here, ready to reorder in one tap."
+          title="No sent orders yet"
+          message="Orders you send directly to suppliers appear here. Orders that go to your manager are handled from the manager's side."
         />
       </View>
     );
