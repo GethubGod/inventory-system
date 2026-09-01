@@ -47,3 +47,28 @@ don't lock each other out at the device level, but the location-level
 failure budget accumulates until cleanup — if the ledger is polluted enough
 that even the first attempt is refused, the spec skips and tells you to
 clean up first.
+
+## Kitchen suite (`kitchen.spec.ts`)
+
+Runs the kitchen request flows (chef phone + kitchen display in two browser
+contexts, realtime, undo, cancel, offline retry idempotency, name + PIN
+sign-in, module gating, location scoping) against a **local** Supabase
+stack, never the live project: the fixture creates accounts through the
+admin API and refuses non-localhost URLs.
+
+```
+scripts/local-db/full-stack.sh up          # once; boots 54421-54424 with the prod schema
+cd web
+E2E_KITCHEN=1 E2E_ALLOW_LIVE_WRITES=1 \
+NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54421 \
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<ANON_KEY from supabase status> \
+E2E_SERVICE_ROLE_KEY=<SERVICE_ROLE_KEY from supabase status> \
+PORT=3100 E2E_BASE_URL=http://localhost:3100 \
+npx playwright test e2e/kitchen.spec.ts
+```
+
+`E2E_ALLOW_LIVE_WRITES=1` is only the config's opt-in gate; with the URLs
+above nothing touches production. `PORT=3100` keeps the suite's dev server
+apart from any `npm run dev` on 3000 that points at the live project.
+Without `E2E_KITCHEN=1` the suite skips itself, so the default `npm run
+test:e2e` run is unchanged.
