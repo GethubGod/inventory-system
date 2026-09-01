@@ -7,7 +7,11 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
-import { describeKitchenError, fetchKitchenAccess, type KitchenAccess } from "@/lib/kitchen/api";
+import {
+  describeKitchenError,
+  fetchKitchenAccess,
+  type KitchenAccess,
+} from "@/lib/kitchen/api";
 import { availableViews } from "@/lib/kitchen/access";
 import { SmelterLogo } from "@/components/Logo";
 import KitchenLoginCard from "@/components/kitchen/KitchenLoginCard";
@@ -40,10 +44,12 @@ export default function KitchenGate() {
       setSession(data.session);
       setSessionLoaded(true);
     });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, next) => {
-      setSession(next);
-      setSessionLoaded(true);
-    });
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, next) => {
+        setSession(next);
+        setSessionLoaded(true);
+      },
+    );
     return () => listener.subscription.unsubscribe();
   }, []);
 
@@ -54,12 +60,18 @@ export default function KitchenGate() {
     try {
       const result = await fetchKitchenAccess(target);
       setAccess((prev) =>
-        prev?.userId === target ? { phase: "ready", userId: target, access: result } : prev,
+        prev?.userId === target
+          ? { phase: "ready", userId: target, access: result }
+          : prev,
       );
     } catch (error: unknown) {
       setAccess((prev) =>
         prev?.userId === target
-          ? { phase: "error", userId: target, message: describeKitchenError(error) }
+          ? {
+              phase: "error",
+              userId: target,
+              message: describeKitchenError(error),
+            }
           : prev,
       );
     }
@@ -85,7 +97,9 @@ export default function KitchenGate() {
   }
   // Only trust access loaded for the current session's user.
   if (!access || access.userId !== userId || access.phase === "loading") {
-    return <p className="text-ink3 text-sm text-center mt-16">Checking access…</p>;
+    return (
+      <p className="text-ink3 text-sm text-center mt-16">Checking access…</p>
+    );
   }
   if (access.phase === "error") {
     return (
@@ -116,9 +130,9 @@ export default function KitchenGate() {
       <Card>
         <p className="text-ink font-semibold">No kitchen access</p>
         <p className="text-ink2 text-sm">
-          Signed in as {access.access.identity.displayName}. This account has neither Kitchen
-          requests nor Kitchen display turned on. A manager can enable them from Dashboard →
-          Team → Modules.
+          Signed in as {access.access.identity.displayName}. This account has
+          neither Kitchen requests nor Kitchen display turned on. A manager can
+          enable them from Dashboard → Team → Modules.
         </p>
         <button
           type="button"

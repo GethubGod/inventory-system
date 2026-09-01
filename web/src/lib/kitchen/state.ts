@@ -3,9 +3,16 @@
 // that the server has not acknowledged live alongside them keyed by the
 // idempotency client key. Everything here is deterministic and unit tested;
 // the hook in components/kitchen wires it to Supabase.
+//
+// Two ordering rules keep the picture honest when messages race:
+// - Per row, a newer server `updatedAt` always wins (a late RPC reply can
+//   never overwrite a realtime event that came after it).
+// - Per fetch, a snapshot only outranks rows applied before it was issued
+//   (`seq` stamps), and an older snapshot never replaces a newer one.
 
 import type {
   LogRequest,
+  PendingError,
   PendingRequest,
   ServerRequest,
 } from "@/lib/kitchen/types";
@@ -24,6 +31,8 @@ export interface RequestsState {
   seq: number;
   /** id -> seq at which this device last applied an individual update. */
   seenSeq: Record<string, number>;
+  /** `sinceSeq` of the most recent snapshot applied; older snapshots are ignored. */
+  fetchMark: number;
 }
 
 export const EMPTY_STATE: RequestsState = {
@@ -32,24 +41,27 @@ export const EMPTY_STATE: RequestsState = {
   undoUntil: {},
   seq: 0,
   seenSeq: {},
+  fetchMark: -1,
 };
 
 /**
  * Merge a fetch of open rows. `sinceSeq` is `state.seq` from when the fetch
  * was issued; rows updated locally after that keep their local version, and
  * rows created after that survive even when the (stale) fetch omits them.
+ * A response from a fetch issued before an already-applied one is dropped.
  */
 export function applyFetch(
   state: RequestsState,
   rows: ServerRequest[],
   sinceSeq: number = state.seq,
 ): RequestsState {
+  if (sinceSeq < state.fetchMark) return state;
   const byId: Record<string, ServerRequest> = {};
   const seenSeq: Record<string, number> = {};
   for (const row of rows) {
     const local = state.byId[row.id];
     const localSeq = state.seenSeq[row.id] ?? 0;
-    if (local && localSeq > sinceSeq) {
+    if (local && (localSeq > sinceSeq || local.updatedAt > row.updatedAt)) {
       byId[row.id] = local;
       seenSeq[row.id] = localSeq;
     } else {
@@ -70,14 +82,20 @@ export function applyFetch(
     undoUntil: pruneUndo(state.undoUntil, byId),
     seq: state.seq,
     seenSeq,
+    fetchMark: sinceSeq,
   };
 }
 
-/** Upsert one server row (RPC result, realtime INSERT/UPDATE, optimistic write). */
+/**
+ * Upsert one server row (RPC result, realtime INSERT/UPDATE, optimistic
+ * write). A row older than the one held is ignored.
+ */
 export function applyServerRow(
   state: RequestsState,
   row: ServerRequest,
 ): RequestsState {
+  const existing = state.byId[row.id];
+  if (existing && existing.updatedAt > row.updatedAt) return state;
   const byId = { ...state.byId, [row.id]: row };
   const seq = state.seq + 1;
   return {
@@ -86,6 +104,7 @@ export function applyServerRow(
     undoUntil: pruneUndo(state.undoUntil, byId),
     seq,
     seenSeq: { ...state.seenSeq, [row.id]: seq },
+    fetchMark: state.fetchMark,
   };
 }
 
@@ -104,6 +123,7 @@ export function removeServerRow(
     undoUntil: pruneUndo(state.undoUntil, byId),
     seq: state.seq + 1,
     seenSeq,
+    fetchMark: state.fetchMark,
   };
 }
 
@@ -115,6 +135,26 @@ export function startPending(
     ...state,
     pending: { ...state.pending, [pending.clientKey]: pending },
   };
+}
+
+/** Restore sends persisted by a previous page load; each will be replayed. */
+export function hydratePending(
+  state: RequestsState,
+  pendings: PendingRequest[],
+  now: number,
+): RequestsState {
+  if (pendings.length === 0) return state;
+  const pending = { ...state.pending };
+  for (const item of pendings) {
+    if (item.clientKey in pending) continue;
+    pending[item.clientKey] = {
+      ...item,
+      status: "sending",
+      startedAt: now,
+      error: null,
+    };
+  }
+  return { ...state, pending };
 }
 
 /** A new attempt on an existing pending row (same client key). */
@@ -134,6 +174,7 @@ export function retryPending(
         status: "sending",
         startedAt: now,
         attempts: current.attempts + 1,
+        error: null,
       },
     },
   };
@@ -142,6 +183,7 @@ export function retryPending(
 export function failPending(
   state: RequestsState,
   clientKey: string,
+  error: PendingError,
 ): RequestsState {
   const current = state.pending[clientKey];
   if (!current || current.status === "failed") return state;
@@ -149,7 +191,7 @@ export function failPending(
     ...state,
     pending: {
       ...state.pending,
-      [clientKey]: { ...current, status: "failed" },
+      [clientKey]: { ...current, status: "failed", error },
     },
   };
 }

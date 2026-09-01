@@ -5,7 +5,11 @@
 
 import { useState, type FormEvent } from "react";
 import { SmelterLogo } from "@/components/Logo";
-import { SignInError, signInWithEmail, signInWithName } from "@/lib/kitchen/auth";
+import {
+  SignInError,
+  signInWithEmail,
+  signInWithName,
+} from "@/lib/kitchen/auth";
 
 type Mode = "name" | "email";
 
@@ -39,16 +43,23 @@ export default function KitchenLoginCard() {
     }
   }
 
-  const inputClasses = "bg-well rounded-well px-4 py-3 text-ink outline-none w-full";
+  const inputClasses =
+    "bg-well rounded-well px-4 py-3 text-ink outline-none w-full";
 
   return (
     <div className="w-full max-w-md mx-auto mt-16 px-5">
       <div className="bg-card rounded-card p-6">
         <SmelterLogo height={26} className="mb-2" />
         <h1 className="text-xl font-bold text-ink mb-1">Kitchen</h1>
-        <p className="text-ink2 text-sm mb-5">Sign in to send or see kitchen requests.</p>
+        <p className="text-ink2 text-sm mb-5">
+          Sign in to send or see kitchen requests.
+        </p>
 
-        <div className="flex bg-well rounded-full p-1 mb-4" role="tablist" aria-label="Sign-in method">
+        <div
+          className="flex bg-well rounded-full p-1 mb-4"
+          role="tablist"
+          aria-label="Sign-in method"
+        >
           {(["name", "email"] as const).map((option) => (
             <button
               key={option}

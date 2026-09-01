@@ -23,55 +23,65 @@ export interface KitchenItemInput {
 export const MAX_NAME_LENGTH = 60;
 export const MAX_UNIT_LENGTH = 24;
 
+const COLUMNS = "id, name, unit, location_id, sort_order, active";
+
 /** Trim and validate a name/unit pair; returns a message when invalid. */
-export function validateKitchenItemInput(input: KitchenItemInput): string | null {
+export function validateKitchenItemInput(
+  input: KitchenItemInput,
+): string | null {
   const name = input.name.trim();
   const unit = input.unit.trim();
   if (!name) return "Give the item a name.";
-  if (name.length > MAX_NAME_LENGTH) return `Names are at most ${MAX_NAME_LENGTH} characters.`;
+  if (name.length > MAX_NAME_LENGTH)
+    return `Names are at most ${MAX_NAME_LENGTH} characters.`;
   if (!unit) return "Give the item a unit (pieces, tubs, trays…).";
-  if (unit.length > MAX_UNIT_LENGTH) return `Units are at most ${MAX_UNIT_LENGTH} characters.`;
+  if (unit.length > MAX_UNIT_LENGTH)
+    return `Units are at most ${MAX_UNIT_LENGTH} characters.`;
   return null;
 }
 
 /** Next sort position after the current list (1-based, gaps allowed). */
-export function nextSortOrder(items: readonly { sort_order: number }[]): number {
+export function nextSortOrder(
+  items: readonly { sort_order: number }[],
+): number {
   return items.reduce((max, item) => Math.max(max, item.sort_order), 0) + 1;
 }
 
+/** Display order: sort position, then name for ties. */
+export function sortItems(
+  items: readonly KitchenItemRecord[],
+): KitchenItemRecord[] {
+  return [...items].sort(
+    (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name),
+  );
+}
+
 /**
- * Swap an item with its neighbour and return the two rows whose sort_order
- * changes. Ties get distinct positions so the move is visible.
+ * Move an item one step and return the whole list renumbered 1..n in the
+ * new order (ties get distinct positions), or null when nothing moves.
+ * Saved as one upsert so the order can never be half-applied.
  */
-export function moveItem(
+export function reorderItems(
   items: readonly KitchenItemRecord[],
   id: string,
   direction: "up" | "down",
-): Array<Pick<KitchenItemRecord, "id" | "sort_order">> {
-  const ordered = [...items].sort(
-    (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name),
-  );
+): KitchenItemRecord[] | null {
+  const ordered = sortItems(items);
   const index = ordered.findIndex((item) => item.id === id);
-  if (index < 0) return [];
+  if (index < 0) return null;
   const target = direction === "up" ? index - 1 : index + 1;
-  if (target < 0 || target >= ordered.length) return [];
-  const a = ordered[index];
-  const b = ordered[target];
-  if (a.sort_order === b.sort_order) {
-    return direction === "up"
-      ? [{ id: a.id, sort_order: b.sort_order }, { id: b.id, sort_order: b.sort_order + 1 }]
-      : [{ id: a.id, sort_order: b.sort_order + 1 }, { id: b.id, sort_order: b.sort_order }];
-  }
-  return [
-    { id: a.id, sort_order: b.sort_order },
-    { id: b.id, sort_order: a.sort_order },
-  ];
+  if (target < 0 || target >= ordered.length) return null;
+  [ordered[index], ordered[target]] = [ordered[target], ordered[index]];
+  return ordered.map((item, position) => ({
+    ...item,
+    sort_order: position + 1,
+  }));
 }
 
 export async function fetchKitchenItems(): Promise<KitchenItemRecord[]> {
   const { data, error } = await getSupabase()
     .from("kitchen_items")
-    .select("id, name, unit, location_id, sort_order, active")
+    .select(COLUMNS)
     .order("sort_order")
     .order("name");
   if (error) throw new Error(error.message);
@@ -90,17 +100,49 @@ export async function createKitchenItem(
       location_id: input.location_id,
       sort_order: sortOrder,
     })
-    .select("id, name, unit, location_id, sort_order, active")
+    .select(COLUMNS)
     .single();
   if (error) throw new Error(friendlyItemError(error.message));
   return data;
 }
 
+/** Patch one item and return the row as stored. */
 export async function updateKitchenItem(
   id: string,
-  patch: Partial<Pick<KitchenItemRecord, "name" | "unit" | "location_id" | "sort_order" | "active">>,
+  patch: Partial<
+    Pick<
+      KitchenItemRecord,
+      "name" | "unit" | "location_id" | "sort_order" | "active"
+    >
+  >,
+): Promise<KitchenItemRecord> {
+  const { data, error } = await getSupabase()
+    .from("kitchen_items")
+    .update(patch)
+    .eq("id", id)
+    .select(COLUMNS)
+    .single();
+  if (error) throw new Error(friendlyItemError(error.message));
+  return data;
+}
+
+/** Write a full ordering in one statement (all rows or none). */
+export async function saveKitchenItemOrder(
+  items: readonly KitchenItemRecord[],
 ): Promise<void> {
-  const { error } = await getSupabase().from("kitchen_items").update(patch).eq("id", id);
+  const { error } = await getSupabase()
+    .from("kitchen_items")
+    .upsert(
+      items.map((item) => ({
+        id: item.id,
+        name: item.name,
+        unit: item.unit,
+        location_id: item.location_id,
+        sort_order: item.sort_order,
+        active: item.active,
+      })),
+      { onConflict: "id" },
+    );
   if (error) throw new Error(friendlyItemError(error.message));
 }
 

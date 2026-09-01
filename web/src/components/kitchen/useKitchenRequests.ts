@@ -1,9 +1,10 @@
 "use client";
 
 // Live request list for one location: initial fetch, realtime feed, polling
-// while the feed is down, refetch on reconnect/foreground, and the optimistic
-// actions both screens use. State transitions are the pure functions in
-// lib/kitchen/state; this hook only wires them to Supabase and the clock.
+// while the feed is down, refetch on reconnect/foreground, replay of sends
+// persisted by a previous page load, and the optimistic actions both screens
+// use. State transitions are the pure functions in lib/kitchen/state; this
+// hook only wires them to Supabase, storage and the clock.
 
 import {
   useCallback,
@@ -14,6 +15,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
+  describeKitchenError,
   fetchKitchenItems,
   fetchOpenRequests,
   sendKitchenRequest,
@@ -31,12 +33,14 @@ import {
   clearUndoWindow,
   dismissPending,
   failPending,
+  hydratePending,
   removeServerRow,
   retryPending,
   setUndoWindow,
   startPending,
   type RequestsState,
 } from "@/lib/kitchen/state";
+import { loadPendingSends, savePendingSends } from "@/lib/kitchen/storage";
 import type {
   KitchenItem,
   PendingRequest,
@@ -91,47 +95,101 @@ function subscribeOnline(onChange: () => void): () => void {
 }
 
 /**
- * Mount one instance per location (key the component by location id): the
- * list, items and channel all belong to that location.
+ * Mount one instance per user + location (key the component by both): the
+ * list, items, channel and persisted sends all belong to that pair.
  */
-export function useKitchenRequests(locationId: string): KitchenRequestsApi {
-  const [state, setState] = useState<RequestsState>(EMPTY_STATE);
+export function useKitchenRequests(
+  userId: string,
+  locationId: string,
+): KitchenRequestsApi {
+  const [state, setState] = useState<RequestsState>(() =>
+    hydratePending(
+      EMPTY_STATE,
+      loadPendingSends(userId, locationId),
+      Date.now(),
+    ),
+  );
   const [items, setItems] = useState<KitchenItem[] | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [requestsError, setRequestsError] = useState<string | null>(null);
+  const [itemsError, setItemsError] = useState<string | null>(null);
   const [channel, setChannel] = useState<ChannelStatus>("connecting");
   const online = useSyncExternalStore(
     subscribeOnline,
     () => window.navigator.onLine,
     () => true,
   );
-  const inFlight = useRef<Map<string, PendingRequest>>(new Map());
-  // Latest state for event handlers (retry) without re-creating callbacks.
+  const inFlight = useRef<Set<string>>(new Set());
+  const actionChains = useRef<Map<string, Promise<unknown>>>(new Map());
+  const replayed = useRef(false);
+  // Latest state for event handlers (retry, reload) without re-creating callbacks.
   const stateRef = useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
+  // Unacknowledged sends outlive the page (replayed on the next load).
+  useEffect(() => {
+    savePendingSends(userId, locationId, Object.values(state.pending));
+  }, [state.pending, userId, locationId]);
+
   const reload = useCallback((): Promise<void> => {
     // Anything applied after this point outranks the response (see applyFetch).
     const since = stateRef.current.seq;
-    return Promise.all([
-      fetchKitchenItems(locationId),
-      fetchOpenRequests(locationId),
-    ]).then(
-      ([nextItems, rows]) => {
-        setItems(nextItems);
+    const requests = fetchOpenRequests(locationId).then(
+      (rows) => {
         setState((prev) => applyFetch(prev, rows, since));
-        setLoadError(null);
+        setRequestsError(null);
       },
       (error: unknown) => {
-        setLoadError(toKitchenApiError(error).message);
+        setRequestsError(toKitchenApiError(error).message);
       },
     );
+    const catalogue = fetchKitchenItems(locationId).then(
+      (nextItems) => {
+        setItems(nextItems);
+        setItemsError(null);
+      },
+      (error: unknown) => {
+        setItemsError(toKitchenApiError(error).message);
+      },
+    );
+    return Promise.all([requests, catalogue]).then(() => undefined);
   }, [locationId]);
 
-  // Initial fetch + realtime feed.
+  const runSend = useCallback((pending: PendingRequest) => {
+    if (inFlight.current.has(pending.clientKey)) return;
+    inFlight.current.add(pending.clientKey);
+    sendKitchenRequest({
+      clientKey: pending.clientKey,
+      itemId: pending.itemId,
+      quantity: pending.quantity,
+      locationId: pending.locationId,
+    })
+      .then((row) => {
+        inFlight.current.delete(pending.clientKey);
+        setState((prev) => applyServerRow(prev, row));
+      })
+      .catch((error: unknown) => {
+        inFlight.current.delete(pending.clientKey);
+        const apiError = toKitchenApiError(error);
+        setState((prev) =>
+          failPending(prev, pending.clientKey, {
+            code: apiError.code,
+            message: describeKitchenError(apiError),
+          }),
+        );
+      });
+  }, []);
+
+  // Initial fetch, realtime feed, and replay of persisted sends.
   useEffect(() => {
     void reload();
+    if (!replayed.current) {
+      replayed.current = true;
+      for (const pending of Object.values(stateRef.current.pending)) {
+        if (pending.status === "sending") runSend(pending);
+      }
+    }
     const unsubscribe = subscribeToKitchenRequests(locationId, {
       onUpsert: (row) => setState((prev) => applyServerRow(prev, row)),
       onDelete: (id) => setState((prev) => removeServerRow(prev, id)),
@@ -142,7 +200,7 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
       },
     });
     return unsubscribe;
-  }, [locationId, reload]);
+  }, [locationId, reload, runSend]);
 
   // Back online or back to the foreground: refetch, never trust a stale list.
   useEffect(() => {
@@ -172,24 +230,6 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
     return () => clearInterval(timer);
   }, [channel, reload]);
 
-  const runSend = useCallback((pending: PendingRequest) => {
-    inFlight.current.set(pending.clientKey, pending);
-    sendKitchenRequest({
-      clientKey: pending.clientKey,
-      itemId: pending.itemId,
-      quantity: pending.quantity,
-      locationId: pending.locationId,
-    })
-      .then((row) => {
-        inFlight.current.delete(pending.clientKey);
-        setState((prev) => applyServerRow(prev, row));
-      })
-      .catch(() => {
-        inFlight.current.delete(pending.clientKey);
-        setState((prev) => failPending(prev, pending.clientKey));
-      });
-  }, []);
-
   const send = useCallback(
     (item: KitchenItem, quantity: number): string => {
       const now = Date.now();
@@ -205,6 +245,7 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
         startedAt: now,
         createdAt: now,
         attempts: 1,
+        error: null,
       };
       setState((prev) => startPending(prev, pending));
       runSend(pending);
@@ -229,6 +270,7 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
         status: "sending",
         startedAt: now,
         attempts: current.attempts + 1,
+        error: null,
       };
       setState((prev) => retryPending(prev, clientKey, now));
       runSend(attempt);
@@ -241,60 +283,70 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
   }, []);
 
   const act = useCallback(
-    async (
+    (
       request: ServerRequest,
       action: UpdateAction,
     ): Promise<KitchenApiError | null> => {
-      const now = Date.now();
-      // Optimistic local transition; the server row replaces it on success.
-      setState((prev) => {
-        const current = prev.byId[request.id] ?? request;
+      // One action at a time per request: a tap and its undo cannot overtake
+      // each other on the wire.
+      const previous =
+        actionChains.current.get(request.id) ?? Promise.resolve();
+      const run = previous.then(async () => {
+        const now = Date.now();
+        const current = stateRef.current.byId[request.id] ?? request;
+        // Optimistic local transition. It keeps the server updatedAt it was
+        // built from, so the RPC reply (newer) replaces it and any older
+        // stray message is ignored.
+        let optimistic: ServerRequest;
         switch (action) {
-          case "ready": {
-            const next = applyServerRow(prev, {
-              ...current,
-              status: "ready",
-              readyAt: now,
-            });
-            return setUndoWindow(next, request.id, now + UNDO_WINDOW_MS);
-          }
+          case "ready":
+            optimistic = { ...current, status: "ready", readyAt: now };
+            break;
           case "undo_ready":
-            return clearUndoWindow(
-              applyServerRow(prev, {
-                ...current,
-                status: "queued",
-                readyAt: null,
-                readyByName: null,
-              }),
-              request.id,
-            );
+            optimistic = {
+              ...current,
+              status: "queued",
+              readyAt: null,
+              readyByName: null,
+            };
+            break;
           case "cancel":
-            return applyServerRow(prev, {
-              ...current,
-              status: "cancelled",
-              closedAt: now,
-            });
+            optimistic = { ...current, status: "cancelled", closedAt: now };
+            break;
           case "clear":
-            return applyServerRow(prev, {
-              ...current,
-              status: "cleared",
-              closedAt: now,
-            });
+            optimistic = { ...current, status: "cleared", closedAt: now };
+            break;
+        }
+        setState((prev) => {
+          const next = applyServerRow(prev, optimistic);
+          return action === "ready"
+            ? setUndoWindow(next, request.id, now + UNDO_WINDOW_MS)
+            : action === "undo_ready"
+              ? clearUndoWindow(next, request.id)
+              : next;
+        });
+        try {
+          const row = await updateKitchenRequest(request.id, action);
+          setState((prev) => applyServerRow(prev, row));
+          return null;
+        } catch (error: unknown) {
+          const apiError = toKitchenApiError(error);
+          // Roll back only if the optimistic row is still what we show;
+          // a newer server row that arrived meanwhile is the truth.
+          setState((prev) =>
+            prev.byId[request.id] === optimistic
+              ? clearUndoWindow(applyServerRow(prev, current), request.id)
+              : prev,
+          );
+          void reload();
+          return apiError;
         }
       });
-      try {
-        const row = await updateKitchenRequest(request.id, action);
-        setState((prev) => applyServerRow(prev, row));
-        return null;
-      } catch (error: unknown) {
-        const apiError = toKitchenApiError(error);
-        // Roll back to what we knew, then let the next fetch settle it.
-        setState((prev) =>
-          clearUndoWindow(applyServerRow(prev, request), request.id),
-        );
-        void reload();
-        return apiError;
-      }
+      actionChains.current.set(
+        request.id,
+        run.catch(() => undefined),
+      );
+      return run;
     },
     [reload],
   );
@@ -306,6 +358,8 @@ export function useKitchenRequests(locationId: string): KitchenRequestsApi {
       : channel === "connecting"
         ? "connecting"
         : "down";
+
+  const loadError = requestsError ?? itemsError;
 
   return useMemo(
     () => ({

@@ -38,11 +38,15 @@ function LocationPicker({
     <section>
       <div className="mb-3.5">
         <h1 className="text-[22px] font-bold text-ink">Which kitchen?</h1>
-        <p className="text-[13px] text-ink2 mt-0.5">This device remembers your choice.</p>
+        <p className="text-[13px] text-ink2 mt-0.5">
+          This device remembers your choice.
+        </p>
       </div>
       {active.length === 0 ? (
         <div className="bg-card rounded-card p-5">
-          <p className="text-ink2 text-sm">No active locations. Ask a manager.</p>
+          <p className="text-ink2 text-sm">
+            No active locations. Ask a manager.
+          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-2.5">
@@ -75,7 +79,7 @@ function LiveScreens({
   views: KitchenView[];
   onChangeView: (view: KitchenView) => void;
 }) {
-  const requests = useKitchenRequests(location.id);
+  const requests = useKitchenRequests(access.identity.userId, location.id);
   const queued = openQueuedCount(requests.state);
   return (
     <>
@@ -138,9 +142,16 @@ export default function KitchenApp({
     () => resolveView(access.modules, loadRememberedView()) ?? views[0],
   );
   const [location, setLocation] = useState<KitchenLocation | null>(() =>
-    resolveLocation(access.defaultLocationId, access.locations, loadRememberedLocation()),
+    resolveLocation(
+      access.defaultLocationId,
+      access.locations,
+      loadRememberedLocation(),
+    ),
   );
-  const switchable = canSwitchLocation(access.defaultLocationId, access.locations);
+  const switchable = canSwitchLocation(
+    access.defaultLocationId,
+    access.locations,
+  );
 
   useEffect(() => {
     saveRememberedView(view);
@@ -170,7 +181,9 @@ export default function KitchenApp({
       {/* Who is signed in (name and @tag stamp every request) and where. */}
       <div className="flex items-center justify-between gap-3 mb-3.5 text-xs text-ink3">
         <p className="truncate min-w-0">
-          <span className="font-semibold text-ink">{access.identity.displayName}</span>{" "}
+          <span className="font-semibold text-ink">
+            {access.identity.displayName}
+          </span>{" "}
           <span className="text-ink2">{formatTag(access.identity.tag)}</span>
           {location ? <span> · {location.name}</span> : null}
         </p>
@@ -187,7 +200,7 @@ export default function KitchenApp({
 
       {location ? (
         <LiveScreens
-          key={location.id}
+          key={`${access.identity.userId}:${location.id}`}
           access={access}
           location={location}
           view={view}

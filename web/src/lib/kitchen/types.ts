@@ -7,9 +7,39 @@ import type { Database } from "@/types/database";
 
 export type KitchenRequestRow =
   Database["public"]["Tables"]["kitchen_requests"]["Row"];
-export type KitchenItemRow = Database["public"]["Tables"]["kitchen_items"]["Row"];
+export type KitchenItemRow =
+  Database["public"]["Tables"]["kitchen_items"]["Row"];
 
-export const SERVER_STATUSES = ["queued", "ready", "cleared", "cancelled"] as const;
+export type KitchenErrorCode =
+  | "not_signed_in"
+  | "kitchen_requests_disabled"
+  | "location_not_allowed"
+  | "item_unavailable"
+  | "invalid_quantity"
+  | "client_key_conflict"
+  | "request_not_found"
+  | "invalid_transition"
+  | "not_allowed"
+  | "timeout"
+  | "network"
+  | "unknown";
+
+/** Failures worth retrying with the same client key. Everything else needs a different request. */
+export function isRetryableSendError(code: KitchenErrorCode): boolean {
+  return code === "timeout" || code === "network" || code === "unknown";
+}
+
+export interface PendingError {
+  code: KitchenErrorCode;
+  message: string;
+}
+
+export const SERVER_STATUSES = [
+  "queued",
+  "ready",
+  "cleared",
+  "cancelled",
+] as const;
 export type ServerStatus = (typeof SERVER_STATUSES)[number];
 
 export function isServerStatus(value: unknown): value is ServerStatus {
@@ -43,6 +73,8 @@ export interface ServerRequest {
   requestedByTag: string;
   status: ServerStatus;
   createdAt: number;
+  /** Server updated_at; newer always wins when rows race (RPC vs realtime). */
+  updatedAt: number;
   readyAt: number | null;
   readyByName: string | null;
   closedAt: number | null;
@@ -65,11 +97,18 @@ export interface PendingRequest {
   /** When the user first tapped Send (for log ordering). */
   createdAt: number;
   attempts: number;
+  /** Why the last attempt failed; null while sending or before any failure. */
+  error: PendingError | null;
 }
 
 export type LogRequest = ServerRequest | PendingRequest;
 
-export const UPDATE_ACTIONS = ["ready", "undo_ready", "cancel", "clear"] as const;
+export const UPDATE_ACTIONS = [
+  "ready",
+  "undo_ready",
+  "cancel",
+  "clear",
+] as const;
 export type UpdateAction = (typeof UPDATE_ACTIONS)[number];
 
 export type KitchenView = "chef" | "kitchen";
@@ -116,6 +155,7 @@ export function toServerRequest(row: KitchenRequestRow): ServerRequest | null {
     requestedByTag: row.requested_by_tag,
     status: row.status,
     createdAt,
+    updatedAt: toMillis(row.updated_at) ?? createdAt,
     readyAt: toMillis(row.ready_at),
     readyByName: row.ready_by_name,
     closedAt: toMillis(row.closed_at),

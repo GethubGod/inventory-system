@@ -66,6 +66,7 @@ describe("toServerRequest", () => {
       status: "ready",
       createdAt: Date.parse("2026-08-31T20:00:00.000Z"),
       readyAt: Date.parse("2026-08-31T20:01:00.000Z"),
+      updatedAt: Date.parse("2026-08-31T20:01:00.000Z"),
       closedAt: null,
       readyByName: "Kitchen",
     });

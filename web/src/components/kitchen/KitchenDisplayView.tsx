@@ -5,7 +5,12 @@
 
 import { useCallback, useState } from "react";
 import { describeKitchenError } from "@/lib/kitchen/api";
-import { formatAge, formatTag, isOldRequest, undoSecondsLeft } from "@/lib/kitchen/format";
+import {
+  formatAge,
+  formatTag,
+  isOldRequest,
+  undoSecondsLeft,
+} from "@/lib/kitchen/format";
 import { kitchenQueueRows } from "@/lib/kitchen/state";
 import type { ServerRequest } from "@/lib/kitchen/types";
 import Toast, { type ToastState } from "@/components/kitchen/Toast";
@@ -28,12 +33,17 @@ function connectionLabel(connectivity: Connectivity): string {
   }
 }
 
-export default function KitchenDisplayView({ requests }: { requests: KitchenRequestsApi }) {
+export default function KitchenDisplayView({
+  requests,
+}: {
+  requests: KitchenRequestsApi;
+}) {
   const now = useClock();
   const [toast, setToast] = useState<ToastState | null>(null);
   const rows = kitchenQueueRows(requests.state, now);
   const dismissToast = useCallback(() => setToast(null), []);
-  const bad = requests.connectivity === "offline" || requests.connectivity === "down";
+  const bad =
+    requests.connectivity === "offline" || requests.connectivity === "down";
 
   async function toggle(row: ServerRequest) {
     const action = row.status === "ready" ? "undo_ready" : "ready";
@@ -45,7 +55,9 @@ export default function KitchenDisplayView({ requests }: { requests: KitchenRequ
     <section>
       <div className="mb-3.5">
         <h1 className="text-[22px] font-bold text-ink">Queue</h1>
-        <p className="text-[13px] text-ink2 mt-0.5">Oldest first. Tap a row when it’s ready.</p>
+        <p className="text-[13px] text-ink2 mt-0.5">
+          Oldest first. Tap a row when it’s ready.
+        </p>
       </div>
 
       {requests.loadError && rows.length === 0 ? (
@@ -88,10 +100,14 @@ export default function KitchenDisplayView({ requests }: { requests: KitchenRequ
             }`}
           >
             <span>
-              <span className={`text-[23px] font-bold ${done ? "text-white" : "text-ink"}`}>
+              <span
+                className={`text-[23px] font-bold ${done ? "text-white" : "text-ink"}`}
+              >
                 {row.quantity} × {row.itemName}
               </span>
-              <span className={`block text-xs mt-[3px] ${done ? "text-white" : "text-ink3"}`}>
+              <span
+                className={`block text-xs mt-[3px] ${done ? "text-white" : "text-ink3"}`}
+              >
                 {done
                   ? "Done — chef sees READY"
                   : `${row.requestedByName} ${formatTag(row.requestedByTag)}`}
@@ -121,7 +137,11 @@ export default function KitchenDisplayView({ requests }: { requests: KitchenRequ
       >
         <span
           className={`inline-block w-2 h-2 rounded-full ${
-            bad ? "bg-alert" : requests.connectivity === "live" ? "bg-okgreen" : "bg-disabled"
+            bad
+              ? "bg-alert"
+              : requests.connectivity === "live"
+                ? "bg-okgreen"
+                : "bg-disabled"
           }`}
         />
         {connectionLabel(requests.connectivity)}

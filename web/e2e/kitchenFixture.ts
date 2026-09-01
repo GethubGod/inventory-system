@@ -75,7 +75,9 @@ export interface KitchenFixture {
 function need(name: string): string {
   const value = process.env[name];
   if (!value) {
-    throw new Error(`Missing ${name}. The kitchen suite needs a LOCAL Supabase stack.`);
+    throw new Error(
+      `Missing ${name}. The kitchen suite needs a LOCAL Supabase stack.`,
+    );
   }
   return value;
 }
@@ -110,7 +112,12 @@ export async function ensureKitchenFixture(): Promise<KitchenFixture> {
     [KitchenUserKey, KitchenFixtureUser]
   >) {
     const id = await ensureAuthUser(admin, spec);
-    const defaultLocation = spec.worksAt === "sushi" ? sushi : spec.worksAt === "pokipho" ? pokipho : null;
+    const defaultLocation =
+      spec.worksAt === "sushi"
+        ? sushi
+        : spec.worksAt === "pokipho"
+          ? pokipho
+          : null;
 
     const { error: profileError } = await admin.from("profiles").upsert(
       {
@@ -144,12 +151,14 @@ export async function ensureKitchenFixture(): Promise<KitchenFixture> {
       .eq("user_id", id)
       .in("module_key", ["kitchen_requests", "kitchen_display"]);
     if (clearError) throw new Error(`user_modules: ${clearError.message}`);
-    const moduleRows = Object.entries(spec.modules).map(([module_key, enabled]) => ({
-      user_id: id,
-      module_key,
-      enabled: enabled === true,
-      updated_by: null,
-    }));
+    const moduleRows = Object.entries(spec.modules).map(
+      ([module_key, enabled]) => ({
+        user_id: id,
+        module_key,
+        enabled: enabled === true,
+        updated_by: null,
+      }),
+    );
     if (moduleRows.length > 0) {
       const { error: moduleError } = await admin
         .from("user_modules")
@@ -162,7 +171,13 @@ export async function ensureKitchenFixture(): Promise<KitchenFixture> {
     users[key] = { ...spec, id };
   }
 
-  cached = { supabaseUrl, anonKey, users, locations: { sushi, pokipho }, admin };
+  cached = {
+    supabaseUrl,
+    anonKey,
+    users,
+    locations: { sushi, pokipho },
+    admin,
+  };
   return cached;
 }
 
@@ -181,14 +196,22 @@ async function ensureLocation(
   if (existing && existing.length > 0) return existing[0].id;
   const { data: created, error: insertError } = await admin
     .from("locations")
-    .insert({ name, short_code: shortCode, location_key: shortCode, active: true })
+    .insert({
+      name,
+      short_code: shortCode,
+      location_key: shortCode,
+      active: true,
+    })
     .select("id")
     .single();
   if (insertError) throw new Error(`locations: ${insertError.message}`);
   return created.id;
 }
 
-async function ensureAuthUser(admin: SupabaseClient, spec: KitchenFixtureUser): Promise<string> {
+async function ensureAuthUser(
+  admin: SupabaseClient,
+  spec: KitchenFixtureUser,
+): Promise<string> {
   const { data: created, error } = await admin.auth.admin.createUser({
     email: spec.email,
     password: spec.password,
@@ -197,14 +220,20 @@ async function ensureAuthUser(admin: SupabaseClient, spec: KitchenFixtureUser): 
   });
   if (!error && created.user) return created.user.id;
   // Already exists: find it and make sure the password matches.
-  const { data: list, error: listError } = await admin.auth.admin.listUsers({ perPage: 1000 });
+  const { data: list, error: listError } = await admin.auth.admin.listUsers({
+    perPage: 1000,
+  });
   if (listError) throw new Error(listError.message);
   const existing = list.users.find((user) => user.email === spec.email);
-  if (!existing) throw new Error(`Cannot create or find ${spec.email}: ${error?.message}`);
-  const { error: updateError } = await admin.auth.admin.updateUserById(existing.id, {
-    password: spec.password,
-    email_confirm: true,
-  });
+  if (!existing)
+    throw new Error(`Cannot create or find ${spec.email}: ${error?.message}`);
+  const { error: updateError } = await admin.auth.admin.updateUserById(
+    existing.id,
+    {
+      password: spec.password,
+      email_confirm: true,
+    },
+  );
   if (updateError) throw new Error(updateError.message);
   return existing.id;
 }
@@ -222,16 +251,25 @@ async function ensurePin(
     email: spec.email,
     password: spec.password,
   });
-  if (signInError) throw new Error(`sign in ${spec.email}: ${signInError.message}`);
-  const { error } = await client.rpc("set_my_login_credential", { p_kind: "pin", p_secret: pin });
+  if (signInError)
+    throw new Error(`sign in ${spec.email}: ${signInError.message}`);
+  const { error } = await client.rpc("set_my_login_credential", {
+    p_kind: "pin",
+    p_secret: pin,
+  });
   if (error) throw new Error(`set_my_login_credential: ${error.message}`);
   await client.auth.signOut();
 }
 
 /** Remove every request the fixture accounts created (between tests). */
-export async function clearKitchenRequests(fixture: KitchenFixture): Promise<void> {
+export async function clearKitchenRequests(
+  fixture: KitchenFixture,
+): Promise<void> {
   const ids = Object.values(fixture.users).map((user) => user.id);
-  const { error } = await fixture.admin.from("kitchen_requests").delete().in("requested_by", ids);
+  const { error } = await fixture.admin
+    .from("kitchen_requests")
+    .delete()
+    .in("requested_by", ids);
   if (error) throw new Error(error.message);
 }
 
@@ -245,4 +283,58 @@ export async function countRequestsBy(
     .eq("requested_by", userId);
   if (error) throw new Error(error.message);
   return count ?? 0;
+}
+
+/** Look up a seeded item id by name (service role). */
+export async function kitchenItemId(
+  fixture: KitchenFixture,
+  name: string,
+): Promise<string> {
+  const { data, error } = await fixture.admin
+    .from("kitchen_items")
+    .select("id")
+    .eq("name", name)
+    .limit(1);
+  if (error) throw new Error(error.message);
+  const id = data?.[0]?.id;
+  if (typeof id !== "string") throw new Error(`No kitchen item named ${name}`);
+  return id;
+}
+
+/**
+ * Replay a send as a signed-in user through the real RPC, outside the
+ * browser: proves the server treats the client key idempotently.
+ */
+export async function replaySendAs(
+  fixture: KitchenFixture,
+  who: KitchenUserKey,
+  input: {
+    clientKey: string;
+    itemId: string;
+    quantity: number;
+    locationId: string;
+  },
+): Promise<{ id: string; status: string }> {
+  const user = fixture.users[who];
+  const client = createClient(fixture.supabaseUrl, fixture.anonKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const { error: signInError } = await client.auth.signInWithPassword({
+    email: user.email,
+    password: user.password,
+  });
+  if (signInError) throw new Error(signInError.message);
+  const { data, error } = await client.rpc("kitchen_send_request", {
+    p_client_key: input.clientKey,
+    p_item_id: input.itemId,
+    p_quantity: input.quantity,
+    p_location_id: input.locationId,
+  });
+  await client.auth.signOut();
+  if (error) throw new Error(error.message);
+  const row = data as { id?: unknown; status?: unknown } | null;
+  if (!row || typeof row.id !== "string" || typeof row.status !== "string") {
+    throw new Error("Unexpected kitchen_send_request response");
+  }
+  return { id: row.id, status: row.status };
 }

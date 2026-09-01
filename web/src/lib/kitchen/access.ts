@@ -61,7 +61,10 @@ export function canSwitchLocation(
   defaultLocationId: string | null,
   locations: KitchenLocation[],
 ): boolean {
-  if (defaultLocationId && locations.some((l) => l.id === defaultLocationId && l.active)) {
+  if (
+    defaultLocationId &&
+    locations.some((l) => l.id === defaultLocationId && l.active)
+  ) {
     return false;
   }
   return locations.filter((location) => location.active).length > 1;

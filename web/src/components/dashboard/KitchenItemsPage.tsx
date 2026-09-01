@@ -2,16 +2,20 @@
 
 // Kitchen items editor: what chefs can request, with the unit and which
 // location sees it. Text fields save on blur, scope saves immediately, rows
-// reorder with arrows, and items are deactivated rather than deleted.
+// reorder with arrows (one atomic write), and items are deactivated rather
+// than deleted. Saves are serialised per row so a slow response can never
+// overwrite a later edit.
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
 import {
   createKitchenItem,
   fetchKitchenItems,
-  moveItem,
   nextSortOrder,
+  reorderItems,
+  saveKitchenItemOrder,
+  sortItems,
   updateKitchenItem,
   validateKitchenItemInput,
   type KitchenItemRecord,
@@ -22,13 +26,24 @@ interface LocationOption {
   name: string;
 }
 
-type RowStatus = { kind: "saving" } | { kind: "saved" } | { kind: "error"; message: string };
+type RowStatus =
+  { kind: "saving" } | { kind: "saved" } | { kind: "error"; message: string };
+
+type ItemPatch = Partial<
+  Pick<KitchenItemRecord, "name" | "unit" | "location_id" | "active">
+>;
 
 const ALL_SCOPE = "__all__";
 
-function scopeLabel(locationId: string | null, locations: LocationOption[]): string {
+function scopeLabel(
+  locationId: string | null,
+  locations: LocationOption[],
+): string {
   if (!locationId) return "All locations";
-  return locations.find((location) => location.id === locationId)?.name ?? "Unknown location";
+  return (
+    locations.find((location) => location.id === locationId)?.name ??
+    "Unknown location"
+  );
 }
 
 function ItemRow({
@@ -45,16 +60,31 @@ function ItemRow({
   status: RowStatus | undefined;
   canMoveUp: boolean;
   canMoveDown: boolean;
-  onSave: (id: string, patch: Partial<KitchenItemRecord>) => void;
+  onSave: (id: string, patch: ItemPatch) => void;
   onMove: (id: string, direction: "up" | "down") => void;
 }) {
+  // Drafts follow the confirmed record: when a save lands (or rolls back)
+  // the parent passes new values and the draft re-syncs during render.
   const [name, setName] = useState(item.name);
   const [unit, setUnit] = useState(item.unit);
-  const inputClasses = "bg-well rounded-well px-3 py-2 text-ink text-sm outline-none w-full";
+  const [syncedName, setSyncedName] = useState(item.name);
+  const [syncedUnit, setSyncedUnit] = useState(item.unit);
+  if (item.name !== syncedName) {
+    setSyncedName(item.name);
+    setName(item.name);
+  }
+  if (item.unit !== syncedUnit) {
+    setSyncedUnit(item.unit);
+    setUnit(item.unit);
+  }
+  const inputClasses =
+    "bg-well rounded-well px-3 py-2 text-ink text-sm outline-none w-full";
   const muted = !item.active;
 
   return (
-    <tr className={`border-b border-hairline last:border-b-0 align-top ${muted ? "opacity-60" : ""}`}>
+    <tr
+      className={`border-b border-hairline last:border-b-0 align-top ${muted ? "opacity-60" : ""}`}
+    >
       <td className="px-3 py-3 whitespace-nowrap">
         <span className="inline-flex gap-1">
           <button
@@ -124,7 +154,8 @@ function ItemRow({
           aria-label={`Scope for ${item.name}`}
           onChange={(e) => {
             const next = e.target.value === ALL_SCOPE ? null : e.target.value;
-            if (next !== item.location_id) onSave(item.id, { location_id: next });
+            if (next !== item.location_id)
+              onSave(item.id, { location_id: next });
           }}
           className={`${inputClasses} appearance-none`}
         >
@@ -161,12 +192,18 @@ export default function KitchenItemsPage() {
   const [newScope, setNewScope] = useState<string>(ALL_SCOPE);
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // Per-row save queue: writes for one item run strictly in order.
+  const saveChains = useRef<Map<string, Promise<unknown>>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
     Promise.all([
       fetchKitchenItems(),
-      getSupabase().from("locations").select("id, name").eq("active", true).order("name"),
+      getSupabase()
+        .from("locations")
+        .select("id, name")
+        .eq("active", true)
+        .order("name"),
     ])
       .then(([rows, locationResult]) => {
         if (cancelled) return;
@@ -178,57 +215,77 @@ export default function KitchenItemsPage() {
         setLocations(locationResult.data ?? []);
       })
       .catch((err: unknown) => {
-        if (!cancelled) setLoadError(err instanceof Error ? err.message : "Unable to load items");
+        if (!cancelled)
+          setLoadError(
+            err instanceof Error ? err.message : "Unable to load items",
+          );
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
-  async function save(id: string, patch: Partial<KitchenItemRecord>) {
-    setStatusById((prev) => ({ ...prev, [id]: { kind: "saving" } }));
-    try {
-      await updateKitchenItem(id, patch);
-      setItems((prev) => (prev ? prev.map((i) => (i.id === id ? { ...i, ...patch } : i)) : prev));
-      setStatusById((prev) => ({ ...prev, [id]: { kind: "saved" } }));
-    } catch (err: unknown) {
-      setStatusById((prev) => ({
-        ...prev,
-        [id]: {
-          kind: "error",
-          message: `Couldn't save: ${err instanceof Error ? err.message : "unknown error"}`,
-        },
-      }));
-    }
+  function queue(id: string, work: () => Promise<void>): void {
+    const previous = saveChains.current.get(id) ?? Promise.resolve();
+    const run = previous.then(work, work);
+    saveChains.current.set(
+      id,
+      run.catch(() => undefined),
+    );
   }
 
-  async function move(id: string, direction: "up" | "down") {
-    if (!items) return;
-    const changes = moveItem(items, id, direction);
-    if (changes.length === 0) return;
+  function save(id: string, patch: ItemPatch) {
     setStatusById((prev) => ({ ...prev, [id]: { kind: "saving" } }));
-    try {
-      for (const change of changes) {
-        await updateKitchenItem(change.id, { sort_order: change.sort_order });
+    queue(id, async () => {
+      try {
+        const stored = await updateKitchenItem(id, patch);
+        setItems((prev) =>
+          prev ? prev.map((i) => (i.id === id ? stored : i)) : prev,
+        );
+        setStatusById((prev) => ({ ...prev, [id]: { kind: "saved" } }));
+      } catch (err: unknown) {
+        // Roll the draft back to what is actually stored.
+        setItems((prev) =>
+          prev ? prev.map((i) => (i.id === id ? { ...i } : i)) : prev,
+        );
+        setStatusById((prev) => ({
+          ...prev,
+          [id]: {
+            kind: "error",
+            message: `Couldn't save: ${err instanceof Error ? err.message : "unknown error"}`,
+          },
+        }));
       }
-      setItems((prev) =>
-        prev
-          ? prev.map((item) => {
-              const change = changes.find((c) => c.id === item.id);
-              return change ? { ...item, sort_order: change.sort_order } : item;
-            })
-          : prev,
-      );
-      setStatusById((prev) => ({ ...prev, [id]: { kind: "saved" } }));
-    } catch (err: unknown) {
-      setStatusById((prev) => ({
-        ...prev,
-        [id]: {
-          kind: "error",
-          message: `Couldn't reorder: ${err instanceof Error ? err.message : "unknown error"}`,
-        },
-      }));
-    }
+    });
+  }
+
+  function move(id: string, direction: "up" | "down") {
+    if (!items) return;
+    const next = reorderItems(items, id, direction);
+    if (!next) return;
+    setStatusById((prev) => ({ ...prev, [id]: { kind: "saving" } }));
+    queue(id, async () => {
+      try {
+        await saveKitchenItemOrder(next);
+        setItems((prev) =>
+          prev
+            ? prev.map((item) => {
+                const moved = next.find((n) => n.id === item.id);
+                return moved ? { ...item, sort_order: moved.sort_order } : item;
+              })
+            : prev,
+        );
+        setStatusById((prev) => ({ ...prev, [id]: { kind: "saved" } }));
+      } catch (err: unknown) {
+        setStatusById((prev) => ({
+          ...prev,
+          [id]: {
+            kind: "error",
+            message: `Couldn't reorder: ${err instanceof Error ? err.message : "unknown error"}`,
+          },
+        }));
+      }
+    });
   }
 
   async function add(event: FormEvent<HTMLFormElement>) {
@@ -258,17 +315,17 @@ export default function KitchenItemsPage() {
     }
   }
 
-  const ordered = items
-    ? [...items].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
-    : null;
-  const inputClasses = "bg-well rounded-well px-3 py-2 text-ink text-sm outline-none w-full";
+  const ordered = items ? sortItems(items) : null;
+  const inputClasses =
+    "bg-well rounded-well px-3 py-2 text-ink text-sm outline-none w-full";
 
   return (
     <div>
       <h1 className="text-xl font-bold text-ink mb-1">Kitchen</h1>
       <p className="text-ink2 text-sm mb-2">
-        Items chefs can request from the kitchen. Name and unit save when you leave the field.
-        Who can send or see requests is set per person under Team → Modules.
+        Items chefs can request from the kitchen. Name and unit save when you
+        leave the field. Who can send or see requests is set per person under
+        Team → Modules.
       </p>
       <p className="text-sm mb-5">
         <Link href="/kitchen" className="font-semibold text-accent underline">
@@ -286,15 +343,25 @@ export default function KitchenItemsPage() {
         <>
           <div className="bg-card rounded-card overflow-x-auto mb-5">
             {ordered.length === 0 ? (
-              <p className="text-ink2 text-sm p-6">No items yet. Add the first one below.</p>
+              <p className="text-ink2 text-sm p-6">
+                No items yet. Add the first one below.
+              </p>
             ) : (
               <table className="w-full text-sm min-w-[720px]">
                 <thead>
                   <tr className="text-left border-b border-hairline">
-                    <th className="section-label px-3 py-3 font-semibold">Order</th>
-                    <th className="section-label px-3 py-3 font-semibold">Item</th>
-                    <th className="section-label px-3 py-3 font-semibold">Unit</th>
-                    <th className="section-label px-3 py-3 font-semibold">Scope</th>
+                    <th className="section-label px-3 py-3 font-semibold">
+                      Order
+                    </th>
+                    <th className="section-label px-3 py-3 font-semibold">
+                      Item
+                    </th>
+                    <th className="section-label px-3 py-3 font-semibold">
+                      Unit
+                    </th>
+                    <th className="section-label px-3 py-3 font-semibold">
+                      Scope
+                    </th>
                     <th className="px-3 py-3" />
                   </tr>
                 </thead>
@@ -307,8 +374,8 @@ export default function KitchenItemsPage() {
                       status={statusById[item.id]}
                       canMoveUp={index > 0}
                       canMoveDown={index < ordered.length - 1}
-                      onSave={(id, patch) => void save(id, patch)}
-                      onMove={(id, direction) => void move(id, direction)}
+                      onSave={save}
+                      onMove={move}
                     />
                   ))}
                 </tbody>
@@ -316,7 +383,10 @@ export default function KitchenItemsPage() {
             )}
           </div>
 
-          <form onSubmit={add} className="bg-card rounded-card p-5 flex flex-col gap-3">
+          <form
+            onSubmit={add}
+            className="bg-card rounded-card p-5 flex flex-col gap-3"
+          >
             <span className="section-label">Add an item</span>
             <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_auto] md:items-end">
               <label className="flex flex-col gap-1">
@@ -366,7 +436,8 @@ export default function KitchenItemsPage() {
             </div>
             {addError ? <p className="text-alert text-sm">{addError}</p> : null}
             <p className="text-ink3 text-xs">
-              Scope: {scopeLabel(newScope === ALL_SCOPE ? null : newScope, locations)}
+              Scope:{" "}
+              {scopeLabel(newScope === ALL_SCOPE ? null : newScope, locations)}
             </p>
           </form>
         </>

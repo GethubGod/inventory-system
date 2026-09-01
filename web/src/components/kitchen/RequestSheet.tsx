@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 import { describeRequest } from "@/lib/kitchen/format";
 import type { RequestsState } from "@/lib/kitchen/state";
-import type { KitchenItem } from "@/lib/kitchen/types";
+import { isRetryableSendError, type KitchenItem } from "@/lib/kitchen/types";
 
 const SLOW_NOTE_MS = 1_500;
 const SUCCESS_CLOSE_MS = 1_100;
@@ -36,12 +36,14 @@ export default function RequestSheet({
   state,
   onSend,
   onRetry,
+  onDismiss,
   onClose,
 }: {
   item: KitchenItem | null;
   state: RequestsState;
   onSend: (item: KitchenItem, quantity: number) => string;
   onRetry: (clientKey: string) => void;
+  onDismiss: (clientKey: string) => void;
   onClose: () => void;
 }) {
   const [quantity, setQuantity] = useState(1);
@@ -57,11 +59,16 @@ export default function RequestSheet({
   const sentQuantity = pending?.quantity ?? quantity;
   const attemptId = pending ? `${pending.clientKey}:${pending.attempts}` : null;
   const showSlowNote = busy && attemptId !== null && slowAttempt === attemptId;
+  const failure = phase === "failed" ? (pending?.error ?? null) : null;
+  const retryable = failure ? isRetryableSendError(failure.code) : true;
 
   // "Taking longer than usual" after 1.5 s of sending.
   useEffect(() => {
     if (phase !== "sending" || !pending || !attemptId) return;
-    const remaining = Math.max(0, SLOW_NOTE_MS - (Date.now() - pending.startedAt));
+    const remaining = Math.max(
+      0,
+      SLOW_NOTE_MS - (Date.now() - pending.startedAt),
+    );
     const timer = setTimeout(() => setSlowAttempt(attemptId), remaining);
     return () => clearTimeout(timer);
   }, [phase, pending, attemptId]);
@@ -83,7 +90,12 @@ export default function RequestSheet({
   function handleSend() {
     if (!item || busy) return;
     if (phase === "failed" && clientKey) {
-      onRetry(clientKey);
+      if (retryable) onRetry(clientKey);
+      else {
+        // Nothing was stored and retrying cannot help: drop it and start over.
+        onDismiss(clientKey);
+        onClose();
+      }
       return;
     }
     setClientKey(onSend(item, quantity));
@@ -114,10 +126,15 @@ export default function RequestSheet({
         <div className="w-9 h-1 bg-disabled rounded-full mx-auto mb-4" />
         <div className="flex justify-between items-start mb-3.5">
           <div>
-            <h2 id="kitchen-sheet-title" className="text-[22px] font-bold text-ink">
+            <h2
+              id="kitchen-sheet-title"
+              className="text-[22px] font-bold text-ink"
+            >
               {item.name}
             </h2>
-            <p className="text-xs text-ink2 mt-0.5">Sends to the kitchen instantly</p>
+            <p className="text-xs text-ink2 mt-0.5">
+              Sends to the kitchen instantly
+            </p>
           </div>
           <button
             type="button"
@@ -190,8 +207,12 @@ export default function RequestSheet({
                 >
                   ✓
                 </div>
-                <p className="text-xl font-bold text-ink">Sent — {description}</p>
-                <p className="text-[13px] text-ink2 mt-1">On the kitchen display now</p>
+                <p className="text-xl font-bold text-ink">
+                  Sent — {description}
+                </p>
+                <p className="text-[13px] text-ink2 mt-1">
+                  On the kitchen display now
+                </p>
               </>
             ) : (
               <>
@@ -200,7 +221,8 @@ export default function RequestSheet({
                   Didn’t send — {description}
                 </p>
                 <p className="text-[13px] text-ink2 mt-1.5">
-                  The kitchen never saw this. Check Wi‑Fi and retry.
+                  {failure?.message ??
+                    "The kitchen never saw this. Check Wi‑Fi and retry."}
                 </p>
               </>
             )}
@@ -218,19 +240,28 @@ export default function RequestSheet({
           >
             {busy ? (
               <>
-                <span aria-hidden className="kitchen-spin" /> Sending to kitchen…
+                <span aria-hidden className="kitchen-spin" /> Sending to
+                kitchen…
               </>
             ) : phase === "failed" ? (
-              "Retry now"
+              retryable ? (
+                "Retry now"
+              ) : (
+                "OK"
+              )
             ) : (
               <>
-                Send {describeRequest(quantity, item.name)} <span aria-hidden>→</span>
+                Send {describeRequest(quantity, item.name)}{" "}
+                <span aria-hidden>→</span>
               </>
             )}
           </button>
         ) : null}
         {showSlowNote ? (
-          <p role="status" className="text-center text-[13px] font-semibold text-alert mt-2.5">
+          <p
+            role="status"
+            className="text-center text-[13px] font-semibold text-alert mt-2.5"
+          >
             Taking longer than usual — still trying…
           </p>
         ) : null}

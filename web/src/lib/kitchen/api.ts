@@ -11,6 +11,7 @@ import { getSupabase } from "@/lib/supabase";
 import {
   toKitchenItem,
   toServerRequest,
+  type KitchenErrorCode,
   type KitchenIdentity,
   type KitchenItem,
   type KitchenLocation,
@@ -28,25 +29,17 @@ export const SEND_TIMEOUT_MS = 8_000;
 
 export const UPDATE_TIMEOUT_MS = 8_000;
 
-export type KitchenErrorCode =
-  | "not_signed_in"
-  | "kitchen_requests_disabled"
-  | "location_not_allowed"
-  | "item_unavailable"
-  | "invalid_quantity"
-  | "client_key_conflict"
-  | "request_not_found"
-  | "invalid_transition"
-  | "not_allowed"
-  | "timeout"
-  | "network"
-  | "unknown";
+export type { KitchenErrorCode } from "@/lib/kitchen/types";
 
 export class KitchenApiError extends Error {
   readonly code: KitchenErrorCode;
   readonly hint: string | null;
 
-  constructor(code: KitchenErrorCode, message: string, hint: string | null = null) {
+  constructor(
+    code: KitchenErrorCode,
+    message: string,
+    hint: string | null = null,
+  ) {
     super(message);
     this.name = "KitchenApiError";
     this.code = code;
@@ -71,14 +64,18 @@ function isKitchenErrorCode(value: string): value is KitchenErrorCode {
 }
 
 function looksLikeNetworkFailure(message: string): boolean {
-  return /fetch|network|load failed|connection|ECONN|timed? ?out/i.test(message);
+  return /fetch|network|load failed|connection|ECONN|timed? ?out/i.test(
+    message,
+  );
 }
 
 /** Normalise a PostgrestError / thrown error into KitchenApiError. */
 export function toKitchenApiError(error: unknown): KitchenApiError {
   if (error instanceof KitchenApiError) return error;
   const record =
-    error && typeof error === "object" ? (error as Record<string, unknown>) : null;
+    error && typeof error === "object"
+      ? (error as Record<string, unknown>)
+      : null;
   const message =
     typeof record?.message === "string"
       ? record.message
@@ -86,7 +83,8 @@ export function toKitchenApiError(error: unknown): KitchenApiError {
         ? error.message
         : "Request failed";
   const hint = typeof record?.hint === "string" ? record.hint : null;
-  if (isKitchenErrorCode(message)) return new KitchenApiError(message, message, hint);
+  if (isKitchenErrorCode(message))
+    return new KitchenApiError(message, message, hint);
   if (looksLikeNetworkFailure(message)) {
     return new KitchenApiError("network", message, hint);
   }
@@ -148,33 +146,46 @@ export interface KitchenAccess {
 }
 
 /** Everything the gate needs to decide which screen (if any) to show. */
-export async function fetchKitchenAccess(userId: string): Promise<KitchenAccess> {
+export async function fetchKitchenAccess(
+  userId: string,
+): Promise<KitchenAccess> {
   const supabase = getSupabase();
-  const [modulesResult, userResult, locationsResult, identityResult, managerResult] =
-    await Promise.all([
-      supabase.rpc("get_effective_modules", { p_user_id: userId }),
-      supabase
-        .from("users")
-        .select("default_location_id")
-        .eq("id", userId)
-        .maybeSingle(),
-      supabase
-        .from("locations")
-        .select("id, name, active")
-        .eq("active", true)
-        .order("name"),
-      supabase.rpc("kitchen_actor_identity", { p_user_id: userId }),
-      supabase.rpc("current_user_is_manager"),
-    ]);
+  const [
+    modulesResult,
+    userResult,
+    locationsResult,
+    identityResult,
+    managerResult,
+  ] = await Promise.all([
+    supabase.rpc("get_effective_modules", { p_user_id: userId }),
+    supabase
+      .from("users")
+      .select("default_location_id")
+      .eq("id", userId)
+      .maybeSingle(),
+    supabase
+      .from("locations")
+      .select("id, name, active")
+      .eq("active", true)
+      .order("name"),
+    supabase.rpc("kitchen_actor_identity", { p_user_id: userId }),
+    supabase.rpc("current_user_is_manager"),
+  ]);
   if (modulesResult.error) throw toKitchenApiError(modulesResult.error);
   if (userResult.error) throw toKitchenApiError(userResult.error);
   if (locationsResult.error) throw toKitchenApiError(locationsResult.error);
   if (identityResult.error) throw toKitchenApiError(identityResult.error);
   if (managerResult.error) throw toKitchenApiError(managerResult.error);
 
-  const modules: KitchenModules = { kitchen_requests: false, kitchen_display: false };
+  const modules: KitchenModules = {
+    kitchen_requests: false,
+    kitchen_display: false,
+  };
   for (const row of modulesResult.data ?? []) {
-    if (row.module_key === "kitchen_requests" || row.module_key === "kitchen_display") {
+    if (
+      row.module_key === "kitchen_requests" ||
+      row.module_key === "kitchen_display"
+    ) {
       modules[row.module_key] = row.enabled === true;
     }
   }
@@ -184,7 +195,9 @@ export async function fetchKitchenAccess(userId: string): Promise<KitchenAccess>
       ? identityResult.data
       : {};
   const displayName =
-    typeof identityRow.display_name === "string" ? identityRow.display_name.trim() : "";
+    typeof identityRow.display_name === "string"
+      ? identityRow.display_name.trim()
+      : "";
   const tag = typeof identityRow.tag === "string" ? identityRow.tag.trim() : "";
   return {
     identity: {
@@ -203,7 +216,9 @@ export async function fetchKitchenAccess(userId: string): Promise<KitchenAccess>
   };
 }
 
-export async function fetchKitchenItems(locationId: string): Promise<KitchenItem[]> {
+export async function fetchKitchenItems(
+  locationId: string,
+): Promise<KitchenItem[]> {
   const { data, error } = await getSupabase()
     .from("kitchen_items")
     .select("*")
@@ -261,7 +276,8 @@ export async function sendKitchenRequest(
     .then(({ data, error }) => {
       if (error) throw toKitchenApiError(error);
       const request = data ? toServerRequest(data) : null;
-      if (!request) throw new KitchenApiError("unknown", "Unexpected send response");
+      if (!request)
+        throw new KitchenApiError("unknown", "Unexpected send response");
       return request;
     });
   return withTimeout(call, timeoutMs);
@@ -273,11 +289,15 @@ export async function updateKitchenRequest(
   timeoutMs: number = UPDATE_TIMEOUT_MS,
 ): Promise<ServerRequest> {
   const call = getSupabase()
-    .rpc("kitchen_update_request", { p_request_id: requestId, p_action: action })
+    .rpc("kitchen_update_request", {
+      p_request_id: requestId,
+      p_action: action,
+    })
     .then(({ data, error }) => {
       if (error) throw toKitchenApiError(error);
       const request = data ? toServerRequest(data) : null;
-      if (!request) throw new KitchenApiError("unknown", "Unexpected update response");
+      if (!request)
+        throw new KitchenApiError("unknown", "Unexpected update response");
       return request;
     });
   return withTimeout(call, timeoutMs);
@@ -323,7 +343,11 @@ export function subscribeToKitchenRequests(
     )
     .subscribe((status) => {
       if (status === "SUBSCRIBED") handlers.onStatus("live");
-      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+      else if (
+        status === "CHANNEL_ERROR" ||
+        status === "TIMED_OUT" ||
+        status === "CLOSED"
+      ) {
         handlers.onStatus("down");
       }
     });

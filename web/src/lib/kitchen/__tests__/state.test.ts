@@ -7,6 +7,7 @@ import {
   clearUndoWindow,
   dismissPending,
   failPending,
+  hydratePending,
   kitchenQueueRows,
   listSignature,
   openQueuedCount,
@@ -18,6 +19,10 @@ import {
 import type { PendingRequest, ServerRequest } from "../types";
 
 const T0 = 1_700_000_000_000;
+const NET_ERROR = {
+  code: "network" as const,
+  message: "Couldn't reach smelter.",
+};
 
 function server(overrides: Partial<ServerRequest> = {}): ServerRequest {
   return {
@@ -34,6 +39,7 @@ function server(overrides: Partial<ServerRequest> = {}): ServerRequest {
     requestedByTag: "minh",
     status: "queued",
     createdAt: T0,
+    updatedAt: T0,
     readyAt: null,
     readyByName: null,
     closedAt: null,
@@ -54,6 +60,7 @@ function pending(overrides: Partial<PendingRequest> = {}): PendingRequest {
     startedAt: T0 + 5_000,
     createdAt: T0 + 5_000,
     attempts: 1,
+    error: null,
     ...overrides,
   };
 }
@@ -78,7 +85,7 @@ describe("send lifecycle", () => {
 
   it("retry keeps the same client key and counts attempts", () => {
     let state = startPending(EMPTY_STATE, pending());
-    state = failPending(state, "k9");
+    state = failPending(state, "k9", NET_ERROR);
     expect(state.pending.k9.status).toBe("failed");
     state = retryPending(state, "k9", T0 + 20_000);
     expect(state.pending.k9).toMatchObject({
@@ -91,9 +98,13 @@ describe("send lifecycle", () => {
   });
 
   it("failing an already failed or unknown key is a no-op", () => {
-    const state = failPending(startPending(EMPTY_STATE, pending()), "k9");
-    expect(failPending(state, "k9")).toBe(state);
-    expect(failPending(state, "nope")).toBe(state);
+    const state = failPending(
+      startPending(EMPTY_STATE, pending()),
+      "k9",
+      NET_ERROR,
+    );
+    expect(failPending(state, "k9", NET_ERROR)).toBe(state);
+    expect(failPending(state, "nope", NET_ERROR)).toBe(state);
   });
 
   it("dismiss drops only the local row", () => {
@@ -141,10 +152,87 @@ describe("stale fetches", () => {
     expect(state.undoUntil).toEqual({});
   });
 
+  it("an older fetch response never replaces a newer one", () => {
+    let state = applyFetch(EMPTY_STATE, [server({ id: "a" })], 0);
+    state = applyServerRow(state, server({ id: "b" }));
+    // Newer fetch (issued at seq 1) applied first, then the older one arrives.
+    state = applyFetch(state, [server({ id: "a" }), server({ id: "b" })], 1);
+    const after = applyFetch(state, [], 0);
+    expect(after).toBe(state);
+    expect(Object.keys(after.byId).sort()).toEqual(["a", "b"]);
+  });
+
   it("removeServerRow forgets the row's sequence stamp", () => {
     let state = applyServerRow(EMPTY_STATE, server({ id: "x" }));
     state = removeServerRow(state, "x");
     expect(state.seenSeq).toEqual({});
+  });
+});
+
+describe("row ordering by updatedAt", () => {
+  it("a late RPC reply cannot overwrite a newer realtime row", () => {
+    let state = applyServerRow(EMPTY_STATE, server({ id: "a", updatedAt: T0 }));
+    // Realtime: undo landed (t+2). Then the stale 'ready' reply (t+1) arrives.
+    state = applyServerRow(
+      state,
+      server({ id: "a", status: "queued", updatedAt: T0 + 2 }),
+    );
+    const stale = applyServerRow(
+      state,
+      server({ id: "a", status: "ready", updatedAt: T0 + 1 }),
+    );
+    expect(stale).toBe(state);
+    expect(stale.byId.a.status).toBe("queued");
+  });
+
+  it("an optimistic row keeps its updatedAt so the real reply replaces it", () => {
+    let state = applyServerRow(EMPTY_STATE, server({ id: "a", updatedAt: T0 }));
+    state = applyServerRow(
+      state,
+      server({ id: "a", status: "ready", updatedAt: T0 }),
+    );
+    expect(state.byId.a.status).toBe("ready");
+    state = applyServerRow(
+      state,
+      server({ id: "a", status: "ready", updatedAt: T0 + 5, readyByName: "K" }),
+    );
+    expect(state.byId.a.readyByName).toBe("K");
+  });
+
+  it("a fetch cannot downgrade a row it returns older than the one held", () => {
+    let state = applyServerRow(
+      EMPTY_STATE,
+      server({ id: "a", status: "ready", updatedAt: T0 + 5 }),
+    );
+    state = applyFetch(
+      state,
+      [server({ id: "a", status: "queued", updatedAt: T0 })],
+      state.seq,
+    );
+    expect(state.byId.a.status).toBe("ready");
+  });
+});
+
+describe("hydratePending", () => {
+  it("restores persisted sends as in-flight attempts without clobbering live ones", () => {
+    const live = pending({ clientKey: "live", status: "failed" });
+    let state = startPending(EMPTY_STATE, live);
+    state = hydratePending(
+      state,
+      [
+        pending({ clientKey: "old", status: "failed", attempts: 2 }),
+        pending({ clientKey: "live" }),
+      ],
+      T0 + 99,
+    );
+    expect(state.pending.live).toBe(live);
+    expect(state.pending.old).toMatchObject({
+      status: "sending",
+      startedAt: T0 + 99,
+      attempts: 2,
+      error: null,
+    });
+    expect(hydratePending(state, [], T0)).toBe(state);
   });
 });
 

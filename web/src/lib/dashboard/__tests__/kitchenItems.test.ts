@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  moveItem,
   nextSortOrder,
+  reorderItems,
+  sortItems,
   validateKitchenItemInput,
   type KitchenItemRecord,
 } from "../kitchenItems";
@@ -35,35 +36,35 @@ describe("nextSortOrder", () => {
   });
 });
 
-describe("moveItem", () => {
+describe("reorderItems", () => {
   const list = [item("a", 1), item("b", 2), item("c", 3)];
 
-  it("swaps positions with the neighbour", () => {
-    expect(moveItem(list, "b", "up")).toEqual([
-      { id: "b", sort_order: 1 },
-      { id: "a", sort_order: 2 },
+  it("swaps with the neighbour and renumbers the whole list", () => {
+    expect(reorderItems(list, "b", "up")?.map((i) => [i.id, i.sort_order])).toEqual([
+      ["b", 1],
+      ["a", 2],
+      ["c", 3],
     ]);
-    expect(moveItem(list, "b", "down")).toEqual([
-      { id: "b", sort_order: 3 },
-      { id: "c", sort_order: 2 },
+    expect(reorderItems(list, "b", "down")?.map((i) => [i.id, i.sort_order])).toEqual([
+      ["a", 1],
+      ["c", 2],
+      ["b", 3],
     ]);
   });
 
   it("does nothing at the edges or for unknown ids", () => {
-    expect(moveItem(list, "a", "up")).toEqual([]);
-    expect(moveItem(list, "c", "down")).toEqual([]);
-    expect(moveItem(list, "zz", "up")).toEqual([]);
+    expect(reorderItems(list, "a", "up")).toBeNull();
+    expect(reorderItems(list, "c", "down")).toBeNull();
+    expect(reorderItems(list, "zz", "up")).toBeNull();
   });
 
-  it("separates tied positions so the move is visible", () => {
-    const tied = [item("a", 0, "Alpha"), item("b", 0, "Beta")];
-    expect(moveItem(tied, "b", "up")).toEqual([
-      { id: "b", sort_order: 0 },
-      { id: "a", sort_order: 1 },
+  it("gives tied positions distinct numbers so the move is visible", () => {
+    const tied = [item("a", 0, "Alpha"), item("b", 0, "Beta"), item("c", 0, "Gamma")];
+    expect(reorderItems(tied, "b", "up")?.map((i) => [i.id, i.sort_order])).toEqual([
+      ["b", 1],
+      ["a", 2],
+      ["c", 3],
     ]);
-    expect(moveItem(tied, "a", "down")).toEqual([
-      { id: "a", sort_order: 1 },
-      { id: "b", sort_order: 0 },
-    ]);
+    expect(sortItems(tied).map((i) => i.id)).toEqual(["a", "b", "c"]);
   });
 });

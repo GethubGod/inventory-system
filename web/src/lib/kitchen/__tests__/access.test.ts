@@ -13,17 +13,24 @@ const closed = { id: "closed", name: "Old store", active: false };
 
 describe("resolveView", () => {
   it("returns null when neither module is on", () => {
-    expect(resolveView({ kitchen_requests: false, kitchen_display: false }, "chef")).toBeNull();
-    expect(availableViews({ kitchen_requests: false, kitchen_display: false })).toEqual([]);
+    expect(
+      resolveView({ kitchen_requests: false, kitchen_display: false }, "chef"),
+    ).toBeNull();
+    expect(
+      availableViews({ kitchen_requests: false, kitchen_display: false }),
+    ).toEqual([]);
   });
 
   it("returns the only allowed view regardless of what was remembered", () => {
-    expect(resolveView({ kitchen_requests: false, kitchen_display: true }, "chef")).toBe(
-      "kitchen",
-    );
-    expect(resolveView({ kitchen_requests: true, kitchen_display: false }, "kitchen")).toBe(
-      "chef",
-    );
+    expect(
+      resolveView({ kitchen_requests: false, kitchen_display: true }, "chef"),
+    ).toBe("kitchen");
+    expect(
+      resolveView(
+        { kitchen_requests: true, kitchen_display: false },
+        "kitchen",
+      ),
+    ).toBe("chef");
   });
 
   it("honours the remembered view when both are allowed, defaulting to chef", () => {
