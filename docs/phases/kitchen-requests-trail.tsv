@@ -1,0 +1,5 @@
+when	unit	kind	hypothesis_or_decision	evidence	verdict
+2026-08-31T20:30-07:00	frame	decision	Access = two per-user module toggles (kitchen_requests, kitchen_display); tag = login handle; manager-managed item list seeded with 6 mockup items	David's answers in session; docs/phases/kitchen-requests-contract.md	CONFIRMED
+2026-08-31T20:30-07:00	frame	decision	Web sign-in on /kitchen supports name+PIN (login-with-name + verifyOtp) and email+password; prod has 0/13 profiles with a login identity so tag falls back to normalize_login_name(users.name)	Supabase read-only query on whrohvitvmcrmedepurd	CONFIRMED
+2026-08-31T20:35-07:00	frame	decision	Branch feat/kitchen-requests cut from origin/main 1e52e7a in .claude/worktrees/kitchen-requests; chore/smelter-cleanup only moves docs/assets and is unpushed, so nothing stacks	git show --stat 1af7b46; git ls-remote	CONFIRMED
+2026-08-31T20:40-07:00	orchestration	decision	Large tier: Codex Sol owns migration + SQL fixture + accept-invite keys; Claude owns web app, dashboard, types splice, tests, E2E; cross-review both ways	memory claude-frontend-codex-backend	CONFIRMED
