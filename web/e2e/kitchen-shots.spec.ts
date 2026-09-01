@@ -68,6 +68,27 @@ test("capture chef, sheet, kitchen display, and the mockup", async ({ browser })
   await expect(chef.getByText("READY", { exact: true })).toBeVisible({ timeout: 3_000 });
   await chef.screenshot({ path: path.join(OUT, "06-chef-log-ready.png"), fullPage: true });
 
+  // Manager dashboard: Kitchen items page and the Team module toggles.
+  const managerCtx = await browser.newContext({
+    deviceScaleFactor: 2,
+    viewport: { width: 1200, height: 900 },
+  });
+  const manager = await managerCtx.newPage();
+  await manager.goto("/dashboard/kitchen");
+  await manager.getByLabel("Email").fill(fixture.users.manager.email);
+  await manager.getByLabel("Password").fill(fixture.users.manager.password);
+  await manager.getByRole("button", { name: "Sign in" }).click();
+  await expect(manager.getByRole("heading", { name: "Kitchen" })).toBeVisible();
+  await expect(manager.getByLabel("Name for Fried Shrimp")).toBeVisible();
+  await manager.screenshot({ path: path.join(OUT, "07-dashboard-kitchen-items.png"), fullPage: true });
+  await manager.goto("/dashboard/team");
+  await expect(manager.getByRole("heading", { name: "Team" })).toBeVisible();
+  const chefRow = manager.getByRole("row", { name: /Chef E2E/ });
+  await chefRow.getByRole("button", { name: "Modules" }).click();
+  await expect(manager.getByRole("button", { name: /Kitchen requests: On/ })).toBeVisible();
+  await expect(manager.getByRole("button", { name: /Kitchen display: Off/ })).toBeVisible();
+  await manager.screenshot({ path: path.join(OUT, "08-dashboard-team-modules.png"), fullPage: true });
+
   const mockupCtx = await browser.newContext({ deviceScaleFactor: 2 });
   const mockup = await mockupCtx.newPage();
   await mockup.goto(pathToFileURL(MOCKUP).toString());
