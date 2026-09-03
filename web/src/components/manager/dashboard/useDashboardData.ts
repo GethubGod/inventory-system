@@ -209,6 +209,7 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
           entryMethod: (row.entry_method === "voice" ? "voice" : "typed") as EntryMethod,
           flagged: row.flagged_anomaly && row.flag_verified_at === null,
           flaggedRaw: row.flagged_anomaly,
+          flagVerifiedAt: row.flag_verified_at,
           anomalyReason: row.anomaly_reason,
           createdAt: row.created_at,
         };

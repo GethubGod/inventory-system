@@ -1,6 +1,7 @@
 // Shared shapes for the Tip Dashboard (manager surface).
 
 import type { LedgerEntry } from "@/lib/tips/dashboardDerive";
+import type { FlagRules } from "@/lib/tips/flagRules";
 import type { MealPeriod } from "@/types/database";
 
 /**
@@ -88,6 +89,9 @@ export interface PageContext {
   userId: string;
   navigate: (nav: NavId) => void;
   refetch: () => void;
+  /** What counts as "needs attention"; entries above already reflect it. */
+  flagRules: FlagRules;
+  setFlagRules: (rules: FlagRules) => void;
 }
 
 export function locationKindFor(name: string): LocationKind | null {

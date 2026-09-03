@@ -4,7 +4,9 @@
 // tip-voice-parse after each speech pause, and fills a five-row checklist
 // (Location, Shift, Cash, Card, People). Every field stays editable by tap.
 // "Done talking" moves to a review state with low-confidence flags and
-// per-field re-record; "Save tips" hands the values back to the entry form.
+// per-field re-record; "Review split" hands the values back to the entry
+// form, which scrolls to the split so the closer can check who gets what
+// before pressing Save.
 //
 // Engines: where the browser supports native SpeechRecognition (variant
 // "local_live"), words are transcribed ON DEVICE and parsed locally — fields
@@ -64,10 +66,10 @@ const MEAL_OPTIONS = [
 ] as const;
 
 const WAITING_TEXT: Record<Exclude<RowKey, "location">, string> = {
-  meal: "Waiting — say the shift",
-  cash: "Waiting — say the cash amount",
-  card: "Waiting — say the card amount",
-  people: "Waiting — say the names",
+  meal: "Waiting. Say the shift",
+  cash: "Waiting. Say the cash amount",
+  card: "Waiting. Say the card amount",
+  people: "Waiting. Say the names",
 };
 
 const ROW_LABELS: Record<RowKey, string> = {
@@ -840,7 +842,7 @@ export function VoiceSheet({
           <div className="w-10 h-1.5 rounded-full bg-disabled mx-auto mt-3" />
           <div className="p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-4">
             <div className="bg-card rounded-card p-5 text-ink2">
-              Can&apos;t use the mic on this phone — type it in instead.
+              Can&apos;t use the mic on this phone. Type it in instead.
             </div>
             <button
               type="button"
@@ -1054,7 +1056,7 @@ export function VoiceSheet({
 
           {voiceBroken && (
             <div className="bg-tint text-alert rounded-well p-3 text-sm">
-              Voice isn&apos;t working right now — your captured fields are
+              Voice isn&apos;t working right now. Your captured fields are
               kept. Tap rows to finish typing.
             </div>
           )}
@@ -1068,7 +1070,7 @@ export function VoiceSheet({
 
           {listening ? (
             <div className="bg-card rounded-card p-4 text-ink2 text-sm">
-              Speak in any order — it fills in what it hears. Tap any row to
+              Speak in any order and it fills in what it hears. Tap any row to
               type it.
             </div>
           ) : (
@@ -1084,14 +1086,14 @@ export function VoiceSheet({
 
           {parseWarning && !voiceBroken && (
             <p className="text-alert text-sm">
-              Voice is having trouble — captured fields are kept
+              Voice is having trouble. Captured fields are kept.
             </p>
           )}
 
           {mealLockedHint && (
             <p className="text-alert text-sm">
               {mealLockedHint === "lunch" ? "Lunch" : "Dinner"} is already
-              recorded today — keeping{" "}
+              recorded today, so this stays on{" "}
               {mealLockedHint === "lunch" ? "dinner" : "lunch"}.
             </p>
           )}
@@ -1134,7 +1136,7 @@ export function VoiceSheet({
                   canSave ? "bg-accent" : "bg-disabled"
                 }`}
               >
-                Save tips →
+                Review split →
               </button>
             </div>
           )}

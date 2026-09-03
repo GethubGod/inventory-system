@@ -1,11 +1,13 @@
 "use client";
 
-// Recorded tips — the dense ledger (Tips v3, option D2). Rows newest-first
+// Recorded tips, the dense ledger (Tips v3, option D2). Rows newest-first
 // grouped by day with day-total rows; tinted cash/card column groups; flagged
-// rows get a red tint, a "⚑ check" chip, and a Verify button. Clicking a row
-// unfolds a three-card detail panel: how the number was reached (raw →
-// −lunch → recorded, then card and gratuity), who takes what (weighted), and
-// the note. Fix updates every v3 field through one atomic manager RPC.
+// rows get a red tint, a "⚑ check" chip, and a Verify button. Every row
+// starts closed; clicking it unfolds a three-card detail panel: how the
+// number was reached (entered, lunch amount, recorded, then card and
+// gratuity) with the flag reasons in plain English, who takes what
+// (weighted), and the note. Which conditions flag a row is set in the
+// "Flag rules" menu. Fix updates every v3 field through one atomic RPC.
 
 import { Fragment, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
@@ -17,6 +19,7 @@ import {
 } from "@/lib/tips/dashboardDerive";
 import { shortDayLabel } from "@/lib/tips/dashboardRange";
 import { FIX_ENTRY_RPC, FIX_ENTRY_SELECT } from "@/lib/tips/dashboardQueries";
+import { flagReasons, NO_LUNCH_CODE } from "@/lib/tips/flagRules";
 import { fullShareCents as poolFullShareCents } from "@/lib/tips/split";
 import {
   btn,
@@ -32,6 +35,7 @@ import {
   th,
   useToast,
 } from "./ui";
+import { FlagRulesMenu } from "./FlagRulesMenu";
 import type { EmployeeRow, PageContext } from "./types";
 
 function methodLabel(entry: LedgerEntry): string {
@@ -348,7 +352,7 @@ function FixDialog({
   return (
     <ModalShell
       wide
-      title={`Fix — ${shortDayLabel(entry.businessDate)} · ${location?.label ?? "?"} ${entry.meal}`}
+      title={`Fix ${shortDayLabel(entry.businessDate)} · ${location?.label ?? "?"} ${entry.meal}`}
       onClose={busy ? () => {} : onClose}
     >
       {entry.meal === "dinner" && (
@@ -491,7 +495,7 @@ function FixDialog({
       )}
       {negativeAfterLunch && (
         <p className="mt-3 text-sm text-alert">
-          Lunch already recorded more than this — the whole-day figures can&apos;t
+          Lunch already recorded more than this. The whole-day figures can&apos;t
           be below the recorded lunch.
         </p>
       )}
@@ -528,6 +532,7 @@ function FixDialog({
 function DetailPanel({
   entry,
   lunchEntry,
+  reasons,
   onFix,
   onVerify,
   verifying,
@@ -535,6 +540,8 @@ function DetailPanel({
   entry: LedgerEntry;
   /** The recorded lunch row at the same location + business date, if shown. */
   lunchEntry: LedgerEntry | null;
+  /** Why the row is flagged under the current rules (empty when it is not). */
+  reasons: string[];
   onFix: () => void;
   onVerify: () => void;
   verifying: boolean;
@@ -542,7 +549,7 @@ function DetailPanel({
   const shares = entryShareCents(entry);
   // Prefix match: when the save was ALSO a statistical outlier the reason is
   // "day_total_no_lunch; <statistical reason>" (contract amendment 2).
-  const noLunchFlag = entry.anomalyReason?.startsWith("day_total_no_lunch") ?? false;
+  const noLunchFlag = entry.anomalyReason?.startsWith(NO_LUNCH_CODE) ?? false;
   // What was actually subtracted at save time — shown from the raw figures,
   // not the current lunch row (which a fix may have changed since).
   const subtractedCents =
@@ -563,11 +570,11 @@ function DetailPanel({
               </div>
               <div className="flex text-ink2">
                 <span>
-                  &minus; lunch recorded
-                  {lunchEntry && !noLunchFlag ? ` ${timeLabel(lunchEntry.createdAt)}` : ""}
+                  Lunch amount
+                  {lunchEntry && !noLunchFlag ? ` (recorded ${timeLabel(lunchEntry.createdAt)})` : ""}
                 </span>
                 {noLunchFlag ? (
-                  <span className="ml-auto font-semibold text-alert">nothing on record</span>
+                  <span className="ml-auto font-semibold text-alert">not entered</span>
                 ) : (
                   <span className="ml-auto font-semibold text-alert">
                     &minus;{moneyFromCents(subtractedCents ?? 0)}
@@ -586,11 +593,17 @@ function DetailPanel({
             </div>
           )}
         </div>
-        {noLunchFlag && (
-          <p className="mt-2 text-[12.5px] text-alert">
-            Flagged <code className="rounded bg-well px-1">day_total_no_lunch</code> — a
-            whole-day total was entered with no lunch to subtract.
-          </p>
+        {reasons.length > 0 && (
+          <div className="mt-2 rounded-[10px] bg-flagtint px-2.5 py-2 text-[12.5px] leading-relaxed text-alert">
+            <b className="block text-[11px] font-extrabold uppercase tracking-[0.06em]">
+              Why this is flagged
+            </b>
+            {reasons.map((reason) => (
+              <p key={reason} className="mt-1">
+                {reason}
+              </p>
+            ))}
+          </div>
         )}
         <div className="my-2.5 h-px bg-hairline" />
         <div className="grid gap-1 text-[12.5px] tabular-nums">
@@ -686,24 +699,9 @@ export function LedgerPage({ ctx }: { ctx: PageContext }) {
   const toast = useToast();
   const [fixing, setFixing] = useState<LedgerEntry | null>(null);
   const [verifying, setVerifying] = useState<string | null>(null);
+  // Every row starts closed, flagged or not; the red tint and "check" chip
+  // say which ones to open.
   const [openIds, setOpenIds] = useState<Set<string>>(() => new Set());
-  // Flagged rows auto-open their detail when the range first loads. Track the
-  // data identity so a refetch after Verify doesn't re-open everything.
-  const [autoOpenedKey, setAutoOpenedKey] = useState<string | null>(null);
-
-  const entriesKey = useMemo(
-    () => ctx.entries.map((entry) => entry.id).join("|"),
-    [ctx.entries],
-  );
-  // Render-adjustment (not an effect): when a new range's rows arrive, open
-  // every still-flagged row's detail before the first paint of that data.
-  if (autoOpenedKey !== entriesKey) {
-    setAutoOpenedKey(entriesKey);
-    const flagged = ctx.entries.filter((entry) => entry.flagged).map((entry) => entry.id);
-    if (flagged.length > 0) {
-      setOpenIds((previous) => new Set([...previous, ...flagged]));
-    }
-  }
 
   // The lunch row at each location+date, for the detail panel's "lunch
   // recorded 3:41 PM" line.
@@ -732,7 +730,7 @@ export function LedgerPage({ ctx }: { ctx: PageContext }) {
       toast(`Could not verify: ${error.message}`);
       return;
     }
-    toast("Entry verified — flag cleared");
+    toast("Entry verified, flag cleared");
     ctx.refetch();
   }
 
@@ -777,11 +775,13 @@ export function LedgerPage({ ctx }: { ctx: PageContext }) {
           {ctx.entries.length} records · click a row for the breakdown
         </span>
         <InfoButton label="About recorded tips">
-          <b>Cash</b> is pooled and handed out nightly — the per-person column is the full
-          (100%) share; reduced shares live in the row&apos;s breakdown. <b>Card</b> tips ride
-          payroll. A flagged row is unusually large against the 4-week history: check the
-          drawer count, then Verify. Fix reopens a recorded shift for correction.
+          <b>Cash</b> is pooled and handed out nightly; the per-person column is the full
+          (100%) share and reduced shares live in the row&apos;s breakdown. <b>Card</b> tips
+          ride payroll. A red row needs a look: open it to read why, check the drawer count,
+          then Verify. Flag rules sets what turns a row red. Fix reopens a recorded shift
+          for correction.
         </InfoButton>
+        <FlagRulesMenu rules={ctx.flagRules} onChange={ctx.setFlagRules} />
       </div>
       <div className={`${panelWrap} overflow-x-auto`}>
         <table className="w-full min-w-[780px] border-collapse text-[13px]">
@@ -806,7 +806,7 @@ export function LedgerPage({ ctx }: { ctx: PageContext }) {
                   <tr key={`total-${row.day}`} className="bg-well text-[12.5px] font-extrabold">
                     <td className={`${td} border-b-line py-1.5`} />
                     <td colSpan={3} className={`${td} border-b-line py-1.5 font-bold text-ink2`}>
-                      {shortDayLabel(row.day)} — day total
+                      {shortDayLabel(row.day)} total
                     </td>
                     <td className={`${td} border-b-line bg-cashcol py-1.5 text-right tabular-nums`}>
                       {moneyFromCents(row.cashCents)}
@@ -823,6 +823,9 @@ export function LedgerPage({ ctx }: { ctx: PageContext }) {
               }
               const { entry } = row;
               const location = ctx.locationById.get(entry.locationId);
+              const reasons = entry.flagged
+                ? flagReasons(entry, ctx.flagRules).map((reason) => reason.text)
+                : [];
               const flaggedTint = entry.flagged ? "bg-flagtint" : "";
               const open = openIds.has(entry.id);
               const partialCount = entry.weights.filter((weight) => weight < 1).length;
@@ -895,7 +898,7 @@ export function LedgerPage({ ctx }: { ctx: PageContext }) {
                         <button
                           type="button"
                           className={`${miniBtnDanger} ml-1.5`}
-                          title={entry.anomalyReason ?? undefined}
+                          title={reasons.join(" ") || undefined}
                           disabled={verifying === entry.id}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -913,6 +916,7 @@ export function LedgerPage({ ctx }: { ctx: PageContext }) {
                       <td colSpan={9} className={`${td} bg-cream/40 pb-4`}>
                         <DetailPanel
                           entry={entry}
+                          reasons={reasons}
                           lunchEntry={
                             lunchByDayLocation.get(
                               `${entry.businessDate}|${entry.locationId}`,

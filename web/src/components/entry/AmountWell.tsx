@@ -4,6 +4,9 @@
 // entry form amounts grid and (via the same styling) the voice sheet's inline
 // cash/card editors.
 
+import type { ReactNode } from "react";
+import { InfoButton } from "@/components/InfoButton";
+
 /**
  * Sanitize raw keyboard input to digits + one dot + max two decimals,
  * clamped to 99999.99. Empty string means "not yet entered".
@@ -37,6 +40,7 @@ export function AmountWell({
   autoFocus = false,
   onCommit,
   compact = false,
+  hint,
 }: {
   label: string;
   value: string;
@@ -46,10 +50,15 @@ export function AmountWell({
   onCommit?: (value: string) => void;
   /** Smaller type for the three-up Cash·Card·Gratuity grid. */
   compact?: boolean;
+  /** Guidance for this amount, kept behind an "i" next to the label. */
+  hint?: ReactNode;
 }) {
   return (
     <div className={`bg-well rounded-well ${compact ? "p-2.5" : "p-4"}`}>
-      <div className="section-label">{label}</div>
+      <div className="flex items-center gap-1.5">
+        <div className="section-label">{label}</div>
+        {hint && <InfoButton label={`About ${label.toLowerCase()}`}>{hint}</InfoButton>}
+      </div>
       {/* The bottom rule is the only cue that the amount is typeable — it is
           not decoration. Read-only wells (the saved screen) render their own
           markup without it. */}
