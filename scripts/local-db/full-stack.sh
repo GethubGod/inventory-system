@@ -19,6 +19,11 @@
 #
 # Requires docker and the supabase CLI. The other local project on this Mac
 # uses the default ports (54321-54327); this stack never touches them.
+#
+# When another worktree already holds 54421-54424 (a second E2E campaign),
+# pick a free range: FULL_STACK_PORT_BASE=54520 scripts/local-db/full-stack.sh up
+# gives API 54521, db 54522, studio 54523, inbucket 54524. Use the same value
+# for `down`, `load`, and `psql`.
 
 set -euo pipefail
 
@@ -32,6 +37,12 @@ BASELINE_MIGRATION_CUTOFF="20260811204219_tip_entry_session_duplicate_guard.sql"
 # depend on production state the snapshot predates). Listed here so the
 # rest of the schema still loads; they are skipped with a warning.
 SKIP_MIGRATIONS=("20260828100000_tips_v3_grat_scope_weights_notes.sql")
+# Base for the four local ports; default matches supabase/config.toml (54421-54424).
+PORT_BASE="${FULL_STACK_PORT_BASE:-54420}"
+API_PORT=$((PORT_BASE + 1))
+DB_PORT=$((PORT_BASE + 2))
+STUDIO_PORT=$((PORT_BASE + 3))
+INBUCKET_PORT=$((PORT_BASE + 4))
 
 project_id() {
   basename "$REPO_ROOT"
@@ -48,7 +59,12 @@ psql_in() {
 overlay_config() {
   # Boot-time overrides only. The file is restored in `restore_config`.
   cp "$CONFIG" "$CONFIG.full-stack.bak"
-  cat >> "$CONFIG" <<'EOF'
+  if [[ "$PORT_BASE" != "54420" ]]; then
+    sed -i '' -e "s/^port = 54421$/port = $API_PORT/" \
+      -e "s/^port = 54422$/port = $DB_PORT/" \
+      -e "s/^port = 54423$/port = $STUDIO_PORT/" "$CONFIG"
+  fi
+  cat >> "$CONFIG" <<EOF
 
 # --- full-stack.sh overlay (temporary; restored on exit) ---
 [db.migrations]
@@ -56,7 +72,7 @@ enabled = false
 
 [inbucket]
 enabled = true
-port = 54424
+port = $INBUCKET_PORT
 
 [analytics]
 enabled = false
@@ -94,7 +110,7 @@ SQL
   local applied=0
   while IFS= read -r mig; do
     [[ -z "$mig" ]] && continue
-    if psql_in -Atc "select 1 from public._full_stack_applied where name = '$mig'" | grep -q 1; then
+    if psql_in -Atc "select 1 from public._full_stack_applied where name = '$mig'" < /dev/null | grep -q 1; then
       continue
     fi
     if printf '%s\n' "${SKIP_MIGRATIONS[@]}" | grep -qx "$mig"; then
@@ -106,7 +122,7 @@ SQL
       echo "FAIL: $mig did not apply." >&2
       exit 1
     fi
-    psql_in -q -X -c "insert into public._full_stack_applied (name) values ('$mig') on conflict do nothing;"
+    psql_in -q -X -c "insert into public._full_stack_applied (name) values ('$mig') on conflict do nothing;" < /dev/null
     applied=$((applied + 1))
   done < <(cd "$MIGRATIONS_DIR" && ls -1 *.sql | sort | awk -v c="$BASELINE_MIGRATION_CUTOFF" '$0 > c')
   echo "PASS: schema loaded ($applied migration(s) applied this run)."
