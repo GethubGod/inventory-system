@@ -11,6 +11,7 @@ import { businessDateFor } from "@/lib/tips/businessDate";
 import { addDays, rangeBounds, type DashboardRange } from "@/lib/tips/dashboardRange";
 import type { LedgerEntry } from "@/lib/tips/dashboardDerive";
 import { fetchAll } from "../fetchAll";
+import { DASHBOARD_SELECTS } from "@/lib/tips/dashboardQueries";
 import {
   toLocationInfo,
   type DashboardData,
@@ -98,7 +99,7 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
           // one locations request also gets each missing-shift floor.
           supabase
             .from("locations")
-            .select("id, name, tip_entries(business_date)")
+            .select(DASHBOARD_SELECTS.locations)
             .order("name")
             .order("business_date", { ascending: true, referencedTable: "tip_entries" })
             .limit(1, { referencedTable: "tip_entries" })
@@ -108,7 +109,7 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
             }),
           supabase
             .from("tip_employees")
-            .select("id, name, location_id, active, sort_order")
+            .select(DASHBOARD_SELECTS.tip_employees)
             .order("active", { ascending: false })
             .order("sort_order", { ascending: true })
             .order("name", { ascending: true })
@@ -118,7 +119,7 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
             }),
           supabase
             .from("tip_employee_schedules")
-            .select("id, tip_employee_id, location_id, weekday, meal, created_at")
+            .select(DASHBOARD_SELECTS.tip_employee_schedules)
             .order("id")
             .then((r) => {
               if (r.error) throw new Error(r.error.message);
@@ -126,7 +127,7 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
             }),
           supabase
             .from("tip_location_access")
-            .select("location_id, token_rotated_at, entry_token_plain")
+            .select(DASHBOARD_SELECTS.tip_location_access)
             .then((r) => {
               if (r.error) throw new Error(r.error.message);
               return r.data ?? [];
@@ -134,9 +135,7 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
           fetchAll<RawEntryRow>((from, to) =>
             supabase
               .from("tip_entries")
-              .select(
-                "id, business_date, location_id, meal_period, cash_amount, card_amount, gratuity_amount, entered_scope, raw_cash_amount, raw_card_amount, raw_gratuity_amount, note, note_at, split_count, entry_method, entered_by, flagged_anomaly, anomaly_reason, flag_verified_at, created_at, tip_entry_people(tip_employee_id, share_weight)",
-              )
+              .select(DASHBOARD_SELECTS.tip_entries)
               .gte("business_date", start)
               .lte("business_date", end)
               .order("business_date", { ascending: false })
@@ -147,7 +146,7 @@ export function useDashboardData(range: DashboardRange): DashboardDataState {
           fetchAll<RawSessionRow>((from, to) =>
             supabase
               .from("tip_entry_sessions")
-              .select("id, location_id, closer_id, created_at")
+              .select(DASHBOARD_SELECTS.tip_entry_sessions)
               .gte("created_at", sessionsFloor)
               .lt("created_at", sessionsCeil)
               .order("created_at", { ascending: false })

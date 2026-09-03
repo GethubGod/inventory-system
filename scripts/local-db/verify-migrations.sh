@@ -20,8 +20,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MIGRATIONS_DIR="$REPO_ROOT/supabase/migrations"
 BASELINE="$SCRIPT_DIR/baseline_public_schema.sql"
 AUTH_STUB="$SCRIPT_DIR/auth_stub.sql"
-# The snapshot was captured after this production migration on 2026-08-11.
-BASELINE_MIGRATION_CUTOFF="20260811204219_tip_entry_session_duplicate_guard.sql"
+# The snapshot was captured on 2026-08-11 after this production migration. It
+# predates 20260811204219 (no tip_entries.entry_session_id, 12-argument
+# tip_save_entry), so that file must be applied on top of it.
+BASELINE_MIGRATION_CUTOFF="20260807101000_tip_set_updated_at_search_path.sql"
 
 KEEP=false
 if [[ "${1:-}" == "--keep" ]]; then
