@@ -178,7 +178,7 @@ export function HistoryScreen() {
         <EmptyStateCard
           icon="receipt-outline"
           title="No sent orders yet"
-          message="Orders you send directly to suppliers appear here. Orders that go to your manager are handled from the manager's side."
+          message="Orders appear here after they are sent to suppliers. Orders waiting for manager review show up once they are processed."
         />
       </View>
     );
