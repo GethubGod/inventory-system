@@ -9,6 +9,7 @@ module.exports = defineConfig([
       'supabase/.temp/**',
       'docs/mockups/**',
       'scripts/google-sheets-sync.js',
+      'scripts/flood-test/**',
       'scripts/scratch_query.ts',
       'web/**',
       'marketing/**',
