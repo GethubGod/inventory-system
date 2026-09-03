@@ -1,5 +1,5 @@
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2?no-dts';
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
 import { z } from 'https://esm.sh/zod@3.25.76';
 import { corsHeadersForRequest } from '../_shared/cors.ts';

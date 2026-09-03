@@ -140,8 +140,13 @@ export async function processQuickOrderMessage(
       ? (prompt) => input.callLlm!(prompt, intentRouteModel)
       : undefined,
   });
-  const llmIntentRoute = llmIntentRouting?.route ?? null;
-  if (llmIntentRouting?.classification) {
+  // A malformed provider reply (repairNeeded with an unknown route) is as
+  // useless as a failed call: let deterministic parsing handle the message.
+  const llmRouteUnusable = !llmIntentRouting ||
+    llmIntentRouting.llmFailed ||
+    (llmIntentRouting.repairNeeded && llmIntentRouting.route.classification === 'unknown_non_order');
+  const llmIntentRoute = llmRouteUnusable ? null : llmIntentRouting.route;
+  if (llmIntentRouting?.classification && !llmRouteUnusable) {
     classification = llmIntentRouting.classification;
   }
 

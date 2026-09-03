@@ -8,7 +8,7 @@
 // the session's location_id.
 
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2?no-dts';
 import { tipCorsHeadersForRequest } from '../_shared/cors.ts';
 import {
   businessDateFor,

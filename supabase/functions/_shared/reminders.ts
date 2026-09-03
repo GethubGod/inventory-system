@@ -1,5 +1,5 @@
 // @ts-nocheck
-import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import type { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2?no-dts';
 import {
   buildChecklistOrderDayMessage,
   isExpoDeviceNotRegistered,

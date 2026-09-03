@@ -1,5 +1,5 @@
 // @ts-ignore Deno Edge Functions support remote npm-style imports.
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2?no-dts';
 import { userCanAccessLocation } from '../_shared/location-access.ts';
 import type { CatalogItem } from '../parse-order/types.ts';
 

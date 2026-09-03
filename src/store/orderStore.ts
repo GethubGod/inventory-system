@@ -138,6 +138,7 @@ export const useOrderStore = create<OrderState>()(
       lastOrderedCacheBySupplier: {},
       isFulfillmentLoading: false,
       isPastOrderSyncing: false,
+      fulfillmentDataRevision: 0,
 
 
       addToCart: (locationId, inventoryItemId, quantity, unitType, options) => {
@@ -2620,6 +2621,7 @@ export const useOrderStore = create<OrderState>()(
           });
           return {
             supplierDrafts: nextSupplierDrafts,
+            fulfillmentDataRevision: state.fulfillmentDataRevision + 1,
           };
         });
 

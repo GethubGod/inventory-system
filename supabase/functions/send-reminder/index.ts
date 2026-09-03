@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2?no-dts';
 import { corsHeaders } from '../_shared/cors.ts';
 import {
   ReminderRateLimitError,

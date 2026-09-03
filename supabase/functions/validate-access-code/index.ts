@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2?no-dts';
 import { corsHeadersForRequest } from '../_shared/cors.ts';
 
 type Role = 'employee' | 'manager';
