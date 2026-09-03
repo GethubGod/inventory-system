@@ -37,11 +37,15 @@ describe("getRoleDefaultModules", () => {
       stock_check: true,
       tips: false,
       fulfillment: false,
+      kitchen_requests: false,
+      kitchen_display: false,
     });
   });
 
   it("mirrors the SQL defaults for managers (everything on)", () => {
     expect(Object.values(getRoleDefaultModules("manager"))).toEqual([
+      true,
+      true,
       true,
       true,
       true,
@@ -58,12 +62,14 @@ describe("moduleKeysForRole", () => {
       "ordering_advanced",
       "stock_check",
       "tips",
+      "kitchen_requests",
+      "kitchen_display",
     ]);
   });
 
-  it("exposes all five keys for managers", () => {
+  it("exposes all seven keys for managers", () => {
     expect(moduleKeysForRole("manager")).toContain("fulfillment");
-    expect(moduleKeysForRole("manager")).toHaveLength(5);
+    expect(moduleKeysForRole("manager")).toHaveLength(7);
   });
 });
 
@@ -85,6 +91,8 @@ describe("toModuleMap", () => {
       stock_check: false,
       tips: false,
       fulfillment: false,
+      kitchen_requests: false,
+      kitchen_display: false,
     });
   });
 
@@ -169,6 +177,8 @@ describe("buildModulePreset", () => {
       ordering_advanced: false,
       stock_check: true,
       tips: false,
+      kitchen_requests: false,
+      kitchen_display: false,
     });
   });
 
@@ -178,6 +188,6 @@ describe("buildModulePreset", () => {
       getRoleDefaultModules("manager"),
     );
     expect(preset.fulfillment).toBe(true);
-    expect(Object.keys(preset)).toHaveLength(5);
+    expect(Object.keys(preset)).toHaveLength(7);
   });
 });

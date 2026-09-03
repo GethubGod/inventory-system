@@ -6,6 +6,7 @@ module.exports = defineConfig([
     ignores: [
       '.expo/**',
       '.claude/**',
+      'supabase/.temp/**',
       'docs/mockups/**',
       'scripts/google-sheets-sync.js',
       'scripts/scratch_query.ts',

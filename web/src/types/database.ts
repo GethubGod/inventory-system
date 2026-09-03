@@ -1625,6 +1625,125 @@ export type Database = {
         }
         Relationships: []
       }
+      kitchen_items: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          id: string
+          location_id: string | null
+          name: string
+          sort_order: number
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id?: string | null
+          name: string
+          sort_order?: number
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          location_id?: string | null
+          name?: string
+          sort_order?: number
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kitchen_items_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kitchen_requests: {
+        Row: {
+          client_key: string
+          closed_at: string | null
+          created_at: string
+          id: string
+          item_id: string
+          item_name: string
+          location_id: string
+          quantity: number
+          ready_at: string | null
+          ready_by: string | null
+          ready_by_name: string | null
+          requested_by: string | null
+          requested_by_name: string
+          requested_by_tag: string
+          status: string
+          unit: string
+          updated_at: string
+        }
+        Insert: {
+          client_key: string
+          closed_at?: string | null
+          created_at?: string
+          id?: string
+          item_id: string
+          item_name: string
+          location_id: string
+          quantity: number
+          ready_at?: string | null
+          ready_by?: string | null
+          ready_by_name?: string | null
+          requested_by?: string | null
+          requested_by_name: string
+          requested_by_tag: string
+          status?: string
+          unit: string
+          updated_at?: string
+        }
+        Update: {
+          client_key?: string
+          closed_at?: string | null
+          created_at?: string
+          id?: string
+          item_id?: string
+          item_name?: string
+          location_id?: string
+          quantity?: number
+          ready_at?: string | null
+          ready_by?: string | null
+          ready_by_name?: string | null
+          requested_by?: string | null
+          requested_by_name?: string
+          requested_by_tag?: string
+          status?: string
+          unit?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kitchen_requests_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "kitchen_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "kitchen_requests_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       locations: {
         Row: {
           active: boolean
@@ -4758,9 +4877,67 @@ export type Database = {
       get_effective_modules: {
         Args: { p_user_id: string }
         Returns: {
-          module_key: string
           enabled: boolean
+          module_key: string
         }[]
+      }
+      kitchen_actor_identity: {
+        Args: { p_user_id: string }
+        Returns: Record<string, unknown>
+      }
+      kitchen_module_enabled: { Args: { p_key: string }; Returns: boolean }
+      kitchen_send_request: {
+        Args: {
+          p_client_key: string
+          p_item_id: string
+          p_location_id: string
+          p_quantity: number
+        }
+        Returns: {
+          client_key: string
+          closed_at: string | null
+          created_at: string
+          id: string
+          item_id: string
+          item_name: string
+          location_id: string
+          quantity: number
+          ready_at: string | null
+          ready_by: string | null
+          ready_by_name: string | null
+          requested_by: string | null
+          requested_by_name: string
+          requested_by_tag: string
+          status: string
+          unit: string
+          updated_at: string
+        }
+      }
+      kitchen_update_request: {
+        Args: { p_action: string; p_request_id: string }
+        Returns: {
+          client_key: string
+          closed_at: string | null
+          created_at: string
+          id: string
+          item_id: string
+          item_name: string
+          location_id: string
+          quantity: number
+          ready_at: string | null
+          ready_by: string | null
+          ready_by_name: string | null
+          requested_by: string | null
+          requested_by_name: string
+          requested_by_tag: string
+          status: string
+          unit: string
+          updated_at: string
+        }
+      }
+      kitchen_user_location_ok: {
+        Args: { p_location_id: string }
+        Returns: boolean
       }
       get_last_inventory_session_items: {
         Args: { p_location_id: string; p_user_id?: string }

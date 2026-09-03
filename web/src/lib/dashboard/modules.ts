@@ -12,6 +12,8 @@ export const MODULE_KEYS = [
   "stock_check",
   "tips",
   "fulfillment",
+  "kitchen_requests",
+  "kitchen_display",
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -24,6 +26,8 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   stock_check: "Stock check",
   tips: "Tips",
   fulfillment: "Fulfillment",
+  kitchen_requests: "Kitchen requests",
+  kitchen_display: "Kitchen display",
 };
 
 export function isModuleKey(value: unknown): value is ModuleKey {
@@ -35,9 +39,10 @@ export function isModuleKey(value: unknown): value is ModuleKey {
 /**
  * Client-side mirror of the SQL role defaults in get_effective_modules
  * (employee → ordering_simple + stock_check; manager → everything; see
- * 20260820121000_ordering_simple_default_on.sql). Used to preset the
- * invite modal and as a safety net for missing keys — the RPC remains the
- * source of truth for effective values.
+ * 20260820121000_ordering_simple_default_on.sql and
+ * 20260831120000_kitchen_requests.sql). Used to preset the invite modal and
+ * as a safety net for missing keys — the RPC remains the source of truth for
+ * effective values.
  */
 export function getRoleDefaultModules(role: TeamRole): ModuleMap {
   const isManager = role === "manager";
@@ -47,6 +52,8 @@ export function getRoleDefaultModules(role: TeamRole): ModuleMap {
     stock_check: true,
     tips: isManager,
     fulfillment: isManager,
+    kitchen_requests: isManager,
+    kitchen_display: isManager,
   };
 }
 
