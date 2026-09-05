@@ -19,7 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useShallow } from 'zustand/react/shallow';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getHomeInsights, getHomeInsightsGeneration, setHomeInsights } from './homeInsightsCache';
 import {
   AddButton,
   GlassSurface,
@@ -71,49 +71,6 @@ import type { HomeScreenMode } from './modes';
 const HOME_INSIGHTS_TIMEOUT_MS = 8000;
 const HOME_REMINDER_TIMEOUT_MS = 6000;
 const HOME_BACKGROUND_REFRESH_INTERVAL_MS = 60 * 1000;
-
-// Stale-while-revalidate cache for Suggestions / Quick Actions / Reminders.
-// Prevents the cards from flip-flopping between populated and empty states
-// across component remounts (tab switches) and app restarts.
-interface CachedHomeInsights {
-  predictedItems: PredictedOrderItem[];
-  reorderOrder: HistoricalOrderSummary | null;
-  activeReminder: LocationReminderBanner | null;
-  cachedAt: number;
-}
-
-const homeInsightsCache = new Map<string, CachedHomeInsights>();
-const HOME_CACHE_STORAGE_KEY = 'home-insights-cache-v1';
-const HOME_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-function persistHomeInsightsCache(): void {
-  const obj: Record<string, CachedHomeInsights> = {};
-  homeInsightsCache.forEach((v, k) => {
-    obj[k] = v;
-  });
-  void AsyncStorage.setItem(HOME_CACHE_STORAGE_KEY, JSON.stringify(obj)).catch(
-    () => {},
-  );
-}
-
-void (async () => {
-  try {
-    const raw = await AsyncStorage.getItem(HOME_CACHE_STORAGE_KEY);
-    if (!raw) return;
-    const entries = JSON.parse(raw) as Record<string, CachedHomeInsights>;
-    const now = Date.now();
-    for (const [id, entry] of Object.entries(entries)) {
-      if (
-        now - entry.cachedAt < HOME_CACHE_MAX_AGE_MS &&
-        !homeInsightsCache.has(id)
-      ) {
-        homeInsightsCache.set(id, entry);
-      }
-    }
-  } catch {
-    // Ignore cache hydration errors
-  }
-})();
 
 class HomeDataTimeoutError extends Error {
   label: string;
@@ -448,7 +405,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
     () => {
       const locId = useAuthStore.getState().location?.id;
       return locId
-        ? (homeInsightsCache.get(locId)?.predictedItems ?? [])
+        ? (getHomeInsights(useAuthStore.getState().session?.user.id, locId)?.predictedItems ?? [])
         : [];
     },
   );
@@ -456,20 +413,20 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
     useState<HistoricalOrderSummary | null>(() => {
       const locId = useAuthStore.getState().location?.id;
       return locId
-        ? (homeInsightsCache.get(locId)?.reorderOrder ?? null)
+        ? (getHomeInsights(useAuthStore.getState().session?.user.id, locId)?.reorderOrder ?? null)
         : null;
     });
   const [activeReminder, setActiveReminder] =
     useState<LocationReminderBanner | null>(() => {
       const locId = useAuthStore.getState().location?.id;
       return locId
-        ? (homeInsightsCache.get(locId)?.activeReminder ?? null)
+        ? (getHomeInsights(useAuthStore.getState().session?.user.id, locId)?.activeReminder ?? null)
         : null;
     });
   const hasLoadedHomeDataRef = useRef(
     (() => {
       const locId = useAuthStore.getState().location?.id;
-      return !!(locId && homeInsightsCache.has(locId));
+      return !!(locId && getHomeInsights(useAuthStore.getState().session?.user.id, locId));
     })(),
   );
   const homeDataRefreshPromiseRef = useRef<Promise<void> | null>(null);
@@ -533,7 +490,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
     queuedHomeDataRefreshRef.current = false;
 
     const cached = location?.id
-      ? homeInsightsCache.get(location.id)
+      ? getHomeInsights(session?.user.id, location.id)
       : undefined;
     if (cached) {
       setPredictedItems(cached.predictedItems);
@@ -546,12 +503,13 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
       setReorderOrder(null);
       setActiveReminder(null);
     }
-  }, [location?.id]);
+  }, [location?.id, session?.user.id]);
 
   const runHomeDataLoad = useCallback(async (background = false) => {
     const authState = useAuthStore.getState();
     const locationId = authState.location?.id ?? null;
     const userId = authState.session?.user?.id ?? null;
+    const cacheGeneration = getHomeInsightsGeneration();
     if (!locationId) {
       hasLoadedHomeDataRef.current = false;
       setPredictedItems([]);
@@ -576,7 +534,9 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
       ),
     ]);
 
-    if (useAuthStore.getState().location?.id !== locationId) {
+    if (useAuthStore.getState().location?.id !== locationId ||
+        useAuthStore.getState().session?.user.id !== userId ||
+        getHomeInsightsGeneration() !== cacheGeneration) {
       return;
     }
 
@@ -606,8 +566,8 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
       insightsResult.status === 'fulfilled' ||
       reminderResult.status === 'fulfilled'
     ) {
-      const prev = homeInsightsCache.get(locationId);
-      homeInsightsCache.set(locationId, {
+      const prev = getHomeInsights(userId, locationId);
+      setHomeInsights(userId, locationId, {
         predictedItems:
           insightsResult.status === 'fulfilled'
             ? insightsResult.value.predictedItems
@@ -621,8 +581,7 @@ export function HomeScreenView({ mode }: HomeScreenViewProps) {
             ? reminderResult.value
             : (prev?.activeReminder ?? null),
         cachedAt: Date.now(),
-      });
-      persistHomeInsightsCache();
+      }, cacheGeneration);
     }
   }, []);
 

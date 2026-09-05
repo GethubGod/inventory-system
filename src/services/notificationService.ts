@@ -1,5 +1,6 @@
 // PHASE 4: Notifications, push tokens, in-app — direct Supabase calls, no matching edge functions yet.
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import type { NotificationRequest } from 'expo-notifications';
 import { Reminder } from '@/types/settings';
@@ -7,8 +8,15 @@ import { useSettingsStore } from '@/store';
 import { getNotificationsModule } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 
+const DEVICE_PUSH_TOKEN_STORAGE_KEY = 'device-push-token';
 const STOCK_PAUSED_NOTIFICATION_TYPE = 'stock-count-paused';
 let notificationHandlerConfigured = false;
+const pushRegistrationGeneration = new Map<string, number>();
+const pendingPushRegistrations = new Map<string, Set<Promise<string | null>>>();
+
+function getPushRegistrationGeneration(userId: string): number {
+  return pushRegistrationGeneration.get(userId) ?? 0;
+}
 
 async function getNotifications() {
   const Notifications = await getNotificationsModule();
@@ -94,8 +102,23 @@ export function isPushTokenRefreshDue(
   return nowMs - updatedAtMs > maxAgeMs;
 }
 
-export async function registerCurrentDevicePushToken(
-  userId: string
+export async function registerCurrentDevicePushToken(userId: string): Promise<string | null> {
+  const generation = getPushRegistrationGeneration(userId);
+  const registrations = pendingPushRegistrations.get(userId) ?? new Set<Promise<string | null>>();
+  pendingPushRegistrations.set(userId, registrations);
+  const registration = registerDevicePushToken(userId, generation);
+  registrations.add(registration);
+  try {
+    return await registration;
+  } finally {
+    registrations.delete(registration);
+    if (registrations.size === 0) pendingPushRegistrations.delete(userId);
+  }
+}
+
+async function registerDevicePushToken(
+  userId: string,
+  generation: number,
 ): Promise<string | null> {
   if (!userId) return null;
 
@@ -121,8 +144,10 @@ export async function registerCurrentDevicePushToken(
     : await Notifications.getExpoPushTokenAsync();
   const expoPushToken = tokenResponse?.data?.trim();
 
-  if (!expoPushToken) return null;
+  if (!expoPushToken || getPushRegistrationGeneration(userId) !== generation) return null;
 
+  await AsyncStorage.setItem(DEVICE_PUSH_TOKEN_STORAGE_KEY, expoPushToken);
+  if (getPushRegistrationGeneration(userId) !== generation) return null;
   const db = supabase as any;
 
   const { error: upsertError } = await db
@@ -167,6 +192,7 @@ export async function refreshCurrentDevicePushTokenIfStale(
   maxAgeDays = 7
 ): Promise<string | null> {
   if (!userId) return null;
+  const generation = getPushRegistrationGeneration(userId);
   const db = supabase as any;
 
   const { data, error } = await db
@@ -186,7 +212,47 @@ export async function refreshCurrentDevicePushTokenIfStale(
     return null;
   }
 
+  if (getPushRegistrationGeneration(userId) !== generation) return null;
   return registerCurrentDevicePushToken(userId);
+}
+
+/** Deactivate only this phone while the departing user still has a session. */
+export async function deactivateCurrentDevicePushToken(userId: string): Promise<void> {
+  if (!userId || Constants.appOwnership === 'expo') return;
+  pushRegistrationGeneration.set(userId, getPushRegistrationGeneration(userId) + 1);
+  await Promise.allSettled([...(pendingPushRegistrations.get(userId) ?? [])]);
+  let token = (await AsyncStorage.getItem(DEVICE_PUSH_TOKEN_STORAGE_KEY))?.trim();
+  if (!token) {
+    // Older builds did not save the device token. Never prompt during logout.
+    const Notifications = await getNotifications();
+    if (!Notifications) return;
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== 'granted') return;
+    const projectId = getExpoProjectId();
+    const response = projectId
+      ? await Notifications.getExpoPushTokenAsync({ projectId })
+      : await Notifications.getExpoPushTokenAsync();
+    token = response.data.trim();
+  }
+  if (!token) return;
+
+  const { error } = await supabase
+    .from('device_push_tokens')
+    .update({ active: false })
+    .eq('user_id', userId)
+    .eq('expo_push_token', token);
+  if (error) throw new Error(error.message || 'Unable to deactivate this device.');
+}
+
+/** Remove private reminders and delivered banners from this shared device. */
+export async function clearDeviceNotifications(shouldClear: () => boolean = () => true): Promise<void> {
+  const Notifications = await getNotifications();
+  if (!Notifications || !shouldClear()) return;
+  await Promise.all([
+    Notifications.cancelAllScheduledNotificationsAsync(),
+    Notifications.dismissAllNotificationsAsync(),
+    Notifications.setBadgeCountAsync(0),
+  ]);
 }
 
 export async function deactivatePushTokensForUser(userId: string): Promise<void> {

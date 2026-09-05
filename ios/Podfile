@@ -2,6 +2,7 @@ require File.join(File.dirname(`node --print "require.resolve('expo/package.json
 require File.join(File.dirname(`node --print "require.resolve('react-native/package.json')"`), "scripts/react_native_pods")
 
 require 'json'
+require 'shellwords'
 podfile_properties = JSON.parse(File.read(File.join(__dir__, 'Podfile.properties.json'))) rescue {}
 
 def ccache_enabled?(podfile_properties)
@@ -59,5 +60,24 @@ target 'Babytuna' do
       :mac_catalyst_enabled => false,
       :ccache_enabled => ccache_enabled?(podfile_properties),
     )
+
+    # Expo SDK 54 wraps these paths in `bash -c`, which splits checkout names
+    # containing spaces. Patch generated phases so clean installs stay safe.
+    expo_scripts = {
+      'EXConstants' => 'get-app-config-ios.sh',
+      'EXUpdates' => 'create-updates-resources-ios.sh',
+    }
+    installer.pods_project.targets.each do |target|
+      script_name = expo_scripts[target.name]
+      next unless script_name
+
+      target.shell_script_build_phases.each do |phase|
+        next unless phase.shell_script.include?(script_name)
+
+        prefix = phase.shell_script.include?('export FORCE_BUNDLING=1') ? "export FORCE_BUNDLING=1\n" : ''
+        prefix += "export PROJECT_ROOT=#{Shellwords.escape(ENV['PROJECT_ROOT'])}\n" if ENV['PROJECT_ROOT']
+        phase.shell_script = prefix + "bash -l \"$PODS_TARGET_SRCROOT/../scripts/#{script_name}\"\n"
+      end
+    end
   end
 end

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Redirect } from 'expo-router';
 import { useAuthStore, useSettingsStore } from '@/store';
 import { getNotificationsModule } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
@@ -27,6 +28,11 @@ interface DebugInfo {
 }
 
 export default function NotificationsDebugScreen() {
+  if (!__DEV__) return <Redirect href="/settings/notifications" />;
+  return <NotificationsDebugContent />;
+}
+
+function NotificationsDebugContent() {
   const ds = useScaledStyles();
   const { user, profile } = useAuthStore();
   const { notifications } = useSettingsStore();

@@ -402,8 +402,8 @@ export default function ProfileSettingsScreen() {
           icon="key-outline"
           iconColor={settingsIconPalettes.neutral.icon}
           iconBgColor={settingsIconPalettes.neutral.background}
-          title="Change password"
-          subtitle="Update the password you sign in with"
+          title="Change PIN or password"
+          subtitle="Update your sign-in details"
           onPress={() => setShowPasswordModal(true)}
         />
         <SettingsRow

@@ -22,6 +22,7 @@ import {
   ChangePasswordModal,
 } from '@/components/settings';
 import { useAuthStore, useSettingsStore } from '@/store';
+import { updateMyDisplayName } from '@/services/selfProfile';
 import { colors } from '@/constants';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import {
@@ -201,9 +202,10 @@ function ActionButton({
 
 export default function ManagerProfileSettingsScreen() {
   const ds = useScaledStyles();
-  const { user, locations, deleteSelfAccount } = useAuthStore();
+  const { user, locations, deleteSelfAccount, setUser } = useAuthStore();
   const { avatarUri, setAvatarUri } = useSettingsStore();
   const [isEditingName, setIsEditingName] = useState(false);
+  const [isSavingName, setIsSavingName] = useState(false);
   const [tempName, setTempName] = useState(user?.name || '');
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -214,6 +216,21 @@ export default function ManagerProfileSettingsScreen() {
     () => user?.name?.trim().split(/\s+/)[0] || 'Manager',
     [user?.name],
   );
+
+  const saveName = async () => {
+    if (!user || isSavingName) return;
+    setIsSavingName(true);
+    try {
+      await updateMyDisplayName(tempName);
+      if (useAuthStore.getState().user?.id !== user.id) return;
+      setUser({ ...user, name: tempName.trim() });
+      setIsEditingName(false);
+    } catch (error: unknown) {
+      Alert.alert('Unable to save name', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setIsSavingName(false);
+    }
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -413,7 +430,9 @@ export default function ManagerProfileSettingsScreen() {
                       />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => setIsEditingName(false)}
+                      onPress={() => void saveName()}
+                      disabled={isSavingName}
+                      accessibilityLabel="Save name"
                       style={{
                         width: 40,
                         height: 40,
@@ -584,7 +603,7 @@ export default function ManagerProfileSettingsScreen() {
             >
               <View style={{ gap: ds.spacing(12) }}>
                 <ActionButton
-                  label="Change Password"
+                  label="Change PIN or password"
                   icon="key-outline"
                   onPress={() => setShowPasswordModal(true)}
                 />

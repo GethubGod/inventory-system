@@ -23,6 +23,7 @@ export interface MyModulesResult {
 
 export function useMyModules(resolvedRole: UserRole | null): MyModulesResult {
   const sessionUserId = useAuthStore((state) => state.session?.user?.id ?? null);
+  const moduleUserId = useModuleStore((state) => state.userId);
   const fetched = useModuleStore((state) => state.fetched);
   const status = useModuleStore((state) => state.status);
 
@@ -33,10 +34,10 @@ export function useMyModules(resolvedRole: UserRole | null): MyModulesResult {
 
   return useMemo(
     () => ({
-      modules: resolveEffectiveModules(resolvedRole, fetched),
-      isReady: status === 'ready' || status === 'error',
+      modules: resolveEffectiveModules(resolvedRole, moduleUserId === sessionUserId ? fetched : null),
+      isReady: moduleUserId === sessionUserId && (status === 'ready' || status === 'error'),
     }),
-    [fetched, resolvedRole, status],
+    [fetched, moduleUserId, resolvedRole, sessionUserId, status],
   );
 }
 

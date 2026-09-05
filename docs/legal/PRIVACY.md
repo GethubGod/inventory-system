@@ -1,8 +1,8 @@
-# Babytuna Systems Privacy Policy
+# Smelter Privacy Policy
 
 Effective August 21, 2026
 
-This Privacy Policy explains how Babytuna Systems handles information through its mobile app, web pages, and related services (the “Service”). Babytuna Systems is operated by the developer identified on its App Store listing (“Babytuna,” “we,” “us,” or “our”). The Service is built for authorized restaurant teams, not for general consumer use.
+This Privacy Policy explains how Smelter handles information through its mobile app, web pages, and related services (the “Service”). Babytuna Systems is operated by the developer identified on its App Store listing (“Babytuna,” “we,” “us,” or “our”). The Service is built for authorized restaurant teams, not for general consumer use.
 
 ## 1. Who controls workplace information
 
@@ -67,7 +67,7 @@ You may be able to review or update account details in the app. You can control 
 
 Depending on where you live, you may have rights to know, access, correct, delete, or receive a copy of personal information, or to object to or limit certain processing. You may also have a right to appeal a denied request or complain to a privacy regulator. We will not discriminate against you for making a valid privacy request. Some requests may need to be handled by your organization because it controls the workplace record, and some information may be retained where law or legitimate business needs permit.
 
-For a privacy request, contact your organization administrator first or use the developer contact method available through the Babytuna Systems App Store listing or website. We may need to verify your identity and authority before acting.
+For a privacy request, contact your organization administrator first or use the developer contact method available through the Smelter App Store listing or website. We may need to verify your identity and authority before acting.
 
 ## 8. Account deletion
 
@@ -91,4 +91,4 @@ We may update this Policy as the Service or law changes. We will update the effe
 
 ## 13. Contact
 
-For workplace-data questions, contact your manager or organization administrator. For privacy questions, use the developer contact method available through the Babytuna Systems App Store listing or the Babytuna Systems website.
+For workplace-data questions, contact your manager or organization administrator. For privacy questions, use the developer contact method available through the Smelter App Store listing or the Babytuna Systems website.

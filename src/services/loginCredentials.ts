@@ -106,6 +106,21 @@ function friendlyRpcMessage(error: { message?: string }, fallback: string): stri
   return fallback;
 }
 
+/** Reads public credential metadata only. A missing identity is a legacy email account. */
+export async function getMyCredentialKind(userId: string): Promise<CredentialKind | null> {
+  if (!userId) throw new Error('Sign in again to change your sign-in details.');
+  const { data, error } = await supabase
+    .from('login_identities')
+    .select('credential_kind')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw new Error('Unable to load your sign-in settings. Check your connection and try again.');
+  if (!data) return null;
+  const kind: unknown = data.credential_kind;
+  if (kind !== 'pin' && kind !== 'password') throw new Error('Unable to read your sign-in settings. Contact support.');
+  return kind;
+}
+
 /**
  * Stores the signed-in user's own credential (onboarding step 2). The account
  * must already exist and have a session — accept-invite creates it first.

@@ -9,6 +9,10 @@ import { clearSupabaseStoredSession, supabase } from '@/lib/supabase';
 import { deleteSelfAccountRequest, registerSessionGetter } from '@/lib/api/client';
 import { validateAccessCode } from '@/services/accessCodes';
 import { acceptInvite } from '@/services/invites';
+import { invalidateCachePrefix } from '@/lib/queryCache';
+import { useSettingsStore } from './settingsStore';
+import { useSimpleOrderUiStore } from './simpleOrderUiStore';
+import { clearHomeInsightsCache } from '@/features/home/homeInsightsCache';
 
 type ViewMode = 'employee' | 'manager';
 type OAuthProvider = 'google' | 'apple';
@@ -260,7 +264,7 @@ function markIdentityRepairRpcUnavailable(error: unknown) {
   );
 }
 
-function withTimeout(promise: Promise<any>, timeoutMs: number, timeoutMessage: string): Promise<any> {
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       reject(new Error(timeoutMessage));
@@ -293,7 +297,7 @@ function clearAuthStateSubscription() {
 
 async function signOutLocalSupabaseSession(warningMessage: string) {
   try {
-    const { error } = await withTimeout(
+    const { error } = await withTimeout<{ error: unknown }>(
       supabase.auth.signOut({ scope: 'local' }),
       SIGN_OUT_TIMEOUT_MS,
       'Supabase sign-out timed out.'
@@ -515,6 +519,8 @@ const USER_SCOPED_STORAGE_KEYS = [
   'babytuna-fulfillment',
   'tuna-specialist-storage',
   'home-insights-cache-v1',
+  'home-insights-cache-v2',
+  'app-settings',
 ] as const;
 
 type PersistedStoreApi = {
@@ -545,6 +551,11 @@ async function clearUserScopedClientState() {
   }
 
   userScopedResetPromise = (async () => {
+    invalidateCachePrefix('');
+    clearHomeInsightsCache();
+    useSettingsStore.getState().resetAllToDefaults();
+    useSimpleOrderUiStore.setState(useSimpleOrderUiStore.getInitialState(), true);
+
     try {
       await AsyncStorage.multiRemove([...USER_SCOPED_STORAGE_KEYS]);
     } catch (error) {
@@ -585,6 +596,31 @@ async function clearUserScopedClientState() {
     await userScopedResetPromise;
   } finally {
     userScopedResetPromise = null;
+  }
+}
+
+async function clearSignedOutNotifications(userId: string | null) {
+  const transitionId = authStateTransitionId;
+  let cleanupActive = true;
+  try {
+    await withTimeout(
+      (async () => {
+        const { clearDeviceNotifications, deactivateCurrentDevicePushToken } = await import('@/services/notificationService');
+        const results = await Promise.allSettled([
+          clearDeviceNotifications(() => cleanupActive && transitionId === authStateTransitionId),
+          userId ? deactivateCurrentDevicePushToken(userId) : Promise.resolve(),
+        ]);
+        for (const result of results) {
+          if (result.status === 'rejected') console.warn('Notification cleanup failed during sign-out.', result.reason);
+        }
+      })(),
+      SIGN_OUT_TIMEOUT_MS,
+      'Notification cleanup timed out during sign-out.'
+    );
+  } catch (error) {
+    console.warn('Notification cleanup failed during sign-out.', error);
+  } finally {
+    cleanupActive = false;
   }
 }
 
@@ -1662,10 +1698,17 @@ export const useAuthStore = create<AuthState>()(
       signOut: async () => {
         explicitSignOutInProgress = true;
         const transitionId = beginAuthTransition();
-        await Promise.all([
-          signOutLocalSupabaseSession('Supabase sign-out failed; clearing local session anyway.'),
-          resetSignedOutClientState(transitionId),
-        ]);
+        const departingUserId = get().session?.user.id ?? null;
+        set({ isLoading: true });
+        try {
+          await clearSignedOutNotifications(departingUserId);
+          await Promise.all([
+            signOutLocalSupabaseSession('Supabase sign-out failed; clearing local session anyway.'),
+            resetSignedOutClientState(transitionId),
+          ]);
+        } finally {
+          set({ isLoading: false });
+        }
       },
 
       deleteSelfAccount: async (confirmText) => {
@@ -1699,6 +1742,8 @@ export const useAuthStore = create<AuthState>()(
 
             throw new Error(normalizedError || 'Unable to delete account.');
           }
+
+          await clearSignedOutNotifications(null);
 
           try {
             explicitSignOutInProgress = true;
