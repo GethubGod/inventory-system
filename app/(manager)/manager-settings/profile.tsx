@@ -307,7 +307,7 @@ export default function ManagerProfileSettingsScreen() {
         <View style={{ backgroundColor: glassColors.background }}>
           <StackScreenHeader
             title="Profile"
-            subtitle="Manager identity, locations, and account controls in the same refined settings shell."
+            subtitle="Manage your name, photo, sign-in details, and account."
           />
         </View>
 

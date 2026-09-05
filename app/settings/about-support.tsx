@@ -97,7 +97,7 @@ export default function AboutSupportSettingsScreen() {
     <SettingsScreenLayout title="About & Support">
       <SettingsSectionLabel
         label="Support"
-        description="Version details, support links, and policy access all stay inside the same polished settings shell."
+        description="View app details, get support, and read our policies."
       />
       <AboutSection />
       <View

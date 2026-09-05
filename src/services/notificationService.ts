@@ -545,45 +545,6 @@ export function isInQuietHours(
   return currentTime >= start && currentTime < end;
 }
 
-// Send immediate notification to employees who haven't ordered today
-export async function sendReminderToEmployees(employeeIds: string[]): Promise<void> {
-  const Notifications = await getNotifications();
-  if (!Notifications) {
-    return;
-  }
-
-  // In a real app, you would send push notifications via a server
-  // For now, we'll schedule an immediate local notification as a demo
-  // In production, this would call your backend API to send push notifications
-  // to the specific employee devices using their push tokens stored in the database
-
-  // Send a local notification immediately (for demo purposes)
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: 'Order Reminder Sent',
-      body: `Reminder sent to ${employeeIds.length} employee${employeeIds.length !== 1 ? 's' : ''}`,
-      data: { type: 'manager-reminder-sent' },
-      sound: true,
-    },
-    trigger: null, // null trigger = immediate notification
-  });
-
-  // In production, you would:
-  // 1. Fetch push tokens for these employee IDs from your database
-  // 2. Call your backend API or Expo Push Service to send notifications
-  // Example:
-  // const { data: employees } = await supabase
-  //   .from('users')
-  //   .select('push_token')
-  //   .in('id', employeeIds);
-  //
-  // const pushTokens = employees?.map(e => e.push_token).filter(Boolean);
-  // await sendPushNotifications(pushTokens, {
-  //   title: 'Order Reminder',
-  //   body: "Don't forget to place your inventory order today!",
-  // });
-}
-
 // Trigger local notification for employee with a pending manager reminder.
 // Called on app foreground / focus when unread reminder notifications exist.
 export async function triggerPendingReminderLocalNotification(

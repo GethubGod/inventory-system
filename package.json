@@ -14,7 +14,9 @@
     "audit:prod": "npm audit --omit=dev --audit-level=critical",
     "audit:quick-order-recognition": "node scripts/audit-quick-order-recognition.js",
     "verify:submit-order-rpc": "node scripts/verify-submit-order-rpc.js",
-    "doctor": "npx expo-doctor"
+    "doctor": "npx expo-doctor",
+    "verify:production-env": "node scripts/verify-production-env.cjs",
+    "eas-build-pre-install": "node scripts/verify-production-env.cjs --eas-hook"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
