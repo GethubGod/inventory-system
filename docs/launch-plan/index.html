@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smelter launch audit and operating proposal</title>
+<style>
+  :root {
+    --ink: #1C1C1E; --ink2: #5F5F5F; --ink3: #8E8E93; --page: #F5F5F4; --card: #FFFFFF;
+    --hair: rgba(0,0,0,0.08); --accent: #E8503A; --tint: #FBEAE7;
+    --good: #1F7A3D; --good-bg: #E6F4EA; --warn: #9A5B00; --warn-bg: #FFF4DC; --bad: #A32D2D; --bad-bg: #FBE7E7; --info: #1E4E8C; --info-bg: #E8F0FA;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 15px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, Segoe UI, sans-serif; }
+  header.top { background: #111; color: #fff; padding: 40px 32px 32px; }
+  header.top h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -0.01em; }
+  header.top .meta { color: rgba(255,255,255,0.65); font-size: 13px; }
+  header.top .verdict { margin-top: 18px; display: inline-block; background: var(--accent); color: #fff; padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: 14px; }
+  nav.toc { position: sticky; top: 0; background: rgba(245,245,244,0.96); backdrop-filter: blur(8px); border-bottom: 1px solid var(--hair); padding: 10px 32px; z-index: 5; font-size: 13px; }
+  nav.toc a { color: var(--ink2); text-decoration: none; margin-right: 16px; white-space: nowrap; }
+  nav.toc a:hover { color: var(--accent); }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 32px 80px; }
+  section { margin-top: 44px; }
+  h2 { font-size: 22px; margin: 0 0 6px; letter-spacing: -0.01em; }
+  h2 + p.lead { margin-top: 0; color: var(--ink2); }
+  h3 { font-size: 17px; margin: 28px 0 8px; }
+  h4 { font-size: 14px; margin: 18px 0 6px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink2); }
+  p { margin: 8px 0; }
+  .card { background: var(--card); border: 1px solid var(--hair); border-radius: 12px; padding: 18px 20px; margin: 14px 0; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 16px 0; }
+  .tile { background: var(--card); border: 1px solid var(--hair); border-radius: 12px; padding: 14px 16px; }
+  .tile .n { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: var(--ink); }
+  .tile .l { font-size: 12.5px; color: var(--ink2); margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--hair); border-radius: 12px; overflow: hidden; margin: 12px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--hair); vertical-align: top; }
+  th { background: #FAFAF9; font-weight: 600; font-size: 12.5px; color: var(--ink2); text-transform: uppercase; letter-spacing: 0.03em; }
+  tr:last-child td { border-bottom: 0; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .p-bad { background: var(--bad-bg); color: var(--bad); } .p-warn { background: var(--warn-bg); color: var(--warn); }
+  .p-good { background: var(--good-bg); color: var(--good); } .p-info { background: var(--info-bg); color: var(--info); }
+  .p-neutral { background: #EDEDEC; color: var(--ink2); }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  code { background: #EDEDEC; padding: 1px 5px; border-radius: 4px; }
+  pre { background: #1C1C1E; color: #F2F2F2; padding: 14px 16px; border-radius: 10px; overflow-x: auto; line-height: 1.5; }
+  pre code { background: transparent; padding: 0; color: inherit; }
+  ul, ol { padding-left: 22px; } li { margin: 4px 0; }
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 12px 0; }
+  .shot { background: var(--card); border: 1px solid var(--hair); border-radius: 10px; padding: 8px; }
+  .shot img { width: 100%; border-radius: 6px; border: 1px solid var(--hair); display: block; }
+  .shot .cap { font-size: 12px; color: var(--ink2); margin-top: 6px; line-height: 1.35; }
+  .rec { border-left: 4px solid var(--accent); background: var(--tint); padding: 12px 16px; border-radius: 8px; margin: 14px 0; }
+  .rec strong { color: var(--accent); }
+  .note { border-left: 4px solid var(--info); background: var(--info-bg); padding: 12px 16px; border-radius: 8px; margin: 14px 0; }
+  .explain { border-left: 4px solid #C9C5BC; background: #FAFAF9; padding: 10px 16px; border-radius: 8px; margin: 12px 0; font-size: 14px; color: var(--ink2); }
+  .explain b { color: var(--ink); }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .opt { background: var(--card); border: 1px solid var(--hair); border-radius: 12px; padding: 16px 18px; }
+  .opt.pick { border-color: var(--accent); box-shadow: 0 0 0 2px var(--tint); }
+  .opt h4 { margin-top: 0; color: var(--ink); text-transform: none; letter-spacing: 0; font-size: 15px; }
+  .small { font-size: 13px; color: var(--ink2); }
+  dl.gloss dt { font-weight: 600; margin-top: 10px; } dl.gloss dd { margin: 2px 0 0 0; color: var(--ink2); }
+  .check { list-style: none; padding-left: 0; } .check li { padding-left: 26px; position: relative; }
+  .check li:before { content: ""; position: absolute; left: 0; top: 6px; width: 14px; height: 14px; border: 1.5px solid var(--ink3); border-radius: 4px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Smelter launch audit and operating proposal</h1>
+  <div class="meta">Worktree <code>.worktrees/production-readiness</code> · branch <code>codex/production-readiness</code> at <code>226efb0</code> · 10 commits ahead of <code>origin/main</code>, 0 behind · prepared September 5, 2026</div>
+  <div class="verdict">Not ready to submit. Ready to plan the last mile.</div>
+</header>
+<nav class="toc">
+  <a href="#read">How to read this</a>
+  <a href="#state">1. Where the app stands</a>
+  <a href="#problems">2. Every problem, grouped</a>
+  <a href="#ui">3. UI drift evidence</a>
+  <a href="#plan">4. Fix plan to launch</a>
+  <a href="#uiapproach">5. UI revamp approach</a>
+  <a href="#operate">6. How to operate</a>
+  <a href="#cost">7. Context and cost</a>
+  <a href="#decisions">8. Decisions needed</a>
+  <a href="#appendix">Appendix</a>
+</nav>
+<main>
+
+<section id="read">
+  <h2>How to read this</h2>
+  <p class="lead">This document answers four questions: what is actually wrong, what it takes to launch, how to fix the UI without another round of drift, and how to run the work so chats stay small and quality stays high.</p>
+  <div class="explain">
+    <b>Where the facts come from.</b> Everything in sections 1 to 3 was measured on this worktree today: the release report, its logs and screenshots, and direct searches of the source. Numbers you can reproduce are listed with their commands in the appendix. Nothing here was taken from memory of earlier chats.
+    <br><br>
+    <b>What this is not.</b> No code was changed, no blocker was executed, nothing was pushed. Every outstanding blocker in the report needs an authorization or a fact only you have (an EAS write, an Apple team choice, a physical iPhone, App Store Connect answers). This document is the proposal you asked for. Once you pick the options in section 8, the work in section 4 can start.
+    <br><br>
+    <b>Terms used in this document</b> are defined in the glossary at the end. First uses are also explained inline in the grey boxes like this one.
+  </div>
+</section>
+
+<section id="state">
+  <h2>1. Where the app stands</h2>
+  <p class="lead">The code is in good shape. What is missing is proof, configuration and ownership decisions, not features.</p>
+  <div class="tiles">
+    <div class="tile"><div class="n">1,031</div><div class="l">unit tests passing, 14 skipped, 67 of 68 suites</div></div>
+    <div class="tile"><div class="n">0 / 0</div><div class="l">TypeScript errors / ESLint errors (90 lint warnings remain)</div></div>
+    <div class="tile"><div class="n">72</div><div class="l">mobile screen routes: 1 pass, 49 partial, 18 never exercised, 3 aliases, 1 blocked</div></div>
+    <div class="tile"><div class="n">29</div><div class="l">npm audit entries: 8 high, 21 moderate, 0 critical. All three root packages are build-time only</div></div>
+    <div class="tile"><div class="n">6</div><div class="l">release blockers in the report. Five need your authorization or facts</div></div>
+    <div class="tile"><div class="n">10</div><div class="l">local commits on this branch, unpushed, no open PR</div></div>
+  </div>
+
+  <h3>What the ten commits on this branch fixed</h3>
+  <table>
+    <tr><th>Area</th><th>Defect that was reproduced</th><th>Status</th></tr>
+    <tr><td>Native branding</td><td>Compiled iOS icon and splash still showed the Babytuna ring; privacy manifest empty; speech permission string missing; unused Face ID copy</td><td><span class="pill p-good">Fixed, byte-verified</span></td></tr>
+    <tr><td>Release build</td><td>Expo silently skipped the embedded update manifest because the repo path has a space; app crashed at launch</td><td><span class="pill p-good">Fixed via durable Podfile hook</span></td></tr>
+    <tr><td>Shared device sign-out</td><td>Avatar, reminders, pending reorder, home cache and push token survived logout; a second employee inherited them</td><td><span class="pill p-good">Fixed, regression tests</span></td></tr>
+    <tr><td>Credentials</td><td>Name/PIN users were shown the email password editor; password change never verified the current password; a second modal was presented over the first and nothing appeared</td><td><span class="pill p-good">Fixed, native-verified</span></td></tr>
+    <tr><td>Data races</td><td>Old responses restored a previous account's orders and stock after switching users; queue edits made during sync were dropped</td><td><span class="pill p-good">Fixed, 25 deferred-race tests</span></td></tr>
+    <tr><td>Honest empty states</td><td>Fish export and invite-ready screens invented data when opened by a deep link with no parameters</td><td><span class="pill p-good">Fixed, 46 tests</span></td></tr>
+    <tr><td>Accessibility</td><td>Legacy sign-in form was one VoiceOver element; auth buttons had no roles; footer link contrast too low</td><td><span class="pill p-good">Fixed, native tree verified</span></td></tr>
+    <tr><td>Production guard</td><td>Debug screen reachable by deep link in Release; Release logs printed order payloads; no check that a production build has a real API key</td><td><span class="pill p-good">Fixed</span></td></tr>
+  </table>
+
+  <h3>What the report proved, and what it did not</h3>
+  <table>
+    <tr><th>Proved on the local stack and signed simulator build</th><th>Not proved anywhere yet</th></tr>
+    <tr><td>
+      <ul>
+        <li>Manager and employee name/PIN sign-in against a real edge function</li>
+        <li>Checklist order submission creates the right database row</li>
+        <li>All 29 branch migrations and 6 SQL fixtures apply cleanly to a disposable database</li>
+        <li>Release build launches, embeds all 43 assets, and keychain works</li>
+        <li>54 screens render with fixture data (read-only)</li>
+      </ul>
+    </td><td>
+      <ul>
+        <li>Any write beyond one checklist order: Quick Order send, stock counts, receive delivery, fulfillment Send All, invite create and accept, credential change, account deletion</li>
+        <li>18 routes never opened at runtime (complete-profile, invite-hello, ready, secure-pin, secure-password, quick-order manager, voice, draft, suspended, and others)</li>
+        <li>Anything on a physical iPhone: push delivery, microphone, camera, SMS deep links, offline relaunch</li>
+        <li>A production-configured build: EAS still carries the legacy anon key, which the edge functions reject with 401</li>
+        <li>App Store Connect: privacy answers, age rating, screenshots, reviewer account, support and privacy URLs</li>
+      </ul>
+    </td></tr>
+  </table>
+</section>
+
+<section id="problems">
+  <h2>2. Every problem, grouped and ranked</h2>
+  <p class="lead">Four groups. A is yours. B is engineering work agents can finish. C is the UI drift you feel. D is repo and process hygiene that makes A to C slower than they should be.</p>
+
+  <h3>A. Launch blockers that need you</h3>
+  <table>
+    <tr><th>#</th><th>Blocker</th><th>What is needed from you</th><th>Severity</th></tr>
+    <tr><td>A1</td><td>EAS production has only the legacy anon key. Production login and invite accept return 401 with it.</td><td>Authorize adding <code>EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code> to the EAS production environment. The value is already known and validated (returns 400 on malformed input, meaning it reaches the handler).</td><td><span class="pill p-bad">Blocks every production build</span></td></tr>
+    <tr><td>A2</td><td>Two Apple teams appear in the repo: <code>94WMH54N38</code> in the main checkout's uncommitted signing changes, <code>TH8X9F2YUR</code> in <code>eas.json</code> submit settings.</td><td>State which team owns the App Store record. Nothing can be archived or submitted until this is known.</td><td><span class="pill p-bad">Blocks archive</span></td></tr>
+    <tr><td>A3</td><td>App Store Connect metadata: privacy labels, provider retention for voice audio, age rating questions, screenshots, review notes, reviewer account.</td><td>Supply the retention facts and a reviewer account. Agents can draft everything else and a checklist for you to enter.</td><td><span class="pill p-bad">Blocks submission</span></td></tr>
+    <tr><td>A4</td><td>Public URLs <code>smelterpos.com/support</code> and <code>/privacy</code> could not be verified from an agent.</td><td>Open them once in a browser and confirm they load.</td><td><span class="pill p-warn">2 minutes</span></td></tr>
+    <tr><td>A5</td><td>Physical device checks: push delivery after user switch, microphone, camera, SMS Send All, invite link on a real phone.</td><td>A TestFlight build on your iPhone plus one guided session (agents write the script, you tap).</td><td><span class="pill p-warn">Needed before submit</span></td></tr>
+    <tr><td>A6</td><td>Local mutation tests were blocked waiting for your OK to write disposable rows to the loopback database.</td><td>Say yes once. It is a throwaway database on your Mac.</td><td><span class="pill p-warn">1 sentence</span></td></tr>
+  </table>
+
+  <h3>B. Engineering work agents can finish</h3>
+  <table>
+    <tr><th>#</th><th>Problem</th><th>Evidence</th><th>Fix</th></tr>
+    <tr><td>B1</td><td>18 routes never exercised at runtime</td><td>route-inventory.json, "Not exercised"</td><td>Drive each on the local stack by deep link, record screenshot and native accessibility tree, file defects found</td></tr>
+    <tr><td>B2</td><td>Mutations unverified end to end</td><td>Report route matrix, "No counts saved", "Sending remains unverified"</td><td>After A6: Quick Order send, stock count save and offline sync, receive delivery, fulfillment Send All, invite create and accept, credential change, account deletion, all against the disposable stack with database assertions</td></tr>
+    <tr><td>B3</td><td>Quick Order recognition audit is not proven against production catalogue</td><td>Skipped opt-in test; local fixture of 4 items only; production has 240 active items</td><td>Read-only catalogue audit with your approval, no writes</td></tr>
+    <tr><td>B4</td><td>13 skipped tests describe retired hard/soft cap behaviour</td><td>docs/qo-restructure-changelog.md, commit fc1607e</td><td>Decide: delete the tests and the dead cap settings UI, or restore caps. Recommended: delete</td></tr>
+    <tr><td>B5</td><td>90 lint warnings</td><td>32 import/first, 29 unused vars, 14 array-type, 8 require imports, 6 duplicate imports, 1 hook deps</td><td>Mechanical sweep, then set CI to fail on warnings so they cannot return</td></tr>
+    <tr><td>B6</td><td>npm audit red on three build-time packages</td><td>dependency-audit.md: decode-uri-component, image-size, uuid; none reachable on device</td><td>Apply the two safe mitigations documented (scoped uuid override under xcode, image-size disableTypes in a Metro worker wrapper), validate a bundle, accept the decoder as documented residual</td></tr>
+    <tr><td>B7</td><td>Offline logout cannot deactivate the push token server side</td><td>code-audit.md, notification cleanup</td><td>Server rule: a device token belongs to the last user who registered it; registration by a new user on the same device deactivates the previous owner's row. Verify on device in A5</td></tr>
+    <tr><td>B8</td><td>Six screen files exist twice, once under <code>(tabs)</code> and once under <code>(manager)</code></td><td>cart, index, orders, profile, quick-order, voice</td><td>Fold into shared feature screens with a role prop where behaviour is the same. Part of the UI phase</td></tr>
+  </table>
+
+  <h3>C. UI consistency defects</h3>
+  <p>These are the numbers behind "every page feels like a different person designed it". The theme file exists and is good. It is simply not used by most screens.</p>
+  <table>
+    <tr><th>#</th><th>Measurement</th><th>Value</th><th>Why it matters</th></tr>
+    <tr><td>C1</td><td>Hard-coded hex colours outside the theme file</td><td><b>80 distinct colours</b>, 199 occurrences, 49 files. Worst: QuickOrderScreen 28, fulfillment-confirmation 25, QuickOrderListCard 14, FloatingLocationSelector 11</td><td>Each screen invents its own greys, blues and ambers. Blue appears as a primary action colour on Order detail although the brand accent is red</td></tr>
+    <tr><td>C2</td><td>Font sizes written as literals</td><td><b>111 literals across 17 sizes</b> (9 to 44). The exported <code>typography</code> tokens are used <b>0 times</b></td><td>Screen titles are 21, 22, 23, 28 and 31 px depending on the screen</td></tr>
+    <tr><td>C3</td><td>Corner radii</td><td>131 literals (16 distinct values) versus 84 token uses. The theme exports both <code>radii</code> and <code>borderRadius</code></td><td>Cards, chips and buttons round differently on every screen</td></tr>
+    <tr><td>C4</td><td>Screens importing the theme at all</td><td>app/: 21 of 78 files. src/features/: 94 of 100</td><td>The older route-level screens predate the token file</td></tr>
+    <tr><td>C5</td><td>Back buttons and headers</td><td><b>37 files</b> draw their own back control (18 arrow-back, 5 chevron-back, plus a text "Back"). 7 header components. <code>StackScreenHeader</code> is used by 14 files</td><td>At least 8 visibly different header layouts, shown in section 3</td></tr>
+    <tr><td>C6</td><td>Tab bars</td><td>Employee: floating pill, icons only. Manager: attached full-width bar with labels</td><td>The same person switching Employee and Manager view gets a different app</td></tr>
+    <tr><td>C7</td><td>Sheets and modals</td><td>23 sheet or modal components; 18 files use <code>BottomSheetShell</code>, the rest roll their own</td><td>Different scrims, radii and handle styles</td></tr>
+    <tr><td>C8</td><td>Loading and empty states</td><td>27 files use raw <code>ActivityIndicator</code>, 25 use <code>LoadingIndicator</code>. <code>EmptyStateCard</code> used by 7 files; at least 6 visibly different empty state styles</td><td>Plain text, icon plus buttons, card with icon, giant magnifier, all for "nothing here yet"</td></tr>
+    <tr><td>C9</td><td>Chips and segmented controls</td><td>At least 6 variants: outlined pills, status-coloured chips, filled segment in grey track, filled segment in peach track, outlined red boxes, outlined tabs</td><td>Same interaction, six looks</td></tr>
+    <tr><td>C10</td><td>Auth screens</td><td>Four styles on black: big-logo welcome, small-title sign-in with dark wells, floating white card login, dense white card signup</td><td>First impression is the least consistent part of the app</td></tr>
+    <tr><td>C11</td><td>Duplicate token sets inside <code>src/theme/design.ts</code></td><td><code>radii</code>/<code>borderRadius</code>, <code>typography</code>/<code>fontSize</code>+<code>fontWeight</code>, <code>categoryTints</code>/<code>categoryColors</code>, <code>statusStyles</code>/<code>statusColors</code>, three palettes <code>colors</code>/<code>authTheme</code>/<code>tipsTheme</code></td><td>Even an agent that tries to use tokens has two to choose from</td></tr>
+    <tr><td>C12</td><td>Copy style</td><td>86 lines in UI files contain an em-dash or emoji; user-facing examples in signup, stock sheet placeholder, employee profile, Quick Order welcome ("👋")</td><td>Violates the repo style rule and reads as machine-written</td></tr>
+    <tr><td>C13</td><td>Unused shared components</td><td><code>SectionHeader</code> exported, used 0 times</td><td>Shared pieces exist but agents did not find them</td></tr>
+  </table>
+
+  <h3>D. Repo and process hygiene</h3>
+  <table>
+    <tr><th>#</th><th>Observation</th><th>Effect</th></tr>
+    <tr><td>D1</td><td>28 local branches and 9 worktrees. Several are merged or abandoned (e2e/cohesion-pass, e2e/honesty-states, fix/ui-state-batch, tips branches)</td><td>Agents pick the wrong base, tests run against stale trees, disk and attention cost</td></tr>
+    <tr><td>D2</td><td>The main checkout has uncommitted <code>project.pbxproj</code> and <code>Podfile.lock</code> changes owned by nobody</td><td>These carry one of the two Apple team IDs (A2). They must be claimed or discarded</td></tr>
+    <tr><td>D3</td><td>GitHub Issues never used (0 issues, default labels only); 28 PRs merged with the work ledger living in chats and handback markdown</td><td>Every new chat has to be told the state from scratch. That is the 600k context problem</td></tr>
+    <tr><td>D4</td><td>The release report is a 7 MB HTML with every screenshot embedded, built by a script from a JSON file</td><td>Good idea, expensive to regenerate and impossible to diff. Keep the JSON, link images instead of embedding</td></tr>
+    <tr><td>D5</td><td>CI runs typecheck, tests, lint, Expo Doctor and prod audit on PRs. Lint warnings do not fail. No simulator step (correct, keep it local)</td><td>Warnings accumulate. Once B5 is done, flip lint to <code>--max-warnings 0</code></td></tr>
+    <tr><td>D6</td><td>Good things already in place: AGENTS.md with simulator rules, local full-stack harness, migration verifier, HTML mockup convention, phase contract and handback docs, NEEDS-DAVID ledger</td><td>Keep all of it. The proposal below reuses these rather than replacing them</td></tr>
+  </table>
+</section>
+
+<section id="ui">
+  <h2>3. UI drift evidence</h2>
+  <p class="lead">All images are the report's own simulator screenshots, linked from <code>../release-readiness/e2e/</code>. Open this file from inside the worktree so they resolve.</p>
+
+  <h3>Eight header patterns for the same job</h3>
+  <div class="gallery">
+    <div class="shot"><img src="../release-readiness/e2e/27-employee-checklist.png" alt=""><div class="cap">1. Large title, no back, location pill right</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-order-history.png" alt=""><div class="cap">2. Circle back plus large title</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-order-detail.png" alt=""><div class="cap">3. Circle back, small centred title, blue action</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-past-checks.png" alt=""><div class="cap">4. Text "Back" link, large title below</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-manager-inventory.png" alt=""><div class="cap">5. Arrow, medium title inline with cart and location</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-manager-team-active.png" alt=""><div class="cap">6. Arrow, large title, subtitle, action pill</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/22-manager-fulfillment.png" alt=""><div class="cap">7. Large title, History pill, no back</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/20-manager-home.png" alt=""><div class="cap">8. Greeting dashboard with date</div></div>
+  </div>
+
+  <h3>Two apps in one: tab bars, auth styles, buttons</h3>
+  <div class="gallery">
+    <div class="shot"><img src="../release-readiness/e2e/root-stock-home.png" alt=""><div class="cap">Employee: floating pill tab bar, icons only</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/20-manager-home.png" alt=""><div class="cap">Manager: attached labelled tab bar</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-final-welcome.png" alt=""><div class="cap">Auth 1: big logo, two pill buttons</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/03-sign-in-screen.png" alt=""><div class="cap">Auth 2: small left title, dark wells</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-legacy-login-fixed.png" alt=""><div class="cap">Auth 3: white floating card</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-legacy-signup.png" alt=""><div class="cap">Auth 4: dense white card, different density</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-manager-user-management-active.png" alt=""><div class="cap">Tan "Suspend" button, third accent</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-manager-profile-active.png" alt=""><div class="cap">Pink "Delete Account", outlined "Change PIN"</div></div>
+  </div>
+
+  <h3>Six chip styles, six empty states</h3>
+  <div class="gallery">
+    <div class="shot"><img src="../release-readiness/e2e/root-order-history.png" alt=""><div class="cap">Outlined pills, filled red All</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-manager-orders-explicit.png" alt=""><div class="cap">Status-coloured chips with counts</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-manager-quick-order-config-active.png" alt=""><div class="cap">Outlined tab chips</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/21-manager-quick-order-filled.png" alt=""><div class="cap">Filled segment in peach track</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-display-accessibility.png" alt=""><div class="cap">Outlined red boxes as segments</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-manager-team-invite.png" alt=""><div class="cap">Filled segment in grey track</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/12-manager-cart-empty.png" alt=""><div class="cap">Empty: icon plus two buttons</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-past-checks.png" alt=""><div class="cap">Empty: one plain sentence</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/18-manager-receive-empty.png" alt=""><div class="cap">Empty: card with icon and copy</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-quick-search.png" alt=""><div class="cap">Empty: giant magnifier</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-manager-supplier-contacts-active.png" alt=""><div class="cap">Empty: sentence inside a card</div></div>
+    <div class="shot"><img src="../release-readiness/e2e/root-reminders.png" alt=""><div class="cap">Empty: sentence plus add link</div></div>
+  </div>
+
+  <div class="note"><b>The north star already exists.</b> You confirmed the employee checklist design in August (three mockup revisions, <code>docs/mockups/employee-app/index.html</code>) and the tips colourway (page #F5F5F4, white cards, red accent). The employee Order, Stock and Settings screens follow it and look coherent. The manager area, the auth screens and the older settings routes predate it. The job is to extend one confirmed language to the rest, not to design a new one.</div>
+</section>
+
+<section id="plan">
+  <h2>4. Fix plan to launch</h2>
+  <p class="lead">Five phases. Phase 0 is an hour of your decisions. Phases 2 and 3 run in parallel. Each phase is a set of GitHub issues, each issue is one worktree and one PR.</p>
+
+  <table>
+    <tr><th>Phase</th><th>Deliverables</th><th>Who</th><th>Validation gate</th><th>Estimate</th></tr>
+    <tr><td><b>0. Decide</b></td><td>Answer section 8. Approve A1 and A6. Name the Apple team. Check the two URLs.</td><td>You</td><td>Answers recorded as issue comments</td><td>1 hour</td></tr>
+    <tr><td><b>1. Land and clean</b></td><td>Open the PR for this branch (10 commits). Cleanup pass: list every branch and worktree with PR state and dirty status, you approve deletions. Claim or discard the main checkout's signing diff. Create the GitHub milestone and issues for everything below.</td><td>One agent, Sonnet for the mechanical parts</td><td>PR green in CI; worktree list contains only live work</td><td>Half a day</td></tr>
+    <tr><td><b>2. UI cohesion</b></td><td>2a Style guide HTML with 3 header and tab bar variants for you to pick. 2b Primitives in <code>src/components/ui</code> plus a lint rule that bans hex and font-size literals outside the theme. 2c Four parallel sweeps: auth, employee, manager operations, settings and team. 2d Merge the six duplicated route files. 2e Copy sweep for em-dashes and emoji.</td><td>2a Fable with you. 2b Opus. 2c four agents, Opus for manager operations and auth, Sonnet for the two simpler areas. Sol reviews.</td><td>Lint rule passes with zero exceptions; contact sheet of all 72 routes reviewed by Fable; before and after screenshots in each PR</td><td>3 to 5 working days with four agents in parallel</td></tr>
+    <tr><td><b>3. Prove behaviour</b></td><td>B1 drive the 18 unexercised routes. B2 mutation E2E on the disposable stack with database assertions. B3 catalogue audit. B4 delete retired cap tests. B5 lint to zero and flip CI to fail on warnings. B6 audit mitigations. B7 token ownership rule.</td><td>Two agents: Luna or Opus for E2E, Sonnet for B4 to B6. Sol reviews B7 (auth adjacent).</td><td>Route matrix has zero "Not exercised"; every mutation has a database assertion in the log; CI green with max-warnings 0</td><td>3 to 4 working days, parallel with phase 2</td></tr>
+    <tr><td><b>4. Release</b></td><td>EAS production build with the corrected key. TestFlight to your iPhone. Guided device session for A5 (script written for you). App Store Connect checklist with drafted answers. Submit.</td><td>One Opus agent writes; you tap and submit</td><td>Archive validated in Xcode; production login works on device; push lands after user switch</td><td>2 days plus Apple review</td></tr>
+  </table>
+
+  <div class="rec"><strong>Recommendation.</strong> Do not touch the UI in the same PRs as the behaviour proof. Phase 3 tests logic and data; phase 2 changes chrome. Run them side by side, then do one final screenshot pass of all 72 routes after phase 2 merges so the release evidence shows the shipped look.</div>
+
+  <h3>Sequencing detail</h3>
+  <ol>
+    <li><b>Day 1.</b> Phase 0 and 1. The production-readiness PR goes up. Issues and milestone created. Style guide session with you (about 45 minutes of picking).</li>
+    <li><b>Days 2 to 5.</b> Phase 2b lands first (primitives plus lint rule, one PR). Then 2c sweeps in parallel, each owning exclusive folders. Phase 3 E2E starts on day 2 on the current chrome.</li>
+    <li><b>Day 6.</b> Final screenshot pass, report regenerated from JSON, phase 4 build.</li>
+    <li><b>Day 7 onward.</b> Device session, App Store Connect entry, submit.</li>
+  </ol>
+  <p class="small">Estimates assume agents work while you are away and you review once per phase. They are working days of agent time, not a promise about Apple review.</p>
+</section>
+
+<section id="uiapproach">
+  <h2>5. UI revamp approach</h2>
+  <p class="lead">You asked whether to hand the whole UI to one agent or decide the revamp here with mockups first. Four options, one recommendation.</p>
+  <div class="cols">
+    <div class="opt">
+      <h4>A. One agent sweeps everything freehand</h4>
+      <p>One long session opens each screen and "makes it consistent".</p>
+      <p><b>Fast to start, slow to finish.</b> This is how the current drift happened. Without a written contract the agent's taste changes as its context fills, and screen 60 does not match screen 5. One agent also means serial work and a 600k chat.</p>
+    </div>
+    <div class="opt pick">
+      <h4>B. Contract first, then parallel sweeps (recommended)</h4>
+      <p>One short session produces a style guide: tokens, seven primitives, and three variants of the two things you must choose (header, tab bar). You pick. The primitives are built once. Then four agents sweep four areas in parallel, each forbidden from writing colours or sizes directly, enforced by lint.</p>
+      <p><b>Why it wins.</b> Consistency is enforced by a rule, not by taste. Parallel work is safe because each agent owns different folders. Your involvement is one 45 minute pick, not a review of 72 screens.</p>
+    </div>
+    <div class="opt">
+      <h4>C. Full redesign, every screen mocked up</h4>
+      <p>Mock all 72 routes in HTML, iterate with you, then build.</p>
+      <p><b>Too slow and not needed.</b> You already confirmed the employee design and colourway. Most manager screens have the right structure and only need the same chrome. Save full mockups for screens that are genuinely broken, which is the auth set.</p>
+    </div>
+    <div class="opt">
+      <h4>D. Ship as is, fix after launch</h4>
+      <p>Launch with the current look, revamp in 2.4.</p>
+      <p><b>Reasonable only if App Store timing matters more than first impressions.</b> The auth screens are the weakest and are the first thing a reviewer sees. If you choose this, do at least the auth set and the tab bar unification.</p>
+    </div>
+  </div>
+
+  <h3>What the contract contains (option B, step 2a)</h3>
+  <table>
+    <tr><th>Piece</th><th>Content</th><th>Replaces</th></tr>
+    <tr><td>Tokens</td><td>One palette (tips colourway), one type scale (5 sizes), one radius scale (3 values), one spacing grid (4 px). Delete the duplicate token sets in <code>design.ts</code>.</td><td>80 hex colours, 17 font sizes, 16 radii</td></tr>
+    <tr><td>ScreenHeader</td><td>Back, title, optional subtitle, optional right action. One layout, two sizes (root tab screen, pushed screen).</td><td>8 header patterns, 37 hand-drawn back buttons</td></tr>
+    <tr><td>TabBar</td><td>One component for both roles. The floating pill is the confirmed employee design; extend it to manager with labels on or off, your pick.</td><td>Two tab bars</td></tr>
+    <tr><td>Button</td><td>primary, secondary, destructive, small. Red, outlined, red-tinted, never blue or tan.</td><td>Blue, tan, pink and peach actions</td></tr>
+    <tr><td>Chip and Segment</td><td>Filter chip (outlined, filled when active) and segmented control (filled in grey track). Status pills are a separate reserved set.</td><td>6 variants</td></tr>
+    <tr><td>Sheet</td><td><code>BottomSheetShell</code> becomes mandatory; the five custom hosts migrate.</td><td>23 implementations</td></tr>
+    <tr><td>EmptyState and Loading</td><td><code>EmptyStateCard</code> with icon, one sentence, optional one action. <code>LoadingIndicator</code> everywhere.</td><td>6 empty styles, 27 raw spinners</td></tr>
+    <tr><td>Lint rule</td><td>No hex literal, no numeric fontSize or borderRadius, no raw ActivityIndicator or Modal outside <code>src/theme</code> and <code>src/components/ui</code>. Fails CI.</td><td>The mechanism that stops drift from returning</td></tr>
+  </table>
+
+  <div class="rec"><strong>Next step if you pick B.</strong> One session with me produces <code>docs/mockups/ui-contract/index.html</code>: the tokens, the seven primitives rendered, and three side-by-side variants each for the header and the tab bar, on four reference screens (welcome, sign-in, employee checklist, manager fulfillment). You pick one of each. That file becomes the ticket for every sweep agent, the same way the employee mockup was the ticket in August.</div>
+</section>
+
+<section id="operate">
+  <h2>6. How to operate: issues, PRs, chats and agents</h2>
+  <p class="lead">The honest answer to "GitHub issues, PRs, or something else": use issues as the ledger, PRs as the unit of delivery, and keep every chat small by never letting a chat be the place where state lives.</p>
+
+  <div class="explain">
+    <b>A GitHub issue</b> is a numbered ticket in the repo with a title, a description and a comment thread. <b>A milestone</b> groups issues under one goal, here "App Store 2.3". <b>A pull request (PR)</b> is a proposed set of commits from a branch, reviewed and then merged. <b>A worktree</b> is a second checkout of the repo in its own folder on its own branch, so several agents can edit at once without stepping on each other. <b>The context window</b> is everything a chat has read so far; the model re-reads all of it on every message. <b>An orchestrator</b> is a chat that plans, dispatches and reviews but does not edit files itself.
+  </div>
+
+  <h3>Why issues, concretely</h3>
+  <ul>
+    <li><b>A new chat can load its whole job in 2,000 tokens.</b> <code>gh issue view 41</code> returns the description, the acceptance criteria and every status comment. Today the same information is scattered across a 600k chat, three handback markdown files and your memory.</li>
+    <li><b>Parallel agents cannot collide.</b> Each issue names its branch, its worktree and the folders it may touch. Two issues never own the same folder.</li>
+    <li><b>You review once per deliverable.</b> A PR says "Closes #41", the issue closes on merge, the milestone shows what remains. No status meeting in chat.</li>
+    <li><b>Handoff becomes a comment, not a document.</b> Every chat ends by posting done / remaining / validation on the issue. The next chat starts by reading it.</li>
+    <li><b>It is searchable in six months.</b> "Why did we remove hard caps?" is an issue with a decision comment, not a chat you cannot find.</li>
+  </ul>
+  <p>What it is not: it is not a board to look impressive. If you never open the GitHub UI, it still works, because agents read and write it through <code>gh</code>.</p>
+
+  <h3>The operating model: thin orchestrator, short workers</h3>
+  <table>
+    <tr><th>Role</th><th>What it does</th><th>What it never does</th><th>Model</th><th>Lifespan</th></tr>
+    <tr><td>Orchestrator</td><td>Reads the milestone, writes issues with acceptance criteria, dispatches workers into worktrees, reads their PR diffs and summaries, runs the checks itself, asks you the decisions</td><td>Read source files at length, run E2E, write feature code</td><td>Fable, high effort</td><td>One per phase. Ends by writing a handoff comment on the milestone and a fresh chat starts the next phase</td></tr>
+    <tr><td>Worker</td><td>One issue, one worktree, one PR. Reads the issue, implements, runs typecheck, lint, tests and the sim by UDID, posts screenshots and results on the issue</td><td>Touch folders it does not own, open a second issue's work, push to main</td><td>Opus for logic and UI; Sonnet for mechanical sweeps; Luna or Opus for E2E</td><td>One issue. Ends when the PR is open and the issue comment is posted</td></tr>
+    <tr><td>Reviewer</td><td>Adversarial read of a PR with file and line findings; for auth, RLS, money and migrations challenge the design</td><td>Fix in the same breath</td><td>Sol for Claude work, Opus for Codex work</td><td>One PR</td></tr>
+  </table>
+
+  <div class="rec"><strong>Answer to "one main orchestrator or many small chats".</strong> Both, with a hard rule: the orchestrator stays thin. It reads summaries and diffs, never whole files, and it is retired at the end of every phase. Workers are the small chats. A subagent's report comes back into the orchestrator's context, so ask workers to write their evidence to the issue and return only a five line summary. That single rule is what keeps the orchestrator under 100k tokens across a phase.</div>
+
+  <h3>Session recipes you can paste</h3>
+  <h4>Starting a worker chat</h4>
+<pre><code>You are the worker for GitHub issue #41 in GethubGod/smelter.
+Run: gh issue view 41 --comments
+Work only in worktree .worktrees/issue-41 on branch issue/41-short-name, cut from origin/main.
+You own only the folders listed in the issue. Do not edit anything else.
+Read AGENTS.md first. Sim by UDID via scripts/sim.sh only.
+Validation: npm run typecheck, npm run lint, npm run test:ci, plus the checks named in the issue.
+When done: open a PR with "Closes #41", report exact commands and honest results in the PR body,
+post a done / remaining / what-to-test comment on the issue, and stop. Do not merge.</code></pre>
+  <h4>Starting an orchestrator chat</h4>
+<pre><code>You orchestrate milestone "App Store 2.3" in GethubGod/smelter.
+Run: gh issue list --milestone "App Store 2.3" --state all
+Read the latest comment on each open issue. Do not read source files unless a worker is stuck.
+Dispatch one worker per ready issue into its own worktree with exclusive folders.
+When a PR opens, read the diff and rerun the checks yourself before telling me it is ready.
+Ask me only the decisions listed in docs/launch-plan/index.html section 8.
+End the session with a milestone comment: merged, open, blocked, next.</code></pre>
+  <h4>Ending any chat (the handoff comment)</h4>
+<pre><code>gh issue comment 41 --body "Done: ... Remaining: ... Validation: typecheck 0, lint 0/0, tests 1031 pass, sim EF05F833 screenshots attached. Mistakes made: ... Next chat should: ..."</code></pre>
+
+  <h3>Rules that keep it functional</h3>
+  <ul>
+    <li>One deliverable per issue, one issue per PR, no stacked PRs. You merge out of order.</li>
+    <li>Every issue states: goal, acceptance criteria, owned folders, validation commands, and whether it needs a decision from you (label <code>needs-david</code>).</li>
+    <li>Labels to create: <code>blocker</code>, <code>ui</code>, <code>e2e</code>, <code>release</code>, <code>hygiene</code>, <code>needs-david</code>. Nothing else.</li>
+    <li>Evidence lives in the PR and the issue, not in a 7 MB HTML. The release report stays as the final artefact, regenerated from JSON at the end of phase 3.</li>
+    <li>Cross-vendor review is opt-in and named per PR: which reviewer, which commit.</li>
+    <li>Worktrees are removed when the PR merges. A cleanup pass lists candidates with dirty status and waits for your go.</li>
+  </ul>
+</section>
+
+<section id="cost">
+  <h2>7. Context windows and cost, explained</h2>
+  <p class="lead">Yes, several small chats are cheaper than one 600k chat, and the reason is mechanical, not stylistic.</p>
+  <div class="explain">
+    <b>How a chat is billed.</b> Every message you send makes the model re-read the entire conversation so far. If the chat holds 600k tokens, each reply costs 600k input tokens plus the reply. <b>Prompt caching</b> makes re-reading recent context much cheaper, but the cache expires after idle time (this session uses a one hour cache), and after that the whole prefix is read again at full price. Whether you pay per token or through a plan's usage limit, the same tokens are consumed.
+  </div>
+  <table>
+    <tr><th>Context size when you send one message</th><th>Input cost per message, cache warm</th><th>Input cost per message, cache cold (after idle)</th><th>What it feels like</th></tr>
+    <tr><td>50k tokens (a fresh worker on one issue)</td><td>about $0.01</td><td>about $0.50</td><td>Fast, precise, nothing stale</td></tr>
+    <tr><td>200k tokens (a healthy orchestrator at end of phase)</td><td>about $0.05</td><td>about $2.00</td><td>Fine</td></tr>
+    <tr><td>600k tokens (the chats you have been running)</td><td>about $0.15</td><td>about $6.00</td><td>Every message after a coffee break costs $6 before the model writes a word; summaries drop details; the model argues with facts from 300 messages ago</td></tr>
+  </table>
+  <p class="small">Rates used: Claude Fable 5.1 at $10 per million input tokens, cache reads at $0.25 per million, from the current API price list. Output tokens are extra ($50 per million) and are the same in either model of working. The figures are per message, so multiply by the number of messages in a session.</p>
+
+  <h3>Where the savings actually come from</h3>
+  <ul>
+    <li><b>Workers carry only their issue.</b> A worker that reads five files and an issue runs at 30k to 80k tokens for its whole life. Ten such workers cost less than one 600k chat that lasts a day, and they run in parallel.</li>
+    <li><b>The orchestrator never reads code.</b> Diffs and summaries only. That is what keeps it under 100k to 200k for a phase.</li>
+    <li><b>Evidence goes to files and issues, not to context.</b> Screenshots, logs and route matrices are written to disk and linked. A subagent returning a 20k token report into the orchestrator defeats the purpose.</li>
+    <li><b>Retire chats on purpose.</b> End a chat when its issue closes or its phase ends. The handoff comment costs 300 tokens; the next chat loads it instead of 600k of history.</li>
+    <li><b>Model routing.</b> Your table already says it: Fable for orchestration, review and design; Opus for implementation; Sonnet for mechanical sweeps. Sonnet at $2 per million input is a fifth of Fable for the hex colour replacement job, and just as good at it.</li>
+  </ul>
+  <p>Quality goes the same direction. The defects fixed on this branch (stale data after account switch, a second modal over the first) are the kind that a fresh, focused chat catches and a tired 600k chat talks past.</p>
+</section>
+
+<section id="decisions">
+  <h2>8. Decisions needed from you</h2>
+  <p class="lead">Each has a recommended default. Reply with the numbers and any changes; everything else proceeds on the default.</p>
+  <table>
+    <tr><th>#</th><th>Decision</th><th>Recommended default</th><th>Why it matters</th></tr>
+    <tr><td>1</td><td>Authorize the EAS production write of <code>EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY</code></td><td>Yes</td><td>Blocks every production build (A1)</td></tr>
+    <tr><td>2</td><td>Which Apple team owns the App Store record: <code>94WMH54N38</code> or <code>TH8X9F2YUR</code></td><td>No default. Only you know.</td><td>Blocks archive and submit (A2)</td></tr>
+    <tr><td>3</td><td>Allow disposable writes to the loopback test database for E2E</td><td>Yes</td><td>Unblocks every mutation test (A6, B2)</td></tr>
+    <tr><td>4</td><td>Retired hard/soft caps: delete the 13 skipped tests and dead settings, or restore the feature</td><td>Delete</td><td>Restoring is a product feature, not a bug fix</td></tr>
+    <tr><td>5</td><td>UI approach from section 5</td><td>B, contract first then parallel sweeps</td><td>Determines phase 2 shape and your time</td></tr>
+    <tr><td>6</td><td>UI north star</td><td>Employee checklist design plus tips colourway, extended to manager and auth</td><td>Already confirmed in August; avoids a second design cycle</td></tr>
+    <tr><td>7</td><td>Tab bar for both roles</td><td>Floating pill for both; labels decided in the style guide pick</td><td>Removes the "two apps" feeling</td></tr>
+    <tr><td>8</td><td>Work ledger</td><td>GitHub Issues plus milestone "App Store 2.3", six labels</td><td>Section 6</td></tr>
+    <tr><td>9</td><td>Voice audio and technical log retention facts for the privacy labels (which provider, how long)</td><td>No default. Needed for A3.</td><td>Apple counts partner access as collection</td></tr>
+    <tr><td>10</td><td>Reviewer account for App Review and confirmation the support and privacy URLs load</td><td>No default. Needed for A3, A4.</td><td>Review is rejected without them</td></tr>
+    <tr><td>11</td><td>Claim or discard the uncommitted signing diff in the main checkout</td><td>Discard after decision 2 is recorded in <code>eas.json</code></td><td>Removes the second team ID (D2)</td></tr>
+    <tr><td>12</td><td>Cleanup pass on 28 branches and 9 worktrees</td><td>Yes, agent lists candidates first, you approve</td><td>D1</td></tr>
+  </table>
+</section>
+
+<section id="appendix">
+  <h2>Appendix</h2>
+
+  <h3>A. The 18 routes never exercised</h3>
+  <p class="small">(auth) complete-profile, invite-hello, ready, secure, secure-password, secure-pin · (manager) fulfillment-confirmation, fulfillment-history-detail, fulfillment-send-all, quick-order, voice · (tabs) draft, index, inventory-browse, profile, voice · app/inventory-browse · app/suspended</p>
+
+  <h3>B. Commands behind the numbers</h3>
+<pre><code># Hex colours outside the theme (distinct / occurrences / files)
+grep -rhoE "#[0-9A-Fa-f]{6}\b" app src --include='*.tsx' --include='*.ts' --exclude-dir=__tests__ --exclude-dir=theme | tr a-f A-F | sort -u | wc -l
+grep -rcE "#[0-9A-Fa-f]{6}\b" app src --include='*.tsx' --exclude-dir=__tests__ --exclude-dir=theme | grep -v ':0$' | sort -t: -k2 -rn | head
+
+# Font size literals vs typography token uses
+grep -rhoE "fontSize: [0-9]+" app src --include='*.tsx' --exclude-dir=__tests__ --exclude-dir=theme | sort | uniq -c | sort -rn
+grep -rhoE "typography\.[a-zA-Z]+" app src --include='*.tsx' | wc -l
+
+# Screens importing the theme
+for d in app src/features; do echo "$d: $(find $d -name '*.tsx' | wc -l) files, $(grep -rl '@/theme/design' $d --include='*.tsx' | wc -l) import theme"; done
+
+# Hand-drawn back buttons, sheet implementations, raw spinners
+grep -rlE "chevron-back|arrow-back|BackButton|ScreenHeader|PageHeader" src app --include='*.tsx' | wc -l
+grep -rlE "export (default )?function [A-Za-z]*(Sheet|Modal)\b" src --include='*.tsx' | wc -l
+grep -rl "&lt;ActivityIndicator" app src --include='*.tsx' | wc -l
+
+# Route coverage
+python3 -c "import json,collections;r=json.load(open('docs/release-readiness/route-inventory.json'));print(collections.Counter(x['status'] for x in r))"
+
+# Lint warnings by rule
+grep -oE "warning .* ([a-z@/-]+/[a-z-]+|[a-z-]+)$" docs/release-readiness/logs/lint-final.log | awk '{print $NF}' | sort | uniq -c | sort -rn
+
+# Repo state
+git branch -a | wc -l; git worktree list; gh issue list --state all; gh pr list --state all --limit 30</code></pre>
+
+  <h3>C. Codebase size for planning</h3>
+  <table>
+    <tr><th>Area</th><th>Lines</th><th>Files</th></tr>
+    <tr><td>app/ (routes)</td><td>21,366</td><td>78</td></tr>
+    <tr><td>src/ (features, components, stores, services)</td><td>96,883</td><td>356</td></tr>
+    <tr><td>supabase/functions (26 edge functions)</td><td>25,501</td><td>70</td></tr>
+    <tr><td>supabase/migrations</td><td></td><td>125</td></tr>
+    <tr><td>web/ (tips, dashboard, kitchen)</td><td>28,740</td><td>149</td></tr>
+  </table>
+
+  <h3>D. Glossary</h3>
+  <dl class="gloss">
+    <dt>EAS</dt><dd>Expo Application Services. The cloud that builds the signed iOS binary and holds production environment variables such as the Supabase key.</dd>
+    <dt>Publishable key versus legacy anon key</dt><dd>Two forms of the public Supabase API key. The edge functions in this project accept only the newer publishable form; the legacy form gets 401.</dd>
+    <dt>TestFlight</dt><dd>Apple's way to install a pre-release build on a real iPhone. Required for push, microphone and SMS checks that the simulator cannot do.</dd>
+    <dt>App Store Connect</dt><dd>Apple's web console where version metadata, privacy answers, screenshots and the reviewer account are entered before submission.</dd>
+    <dt>Disposable local stack</dt><dd>A full Supabase copy running in Docker on your Mac with the production schema and fixture data. Writes there touch nothing real.</dd>
+    <dt>Route</dt><dd>One screen file under <code>app/</code>. Expo Router turns the file path into a navigable address.</dd>
+    <dt>Design token</dt><dd>A named value such as <code>colors.primary</code> or <code>spacing.md</code> that screens reference instead of writing the raw number. Change the token, every screen follows.</dd>
+    <dt>Primitive</dt><dd>A small shared component (button, header, chip) that every screen composes instead of drawing its own.</dd>
+    <dt>Lint rule</dt><dd>An automated check that fails the build when code breaks a convention, here "no raw colours outside the theme".</dd>
+    <dt>Prompt cache</dt><dd>The API's short-term memory of a conversation prefix. A warm cache makes re-reading cheap; it expires after idle time.</dd>
+    <dt>Subagent</dt><dd>A child chat launched by an orchestrator for one task. Its final report is added to the orchestrator's context, so it should be short.</dd>
+    <dt>Cross-vendor review</dt><dd>Having a Codex model review Claude's work or the reverse, so a second model family reads the same spec.</dd>
+  </dl>
+
+  <p class="small">Prepared from local execution on September 5, 2026. No push, PR, deploy, EAS write, or production data change was made. Previous commits and evidence on this branch are untouched.</p>
+</section>
+</main>
+</body>
+</html>
