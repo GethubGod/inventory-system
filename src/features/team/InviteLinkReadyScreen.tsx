@@ -1,7 +1,7 @@
 // Link ready: single-use personalized link, copy or send by text
 // (recipient-less sms: body prefill — the manager picks the thread).
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Linking, Platform, Share, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -12,7 +12,8 @@ import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 import { triggerNotificationHaptic, NotificationFeedbackType } from '@/lib/haptics';
 import { glassHairlineWidth, radii, tipsTheme } from '@/theme/design';
-import type { InviteLocationGroup } from '@/services/invites';
+import { EmptyStateCard } from '@/components/EmptyStateCard';
+import { parseInviteReadyMetadata, validateCreatedInviteUrl } from './inviteReadyParams';
 import { LOCATION_GROUP_LABELS } from './invitePreview';
 import { buildInviteMessageBody, buildInviteSmsUrl } from './teamService';
 
@@ -30,15 +31,18 @@ export default function InviteLinkReadyScreen() {
   }>();
 
   const name = param(params.name);
-  const joinUrl = param(params.joinUrl);
-  const expiryLabel = param(params.expiryLabel) || '7 days';
-  const groupParam = param(params.group);
-  const group: InviteLocationGroup =
-    groupParam === 'sushi' || groupParam === 'poki' || groupParam === 'both' ? groupParam : 'both';
+  const joinUrl = validateCreatedInviteUrl(param(params.joinUrl));
+  const { expiryLabel, locationGroup } = parseInviteReadyMetadata(param(params.expiryLabel), param(params.group));
+  const details = [
+    'One use',
+    expiryLabel ? `expires in ${expiryLabel}` : null,
+    locationGroup ? LOCATION_GROUP_LABELS[locationGroup] : null,
+  ].filter((detail) => detail !== null).join(' · ');
 
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
+    if (!joinUrl) return;
     await Clipboard.setStringAsync(joinUrl);
     triggerNotificationHaptic(NotificationFeedbackType.Success);
     setCopied(true);
@@ -46,6 +50,7 @@ export default function InviteLinkReadyScreen() {
   };
 
   const handleSend = async () => {
+    if (!joinUrl) return;
     const body = buildInviteMessageBody(name, joinUrl);
     const url = buildInviteSmsUrl(body, Platform.OS === 'android' ? 'android' : 'ios');
     try {
@@ -55,6 +60,25 @@ export default function InviteLinkReadyScreen() {
       await Share.share({ message: body });
     }
   };
+
+  if (!joinUrl) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: tipsTheme.page }} edges={['top', 'left', 'right']}>
+        <ManagerScaleContainer>
+          <StackScreenHeader title="Invitation unavailable" onBackPress={() => router.replace('/(manager)/manager-settings/team')} />
+          <View style={{ padding: ds.spacing(20) }}>
+            <EmptyStateCard
+              icon="link-outline"
+              title="No invitation link to share"
+              message="The invitation link is missing or invalid. Return to Team to create an invitation."
+              actionLabel="Back to Team"
+              onPressAction={() => router.replace('/(manager)/manager-settings/team')}
+            />
+          </View>
+        </ManagerScaleContainer>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: tipsTheme.page }} edges={['top', 'left', 'right']}>
@@ -95,7 +119,7 @@ export default function InviteLinkReadyScreen() {
                 marginTop: ds.spacing(5),
               }}
             >
-              One use · expires in {expiryLabel} · {LOCATION_GROUP_LABELS[group]}
+              {details}
             </Text>
           </View>
 
