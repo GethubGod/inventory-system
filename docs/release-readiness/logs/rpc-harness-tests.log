@@ -1,0 +1,16 @@
+✔ resolves the full contract and sends publishable keys only as apikey (1.494792ms)
+✔ accepts only the function-specific unauthorized response (1.736583ms)
+✔ fails closed for gateway invalid key (0.498166ms)
+✔ fails closed for missing contract (0.55875ms)
+✔ fails closed for database outage (0.78225ms)
+✔ fails closed for non-JSON gateway response (2.469666ms)
+✔ fails closed for unexpected successful mutation (0.444542ms)
+✔ fails closed for unrelated SQL error (0.335083ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 71.505084

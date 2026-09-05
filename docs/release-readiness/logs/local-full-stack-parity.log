@@ -1,0 +1,5 @@
+==> public schema already has 92 tables; only applying missing migrations
+NOTICE:  relation "_full_stack_applied" already exists, skipping
+==> Applying 20260811204219_tip_entry_session_duplicate_guard.sql
+==> Applying 20260828100000_tips_v3_grat_scope_weights_notes.sql
+PASS: schema loaded (2 migration(s) applied this run).

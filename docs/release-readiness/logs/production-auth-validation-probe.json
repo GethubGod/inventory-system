@@ -1,0 +1,14 @@
+[
+  {
+    "endpoint": "login-with-name",
+    "status": 401,
+    "body": "{\"error\":\"Unauthorized\"}",
+    "request": "Malformed JSON only; source rejects before any database call"
+  },
+  {
+    "endpoint": "accept-invite",
+    "status": 401,
+    "body": "{\"error\":\"Unauthorized\"}",
+    "request": "Malformed JSON only; source rejects before any database call"
+  }
+]

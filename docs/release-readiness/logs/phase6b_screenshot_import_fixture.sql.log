@@ -1,0 +1,39 @@
+BEGIN
+INSERT 0 2
+INSERT 0 2
+INSERT 0 2
+INSERT 0 1
+INSERT 0 2
+INSERT 0 5
+INSERT 0 5
+INSERT 0 2
+              set_config              
+--------------------------------------
+ 60000000-0000-4000-8000-000000000001
+(1 row)
+
+SET
+       generate_order_checklist       
+--------------------------------------
+ 25d22113-4fac-4229-bc86-5cd66c9170b0
+(1 row)
+
+DO
+RESET
+INSERT 0 1
+INSERT 0 1
+              set_config              
+--------------------------------------
+ 70000000-0000-4000-8000-000000000001
+(1 row)
+
+SET
+       merge_screenshot_import        
+--------------------------------------
+ 25d22113-4fac-4229-bc86-5cd66c9170b0
+(1 row)
+
+ERROR:  permission denied for table historical_order_imports
+CONTEXT:  SQL statement "select status                        from public.historical_order_imports
+  where id = 'b0000000-0000-4000-8000-000000000001'::uuid"
+PL/pgSQL function inline_code_block line 24 at SQL statement

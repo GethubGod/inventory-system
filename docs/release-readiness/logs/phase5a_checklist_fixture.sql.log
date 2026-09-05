@@ -1,0 +1,27 @@
+BEGIN
+INSERT 0 1
+INSERT 0 1
+INSERT 0 3
+INSERT 0 10
+INSERT 0 6
+INSERT 0 2
+INSERT 0 1
+              set_config              
+--------------------------------------
+ 11111111-1111-4111-8111-111111111111
+(1 row)
+
+SET
+       generate_order_checklist       
+--------------------------------------
+ 6932e534-b874-4e14-ab1a-e6e33e0b8747
+(1 row)
+
+     item_name     | staleness_bucket | recommended_qty | order_frequency_days | sort_order 
+-------------------+------------------+-----------------+----------------------+------------
+ Frequent Tuna     | frequent         |             4.5 |                    1 |          0
+ Occasional Salmon | occasional       |              10 |                    2 |          1
+ Rare Nori         | rare             |               1 |                      |          2
+(3 rows)
+
+ROLLBACK

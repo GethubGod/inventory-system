@@ -1,0 +1,2 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-04 23:50:52.808 Df Babytuna[78517:4f02b4] [com.apple.xpc:connection] [0x110746950] activating connection: mach=true listener=false peer=false name=com.apple.SystemConfiguration.NetworkInformation_sim

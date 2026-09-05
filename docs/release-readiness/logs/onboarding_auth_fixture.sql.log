@@ -1,0 +1,109 @@
+BEGIN
+INSERT 0 5
+INSERT 0 5
+INSERT 0 5
+INSERT 0 2
+              set_config              
+--------------------------------------
+ aaaaaaaa-0000-4000-8000-000000000001
+(1 row)
+
+DO
+NOTICE:  ok: get_effective_modules employee defaults (ordering_simple now true)
+INSERT 0 1
+NOTICE:  ok: explicit user_modules override still wins
+DO
+DELETE 1
+ set_my_login_credential 
+-------------------------
+ 
+(1 row)
+
+NOTICE:  ok: set_my_login_credential normalizes the name and bcrypt-hashes the PIN
+DO
+DO
+NOTICE:  ok: credential format validation rejects bad PIN/password
+              set_config              
+--------------------------------------
+ aaaaaaaa-0000-4000-8000-000000000003
+(1 row)
+
+NOTICE:  ok: case/whitespace-insensitive duplicate login name refused
+DO
+ set_config 
+------------
+ 
+(1 row)
+
+NOTICE:  ok: verify_login_credential success/invalid/rate-limit behavior
+DO
+DELETE 16
+UPDATE 1
+NOTICE:  ok: suspended accounts cannot sign in with a valid credential
+DO
+UPDATE 1
+              set_config              
+--------------------------------------
+ aaaaaaaa-0000-4000-8000-000000000001
+(1 row)
+
+NOTICE:  ok: reset_login_credential refuses non-managers
+DO
+              set_config              
+--------------------------------------
+ aaaaaaaa-0000-4000-8000-000000000002
+(1 row)
+
+ reset_login_credential 
+------------------------
+ 
+(1 row)
+
+UPDATE 1
+NOTICE:  ok: manager reset rotates the PIN and refuses suspended targets
+DO
+NOTICE:  ok: employee_invite_module_defaults seeded with ordering_simple true
+DO
+              set_config              
+--------------------------------------
+ aaaaaaaa-0000-4000-8000-000000000002
+(1 row)
+
+ set_employee_invite_defaults 
+------------------------------
+ 
+(1 row)
+
+NOTICE:  ok: set_employee_invite_defaults validates payload and requires manager
+DO
+              set_config              
+--------------------------------------
+ aaaaaaaa-0000-4000-8000-000000000002
+(1 row)
+
+ set_user_default_location 
+---------------------------
+ 
+(1 row)
+
+DO
+NOTICE:  ok: set_user_default_location manager gate, both->null, unknown location
+ set_config 
+------------
+ 
+(1 row)
+
+ set_onboarding_login_credential 
+---------------------------------
+ 
+(1 row)
+
+NOTICE:  ok: service-only onboarding credential is durable and bcrypt-hashed
+DO
+INSERT 0 1
+DELETE 2
+NOTICE:  ok: account deletion preserves consumed state and clears invite user references
+DO
+NOTICE:  PASS: onboarding auth fixture assertions all held
+DO
+ROLLBACK

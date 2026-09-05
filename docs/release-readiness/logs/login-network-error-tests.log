@@ -1,0 +1,32 @@
+
+> babytuna@2.2 test:ci
+> jest --runInBand --watchman=false --runTestsByPath src/__tests__/loginCredentials.test.ts
+
+PASS src/__tests__/loginCredentials.test.ts
+  ✓ explains connectivity errors without server implementation details: Failed to send a request to the Edge Function
+  ✓ explains connectivity errors without server implementation details: Network request failed
+  ✓ explains connectivity errors without server implementation details: Failed to fetch (2 ms)
+  credential validation
+    ✓ accepts exactly four digits as a PIN (1 ms)
+    ✓ requires at least 8 characters for a password
+  setMyCredential
+    ✓ rejects malformed secrets before calling the server (5 ms)
+    ✓ stores a valid PIN through the RPC
+    ✓ passes readable server errors through
+  signInWithName
+    ✓ exchanges the token hash for a session and hydrates the store (1 ms)
+    ✓ classifies structured failure codes for inline errors
+    ✓ rejects empty input as invalid without a network call
+  resetUserCredential
+    ✓ validates the PIN and calls the manager RPC
+  credential editor selection
+    ✓ uses the stored pin name credential (1 ms)
+    ✓ uses the stored password name credential
+    ✓ uses the legacy email editor only when the identity is absent
+    ✓ does not fall back to the wrong credential editor on an offline lookup
+
+Test Suites: 1 passed, 1 total
+Tests:       16 passed, 16 total
+Snapshots:   0 total
+Time:        1.325 s
+Ran all test suites within paths "src/__tests__/loginCredentials.test.ts".

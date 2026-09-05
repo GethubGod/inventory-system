@@ -1,0 +1,185 @@
+==> Starting postgres:17 container 'verify-migrations-47072-27912' on 127.0.0.1:60703
+Unable to find image 'postgres:17' locally
+17: Pulling from library/postgres
+c9bb874831b5: Pulling fs layer
+77e21c5caf16: Pulling fs layer
+232aaadd6958: Pulling fs layer
+b7dc84d6a4aa: Pulling fs layer
+7a3d617a86b0: Pulling fs layer
+b5062ef65109: Pulling fs layer
+bf7af0229701: Pulling fs layer
+e40fd1d2ec35: Pulling fs layer
+db5f4502682d: Pulling fs layer
+6a4fdeb764c3: Pulling fs layer
+a9d76beabaee: Pulling fs layer
+639367129460: Pulling fs layer
+c9c6f60102f8: Pulling fs layer
+c6154fb0eb00: Pulling fs layer
+7a3d617a86b0: Download complete
+c9bb874831b5: Download complete
+232aaadd6958: Download complete
+c9c6f60102f8: Download complete
+0ce00f052b08: Download complete
+e40fd1d2ec35: Download complete
+b5062ef65109: Download complete
+c6154fb0eb00: Download complete
+099eb6d96a4e: Download complete
+639367129460: Download complete
+a9d76beabaee: Download complete
+db5f4502682d: Download complete
+b7dc84d6a4aa: Download complete
+6a4fdeb764c3: Download complete
+bf7af0229701: Download complete
+639367129460: Pull complete
+bf7af0229701: Pull complete
+db5f4502682d: Pull complete
+b7dc84d6a4aa: Pull complete
+6a4fdeb764c3: Pull complete
+7a3d617a86b0: Pull complete
+c9c6f60102f8: Pull complete
+a9d76beabaee: Pull complete
+77e21c5caf16: Download complete
+77e21c5caf16: Pull complete
+c9bb874831b5: Pull complete
+232aaadd6958: Pull complete
+e40fd1d2ec35: Pull complete
+b5062ef65109: Pull complete
+c6154fb0eb00: Pull complete
+Digest: sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
+Status: Downloaded newer image for postgres:17
+==> Waiting for postgres to accept connections. ready.
+==> Loading auth stub (auth_stub.sql)
+==> Loading production public-schema baseline (baseline_public_schema.sql)
+==> Migrations to apply after the baseline snapshot, in timestamp order:
+      20260811204219_tip_entry_session_duplicate_guard.sql
+      20260812090000_supplier_contact_fields.sql
+      20260812100000_invites.sql
+      20260812110000_user_modules.sql
+      20260812120000_order_checklists.sql
+      20260812130000_order_send_mode.sql
+      20260812140000_checklist_reminders.sql
+      20260812150000_order_receiving.sql
+      20260812160000_invoice_scans.sql
+      20260812170000_stock_check_v2.sql
+      20260812180000_screenshot_imports.sql
+      20260812190000_holiday_templates.sql
+      20260820120000_tip_dashboard_schedule_verify.sql
+      20260821035149_tip_entry_token_plain.sql
+      20260823191344_invite_location_group_release.sql
+      20260823191347_ordering_simple_default_release.sql
+      20260823191351_employee_invite_defaults_release.sql
+      20260823191355_login_credentials_release.sql
+      20260823191358_employee_checklist_ux_release.sql
+      20260823191401_onboarding_deletion_hardening_release.sql
+      20260823191405_database_function_fixes_release.sql
+      20260823191411_security_grants_release.sql
+      20260823191414_recurring_reminder_schedule_release.sql
+      20260823202500_post_deploy_function_lint_fixes.sql
+      20260823204500_login_name_search_path.sql
+      20260826120000_tip_voice_local_live.sql
+      20260827120000_tip_manager_fix_entry.sql
+      20260828100000_tips_v3_grat_scope_weights_notes.sql
+      20260831120000_kitchen_requests.sql
+==> Applying 20260811204219_tip_entry_session_duplicate_guard.sql
+==> Applying 20260812090000_supplier_contact_fields.sql
+==> Applying 20260812100000_invites.sql
+NOTICE:  extension "pgcrypto" already exists, skipping
+==> Applying 20260812110000_user_modules.sql
+NOTICE:  trigger "set_user_modules_updated_at" for relation "public.user_modules" does not exist, skipping
+NOTICE:  policy "user_modules_select_own" for relation "public.user_modules" does not exist, skipping
+NOTICE:  policy "user_modules_manager_all" for relation "public.user_modules" does not exist, skipping
+==> Applying 20260812120000_order_checklists.sql
+NOTICE:  trigger "set_order_checklists_updated_at" for relation "public.order_checklists" does not exist, skipping
+NOTICE:  trigger "set_order_checklist_items_updated_at" for relation "public.order_checklist_items" does not exist, skipping
+NOTICE:  policy "order_checklists_select_owner_or_manager" for relation "public.order_checklists" does not exist, skipping
+NOTICE:  policy "order_checklists_manage_manager" for relation "public.order_checklists" does not exist, skipping
+NOTICE:  policy "order_checklist_items_select_owner_or_manager" for relation "public.order_checklist_items" does not exist, skipping
+NOTICE:  policy "order_checklist_items_manage_manager" for relation "public.order_checklist_items" does not exist, skipping
+==> Applying 20260812130000_order_send_mode.sql
+NOTICE:  constraint "profiles_order_send_mode_check" of relation "profiles" does not exist, skipping
+NOTICE:  policy "profiles_update_manager_employee_settings" for relation "public.profiles" does not exist, skipping
+==> Applying 20260812140000_checklist_reminders.sql
+NOTICE:  policy "recurring_rules_self_checklist_select" for relation "public.recurring_reminder_rules" does not exist, skipping
+NOTICE:  policy "recurring_rules_self_checklist_insert" for relation "public.recurring_reminder_rules" does not exist, skipping
+NOTICE:  policy "recurring_rules_self_checklist_update" for relation "public.recurring_reminder_rules" does not exist, skipping
+NOTICE:  policy "recurring_rules_self_checklist_delete" for relation "public.recurring_reminder_rules" does not exist, skipping
+==> Applying 20260812150000_order_receiving.sql
+NOTICE:  trigger "set_order_receipts_updated_at" for relation "public.order_receipts" does not exist, skipping
+NOTICE:  trigger "set_order_receipt_items_updated_at" for relation "public.order_receipt_items" does not exist, skipping
+NOTICE:  policy "order_receipts_select_owner_or_manager" for relation "public.order_receipts" does not exist, skipping
+NOTICE:  policy "order_receipts_insert_owner_or_manager" for relation "public.order_receipts" does not exist, skipping
+NOTICE:  policy "order_receipts_update_owner_or_manager" for relation "public.order_receipts" does not exist, skipping
+NOTICE:  policy "order_receipts_delete_owner_or_manager" for relation "public.order_receipts" does not exist, skipping
+NOTICE:  policy "order_receipt_items_select_owner_or_manager" for relation "public.order_receipt_items" does not exist, skipping
+NOTICE:  policy "order_receipt_items_insert_owner_or_manager" for relation "public.order_receipt_items" does not exist, skipping
+NOTICE:  policy "order_receipt_items_update_owner_or_manager" for relation "public.order_receipt_items" does not exist, skipping
+NOTICE:  policy "order_receipt_items_delete_owner_or_manager" for relation "public.order_receipt_items" does not exist, skipping
+==> Applying 20260812160000_invoice_scans.sql
+NOTICE:  trigger "set_invoice_scans_updated_at" for relation "public.invoice_scans" does not exist, skipping
+NOTICE:  trigger "set_invoice_scan_items_updated_at" for relation "public.invoice_scan_items" does not exist, skipping
+NOTICE:  policy "invoice_scans_select_uploader_or_manager" for relation "public.invoice_scans" does not exist, skipping
+NOTICE:  policy "invoice_scans_insert_uploader_or_manager" for relation "public.invoice_scans" does not exist, skipping
+NOTICE:  policy "invoice_scan_items_select_uploader_or_manager" for relation "public.invoice_scan_items" does not exist, skipping
+NOTICE:  policy "supplier_price_history_select_manager" for relation "public.supplier_price_history" does not exist, skipping
+NOTICE:  policy "supplier_invoices_select_uploader_or_manager" for relation "storage.objects" does not exist, skipping
+NOTICE:  policy "supplier_invoices_insert_uploader_or_manager" for relation "storage.objects" does not exist, skipping
+NOTICE:  policy "supplier_invoices_update_uploader_or_manager" for relation "storage.objects" does not exist, skipping
+NOTICE:  policy "supplier_invoices_delete_uploader_or_manager" for relation "storage.objects" does not exist, skipping
+==> Applying 20260812170000_stock_check_v2.sql
+NOTICE:  constraint "area_items_stock_check_par_level_nonnegative" of relation "area_items" does not exist, skipping
+NOTICE:  constraint "area_items_stock_check_reorder_point_nonnegative" of relation "area_items" does not exist, skipping
+NOTICE:  constraint "area_items_stock_check_reorder_point_at_most_par" of relation "area_items" does not exist, skipping
+NOTICE:  constraint "stock_check_sessions_area_progress_object" of relation "stock_check_sessions" does not exist, skipping
+NOTICE:  constraint "stock_check_sessions_entry_mode_check" of relation "stock_check_sessions" does not exist, skipping
+NOTICE:  constraint "stock_updates_stock_check_entry_check" of relation "stock_updates" does not exist, skipping
+NOTICE:  policy "storage_areas_stock_check_select_active" for relation "public.storage_areas" does not exist, skipping
+NOTICE:  policy "area_items_stock_check_select_active" for relation "public.area_items" does not exist, skipping
+NOTICE:  policy "stock_check_sessions_select_owner_or_manager" for relation "public.stock_check_sessions" does not exist, skipping
+NOTICE:  policy "stock_updates_select_stock_check_owner_or_manager" for relation "public.stock_updates" does not exist, skipping
+==> Applying 20260812180000_screenshot_imports.sql
+NOTICE:  policy "order_screenshots_manager_select" for relation "storage.objects" does not exist, skipping
+NOTICE:  policy "order_screenshots_manager_insert" for relation "storage.objects" does not exist, skipping
+NOTICE:  policy "order_screenshots_manager_update" for relation "storage.objects" does not exist, skipping
+NOTICE:  policy "order_screenshots_manager_delete" for relation "storage.objects" does not exist, skipping
+==> Applying 20260812190000_holiday_templates.sql
+NOTICE:  trigger "set_holiday_templates_updated_at" for relation "public.holiday_templates" does not exist, skipping
+NOTICE:  policy "holiday_templates_select_authenticated" for relation "public.holiday_templates" does not exist, skipping
+NOTICE:  policy "holiday_templates_manage_manager" for relation "public.holiday_templates" does not exist, skipping
+NOTICE:  policy "holiday_template_items_select_authenticated" for relation "public.holiday_template_items" does not exist, skipping
+NOTICE:  policy "holiday_template_items_manage_manager" for relation "public.holiday_template_items" does not exist, skipping
+==> Applying 20260820120000_tip_dashboard_schedule_verify.sql
+NOTICE:  policy "tip_employee_schedules_manager_all" for relation "public.tip_employee_schedules" does not exist, skipping
+NOTICE:  policy "tip_entry_sessions_manager_read" for relation "public.tip_entry_sessions" does not exist, skipping
+==> Applying 20260821035149_tip_entry_token_plain.sql
+==> Applying 20260823191344_invite_location_group_release.sql
+==> Applying 20260823191347_ordering_simple_default_release.sql
+==> Applying 20260823191351_employee_invite_defaults_release.sql
+==> Applying 20260823191355_login_credentials_release.sql
+NOTICE:  policy "login_identities_select_own_or_manager" for relation "public.login_identities" does not exist, skipping
+==> Applying 20260823191358_employee_checklist_ux_release.sql
+==> Applying 20260823191401_onboarding_deletion_hardening_release.sql
+==> Applying 20260823191405_database_function_fixes_release.sql
+==> Applying 20260823191411_security_grants_release.sql
+==> Applying 20260823191414_recurring_reminder_schedule_release.sql
+NOTICE:  pg_net is unavailable in this environment; schedule installation will remain dormant
+NOTICE:  pg_cron is unavailable in this environment; schedule installation will remain dormant
+==> Applying 20260823202500_post_deploy_function_lint_fixes.sql
+==> Applying 20260823204500_login_name_search_path.sql
+==> Applying 20260826120000_tip_voice_local_live.sql
+==> Applying 20260827120000_tip_manager_fix_entry.sql
+==> Applying 20260828100000_tips_v3_grat_scope_weights_notes.sql
+==> Applying 20260831120000_kitchen_requests.sql
+NOTICE:  trigger "set_kitchen_items_updated_at" for relation "public.kitchen_items" does not exist, skipping
+NOTICE:  trigger "set_kitchen_requests_updated_at" for relation "public.kitchen_requests" does not exist, skipping
+NOTICE:  policy "kitchen_items_select_enabled" for relation "public.kitchen_items" does not exist, skipping
+NOTICE:  policy "kitchen_items_insert_manager" for relation "public.kitchen_items" does not exist, skipping
+NOTICE:  policy "kitchen_items_update_manager" for relation "public.kitchen_items" does not exist, skipping
+NOTICE:  policy "kitchen_items_delete_manager" for relation "public.kitchen_items" does not exist, skipping
+NOTICE:  policy "kitchen_requests_select_enabled_location" for relation "public.kitchen_requests" does not exist, skipping
+
+PASS: 29 migration(s) applied cleanly on top of the production baseline.
+
+--keep: container 'verify-migrations-47072-27912' left running on 127.0.0.1:60703
+  connect: docker exec -it verify-migrations-47072-27912 psql -U postgres
+  or:      psql postgresql://postgres:postgres@127.0.0.1:60703/postgres
+  remove:  docker rm -f verify-migrations-47072-27912

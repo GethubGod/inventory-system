@@ -1,0 +1,18 @@
+{
+  "result": "Only embedded updates found; no downloaded update row present",
+  "status_reference": "expo-updates/ios/EXUpdates/Update/Update.swift:67 StatusEmbedded = 5",
+  "updates": [
+    {
+      "id": "c9737fdb-2f80-429a-99fd-461604c79ac1",
+      "status": 5,
+      "successful_launches": 1,
+      "failed_launches": 0
+    },
+    {
+      "id": "734d0b26-f9c7-40dc-983d-4c2f51e6e937",
+      "status": 5,
+      "successful_launches": 1,
+      "failed_launches": 0
+    }
+  ]
+}

@@ -1,0 +1,557 @@
+{
+  "date": "September 5, 2026",
+  "summary": "Mobile-only audit, repairs and release validation. Records verified behavior, remaining submission requirements and decisions made without stopping for product questions. All runtime business data in this report comes from a disposable local test backend.",
+  "branch": "codex/production-readiness",
+  "base": "cf30d6bc641cd22830420cfd6d431c11d5e3c02f",
+  "tested_commit": "6faf9db",
+  "verdict": "Not ready for App Store submission",
+  "verdict_detail": "Confirmed mobile defects were repaired and the signed simulator Release build was exercised. Production configuration, remaining end-to-end mutations, distribution signing and physical-device services still require validation. This report cannot certify approval or claim every feature passed.",
+  "facts": [
+    {
+      "value": "1,031",
+      "label": "Automated tests passed; 14 skipped"
+    },
+    {
+      "value": "0 errors",
+      "label": "TypeScript and ESLint; 90 lint warnings remain"
+    },
+    {
+      "value": "29 migrations",
+      "label": "Complete disposable local schema verified"
+    },
+    {
+      "value": "72 routes",
+      "label": "Mobile route coverage tracked individually"
+    }
+  ],
+  "blockers": [
+    {
+      "title": "Approve the prepared EAS production API-key correction",
+      "detail": "Read-only EAS inspection found only a legacy anon key. Non-mutating invalid-JSON probes returned 401 Unauthorized for both production login-with-name and accept-invite with that key. The active project publishable key returns 400 Invalid request body, proving it reaches validation. Adding EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY is prepared, but automatic approval review rejected this persistent remote configuration change without explicit authorization. No EAS value was changed."
+    },
+    {
+      "title": "Complete local mutation and employee regression coverage",
+      "detail": "Manager login and checklist submission succeeded, with a matching local database row. Automatic approval review later blocked the Quick Order Send tap as a possible remote write. Explicit permission for disposable records in the isolated loopback backend is pending. Remaining mutations are not marked as passed."
+    },
+    {
+      "title": "Validate the signed production archive",
+      "detail": "This pass uses a locally ad-hoc-signed simulator Release build and a disposable local backend. Main-checkout signing settings reference Apple team 94WMH54N38; EAS submit references TH8X9F2YUR. Confirm ownership, create and validate the signed archive, and verify its production API, update channel, APNs entitlement and available version/build number."
+    },
+    {
+      "title": "Complete App Store Connect information",
+      "detail": "Confirm the public privacy/support URLs, provider retention and final privacy answers, current age-rating questions, store screenshots, reviewer account and review instructions. Source privacy declarations are an evidenced baseline, not a substitute for the archive privacy report or provider disclosures."
+    },
+    {
+      "title": "Prove shared-device push isolation",
+      "detail": "Logout clears local notifications and deactivates the departing user’s current token when online. Offline logout cannot guarantee server token removal. Verify the server’s device ownership behavior and push delivery after user switching on a physical device before release."
+    },
+    {
+      "title": "Exercise hardware and external services",
+      "detail": "Camera, microphone/voice services, real push delivery, email/invite links and supplier sending require their actual service environments and a physical device. Local fixtures and unit tests do not prove these production integrations."
+    },
+    {
+      "title": "Residual dependency advisories",
+      "detail": "After compatible updates, npm audit remains red: 29 affected package entries, 8 high and 21 moderate, zero critical. Four underlying advisories concern image-size, decode-uri-component and uuid. Detailed caller analysis is in dependency-audit.md; no unproven upgrade was forced to make the count green."
+    }
+  ],
+  "changes": [
+    {
+      "title": "Native Smelter branding",
+      "detail": "The source Expo assets already used Smelter, while compiled Xcode icons and splash assets still used Babytuna. Native assets now match the supplied silver Smelter mark byte for byte. No replacement brand or artwork was invented."
+    },
+    {
+      "title": "Privacy and permission configuration",
+      "detail": "Aligned camera/photo/microphone copy with Smelter, added the linked speech module's missing purpose string, removed unused Face ID copy and mirrored evidenced collected-data declarations across native and Expo configuration."
+    },
+    {
+      "title": "Reliable Release resource generation",
+      "detail": "Reproduced a successful build that crashed immediately because Expo silently skipped its embedded update manifest in a path containing spaces. Durable CocoaPods hooks repair both outer script invocation and inner PROJECT_DIR quoting. Final runtime result is recorded below. The repaired Release app stays open on the welcome screen; a compiled-resource validator checks the manifest and all 43 referenced assets."
+    },
+    {
+      "title": "Shared-device sign-out",
+      "detail": "Clear saved avatar, personal reminders, pending reorder and account caches on logout. Invalidate older module and cache requests so stale completion cannot restore a departing user's state. Regression tests reproduce the original failures."
+    },
+    {
+      "title": "Notification cleanup",
+      "detail": "Deactivate the departing user's current device token, preserve their other devices, cancel scheduled/delivered local notifications and reset badge count. Registration generations reject stale work; cleanup is bounded to five seconds so offline logout can finish. Server deactivation while offline remains unproved."
+    },
+    {
+      "title": "Correct credential editor and password verification",
+      "detail": "Name-login users receive the existing PIN/password editor selected from identity metadata. Legacy email verification and update now use an isolated in-memory auth client, so a delayed response cannot restore a logged-out account or use a replacement user session. Session changes and dismissed forms discard pending verification."
+    },
+    {
+      "title": "Manager profile name persistence",
+      "detail": "The save control previously only closed the editor. It now uses the existing update_my_display_name RPC, guards the current session and updates local state only after success."
+    },
+    {
+      "title": "Isolated, validated home insights cache",
+      "detail": "Key cached cards by user and location, reject stale hydration/completion after logout, discard the old unscoped cache format and validate every nested persisted item rather than trusting a TypeScript cast."
+    },
+    {
+      "title": "Production diagnostics protection",
+      "detail": "The notification debug screen now redirects in production even when opened directly by deep link."
+    },
+    {
+      "title": "Honest release probes",
+      "detail": "The order-RPC probe uses the complete eight-argument signature and accepts only evidence of function-level authorization rejection. Gateway errors no longer count as success. Recognition auditing now fails when RLS leaves zero visible catalogue items instead of reporting an empty pass."
+    },
+    {
+      "title": "Compatible dependency security updates",
+      "detail": "Updated compatible transitive packages and added narrowly selected shell-quote, brace-expansion and PostCSS overrides. Expo 54, React Native 0.81.5 and native pod versions remain unchanged. Audit reduced from 38 to 29 affected package entries."
+    },
+    {
+      "title": "Local verification infrastructure",
+      "detail": "Created isolated dependencies, database fixtures, a dedicated simulator and a complete 72-route inventory. The screenshot-import rollback fixture now includes the authenticated read grant observed in production. No remote migration or data mutation was performed. Aligned the full-stack baseline cutoff with the migration verifier and removed an invalid Tips v3 skip; local migrations run transactionally to avoid partial failures."
+    },
+    {
+      "title": "Accessible authentication controls",
+      "detail": "Added explicit button/link labels, roles and loading/disabled state to shared auth controls. Increased footer legal-link contrast on black from 35% to 60% white, and labeled the invite field. Final simulator verification is recorded separately."
+    },
+    {
+      "title": "Preserve edits queued during sync",
+      "detail": "Deferred tests reproduced both cross-account stale data restoration and same-account queue loss. Order and stock requests now stop after account reset; queue completion preserves newly queued work and same-ID replacement edits. Stock sync prevents concurrent duplicate passes."
+    },
+    {
+      "title": "Readable sign-in connection errors",
+      "detail": "The observed simulator failure exposed internal Edge Function terminology. Connectivity errors now tell the user to check their connection; structured authentication errors remain classified. Removed an unchecked cast while parsing function-error responses."
+    },
+    {
+      "title": "Guard future production build configuration",
+      "detail": "Added a production-only EAS pre-install check that rejects missing publishable configuration or a nonproduction API host before dependencies/build work. The check validates configuration shape, not live credentials or App Store acceptance."
+    },
+    {
+      "title": "Remove misleading dead notification code and Release debug output",
+      "detail": "Removed the unreferenced demonstration function that claimed employee reminders were sent while scheduling only a local notification. Existing actual reminder flows remain. Order submission no longer prints order identifiers or raw response payloads in Release diagnostics."
+    },
+    {
+      "title": "Plain settings instructions",
+      "detail": "Screenshot review found Profile and About text describing a settings shell. Replaced it with instructions about profile details, support and policies. No navigation or account behavior changed."
+    },
+    {
+      "title": "Keep one native credential modal during loading",
+      "detail": "Actual simulator taps reproduced an invisible credential editor and blocked Profile controls. UIKit reported a second modal presentation during the first presentation. The wrapper now retains one native Modal across loading, error, PIN and email form states; existing standalone employee sheets keep their own host. Three deferred lookup regressions failed before the repair and passed afterward. Root opened and dismissed the shared credential editor on the signed simulator build. Native logs contained no new presentation conflict. The sheet now exposes individual accessible controls and an explicit Cancel action; native accessibility recheck passed for the Cancel, PIN/password, input and save controls. Cancel returned to Profile without saving. Root also verified the original manager Profile editor. Stopping only the local API gateway produced a readable error and Close; restoring it reopened the correct PIN form."
+    },
+    {
+      "title": "Reject invalid fish export details",
+      "detail": "Actual native deep-link testing exposed invented Fish Item / zero-case output when parameters were missing. Malformed rows could crash rendering. Complete payload validation now shows an honest empty state; valid fixture payloads render correctly, and editing all quantities to zero disables export. Sixteen tests cover malformed data, legacy and current formats, copy/share guards and the back action."
+    },
+    {
+      "title": "Reject missing invitation links",
+      "detail": "A native deep link without invitation data claimed the link was ready and exposed Copy/Send. The screen now validates the URL produced by the existing create-invite contract and shows an honest unavailable state otherwise. Missing expiry or location metadata is omitted instead of inventing 7 days or Both. Validation covers URL shape, not live server existence, expiry or revocation."
+    },
+    {
+      "title": "Accessible legacy email sign-in",
+      "detail": "The native accessibility tree exposed the complete legacy login form as one element. Marking its keyboard-dismiss wrapper nonaccessible lets inputs and actions remain separate. Added explicit input labels, action roles and loading state. Rebuilt native verification confirms each field/action is exposed; layout and authentication behavior are unchanged."
+    }
+  ],
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "status": "Pass",
+      "detail": "Latest recorded TypeScript check exited 0. See logs/typecheck-final.log."
+    },
+    {
+      "command": "npm run lint",
+      "status": "Pass",
+      "detail": "Exit 0, zero errors and 90 warnings. This is not a warning-free codebase. See logs/lint-final.log."
+    },
+    {
+      "command": "npm run test:ci",
+      "status": "Pass",
+      "detail": "Final integrated run: 67 passed suites, 1 skipped suite; 1,031 passed tests and 14 skipped. Exit 0. See logs/tests-final.log."
+    },
+    {
+      "command": "node --test scripts/tests/verify-submit-order-rpc.test.cjs",
+      "status": "Pass",
+      "detail": "Eight harness cases pass, covering gateway rejection, invalid responses and actual RPC permission errors."
+    },
+    {
+      "command": "npm run verify:submit-order-rpc",
+      "status": "Pass",
+      "detail": "Local API resolved the complete function signature and returned function permission error 42501. This proves resolution and unauthorized access rejection, not a successful order submission."
+    },
+    {
+      "command": "npm run audit:quick-order-recognition",
+      "status": "Partial",
+      "detail": "Anonymous local run fails correctly with no visible inventory. Authorized local fixture audit passes against four items. Production catalogue recognition is not established by this fixture."
+    },
+    {
+      "command": "scripts/local-db/verify-migrations.sh --keep",
+      "status": "Pass",
+      "detail": "All 29 migration steps passed against an isolated disposable database. No remote migration was applied."
+    },
+    {
+      "command": "docker exec -i verify-migrations-47072-27912 psql -U postgres -d postgres -v ON_ERROR_STOP=1 < scripts/local-db/onboarding_auth_fixture.sql",
+      "status": "Pass",
+      "detail": "Six rollback fixtures passed: onboarding_auth, employee_app, phase5a_checklist, phase6b_screenshot_import, phase6c_holiday_templates and kitchen_requests. The initial screenshot-import grant failure and corrected rerun are both preserved. The same command was run for employee_app_fixture.sql, phase5a_checklist_fixture.sql, phase6b_screenshot_import_fixture.sql, phase6c_holiday_templates_fixture.sql and kitchen_requests_fixture.sql."
+    },
+    {
+      "command": "npm audit --json",
+      "status": "Fail",
+      "detail": "User authorized sending dependency names/versions to npm. Remaining 29 affected entries: 8 high, 21 moderate, zero critical. Reachability assessment recorded in dependency-audit.md."
+    },
+    {
+      "command": "plutil -lint + native/Expo asset and manifest comparisons",
+      "status": "Pass",
+      "detail": "Native property lists parse; Expo and native privacy dictionaries agree; native icon/splash bytes equal supplied assets. App icon is 1024 by 1024 with no alpha."
+    },
+    {
+      "command": "xcodebuild -workspace ios/Babytuna.xcworkspace -scheme Babytuna -configuration Release -sdk iphonesimulator -destination \"id=$(scripts/sim.sh udid)\" -derivedDataPath /private/tmp/smelter-release-derived CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=YES build",
+      "status": "Pass",
+      "detail": "Release build with local simulator ad-hoc signing exits 0. Resource validator checks JavaScript, manifest and all 43 referenced assets. Manager signs in through the actual app and reaches the checklist; the local login function records the request. The earlier unsigned Secure Store entitlement failure is resolved. This is not an App Store distribution archive."
+    },
+    {
+      "command": "Supabase security advisors (read-only)",
+      "status": "Review",
+      "detail": "Zero errors, 34 warnings and 6 informational findings. Reviewed service-only RLS tables and selected function authorization definitions. This is not a complete production penetration test."
+    },
+    {
+      "command": "npm run test:ci -- --runTestsByPath src/__tests__/changePassword.test.ts src/__tests__/credentialModal.test.ts",
+      "status": "Pass",
+      "detail": "11 tests passed. Two new tests failed against the original shared-client implementation, reproducing session restoration and a password update after logout began. Added checks for dismissed forms and same-user session replacement."
+    },
+    {
+      "command": "FULL_STACK_PORT_BASE=54520 scripts/local-db/full-stack.sh load",
+      "status": "Pass",
+      "detail": "Applied the two missing existing migrations to the disposable local stack after verifying both were absent. The complete local schema now matches the 29-migration verifier. No production data changed."
+    },
+    {
+      "command": "npm run test:ci -- --runTestsByPath src/__tests__/storeSessionIsolation.test.ts src/__tests__/authStore.signOut.test.ts src/__tests__/orderStoreFulfillment.test.ts",
+      "status": "Pass",
+      "detail": "25 tests passed. Deferred tests reproduce account-switch response leaks, old sync continuation, new queue additions, same-ID replacement edits and duplicate stock sync attempts. Already-issued server requests remain bound to their original request; client guards cannot undo them."
+    },
+    {
+      "command": "scripts/sim.sh input + actual local login-with-name request",
+      "status": "Pass",
+      "detail": "Manager name/PIN sign-in succeeds on dedicated simulator EF05F833-2AC4-4383-8688-36C51B956BCF with the configured publishable key. Authenticated checklist and native Save Password prompt shown. Broader workflows recorded in the route matrix as testing proceeds."
+    },
+    {
+      "command": "Read-only production configuration aggregates",
+      "status": "Pass",
+      "detail": "240 active inventory items, 42 personalization rules, 12 reorder rules. Counts confirm records exist; no catalogue names or rule contents were exported and no recognition/correctness claim follows from counts."
+    },
+    {
+      "command": "Production auth validation with malformed JSON only",
+      "status": "Fail",
+      "detail": "EAS legacy key: 401 Unauthorized for login-with-name and accept-invite. Verified publishable key: 400 Invalid request body for both. The reviewed handlers reject these requests before database access. Full login/onboarding production mutations were not attempted."
+    },
+    {
+      "command": "node --test scripts/tests/verify-production-env.test.cjs",
+      "status": "Pass",
+      "detail": "Eight cases cover expected HTTPS project, loopback/wrong host/path rejection, missing/legacy/server-only key format and redacted failure messages. Actual cloud build has not run."
+    },
+    {
+      "command": "Local HTML report browser preview",
+      "status": "Pass",
+      "detail": "Report opened on loopback port 8094 in a background in-app browser. Desktop layout, gallery and click-to-enlarge screenshot dialog visually inspected. All screenshot pixels are embedded; no external image requests are needed."
+    },
+    {
+      "command": "Public support/privacy URL lookup",
+      "status": "Blocked",
+      "detail": "The web tool refused to open smelterpos.com/support and smelterpos.com/privacy. No availability conclusion follows. Links still need independent verification before submission."
+    },
+    {
+      "command": "npm run test:ci -- --runTestsByPath src/__tests__/fishOrderExport.test.ts --silent",
+      "status": "Pass",
+      "detail": "16 focused tests pass after reproducing missing/malformed data failures. Native invalid and valid local-payload screens also verified; no external share sent."
+    },
+    {
+      "command": "npm run test:ci -- --runTestsByPath src/__tests__/inviteLinkReady.test.ts src/__tests__/inviteJoin.test.ts --silent",
+      "status": "Pass",
+      "detail": "Two suites / 30 tests pass after reproducing the false link-ready state. Native verification of the final rebuilt screen is recorded with its screenshot."
+    },
+    {
+      "command": "Native credential offline/recovery test through scripts/sim.sh",
+      "status": "Pass",
+      "detail": "Stopped only supabase_kong_production-readiness, observed readable metadata connection error, restored the container in finally, reopened PIN form, then cancelled. No credential changed."
+    },
+    {
+      "command": "Native legacy sign-in accessibility tree through scripts/sim.sh input describe-ui",
+      "status": "Pass",
+      "detail": "Reproduced one grouped form before the fix. Final rebuilt screen exposes individual Email and Password text fields, Show password, Forgot password, Sign in and Sign Up actions. Evidence: root-legacy-login-fixed-ui.json."
+    }
+  ],
+  "screenshots": [
+    {
+      "path": "e2e/root-final-welcome.png",
+      "title": "Final signed Release welcome",
+      "caption": "The final integrated Release build returns to the Smelter welcome screen after sign-out. The supplied silver logo and improved legal-link contrast are visible."
+    },
+    {
+      "path": "e2e/07-manager-login-result.png",
+      "title": "Real manager sign-in succeeds",
+      "caption": "Authenticated local manager reaches the checklist. The native Save Password prompt confirms iOS recognized the credential flow. Fixture Sushi is a disposable local test location."
+    },
+    {
+      "path": "e2e/10-manager-order-sent.png",
+      "title": "Checklist order confirmation",
+      "caption": "Actual successful checklist submission using local fixtures. A matching submitted order row was verified in the disposable database. This does not prove supplier transmission."
+    },
+    {
+      "path": "e2e/22-manager-fulfillment.png",
+      "title": "Manager fulfillment view",
+      "caption": "Pending local test orders render in the manager fulfillment view. The fixture supplier is unresolved; supplier sending has not been verified."
+    },
+    {
+      "path": "e2e/root-credential-accessible-final.png",
+      "title": "Final accessible credential sheet",
+      "caption": "The repaired shared credential editor opens on the signed Release build. Native accessibility exposes individual buttons and inputs. Cancel dismisses it correctly. No new credential was entered or saved."
+    },
+    {
+      "path": "e2e/root-stock-home.png",
+      "title": "Employee stock areas",
+      "caption": "Two local fixture areas render with three unchecked inventory items. This verifies the displayed counts, not stock submission or offline sync."
+    },
+    {
+      "path": "e2e/root-order-history.png",
+      "title": "Employee order history",
+      "caption": "The employee sees the seeded local submitted order with item and note counts. The fixture is disposable; this is not a production employee record."
+    },
+    {
+      "path": "e2e/root-manager-credential-final.png",
+      "title": "Manager credential editor",
+      "caption": "The original manager Profile now opens the correct PIN editor on the signed Release app. The test closed it without changing credentials."
+    },
+    {
+      "path": "e2e/root-credential-offline.png",
+      "title": "Credential connection failure",
+      "caption": "With only the local API gateway stopped, the form displays a connection error and Close. It does not choose the wrong credential type."
+    },
+    {
+      "path": "e2e/root-credential-online-recovery.png",
+      "title": "Credential connection recovery",
+      "caption": "Restoring the disposable local API lets the same editor load the correct PIN form. Native accessibility checks passed for the inputs and Cancel."
+    },
+    {
+      "path": "e2e/root-export-invalid-fixed.png",
+      "title": "Invalid export rejected",
+      "caption": "A real deep link with no order details now shows an honest empty state and a back action. Copy and Share are absent."
+    },
+    {
+      "path": "e2e/root-export-valid-fixture.png",
+      "title": "Valid export preview",
+      "caption": "An explicitly supplied local test payload renders Fixture Salmon, 2 fillets. This verifies rendering, not supplier delivery; no share was sent."
+    },
+    {
+      "path": "e2e/root-manager-inventory.png",
+      "title": "Manager inventory",
+      "caption": "Four disposable fixture items and their stock freshness counts render. No production inventory was changed."
+    },
+    {
+      "path": "e2e/root-manager-orders-explicit.png",
+      "title": "Manager order list",
+      "caption": "The explicit manager route shows three local fixture orders, including the order submitted through the app. Status changes were not attempted."
+    },
+    {
+      "path": "e2e/root-manager-team-active.png",
+      "title": "Manager team",
+      "caption": "The manager team list shows the three local QA accounts. Invitation creation, role changes and credential resets remain unverified."
+    },
+    {
+      "path": "e2e/root-stock-list.png",
+      "title": "Stock station",
+      "caption": "The selected local station renders one unchecked fixture item. Count saving, submission and offline synchronization still require native mutation tests."
+    },
+    {
+      "path": "e2e/root-invite-invalid-fixed.png",
+      "title": "Invalid invitation rejected",
+      "caption": "The final native build rejects a missing invitation URL and offers Back to Team. No link is fabricated and no message was sent."
+    },
+    {
+      "path": "e2e/root-legacy-login-fixed.png",
+      "title": "Legacy email sign-in",
+      "caption": "The legacy form renders with separate accessible inputs and actions after the wrapper repair. No email login or reset request was sent in this check."
+    }
+  ],
+  "screenshot_note": "Only actual screenshots from the dedicated iPhone 17 Pro Max simulator are included. Any displayed business records are explicitly seeded local test fixtures. The simulator build is not the App Store distribution archive.",
+  "assumptions": [
+    {
+      "decision": "Use Smelter and the existing silver mark",
+      "reason": "They are already the committed app name and delivered source assets. Native asset drift was the observed defect.",
+      "confirm": "Confirm these are the intended final name and logo."
+    },
+    {
+      "decision": "Preserve bundle ID, URL scheme and Expo project identity",
+      "reason": "These are integration identifiers; renaming them can break installed-app updates, invites and credentials.",
+      "confirm": "Confirm the existing App Store record and intended Apple team."
+    },
+    {
+      "decision": "Preserve marketing version 2.3, build 21 and OTA runtime 2.2",
+      "reason": "No evidence established a different released version or native runtime contract. EAS production auto-increments remote build numbers.",
+      "confirm": "Verify available version/build and OTA compatibility in the signed archive."
+    },
+    {
+      "decision": "Keep existing navigation and visual design",
+      "reason": "Repair and verify established mobile behavior; no speculative product redesign was needed for the confirmed defects.",
+      "confirm": "Review the actual screen evidence for desired visual changes."
+    },
+    {
+      "decision": "Use isolated local test accounts and records",
+      "reason": "End-to-end mutations can safely run without altering employees, inventory, orders or credentials in production.",
+      "confirm": "Complete production service validation with authorized disposable accounts before submission."
+    },
+    {
+      "decision": "Create a separate QA simulator",
+      "reason": "The documented device UDID was absent, and existing running simulators belonged to other work. The new explicit UDID prevents cross-project interference.",
+      "confirm": "Worktree wrapper targets EF05F833-2AC4-4383-8688-36C51B956BCF; original checkout was left unchanged."
+    },
+    {
+      "decision": "Finish logout even when notification cleanup is offline",
+      "reason": "A user must be able to leave a shared device. Remote token deactivation cannot be guaranteed without connectivity.",
+      "confirm": "Prove server device ownership and physical-device push isolation before release."
+    },
+    {
+      "decision": "Choose credential editing from stored identity metadata",
+      "reason": "An account's recovery email does not mean it uses email/password sign-in. Reused existing PIN/password behavior.",
+      "confirm": "Verify credential change and subsequent login for supported account types."
+    },
+    {
+      "decision": "Declare only evidenced privacy categories",
+      "reason": "Name, email, user/device IDs and operational content are established by source. Provider retention and audio/financial classifications cannot be guessed safely.",
+      "confirm": "Owner must supply provider retention facts for final App Store privacy labels."
+    },
+    {
+      "decision": "Avoid forced major dependency upgrades",
+      "reason": "A patched decoder is ESM-only while existing callers use CommonJS. Unverified overrides could break navigation; remaining build-time exposures are documented.",
+      "confirm": "Accept the documented residual risk or complete a separately validated compatible toolchain migration."
+    },
+    {
+      "decision": "Use local ad-hoc signing for simulator authentication",
+      "reason": "The first unsigned Release build could launch but Secure Store reported a missing entitlement. A simulator needs valid local signing metadata for keychain tests. This is separate from Apple distribution signing.",
+      "confirm": "Confirm the intended Apple team and signed distribution archive before upload."
+    },
+    {
+      "decision": "Preserve the documented parser redesign",
+      "reason": "13 skipped tests cover deliberately retired hard/soft caps and old employee-unit translation behavior (commit fc1607e and docs/qo-restructure-changelog.md). Active personalization and reorder rules have separate tests.",
+      "confirm": "Hard/soft caps and voice quantity confirmation are intentionally absent. Legacy cap settings provide no protection. Confirm if you want those product behaviors restored."
+    },
+    {
+      "decision": "Treat the remaining catalogue audit separately",
+      "reason": "The 14th skipped test is opt-in active inventory recognition, not retired behavior. Local authorized fixtures were tested. Production aggregate counts were safe to read, but full inventory details require pending approval.",
+      "confirm": "Approve the read-only catalogue audit to verify recognition against all 240 production items."
+    },
+    {
+      "decision": "Disable automatic OTA checks only in the QA artifact",
+      "reason": "A local backend test must exercise the newly built JavaScript. The simulator-only preparation helper keeps the embedded update manifest and disables automatic launch checks in the built Expo.plist, then re-signs locally. No downloaded updates were present in this isolated app cache.",
+      "confirm": "Production source still checks for updates normally. Validate the production channel and runtime in the distribution archive."
+    },
+    {
+      "decision": "Reject incomplete export and invitation deep links",
+      "reason": "A missing payload must not fabricate an order, claim an invitation exists or enable sharing empty content. Existing valid formats are preserved.",
+      "confirm": "Live invitation acceptance and real supplier delivery remain separate integration checks."
+    },
+    {
+      "decision": "Keep the production key correction prepared but unapplied",
+      "reason": "The remote EAS environment requires an explicitly authorized persistent write after automatic approval review blocked it. The npm-audit approval applies only to the audit.",
+      "confirm": "Approve EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY in EAS production, then run a production-configured build."
+    }
+  ],
+  "handoff": "All changes are local to the codex/production-readiness worktree. No push, pull request, deployment, remote database write or App Store upload occurred. Main-checkout signing and lockfile changes belonging to another workstream were left untouched. Detailed audit notes and raw check logs accompany this report. Test runners and this task’s local backend are stopped at handoff; the dedicated simulator is left on welcome. Restart the preserved local backend with FULL_STACK_PORT_BASE=54520 scripts/local-db/full-stack.sh up after approving local test writes. No other simulator or project service was stopped.",
+  "files": [
+    ".env.example",
+    "app.json",
+    "app/(auth)/login.tsx",
+    "app/(manager)/export-fish-order.tsx",
+    "app/(manager)/manager-settings/profile.tsx",
+    "app/_layout.tsx",
+    "app/settings/about-support.tsx",
+    "app/settings/notifications-debug.tsx",
+    "app/settings/profile.tsx",
+    "docs/legal/PRIVACY.md",
+    "docs/legal/TERMS.md",
+    "docs/release-readiness/code-audit.md",
+    "docs/release-readiness/dependency-audit.md",
+    "docs/release-readiness/e2e/",
+    "docs/release-readiness/index.html",
+    "docs/release-readiness/logs/",
+    "docs/release-readiness/native-audit.md",
+    "docs/release-readiness/report-content.json",
+    "docs/release-readiness/route-inventory.json",
+    "eas.json",
+    "ios/Babytuna/Images.xcassets/AppIcon.appiconset/App-Icon-1024x1024@1x.png",
+    "ios/Babytuna/Images.xcassets/SplashScreenLegacy.imageset/image.png",
+    "ios/Babytuna/Images.xcassets/SplashScreenLegacy.imageset/image@2x.png",
+    "ios/Babytuna/Images.xcassets/SplashScreenLegacy.imageset/image@3x.png",
+    "ios/Babytuna/Info.plist",
+    "ios/Babytuna/PrivacyInfo.xcprivacy",
+    "ios/Podfile",
+    "ios/Podfile.lock",
+    "package-lock.json",
+    "package.json",
+    "scripts/build-release-report.py",
+    "scripts/local-db/full-stack.sh",
+    "scripts/local-db/phase6b_screenshot_import_fixture.sql",
+    "scripts/prepare-ios-simulator-qa.py",
+    "scripts/release-readiness/seed-local-mobile-e2e.sql",
+    "scripts/release-readiness/seed-local-quick-order-catalog.sql",
+    "scripts/sim.sh",
+    "scripts/tests/verify-production-env.test.cjs",
+    "scripts/tests/verify-submit-order-rpc.test.cjs",
+    "scripts/verify-ios-release.py",
+    "scripts/verify-production-env.cjs",
+    "scripts/verify-submit-order-rpc.js",
+    "src/__tests__/authStore.signOut.test.ts",
+    "src/__tests__/changePassword.test.ts",
+    "src/__tests__/credentialModal.test.ts",
+    "src/__tests__/fishOrderExport.test.ts",
+    "src/__tests__/homeInsightsCache.test.ts",
+    "src/__tests__/inviteLinkReady.test.ts",
+    "src/__tests__/loginCredentials.test.ts",
+    "src/__tests__/moduleAccess.test.ts",
+    "src/__tests__/notificationService.test.ts",
+    "src/__tests__/queryCache.test.ts",
+    "src/__tests__/quickOrderInventoryAudit.test.ts",
+    "src/__tests__/storeSessionIsolation.test.ts",
+    "src/components/BottomSheetShell.tsx",
+    "src/components/settings/ChangeCredentialSheet.tsx",
+    "src/components/settings/ChangePasswordModal.tsx",
+    "src/features/auth/WelcomeScreen.tsx",
+    "src/features/auth/components/AuthPrimaryButton.tsx",
+    "src/features/auth/components/LegalFooter.tsx",
+    "src/features/employeeSettings/EmployeeProfileScreen.tsx",
+    "src/features/fulfillment/fishOrderExportParams.ts",
+    "src/features/home/HomeScreenView.tsx",
+    "src/features/home/homeInsightsCache.ts",
+    "src/features/team/InviteLinkReadyScreen.tsx",
+    "src/features/team/inviteReadyParams.ts",
+    "src/hooks/useMyModules.ts",
+    "src/lib/queryCache.ts",
+    "src/lib/supabase.ts",
+    "src/services/changePassword.ts",
+    "src/services/loginCredentials.ts",
+    "src/services/notificationService.ts",
+    "src/services/orderSubmission.ts",
+    "src/store/authStore.ts",
+    "src/store/moduleStore.ts",
+    "src/store/orderStore.ts",
+    "src/store/stockStore.ts",
+    "src/theme/design.ts"
+  ],
+  "sources": [
+    {
+      "url": "https://developer.apple.com/app-store/review/guidelines/",
+      "title": "Apple App Review Guidelines",
+      "detail": "Complete functionality, working backend, reviewer access, accurate metadata and applicable account deletion requirements."
+    },
+    {
+      "url": "https://developer.apple.com/news/upcoming-requirements/",
+      "title": "Apple upcoming requirements",
+      "detail": "Xcode 26 and iOS 26 SDK minimum from April 28, 2026, plus updated age-rating requirements. Local Xcode/SDK 26.2 meets the toolchain floor."
+    },
+    {
+      "url": "https://developer.apple.com/app-store/app-privacy-details/",
+      "title": "Apple app privacy details",
+      "detail": "Collection includes third-party access beyond real-time request servicing; final disclosures require provider evidence."
+    },
+    {
+      "url": "https://docs.expo.dev/build-reference/infrastructure/",
+      "title": "Expo build infrastructure",
+      "detail": "Documented production image macos-sequoia-15.6-xcode-26.2."
+    },
+    {
+      "url": "https://docs.expo.dev/build-reference/npm-hooks/",
+      "title": "Expo build lifecycle hooks",
+      "detail": "Documents eas-build-pre-install before dependency installation."
+    }
+  ]
+}

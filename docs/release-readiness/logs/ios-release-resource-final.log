@@ -1,0 +1,2 @@
+PASS: Smelter identity, embedded JavaScript, valid update manifest and 43 bundled assets
+This resource check does not validate signing, production services or App Store submission.

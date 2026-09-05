@@ -1,0 +1,17 @@
+{
+  "command": "eas env:list production --format long --include-sensitive",
+  "values_not_recorded": true,
+  "checks": [
+    {
+      "name": "EXPO_PUBLIC_SUPABASE_ANON_KEY",
+      "key_format": "jwt",
+      "jwt_role": "anon",
+      "matches_expected_project": true
+    },
+    {
+      "name": "EXPO_PUBLIC_SUPABASE_URL",
+      "https": true,
+      "matches_expected_project": true
+    }
+  ]
+}

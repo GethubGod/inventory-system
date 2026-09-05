@@ -1,0 +1,15 @@
+4:2026-09-04 23:55:26.313 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Auto refresh tick failed with error. This is likely a transient error.', { [Error: Calling the 'getValueWithKeyAsync' function has failed
+8:2026-09-04 23:55:56.312 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Auto refresh tick failed with error. This is likely a transient error.', { [Error: Calling the 'getValueWithKeyAsync' function has failed
+10:2026-09-04 23:55:57.059 Df Babytuna[78517:4f268d] [com.apple.CFNetwork:Default] Task <A1D48E09-8893-457D-87A3-3FBDFE6DB543>.<17> resuming, timeouts(0.0, 604800.0) qos(0x19) voucher((null)) activity(00000000-0000-0000-0000-000000000000)
+11:2026-09-04 23:55:57.060 Df Babytuna[78517:4f268d] [com.apple.network:connection] [C2] event: client:connection_reused @900.809s
+12:2026-09-04 23:55:57.060 Df Babytuna[78517:4f268d] [com.apple.network:connection] nw_protocol_socket_notify [C2.1.1.1:3] nw_protocol_notification_type_connection_idle is false
+13:2026-09-04 23:55:57.060 Df Babytuna[78517:4f268d] [com.apple.CFNetwork:Default] Task <A1D48E09-8893-457D-87A3-3FBDFE6DB543>.<17> now using Connection 2
+14:2026-09-04 23:55:57.060 Df Babytuna[78517:4f268d] [com.apple.CFNetwork:Default] Task <A1D48E09-8893-457D-87A3-3FBDFE6DB543>.<17> sent request, body N 0
+15:2026-09-04 23:55:57.074 Df Babytuna[78517:4f268d] [com.apple.CFNetwork:Default] Task <A1D48E09-8893-457D-87A3-3FBDFE6DB543>.<17> received response, status 204 content U
+16:2026-09-04 23:55:57.074 Df Babytuna[78517:4f268d] [com.apple.CFNetwork:Default] Task <A1D48E09-8893-457D-87A3-3FBDFE6DB543>.<17> done using Connection 2
+17:2026-09-04 23:55:57.074 Df Babytuna[78517:4f268d] [com.apple.network:connection] [C2] event: client:connection_idle @900.823s
+18:2026-09-04 23:55:57.074 Df Babytuna[78517:4f268d] [com.apple.network:connection] nw_protocol_socket_notify [C2.1.1.1:3] nw_protocol_notification_type_connection_idle is true
+19:2026-09-04 23:55:57.074 Df Babytuna[78517:4f268d] [com.apple.CFNetwork:Default] Task <A1D48E09-8893-457D-87A3-3FBDFE6DB543>.<17> response ended
+20:2026-09-04 23:55:57.075 Df Babytuna[78517:4f268d] [com.apple.CFNetwork:Summary] Task <A1D48E09-8893-457D-87A3-3FBDFE6DB543>.<17> summary for task success {transaction_duration_ms=15, response_status=204, connection=2, reused=1, reused_after_ms=60033, request_start_ms=1, request_duration_ms=0, response_start_ms=15, response_duration_ms=0, request_bytes=40, request_throughput_kbps=3856, response_bytes=38, response_throughput_kbps=1178, cache_hit=false}
+21:2026-09-04 23:55:57.075 Df Babytuna[78517:4f268d] [com.apple.CFNetwork:Default] Task <A1D48E09-8893-457D-87A3-3FBDFE6DB543>.<17> finished successfully
+24:2026-09-04 23:56:26.314 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Auto refresh tick failed with error. This is likely a transient error.', { [Error: Calling the 'getValueWithKeyAsync' function has failed

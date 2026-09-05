@@ -1,0 +1,13 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-04 23:54:56.311 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Auto refresh tick failed with error. This is likely a transient error.', { [Error: Calling the 'getValueWithKeyAsync' function has failed
+→ Caused by: A required entitlement isn't present.] code: 'ERR_KEY_CHAIN' }
+2026-09-04 23:55:26.313 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Auto refresh tick failed with error. This is likely a transient error.', { [Error: Calling the 'getValueWithKeyAsync' function has failed
+→ Caused by: A required entitlement isn't present.] code: 'ERR_KEY_CHAIN' }
+2026-09-04 23:55:56.312 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Auto refresh tick failed with error. This is likely a transient error.', { [Error: Calling the 'getValueWithKeyAsync' function has failed
+→ Caused by: A required entitlement isn't present.] code: 'ERR_KEY_CHAIN' }
+2026-09-04 23:56:26.314 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Auto refresh tick failed with error. This is likely a transient error.', { [Error: Calling the 'getValueWithKeyAsync' function has failed
+→ Caused by: A required entitlement isn't present.] code: 'ERR_KEY_CHAIN' }
+2026-09-04 23:56:56.315 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Auto refresh tick failed with error. This is likely a transient error.', { [Error: Calling the 'getValueWithKeyAsync' function has failed
+→ Caused by: A required entitlement isn't present.] code: 'ERR_KEY_CHAIN' }
+2026-09-04 23:57:26.319 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Auto refresh tick failed with error. This is likely a transient error.', { [Error: Calling the 'getValueWithKeyAsync' function has failed
+→ Caused by: A required entitlement isn't present.] code: 'ERR_KEY_CHAIN' }

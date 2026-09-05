@@ -1,0 +1,281 @@
+BEGIN
+INSERT 0 2
+INSERT 0 5
+INSERT 0 5
+INSERT 0 5
+INSERT 0 1
+INSERT 0 3
+DO
+NOTICE:  ok: six global kitchen items were seeded with the contract values
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000001
+(1 row)
+
+SET
+NOTICE:  ok: manager kitchen module defaults are true at positions 6 and 7
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000004
+(1 row)
+
+SET
+NOTICE:  ok: employee kitchen module defaults are false
+DO
+RESET
+ set_config 
+------------
+ 
+(1 row)
+
+SET
+NOTICE:  ok: not_signed_in is returned for a signed-out send
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000004
+(1 row)
+
+SET
+DO
+NOTICE:  ok: kitchen_requests_disabled is returned without the sender module
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000002
+(1 row)
+
+SET
+NOTICE:  ok: sender validation returns location_not_allowed, item_unavailable, and invalid_quantity
+NOTICE:  ok: replay returns one id and stamps the login display name and handle
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000005
+(1 row)
+
+SET
+NOTICE:  ok: a suspended chef is refused despite an enabled override
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000001
+(1 row)
+
+SET
+NOTICE:  ok: client_key_conflict protects another requester's idempotency key
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000003
+(1 row)
+
+SET
+NOTICE:  ok: request_not_found and not_allowed protect update actions
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000002
+(1 row)
+
+SET
+NOTICE:  ok: updates enforce location scope and invalid_transition names the current status
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000003
+(1 row)
+
+SET
+NOTICE:  ok: ready and undo_ready are idempotent and store the display actor
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000002
+(1 row)
+
+SET
+NOTICE:  ok: requester clear and cancel transitions set closed_at and preserve ready fields correctly
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000003
+(1 row)
+
+SET
+NOTICE:  ok: display RLS exposes only its location requests and the global items
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000004
+(1 row)
+
+SET
+NOTICE:  ok: no-module RLS returns zero requests and zero items
+DO
+RESET
+ set_config 
+------------
+ 
+(1 row)
+
+SET
+NOTICE:  ok: anon selects fail for both kitchen tables or return zero rows
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000002
+(1 row)
+
+SET
+NOTICE:  ok: a chef without kitchen_display cannot mark ready
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000003
+(1 row)
+
+SET
+NOTICE:  ok: a display user without kitchen_requests cannot send
+DO
+RESET
+UPDATE 1
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000002
+(1 row)
+
+SET
+DO
+RESET
+DO
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000002
+(1 row)
+
+SET
+NOTICE:  ok: a requester whose module was revoked cannot cancel
+DO
+RESET
+UPDATE 1
+ set_config 
+------------
+ 
+(1 row)
+
+UPDATE 1
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000002
+(1 row)
+
+SET
+NOTICE:  ok: a suspended requester cannot cancel or clear
+DO
+RESET
+ set_config 
+------------
+ 
+(1 row)
+
+UPDATE 1
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000002
+(1 row)
+
+SET
+DO
+RESET
+NOTICE:  ok: authenticated cannot insert, update, delete or truncate kitchen_requests directly
+ set_config 
+------------
+ 
+(1 row)
+
+SET
+NOTICE:  ok: anon cannot execute the kitchen RPCs
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000001
+(1 row)
+
+SET
+NOTICE:  ok: managers can cancel others' requests; identity uses the handle or the normalised name
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000002
+(1 row)
+
+SET
+DO
+RESET
+UPDATE 1
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000002
+(1 row)
+
+SET
+NOTICE:  ok: replay returns the stored row even after item deactivation; mismatch, null key and unknown action are refused
+DO
+RESET
+UPDATE 1
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000002
+(1 row)
+
+SET
+NOTICE:  ok: kitchen_actor_identity refuses other users for non-managers
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000001
+(1 row)
+
+SET
+NOTICE:  ok: managers may read any identity
+DO
+RESET
+INSERT 0 1
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000003
+(1 row)
+
+SET
+NOTICE:  ok: item RLS hides other locations' items from non-managers
+DO
+RESET
+              set_config              
+--------------------------------------
+ aaaaaaaa-1000-4000-8000-000000000001
+(1 row)
+
+SET
+NOTICE:  ok: managers see every location's items
+DO
+RESET
+DO
+NOTICE:  PASS: kitchen requests fixture assertions all held
+ROLLBACK

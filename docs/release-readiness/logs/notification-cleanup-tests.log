@@ -1,0 +1,22 @@
+
+> babytuna@2.2 test:ci
+> jest --runInBand --watchman=false --runTestsByPath src/__tests__/notificationService.test.ts
+
+PASS src/__tests__/notificationService.test.ts
+  ✓ does not register a token whose lookup finishes after logout starts
+  ✓ does not request a token when notification permission is denied (1 ms)
+  ✓ uses the saved device token without contacting Expo during logout
+  ✓ does not clear the next session notifications after cleanup expires
+  push token foreground refresh policy
+    ✓ refreshes missing, invalid, and tokens older than seven days (2 ms)
+    ✓ does not refresh a token at or under the seven-day threshold
+    ✓ checks the most recently refreshed active token before deciding to renew it (1 ms)
+  shared-device notification cleanup
+    ✓ deactivates only the departing user token on this device (1 ms)
+    ✓ clears scheduled reminders, delivered notifications, and the badge
+
+Test Suites: 1 passed, 1 total
+Tests:       9 passed, 9 total
+Snapshots:   0 total
+Time:        1.152 s
+Ran all test suites within paths "src/__tests__/notificationService.test.ts".

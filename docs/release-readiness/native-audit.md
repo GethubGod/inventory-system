@@ -91,3 +91,11 @@ Verification:
 - Generated Pods project plist validation, Podfile/Manifest.lock parity and `git diff --check -- ios` passed.
 
 These phase probes prove resource generation. The main report must separately record the root agent's rebuilt-app launch result before calling the runtime failure fixed.
+
+## Root integrated validation
+
+The repaired Release binary was built with CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=YES for simulator EF05F833-2AC4-4383-8688-36C51B956BCF. The compiled-resource validator confirms the JavaScript bundle, embedded manifest and all 43 assets. It launches, signs in to the local backend, and renders the exercised employee and manager screens. This verifies the earlier launch and keychain regressions were resolved. It does not establish distribution signing.
+
+The simulator-only QA preparation script requires the expected app identity, iPhoneSimulator platform and exact loopback backend URL in the bundle. It disables automatic update checks only in the built artifact and re-signs it locally. Production Expo.plist remains unchanged. The isolated cache contained embedded updates only.
+
+Read-only EAS production inspection found only a legacy anon key, which gets 401 from the name-login and invitation endpoints. Invalid JSON with the current publishable key reaches body validation (400), without database writes. Adding that publishable key to EAS production remains blocked pending explicit authorization after automatic approval review rejected the remote configuration write.
