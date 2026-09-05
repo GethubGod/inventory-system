@@ -48,13 +48,13 @@
       <true/>
     </dict>
     <key>NSCameraUsageDescription</key>
-    <string>Camera access is required to scan QR codes.</string>
-    <key>NSFaceIDUsageDescription</key>
-    <string>Allow $(PRODUCT_NAME) to access your Face ID biometric data.</string>
+    <string>Smelter uses the camera to scan QR codes.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Microphone access lets you add order items by voice.</string>
+    <string>Smelter uses the microphone when you add order items by voice.</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>Photo library access is needed to update your profile photo.</string>
+    <string>Smelter uses your photo library to choose a profile photo.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>Smelter uses speech recognition to turn your voice into order items.</string>
     <key>NSUserActivityTypes</key>
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>
