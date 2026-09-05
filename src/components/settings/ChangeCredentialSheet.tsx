@@ -8,11 +8,12 @@ import { glassHairlineWidth, radii, tipsTheme } from '@/theme/design';
 
 interface ChangeCredentialSheetProps {
   visible: boolean;
+  presentation?: 'modal' | 'embedded';
   onClose: () => void;
   initialKind?: CredentialKind;
 }
 
-export function ChangeCredentialSheet({ visible, onClose, initialKind = 'pin' }: ChangeCredentialSheetProps) {
+export function ChangeCredentialSheet({ visible, onClose, initialKind = 'pin', presentation = 'modal' }: ChangeCredentialSheetProps) {
   const ds = useScaledStyles();
   const insets = useSafeAreaInsets();
   const [credentialKind, setCredentialKind] = useState<CredentialKind>(initialKind);
@@ -119,12 +120,25 @@ export function ChangeCredentialSheet({ visible, onClose, initialKind = 'pin' }:
   return (
       <BottomSheetShell
         visible={visible}
+        presentation={presentation}
         onClose={closeSheet}
         bottomPadding={Math.max(insets.bottom, ds.spacing(14))}
       >
-        <Text style={{ fontSize: ds.fontSize(20), fontWeight: '700', color: tipsTheme.ink }}>
-          Change PIN or password
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: ds.spacing(12) }}>
+          <Text style={{ flex: 1, fontSize: ds.fontSize(20), fontWeight: '700', color: tipsTheme.ink }}>
+            Change PIN or password
+          </Text>
+          <TouchableOpacity
+            onPress={closeSheet}
+            disabled={isSaving}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel changing sign-in details"
+            accessibilityState={{ disabled: isSaving }}
+            style={{ minWidth: 44, minHeight: 44, justifyContent: 'center' }}
+          >
+            <Text style={{ fontSize: ds.fontSize(14), color: tipsTheme.ink2 }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
         <Text
           style={{ fontSize: ds.fontSize(13), color: tipsTheme.ink2, marginBottom: ds.spacing(12) }}
         >

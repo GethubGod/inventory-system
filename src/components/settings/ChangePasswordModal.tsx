@@ -41,24 +41,27 @@ export function ChangePasswordModal({ visible, onClose }: ChangePasswordModalPro
     return () => { active = false; };
   }, [userId, visible]);
 
-  if (!visible) return null;
-  if (!identity || identity.userId !== userId) {
-    return (
-      <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+  const isResolving = !identity || identity.userId !== userId;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      {!visible ? null : isResolving ? (
         <View style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: 'center', padding: 24 }}>
           <View style={{ backgroundColor: colors.white, borderRadius: radii.card, padding: 24, gap: 16 }}>
             {loadError || !userId ? <Text>{loadError ?? 'Sign in again to change your sign-in details.'}</Text> : <ActivityIndicator accessibilityLabel="Loading sign-in settings" />}
             <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Close sign-in settings" style={{ minHeight: 44, justifyContent: 'center' }}><Text>Close</Text></TouchableOpacity>
           </View>
         </View>
-      </Modal>
-    );
-  }
-  if (identity.kind) return <ChangeCredentialSheet visible onClose={onClose} initialKind={identity.kind} />;
-  return <EmailPasswordModal visible onClose={onClose} />;
+      ) : identity.kind ? (
+        <ChangeCredentialSheet visible presentation="embedded" onClose={onClose} initialKind={identity.kind} />
+      ) : (
+        <EmailPasswordContent onClose={onClose} />
+      )}
+    </Modal>
+  );
 }
 
-function EmailPasswordModal({ visible, onClose }: ChangePasswordModalProps) {
+function EmailPasswordContent({ onClose }: Pick<ChangePasswordModalProps, 'onClose'>) {
   const ds = useScaledStyles();
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -123,12 +126,6 @@ function EmailPasswordModal({ visible, onClose }: ChangePasswordModalProps) {
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={handleClose}
-    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1"
@@ -306,6 +303,5 @@ function EmailPasswordModal({ visible, onClose }: ChangePasswordModalProps) {
           </Pressable>
         </Pressable>
       </KeyboardAvoidingView>
-    </Modal>
   );
 }
