@@ -105,3 +105,16 @@ Migration date used in SQL comments: 2026-05-26.
 - Run the new migration on a local Supabase database and verify generated row counts against production-like data.
 - Remove dead helper code left behind by the no-safety stub once the team is comfortable deleting the file entirely.
 - Drop deprecated Decision 3 tables in a follow-up migration 30 days after production stability is confirmed.
+
+## Decision 4 (2026-09-05): Delete Retired Cap Tests And Dead Cap Reads
+
+- Removed the 13 skipped tests in `src/__tests__/quickOrderParser.test.ts` that covered the retired hard/soft cap safety layer and the retired employee-unit translation/threshold-override behavior (two standalone `test.skip` cases, two adjacent `test.skip` pairs, one more standalone `test.skip`, and one `describe.skip` block of 7 tests).
+- Removed the dead `hard_cap`/`soft_cap` fields from `InventoryItem` in `src/types/database.ts` and the matching `hardCap`/`softCap` DTO fields and mapping lines in `src/lib/api/client.ts`. No UI screen read or wrote these fields; they were carried through the client only as unused data.
+- No schema change and no migration. The underlying `hard_cap`/`soft_cap` columns and the deprecated `item_order_limits`/`item_allowed_units` tables are untouched.
+- Left `supabase/functions/parse-order/safety-engine.ts` as is. Its `evaluateParsedItem`/`evaluateQuantity`/`evaluateAllowedUnit` helpers are unreachable dead code behind the no-safety stub, but that is an edge function, not a client, and out of scope for this pass.
+
+## Verification Run (Decision 4)
+
+- `npm run typecheck`: see PR body for exact result.
+- `npm run lint`: see PR body for exact result.
+- `npm run test:ci`: see PR body for exact result and skipped-test count.

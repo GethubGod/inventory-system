@@ -231,8 +231,6 @@ export interface InventoryItem {
   aliases?: string[];
   created_at: string;
   created_by?: string | null;
-  hard_cap?: number | null;
-  soft_cap?: number | null;
   safety_stock?: number | null;
   target_stock?: number | null;
   default_order_unit?: string | null;
