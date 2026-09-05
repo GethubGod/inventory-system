@@ -260,8 +260,6 @@ interface InventoryItemDTO {
   notes: string | null;
   createdAt: string | null;
   updatedAt: string | null;
-  hardCap?: number | null;
-  softCap?: number | null;
   safetyStock?: number | null;
   targetStock?: number | null;
   defaultOrderUnit?: string | null;
@@ -312,8 +310,6 @@ function inventoryDtoToItem(dto: InventoryItemDTO): InventoryItem {
     active: dto.active,
     created_at: dto.createdAt ?? '',
     created_by: null,
-    hard_cap: dto.hardCap ?? null,
-    soft_cap: dto.softCap ?? null,
     safety_stock: dto.safetyStock ?? null,
     target_stock: dto.targetStock ?? null,
     default_order_unit: dto.defaultOrderUnit ?? null,
