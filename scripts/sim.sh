@@ -5,7 +5,9 @@
 # simctl silently picks one at random and exits 0.
 set -euo pipefail
 
-BABYTUNA_SIM_UDID="FCADAB49-3A22-4167-B3EB-F794BEB32D9E"  # iPhone 17 Pro Max, iOS 26.2
+# The historical QA UDID FCADAB49-3A22-4167-B3EB-F794BEB32D9E is not present
+# in this simulator set. This isolated replacement was created for this pass.
+BABYTUNA_SIM_UDID="EF05F833-2AC4-4383-8688-36C51B956BCF"  # Smelter Release QA iPhone 17 Pro Max, iOS 26.2
 NELLIT_UDID="7C0CA22A-4895-44BA-BF7E-F53BB5CAF7F8"        # Nellit's device: never target
 NELLIT_APP_ID="com.worthunion.nailit"
 
@@ -17,6 +19,24 @@ for arg in "$@"; do
 done
 
 case "${1:-}" in
+  input)
+    shift
+    case "${1:-}" in
+      tap|type|describe-ui|swipe|drag|button|key|key-sequence|key-combo|touch|gesture|slider|batch) ;;
+      *) echo "sim.sh: unsupported headless UI command" >&2; exit 1 ;;
+    esac
+    for arg in "$@"; do
+      if [[ "$arg" == --udid* ]]; then
+        echo "sim.sh: UI target is pinned; do not supply --udid" >&2
+        exit 1
+      fi
+    done
+    if [[ -z "${SMELTER_AXE_PATH:-}" || ! -x "$SMELTER_AXE_PATH" ]]; then
+      echo "sim.sh: set SMELTER_AXE_PATH to the installed XcodeBuildMCP AXe binary" >&2
+      exit 1
+    fi
+    "$SMELTER_AXE_PATH" "$@" --udid "$BABYTUNA_SIM_UDID"
+    ;;
   udid)
     echo "$BABYTUNA_SIM_UDID"
     ;;

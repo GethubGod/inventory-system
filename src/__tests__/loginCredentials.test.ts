@@ -147,3 +147,13 @@ describe('credential editor selection', () => {
     await expect(getMyCredentialKind('user-1')).rejects.toThrow('Unable to load your sign-in settings');
   });
 });
+
+
+it.each(['Failed to send a request to the Edge Function', 'Network request failed', 'Failed to fetch'])(
+  'explains connectivity errors without server implementation details: %s',
+  async (message) => {
+    invoke.mockResolvedValue({ data: null, error: { message } });
+    await expect(signInWithName('Nate', '4321')).rejects.toThrow('Unable to connect. Check your connection and try again.');
+    expect(verifyOtp).not.toHaveBeenCalled();
+  },
+);

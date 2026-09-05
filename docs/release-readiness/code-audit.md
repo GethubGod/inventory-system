@@ -41,7 +41,7 @@ The orchestrator runs integrated typecheck, lint, full tests, and simulator veri
 ## Audit limits and remaining risks
 
 - Remote token deactivation cannot be guaranteed offline. The server can retain the old employee's active token after local sign-out. A server-side device ownership/unregister contract and a real-device push test are required to prove this case safe. A five-second timeout also permits a pending remote operation to finish later, but its filters remain the departing user and device token.
-- Existing stock/order stores contain asynchronous operations beyond the cache changes here. Local tests do not prove every pending operation is discarded across logout.
+- Order and stock request generations now discard stale asynchronous results and stop subsequent queued network actions after auth cleanup. A network request already sent before logout can still complete on the server; these client guards cannot roll it back.
 - Module access falls back to role defaults after first-fetch failure. That existing choice is unchanged. Server RLS/RPC checks, not client tabs, must enforce access.
 - The app has legacy email onboarding/profile paths and the newer name/PIN flow. Credential editing now chooses by stored identity metadata. Successful credential change, name change, subsequent login, and account deletion still need live end-to-end verification.
 - Supabase deletion success and data removal, SMS supplier sending, delivery recording, camera/voice processing, notification delivery, and offline recovery need authorized test accounts and real service verification. Unit mocks cannot establish production readiness.
@@ -59,3 +59,29 @@ Result: exit 0, no errors, one pre-existing unused-function warning in authStore
 Root review identified an unchecked cast during home cache hydration. Replaced it with `unknown` and nested validation for predicted items, previous-order items, reminders, dates, quantities, units, and counts. Malformed entries are discarded independently, so valid cached cards still load.
 
 `npm run test:ci -- --runTestsByPath src/__tests__/homeInsightsCache.test.ts` reproduced 10 failures before validation and passed all 18 tests afterward. `npx eslint src/features/home/homeInsightsCache.ts src/__tests__/homeInsightsCache.test.ts` passed without warnings or errors.
+
+## Root review follow-up: isolated password verification
+
+A new delayed-response regression demonstrated that verifying an email password on the shared Supabase client could sign the departing employee back in after logout and continue changing their password. `changeEmailPassword` now creates a separate, nonpersistent credential client with automatic token refresh disabled. Both verification and update use only that client's session. App session identity is checked before and after each asynchronous step. Closing/unmounting the form aborts pending verification and suppresses stale feedback. A request already sent may finish for its originally verified account; it cannot update a replacement user's account or restore the app session.
+
+`npm run test:ci -- --runTestsByPath src/__tests__/changePassword.test.ts` reproduced two failures before the change. The updated service and rendered-form run passed all 11 tests across changePassword and credentialModal. Typecheck and targeted lint passed. Additional shared auth accessibility metadata and legal-link contrast repairs await final simulator evidence.
+
+## Shared-device order and stock follow-up
+
+A read-only harness reproduced three stale-session failures using the actual store implementations: an old employee's orders appeared after reset, an old stock response repopulated the persistent area cache, and an old failed stock sync replaced the next employee's pending queue. The harness used deferred network promises and reset the stores between request and response; it did not write remote data.
+
+Order and stock stores now capture a request generation at action entry. Auth cleanup explicitly invalidates both generations before resetting stores, including stores already at their initial state. Post-await checks discard old responses, suppress stale errors/loading updates, and stop remaining queued sync or prefetch actions. An old reminder that finishes native scheduling after logout is cancelled by its own identifier. Current-session data shapes and successful sync behavior are retained.
+
+Commands and evidence:
+
+- `npm run test:ci -- --runTestsByPath src/__tests__/storeSessionIsolation.test.ts src/__tests__/authStore.signOut.test.ts src/__tests__/orderStoreFulfillment.test.ts`: passed, 3 suites and 18 tests. Deferred regressions cover old order reads, stock cache reads, stock queue success/failure, prefetch interruption, past-order sync success/failure, and late local notification scheduling. A current-session stock sync test checks normal behavior.
+- `npx eslint src/store/orderStore.ts src/store/stockStore.ts src/store/authStore.ts src/__tests__/storeSessionIsolation.test.ts src/__tests__/authStore.signOut.test.ts`: no errors, one existing unused-function warning in authStore.
+- `git diff --check -- src/store/orderStore.ts src/store/stockStore.ts src/store/authStore.ts src/__tests__/storeSessionIsolation.test.ts src/__tests__/authStore.signOut.test.ts`: passed.
+
+These checks prove the tested client races are prevented. They do not establish server cancellation, all-screen end-to-end behavior, or App Store approval.
+
+## Concurrent queue edits follow-up
+
+Root review identified a separate same-account loss: completion replaced an entire queue snapshot, dropping edits queued while a request was pending. Five deferred regression cases failed before the fix. Stock sync now removes only the immutable update objects successfully processed, preserving replacements that retain the same ID and new additions. A generation-owned lock prevents duplicate passes; completion from a previous account cannot release the current account's lock. Past-order sync applies each result to current history and queue state, preserves unrelated additions, and leaves a job replaced during the request intact. Normalized job-content comparison accommodates the existing queue normalizer recreating object references.
+
+The final focused command `npm run test:ci -- --runTestsByPath src/__tests__/storeSessionIsolation.test.ts src/__tests__/authStore.signOut.test.ts src/__tests__/orderStoreFulfillment.test.ts` passed 3 suites and 25 tests. The same targeted ESLint command above passed with zero errors and the existing authStore unused-function warning. No server write was performed by the tests.

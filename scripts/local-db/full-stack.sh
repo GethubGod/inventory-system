@@ -32,11 +32,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MIGRATIONS_DIR="$REPO_ROOT/supabase/migrations"
 BASELINE="$SCRIPT_DIR/baseline_public_schema.sql"
 CONFIG="$REPO_ROOT/supabase/config.toml"
-BASELINE_MIGRATION_CUTOFF="20260811204219_tip_entry_session_duplicate_guard.sql"
-# Migrations that are known not to apply on the baseline snapshot (they
-# depend on production state the snapshot predates). Listed here so the
-# rest of the schema still loads; they are skipped with a warning.
-SKIP_MIGRATIONS=("20260828100000_tips_v3_grat_scope_weights_notes.sql")
+BASELINE_MIGRATION_CUTOFF="20260807101000_tip_set_updated_at_search_path.sql"
 # Base for the four local ports; default matches supabase/config.toml (54421-54424).
 PORT_BASE="${FULL_STACK_PORT_BASE:-54420}"
 API_PORT=$((PORT_BASE + 1))
@@ -85,6 +81,42 @@ restore_config() {
   fi
 }
 
+inject_local_publishable_key() {
+  # The local Edge Runtime exposes its generated sb_publishable_ key to
+  # workers as JSON in SUPABASE_PUBLISHABLE_KEYS. The app functions accept
+  # the documented comma-separated SUPABASE_PUBLISHABLE_KEY form, so expose
+  # the same generated value under that name for local E2E parity. This is a
+  # generated .temp file and does not alter an Edge Function or app source.
+  local runtime_main="$REPO_ROOT/supabase/.temp/start-secrets/supabase_edge_runtime_$(project_id)/main/index.ts"
+  local marker='Fe&&(a.SUPABASE_PUBLISHABLE_KEYS=JSON.stringify({default:Fe})),ke&&'
+  local injected='Fe&&(a.SUPABASE_PUBLISHABLE_KEYS=JSON.stringify({default:Fe}),a.SUPABASE_PUBLISHABLE_KEY=Fe),ke&&'
+
+  [[ -f "$runtime_main" ]] || {
+    echo "WARN: local Edge Runtime generated entrypoint not found; publishable-key injection skipped" >&2
+    return 0
+  }
+  if grep -Fq 'a.SUPABASE_PUBLISHABLE_KEY=Fe' "$runtime_main"; then
+    return 0
+  fi
+  if ! grep -Fq "$marker" "$runtime_main"; then
+    echo "WARN: local Edge Runtime publishable-key marker changed; injection skipped" >&2
+    return 0
+  fi
+
+  python3 - "$runtime_main" "$marker" "$injected" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+old, new = sys.argv[2:4]
+if old not in text:
+    raise SystemExit("local Edge Runtime publishable-key marker disappeared")
+path.write_text(text.replace(old, new, 1))
+PY
+  docker restart "supabase_edge_runtime_$(project_id)" >/dev/null
+}
+
 load_schema() {
   local existing
   existing="$(psql_in -Atc "select count(*) from information_schema.tables where table_schema='public'")"
@@ -113,12 +145,8 @@ SQL
     if psql_in -Atc "select 1 from public._full_stack_applied where name = '$mig'" < /dev/null | grep -q 1; then
       continue
     fi
-    if printf '%s\n' "${SKIP_MIGRATIONS[@]}" | grep -qx "$mig"; then
-      echo "==> SKIP $mig (known not to apply on the snapshot)"
-      continue
-    fi
     echo "==> Applying $mig"
-    if ! psql_in -v ON_ERROR_STOP=1 -q -X < "$MIGRATIONS_DIR/$mig"; then
+    if ! psql_in -v ON_ERROR_STOP=1 --single-transaction -q -X < "$MIGRATIONS_DIR/$mig"; then
       echo "FAIL: $mig did not apply." >&2
       exit 1
     fi
@@ -133,6 +161,7 @@ case "${1:-}" in
     trap restore_config EXIT
     overlay_config
     (cd "$REPO_ROOT" && supabase start -x studio,imgproxy,logflare,vector)
+    inject_local_publishable_key
     load_schema
     (cd "$REPO_ROOT" && supabase status)
     ;;

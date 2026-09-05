@@ -1,9 +1,3 @@
-import { useAuthStore } from '../store/authStore';
-import { useSettingsStore } from '../store/settingsStore';
-import { useSimpleOrderUiStore } from '../store/simpleOrderUiStore';
-import { getCached, setCache } from '../lib/queryCache';
-import { getHomeInsights, setHomeInsights } from '../features/home/homeInsightsCache';
-
 const mockAsyncStorage = {
   getItem: jest.fn(async () => null),
   setItem: jest.fn(async () => undefined),
@@ -24,6 +18,9 @@ const setSessionMock = jest.fn();
 const refreshSessionMock = jest.fn();
 const onAuthStateChangeMock = jest.fn();
 const removeChannelMock = jest.fn();
+
+const invalidatePendingOrderRequestsMock = jest.fn();
+const invalidatePendingStockRequestsMock = jest.fn();
 
 const orderStoreMock = {
   getInitialState: jest.fn(() => ({})),
@@ -105,12 +102,20 @@ jest.mock('@/lib/supabase', () => ({
   clearSupabaseStoredSession: clearSupabaseStoredSessionMock,
 }));
 
-jest.mock('../store/orderStore', () => ({ useOrderStore: orderStoreMock }));
+jest.mock('../store/orderStore', () => ({ useOrderStore: orderStoreMock, invalidatePendingOrderRequests: invalidatePendingOrderRequestsMock }));
 jest.mock('../store/draftStore', () => ({ useDraftStore: draftStoreMock }));
 jest.mock('../store/inventoryStore', () => ({ useInventoryStore: inventoryStoreMock }));
-jest.mock('../store/stockStore', () => ({ useStockStore: stockStoreMock }));
+jest.mock('../store/stockStore', () => ({ useStockStore: stockStoreMock, invalidatePendingStockRequests: invalidatePendingStockRequestsMock }));
 jest.mock('../store/fulfillmentStore', () => ({ useFulfillmentStore: fulfillmentStoreMock }));
 jest.mock('../store/tunaSpecialistStore', () => ({ useTunaSpecialistStore: tunaSpecialistStoreMock }));
+
+/* eslint-disable import/first -- Mock factories reference initialized bindings before the subject loads. */
+import { useAuthStore } from '../store/authStore';
+import { useSettingsStore } from '../store/settingsStore';
+import { useSimpleOrderUiStore } from '../store/simpleOrderUiStore';
+import { getCached, setCache } from '../lib/queryCache';
+import { getHomeInsights, setHomeInsights } from '../features/home/homeInsightsCache';
+/* eslint-enable import/first */
 
 async function flushMicrotasks(iterations = 8) {
   for (let index = 0; index < iterations; index += 1) {
@@ -200,6 +205,12 @@ describe('useAuthStore sign-out flow', () => {
     expect(state.viewMode).toBe('employee');
     expect(mockAsyncStorage.removeItem).toHaveBeenCalledWith('babytuna-auth');
     expect(mockAsyncStorage.multiRemove).toHaveBeenCalled();
+    expect(invalidatePendingOrderRequestsMock).toHaveBeenCalledTimes(1);
+    expect(invalidatePendingStockRequestsMock).toHaveBeenCalledTimes(1);
+    expect(invalidatePendingOrderRequestsMock.mock.invocationCallOrder[0])
+      .toBeLessThan(orderStoreMock.setState.mock.invocationCallOrder[0]);
+    expect(invalidatePendingStockRequestsMock.mock.invocationCallOrder[0])
+      .toBeLessThan(stockStoreMock.setState.mock.invocationCallOrder[0]);
     expect(clearSupabaseStoredSessionMock).toHaveBeenCalledTimes(1);
 
     jest.runOnlyPendingTimers();

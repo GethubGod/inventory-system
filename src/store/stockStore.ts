@@ -224,6 +224,15 @@ function applySessionUpdatesToItems(
   });
 }
 
+let stockRequestGeneration = 0;
+let stockSyncGeneration: number | null = null;
+
+/** Invalidate responses and queued follow-up work when the signed-in account resets. */
+export function invalidatePendingStockRequests(): void {
+  stockRequestGeneration += 1;
+  stockSyncGeneration = null;
+}
+
 export const useStockStore = create<StockState>()(
   persist(
     (set, get) => ({
@@ -244,22 +253,28 @@ export const useStockStore = create<StockState>()(
       sessionNotice: null,
 
       fetchStorageAreas: async (locationId) => {
+        const requestGeneration = stockRequestGeneration;
         set({ isLoading: true, error: null });
         try {
           const areas = await getStorageAreas(locationId);
+          if (requestGeneration !== stockRequestGeneration) return;
           const withStatus = areas.map((area) => ({
             ...area,
             check_status: getCheckStatus(area),
           }));
           set({ storageAreas: withStatus });
         } catch (error: any) {
+          if (requestGeneration !== stockRequestGeneration) return;
           set({ error: error?.message ?? 'Failed to load storage areas.' });
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === stockRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       fetchAreaItems: async (areaId) => {
+        const requestGeneration = stockRequestGeneration;
         const { isOnline, areaItemsById } = get();
         if (!isOnline) {
           const cached = areaItemsById[areaId];
@@ -279,6 +294,7 @@ export const useStockStore = create<StockState>()(
         set({ isLoading: true, error: null });
         try {
           const items = await getAreaItems(areaId);
+          if (requestGeneration !== stockRequestGeneration) return;
           const withStock = items.map((item) => ({
             ...item,
             stock_level: getStockLevel(item),
@@ -292,6 +308,7 @@ export const useStockStore = create<StockState>()(
             areaItemsById: { ...get().areaItemsById, [areaId]: withStock },
           });
         } catch (error: any) {
+          if (requestGeneration !== stockRequestGeneration) return;
           const cached = areaItemsById[areaId];
           if (cached) {
             set({
@@ -306,15 +323,19 @@ export const useStockStore = create<StockState>()(
             set({ error: error?.message ?? 'Failed to load area items.' });
           }
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === stockRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       prefetchAreaItems: async (areaIds) => {
+        const requestGeneration = stockRequestGeneration;
         if (!get().isOnline || areaIds.length === 0) return;
         for (const areaId of areaIds) {
           try {
             const items = await getAreaItems(areaId);
+            if (requestGeneration !== stockRequestGeneration) return;
             const withStock = items.map((item) => ({
               ...item,
               stock_level: getStockLevel(item),
@@ -323,12 +344,14 @@ export const useStockStore = create<StockState>()(
               areaItemsById: { ...state.areaItemsById, [areaId]: withStock },
             }));
           } catch {
+            if (requestGeneration !== stockRequestGeneration) return;
             // Ignore prefetch failures
           }
         }
       },
 
       startSession: async (areaId, scanMethod) => {
+        const requestGeneration = stockRequestGeneration;
         const userId = useAuthStore.getState().user?.id;
         if (!userId) {
           set({ error: 'User not available. Please sign in again.' });
@@ -344,6 +367,7 @@ export const useStockStore = create<StockState>()(
             scan_method: scanMethod,
             items_total: itemsTotal,
           });
+          if (requestGeneration !== stockRequestGeneration) return;
           set({
             currentSession: session,
             currentAreaId: areaId,
@@ -353,13 +377,17 @@ export const useStockStore = create<StockState>()(
             pausedSession: null,
           });
         } catch (error: any) {
+          if (requestGeneration !== stockRequestGeneration) return;
           set({ error: error?.message ?? 'Failed to start stock check session.' });
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === stockRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       completeSession: async () => {
+        const requestGeneration = stockRequestGeneration;
         const { currentSession, currentAreaId, sessionItemUpdates, isOnline } = get();
         if (!currentSession) return;
 
@@ -406,12 +434,15 @@ export const useStockStore = create<StockState>()(
                 notes: entry.notes ?? null,
                 created_at: entry.updatedAt,
               });
+              if (requestGeneration !== stockRequestGeneration) return;
 
               await updateAreaItemQuantity(entry.areaItemId, entry.newQuantity, {
                 updated_by: entry.updatedBy,
                 updated_at: entry.updatedAt,
               });
+              if (requestGeneration !== stockRequestGeneration) return;
             } catch {
+              if (requestGeneration !== stockRequestGeneration) return;
               syncError = true;
               get().queueUpdate(payload);
             }
@@ -426,7 +457,9 @@ export const useStockStore = create<StockState>()(
                 items_skipped: skippedItems.length,
                 items_total: currentSession.items_total,
               });
+              if (requestGeneration !== stockRequestGeneration) return;
             } catch {
+              if (requestGeneration !== stockRequestGeneration) return;
               syncError = true;
             }
 
@@ -436,7 +469,9 @@ export const useStockStore = create<StockState>()(
                   last_checked_at: completedAt,
                   last_checked_by: userId,
                 });
+                if (requestGeneration !== stockRequestGeneration) return;
               } catch {
+                if (requestGeneration !== stockRequestGeneration) return;
                 syncError = true;
               }
             }
@@ -466,14 +501,18 @@ export const useStockStore = create<StockState>()(
             error: syncError ? 'Some stock updates will sync later.' : null,
           });
         } catch (error: any) {
+          if (requestGeneration !== stockRequestGeneration) return;
           set({ error: error?.message ?? 'Failed to complete session.', isLoading: false });
           return;
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === stockRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       abandonSession: async () => {
+        const requestGeneration = stockRequestGeneration;
         const { currentSession } = get();
         if (!currentSession) return;
 
@@ -487,6 +526,7 @@ export const useStockStore = create<StockState>()(
               items_skipped: currentSession.items_skipped,
               items_total: currentSession.items_total,
             });
+            if (requestGeneration !== stockRequestGeneration) return;
           }
 
           set({
@@ -497,9 +537,12 @@ export const useStockStore = create<StockState>()(
             pausedSession: null,
           });
         } catch (error: any) {
+          if (requestGeneration !== stockRequestGeneration) return;
           set({ error: error?.message ?? 'Failed to abandon session.' });
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === stockRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
@@ -855,8 +898,10 @@ export const useStockStore = create<StockState>()(
       },
 
       syncPendingUpdates: async () => {
+        const requestGeneration = stockRequestGeneration;
         const { pendingUpdates, isOnline } = get();
-        if (!isOnline || pendingUpdates.length === 0) return;
+        if (!isOnline || pendingUpdates.length === 0 || stockSyncGeneration === requestGeneration) return;
+        stockSyncGeneration = requestGeneration;
 
         set({ isLoading: true, error: null });
 
@@ -864,38 +909,55 @@ export const useStockStore = create<StockState>()(
           (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         );
 
-        const remaining: PendingUpdate[] = [];
+        const synced = new Set<PendingUpdate>();
+        let hadFailure = false;
 
-        for (const update of sorted) {
-          try {
-            await saveStockUpdate({
-              area_id: update.areaId,
-              inventory_item_id: update.inventoryItemId,
-              previous_quantity: update.previousQuantity,
-              new_quantity: update.newQuantity,
-              updated_by: update.updatedBy,
-              update_method: update.updateMethod,
-              quick_select_value: update.quickSelectValue ?? null,
-              photo_url: update.photoUrl ?? null,
-              notes: update.notes ?? null,
-              created_at: update.createdAt,
-            });
+        try {
+          for (const update of sorted) {
+            // queueUpdate replaces objects even when an edit retains its queue ID.
+            if (!get().pendingUpdates.includes(update)) continue;
+            try {
+              await saveStockUpdate({
+                area_id: update.areaId,
+                inventory_item_id: update.inventoryItemId,
+                previous_quantity: update.previousQuantity,
+                new_quantity: update.newQuantity,
+                updated_by: update.updatedBy,
+                update_method: update.updateMethod,
+                quick_select_value: update.quickSelectValue ?? null,
+                photo_url: update.photoUrl ?? null,
+                notes: update.notes ?? null,
+                created_at: update.createdAt,
+              });
+              if (requestGeneration !== stockRequestGeneration) return;
 
-            await updateAreaItemQuantity(update.areaItemId, update.newQuantity, {
-              updated_by: update.updatedBy,
-              updated_at: update.createdAt,
-            });
-          } catch {
-            remaining.push(update);
+              await updateAreaItemQuantity(update.areaItemId, update.newQuantity, {
+                updated_by: update.updatedBy,
+                updated_at: update.createdAt,
+              });
+              if (requestGeneration !== stockRequestGeneration) return;
+            } catch {
+              if (requestGeneration !== stockRequestGeneration) return;
+              hadFailure = true;
+              continue;
+            }
+            synced.add(update);
+          }
+
+          set((state) => {
+            const pendingUpdates = state.pendingUpdates.filter((update) => !synced.has(update));
+            return {
+              pendingUpdates,
+              lastSyncAt: pendingUpdates.length === 0 ? new Date().toISOString() : state.lastSyncAt,
+              error: hadFailure ? 'Some updates failed to sync.' : null,
+            };
+          });
+        } finally {
+          if (stockSyncGeneration === requestGeneration) {
+            stockSyncGeneration = null;
+            set({ isLoading: false });
           }
         }
-
-        set({
-          pendingUpdates: remaining,
-          lastSyncAt: remaining.length === 0 ? new Date().toISOString() : get().lastSyncAt,
-          isLoading: false,
-          error: remaining.length === 0 ? null : 'Some updates failed to sync.',
-        });
       },
 
       setOnlineStatus: (isOnline) => {

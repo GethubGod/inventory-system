@@ -564,10 +564,10 @@ async function clearUserScopedClientState() {
 
     try {
       const [
-        { useOrderStore },
+        { useOrderStore, invalidatePendingOrderRequests },
         { useDraftStore },
         { useInventoryStore },
-        { useStockStore },
+        { useStockStore, invalidatePendingStockRequests },
         { useFulfillmentStore },
         { useTunaSpecialistStore },
       ] = await Promise.all([
@@ -579,6 +579,8 @@ async function clearUserScopedClientState() {
         import('./tunaSpecialistStore'),
       ]);
 
+      invalidatePendingOrderRequests();
+      invalidatePendingStockRequests();
       await Promise.all([
         resetPersistedStore('order-storage', useOrderStore as unknown as PersistedStoreApi),
         resetPersistedStore('draft-storage', useDraftStore as unknown as PersistedStoreApi),
