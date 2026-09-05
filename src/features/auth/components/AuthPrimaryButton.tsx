@@ -21,6 +21,9 @@ export function AuthPrimaryButton({
   const isPrimary = variant === 'primary';
   return (
     <TouchableOpacity
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.82}

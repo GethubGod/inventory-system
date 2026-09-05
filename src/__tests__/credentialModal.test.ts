@@ -17,9 +17,10 @@ jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 jest.mock('@/theme/design', () => ({ colors: { white: '#fff' }, radii: { card: 12 }, hairline: 1 }));
 jest.mock('@/hooks/useScaledStyles', () => ({ useScaledStyles: () => ({ spacing: (n: number) => n, fontSize: (n: number) => n, icon: (n: number) => n }) }));
 jest.mock('@/services/loginCredentials', () => ({ getMyCredentialKind: (id: string) => credentialKind(id) }));
-jest.mock('@/store/authStore', () => ({ useAuthStore: (selector: (state: unknown) => unknown) => selector({ session: { user: { id: 'user-1' } } }) }));
+const mockAuthState = { session: { user: { id: 'user-1' } }, isLoading: false };
+jest.mock('@/store/authStore', () => ({ useAuthStore: Object.assign((selector: (state: unknown) => unknown) => selector(mockAuthState), { getState: () => mockAuthState }) }));
 jest.mock('@/components/settings/ChangeCredentialSheet', () => ({ ChangeCredentialSheet: 'ChangeCredentialSheet' }));
-jest.mock('@/lib/supabase', () => ({ supabase: { auth: { getUser, signInWithPassword, updateUser } } }));
+jest.mock('@/lib/supabase', () => ({ supabase: { auth: { getUser } }, createCredentialClient: () => ({ auth: { signInWithPassword, updateUser } }) }));
 
 // The mocks above provide native components before the modal module loads.
 // eslint-disable-next-line import/first

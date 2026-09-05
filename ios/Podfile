@@ -64,12 +64,19 @@ target 'Babytuna' do
     # Expo SDK 54 wraps these paths in `bash -c`, which splits checkout names
     # containing spaces. Patch generated phases so clean installs stay safe.
     expo_scripts = {
-      'EXConstants' => 'get-app-config-ios.sh',
-      'EXUpdates' => 'create-updates-resources-ios.sh',
+      'EXConstants' => ['expo-constants', 'get-app-config-ios.sh'],
+      'EXUpdates' => ['expo-updates', 'create-updates-resources-ios.sh'],
     }
     installer.pods_project.targets.each do |target|
-      script_name = expo_scripts[target.name]
-      next unless script_name
+      package_name, script_name = expo_scripts[target.name]
+      next unless package_name
+
+      # The SDK 54 scripts also split PROJECT_DIR while checking for Pods,
+      # then silently skip manifest generation in a checkout containing spaces.
+      script_path = File.expand_path("../node_modules/#{package_name}/scripts/#{script_name}", __dir__)
+      script_contents = File.read(script_path)
+      quoted_contents = script_contents.gsub('$(basename $PROJECT_DIR)', '$(basename "$PROJECT_DIR")')
+      File.write(script_path, quoted_contents) unless quoted_contents == script_contents
 
       target.shell_script_build_phases.each do |phase|
         next unless phase.shell_script.include?(script_name)

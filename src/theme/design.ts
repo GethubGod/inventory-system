@@ -88,7 +88,7 @@ export const authTheme = {
   wellIcon: 'rgba(255, 255, 255, 0.10)',
   accent: colors.primary,
   accentSoft: 'rgba(232, 80, 58, 0.2)',
-  legal: 'rgba(255, 255, 255, 0.35)',
+  legal: 'rgba(255, 255, 255, 0.6)',
   progressTrack: 'rgba(255, 255, 255, 0.15)',
 } as const;
 

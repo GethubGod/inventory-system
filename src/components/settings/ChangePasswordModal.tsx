@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -68,6 +68,8 @@ function EmailPasswordModal({ visible, onClose }: ChangePasswordModalProps) {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const operation = useRef<AbortController | null>(null);
+  useEffect(() => () => operation.current?.abort(), []);
 
   const resetForm = () => {
     setCurrentPassword('');
@@ -79,6 +81,7 @@ function EmailPasswordModal({ visible, onClose }: ChangePasswordModalProps) {
   };
 
   const handleClose = () => {
+    operation.current?.abort();
     resetForm();
     onClose();
   };
@@ -100,18 +103,22 @@ function EmailPasswordModal({ visible, onClose }: ChangePasswordModalProps) {
       return;
     }
 
+    if (isLoading) return;
+    const controller = new AbortController();
+    operation.current = controller;
     setIsLoading(true);
 
     try {
-      await changeEmailPassword(currentPassword, newPassword);
+      await changeEmailPassword(currentPassword, newPassword, controller.signal);
+      if (controller.signal.aborted) return;
 
       Alert.alert('Success', 'Your password has been updated', [
         { text: 'OK', onPress: handleClose },
       ]);
     } catch (error: unknown) {
-      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to update password');
+      if (!controller.signal.aborted) Alert.alert('Error', error instanceof Error ? error.message : 'Failed to update password');
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) setIsLoading(false);
     }
   };
 

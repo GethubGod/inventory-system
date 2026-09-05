@@ -73,3 +73,21 @@ The release worktree initially had no `ios/Pods`. Installed CocoaPods dependenci
 - Reproduced the original nested-shell failure with a harmless script in a temporary directory containing spaces: exit 127. The quoted direct-file invocation ran that same script successfully: exit 0. This is a targeted shell regression check, not an app build result.
 - `ruby -c ios/Podfile` passed. `plutil -lint ios/Pods/Pods.xcodeproj/project.pbxproj ios/Babytuna.xcodeproj/project.pbxproj` passed. `diff ios/Podfile.lock ios/Pods/Manifest.lock` showed no difference. `git diff --check -- ios` passed.
 - Inspected generated Pods script phases and confirmed both invoke `bash -l` with a quoted script path. Integrated build ownership then returned to the mobile E2E agent. No native build or simulator was run by this auditor.
+
+## Release manifest launch failure
+
+The integrated Release build succeeded, but launch terminated with `NSInternalInconsistencyException` because the embedded update manifest was missing. The root agent reproduced the app failure and owns the final rebuild/relaunch check.
+
+The first permanent quoting change covered the outer Expo shell invocation but missed a second upstream SDK 54 bug inside both scripts. Fresh dependency installation restored `PROJECT_DIR_BASENAME=$(basename $PROJECT_DIR)` without quotes. In this checkout, the real EXUpdates phase trace selected mode `all`, evaluated the basename as `Babytuna` instead of `Pods`, then exited zero before running Node. The EXConstants phase has the same guard. This explains a successful build with missing generated resources.
+
+Extended the Podfile's install hook to quote this exact expression in the worktree's installed `expo-updates/scripts/create-updates-resources-ios.sh` and `expo-constants/scripts/get-app-config-ios.sh`. The patch is idempotent and survives `npm ci` followed by `pod install`. No package version changed, and updates remain enabled.
+
+Verification:
+
+- The original resource phase ran with the worktree's real `PROJECT_DIR` and exited zero without creating a manifest. A targeted trace showed `PROJECT_DIR_BASENAME=Babytuna` and the early exit.
+- `pod install --no-repo-update` passed in 10 seconds after the hook change. `Podfile.lock` again changed only its Podfile checksum.
+- Ran each corrected real resource script with Release configuration, the actual worktree/Pods paths, and separate temporary output directories. EXUpdates wrote a parseable embedded `app.manifest` with a valid UUID, commit timestamp and 43 assets. EXConstants wrote parseable `app.config` with name Smelter. Both phases exited zero.
+- The first manifest probe incorrectly expected a `runtimeVersion` field and failed that assertion. Expo's embedded build manifest uses the legacy `{ id, commitTime, assets }` shape, confirmed in `createManifestForBuildAsync.js`; the corrected format assertion passed. Runtime version remains configured in Expo.plist.
+- Generated Pods project plist validation, Podfile/Manifest.lock parity and `git diff --check -- ios` passed.
+
+These phase probes prove resource generation. The main report must separately record the root agent's rebuilt-app launch result before calling the runtime failure fixed.
