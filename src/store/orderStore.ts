@@ -122,6 +122,14 @@ function getPendingSubmitKey(
   return `${context}:${sourceLocationId}->${submitLocationId}`;
 }
 
+let orderRequestGeneration = 0;
+
+/** Invalidate responses and queued follow-up work when the signed-in account resets. */
+export function invalidatePendingOrderRequests(): void {
+  orderRequestGeneration += 1;
+  orderLaterMoveInFlightIds.clear();
+}
+
 export const useOrderStore = create<OrderState>()(
   persist(
     (set, get) => ({
@@ -542,6 +550,7 @@ export const useOrderStore = create<OrderState>()(
 
 
       fetchOrders: async (locationId) => {
+        const requestGeneration = orderRequestGeneration;
         set({ isLoading: true });
         try {
           const { data, error } = await supabase
@@ -554,16 +563,20 @@ export const useOrderStore = create<OrderState>()(
             .eq('location_id', locationId)
             .order('created_at', { ascending: false })
             .limit(50);
+          if (requestGeneration !== orderRequestGeneration) return;
 
           if (error) throw error;
 
           set({ orders: data || [] });
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       fetchUserOrders: async (userId) => {
+        const requestGeneration = orderRequestGeneration;
         set({ isLoading: true });
         try {
           const { data, error } = await supabase
@@ -581,16 +594,20 @@ export const useOrderStore = create<OrderState>()(
             .neq('status', 'draft')
             .order('created_at', { ascending: false })
             .limit(50);
+          if (requestGeneration !== orderRequestGeneration) return;
 
           if (error) throw error;
 
           set({ orders: data || [] });
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       fetchManagerOrders: async (locationId, status) => {
+        const requestGeneration = orderRequestGeneration;
         set({ isLoading: true });
         try {
           let query = supabase
@@ -617,16 +634,20 @@ export const useOrderStore = create<OrderState>()(
           }
 
           const { data, error } = await query;
+          if (requestGeneration !== orderRequestGeneration) return;
 
           if (error) throw error;
 
           set({ orders: data || [] });
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       fetchOrder: async (orderId) => {
+        const requestGeneration = orderRequestGeneration;
         set({ isLoading: true });
         try {
           const { data, error } = await supabase
@@ -642,16 +663,20 @@ export const useOrderStore = create<OrderState>()(
             `)
             .eq('id', orderId)
             .single();
+          if (requestGeneration !== orderRequestGeneration) return;
 
           if (error) throw error;
 
           set({ currentOrder: data as OrderWithDetails });
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       createOrder: async (locationId, userId, context, options) => {
+        const requestGeneration = orderRequestGeneration;
         const resolvedContext = normalizeCartContext(context);
         const { clearLocationCart } = get();
         const cartByLocation = getCartByContext(get(), resolvedContext);
@@ -693,6 +718,7 @@ export const useOrderStore = create<OrderState>()(
             entryMethod: options?.entryMethod ?? 'manual',
             quickSessionId: options?.quickSessionId ?? null,
           });
+          if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
 
           syncProfileService(userId, result.order.created_at);
           clearLocationCart(locationId, resolvedContext);
@@ -702,11 +728,14 @@ export const useOrderStore = create<OrderState>()(
           });
           return result.order;
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       createAndSubmitOrder: async (locationId, userId, context, options) => {
+        const requestGeneration = orderRequestGeneration;
         const resolvedContext = normalizeCartContext(context);
         const { clearLocationCart } = get();
         const cartByLocation = getCartByContext(get(), resolvedContext);
@@ -748,6 +777,7 @@ export const useOrderStore = create<OrderState>()(
             entryMethod: options?.entryMethod ?? 'manual',
             quickSessionId: options?.quickSessionId ?? null,
           });
+          if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
 
           syncProfileService(userId, result.order.created_at);
           clearLocationCart(locationId, resolvedContext);
@@ -758,7 +788,9 @@ export const useOrderStore = create<OrderState>()(
           set({ currentOrder: result.order });
           return result.order;
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
@@ -769,6 +801,7 @@ export const useOrderStore = create<OrderState>()(
         context,
         options
       ) => {
+        const requestGeneration = orderRequestGeneration;
         const resolvedContext = normalizeCartContext(context);
         const { clearLocationCart } = get();
         const cartByLocation = getCartByContext(get(), resolvedContext);
@@ -810,6 +843,7 @@ export const useOrderStore = create<OrderState>()(
             entryMethod: options?.entryMethod ?? 'manual',
             quickSessionId: options?.quickSessionId ?? null,
           });
+          if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
 
           syncProfileService(userId, result.order.created_at);
           clearLocationCart(sourceLocationId, resolvedContext);
@@ -820,25 +854,32 @@ export const useOrderStore = create<OrderState>()(
           set({ currentOrder: result.order });
           return result.order;
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       submitOrder: async (orderId) => {
+        const requestGeneration = orderRequestGeneration;
         set({ isLoading: true });
         try {
           const { error } = await (supabase as any)
             .from('orders')
             .update({ status: 'submitted' })
             .eq('id', orderId);
+          if (requestGeneration !== orderRequestGeneration) return;
 
           if (error) throw error;
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       updateOrderStatus: async (orderId, status, fulfilledBy) => {
+        const requestGeneration = orderRequestGeneration;
         set({ isLoading: true });
         try {
           const updateData: Record<string, any> = { status };
@@ -852,6 +893,7 @@ export const useOrderStore = create<OrderState>()(
             .from('orders')
             .update(updateData)
             .eq('id', orderId);
+          if (requestGeneration !== orderRequestGeneration) return;
 
           if (error) throw error;
 
@@ -859,13 +901,17 @@ export const useOrderStore = create<OrderState>()(
           const { currentOrder } = get();
           if (currentOrder && currentOrder.id === orderId) {
             await get().fetchOrder(orderId);
+            if (requestGeneration !== orderRequestGeneration) return;
           }
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       fulfillOrder: async (orderId, fulfilledBy) => {
+        const requestGeneration = orderRequestGeneration;
         set({ isLoading: true });
         try {
           const { error } = await (supabase as any)
@@ -876,28 +922,36 @@ export const useOrderStore = create<OrderState>()(
               fulfilled_by: fulfilledBy,
             })
             .eq('id', orderId);
+          if (requestGeneration !== orderRequestGeneration) return;
 
           if (error) throw error;
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       cancelOrder: async (orderId) => {
+        const requestGeneration = orderRequestGeneration;
         set({ isLoading: true });
         try {
           const { error } = await (supabase as any)
             .from('orders')
             .update({ status: 'cancelled' })
             .eq('id', orderId);
+          if (requestGeneration !== orderRequestGeneration) return;
 
           if (error) throw error;
         } finally {
-          set({ isLoading: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isLoading: false });
+          }
         }
       },
 
       createPastOrder: async (input) => {
+        const requestGeneration = orderRequestGeneration;
         const now = new Date().toISOString();
         const payloadFromInput = toJsonObject(input.payload);
         const payloadSourceOrderItemIds = Array.from(
@@ -1036,6 +1090,7 @@ export const useOrderStore = create<OrderState>()(
             })
             .select('*')
             .single();
+          if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
 
           if (error) {
             if (isMissingTableError(error, 'past_orders')) {
@@ -1092,6 +1147,7 @@ export const useOrderStore = create<OrderState>()(
           let { error } = await (supabase as any)
             .from('past_order_items')
             .insert(buildRows(includeNote));
+          if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
 
           if (error && includeNote && isMissingColumnError(error, 'note')) {
             tableFlags.pastOrderItemsNoteColumnAvailable = false;
@@ -1099,6 +1155,7 @@ export const useOrderStore = create<OrderState>()(
             ({ error } = await (supabase as any)
               .from('past_order_items')
               .insert(buildRows(includeNote)));
+            if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
           }
 
           if (error) {
@@ -1127,6 +1184,7 @@ export const useOrderStore = create<OrderState>()(
 
         if (consumedOrderItemIds.length > 0) {
           const marked = await get().markOrderItemsStatus(consumedOrderItemIds, 'sent');
+          if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
           if (!marked && !queueJob) {
             queueForSync('Unable to mark order items as sent. Pending sync.', persistedPastOrderId);
           }
@@ -1192,15 +1250,13 @@ export const useOrderStore = create<OrderState>()(
       },
 
       flushPendingPastOrderSync: async (managerId) => {
-        const queueSnapshot = [...get().pendingPastOrderSyncQueue];
+        const requestGeneration = orderRequestGeneration;
+        const queueSnapshot = normalizePendingPastOrderSyncQueue(get().pendingPastOrderSyncQueue);
         if (queueSnapshot.length === 0) return;
         if (get().isPastOrderSyncing) return;
 
         set({ isPastOrderSyncing: true });
         try {
-          let nextQueue: PendingPastOrderSyncJob[] = [];
-          let nextPastOrders = [...get().pastOrders];
-
           for (const job of queueSnapshot) {
             let persistedPastOrderId = job.existingPastOrderId;
             let syncedOrder: PastOrder | null = null;
@@ -1224,6 +1280,7 @@ export const useOrderStore = create<OrderState>()(
                   })
                   .select('*')
                   .single();
+                if (requestGeneration !== orderRequestGeneration) return;
 
                 if (error) throw error;
                 tableFlags.pastOrdersTableAvailable = true;
@@ -1247,6 +1304,7 @@ export const useOrderStore = create<OrderState>()(
                   .delete()
                   .eq('past_order_id', persistedPastOrderId)
                   .eq('created_by', job.createdBy);
+                if (requestGeneration !== orderRequestGeneration) return;
 
                 const buildRows = (includeNote: boolean) =>
                   job.lineItems.map((line) => ({
@@ -1269,6 +1327,7 @@ export const useOrderStore = create<OrderState>()(
                 let { error } = await (supabase as any)
                   .from('past_order_items')
                   .insert(buildRows(includeNote));
+                if (requestGeneration !== orderRequestGeneration) return;
 
                 if (error && includeNote && isMissingColumnError(error, 'note')) {
                   tableFlags.pastOrderItemsNoteColumnAvailable = false;
@@ -1276,6 +1335,7 @@ export const useOrderStore = create<OrderState>()(
                   ({ error } = await (supabase as any)
                     .from('past_order_items')
                     .insert(buildRows(includeNote)));
+                  if (requestGeneration !== orderRequestGeneration) return;
                 }
 
                 if (error) throw error;
@@ -1287,13 +1347,14 @@ export const useOrderStore = create<OrderState>()(
 
               if (job.consumedOrderItemIds.length > 0) {
                 const sentMarked = await get().markOrderItemsStatus(job.consumedOrderItemIds, 'sent');
+                if (requestGeneration !== orderRequestGeneration) return;
                 if (!sentMarked) {
                   throw new Error('Unable to mark order items as sent during sync.');
                 }
               }
 
               if (!syncedOrder) {
-                const existing = nextPastOrders.find(
+                const existing = get().pastOrders.find(
                   (row) => row.id === (persistedPastOrderId || job.localPastOrderId)
                 );
                 syncedOrder = {
@@ -1323,56 +1384,67 @@ export const useOrderStore = create<OrderState>()(
                 };
               }
 
-              nextPastOrders = normalizePastOrders([
-                syncedOrder,
-                ...nextPastOrders.filter(
-                  (row) => row.id !== job.localPastOrderId && row.id !== syncedOrder?.id
-                ),
-              ]);
+              const completedOrder = syncedOrder;
+              set((state) => {
+                const currentQueue = normalizePendingPastOrderSyncQueue(state.pendingPastOrderSyncQueue);
+                // Normalization recreates objects, so compare the normalized job contents.
+                if (!currentQueue.some((entry) => JSON.stringify(entry) === JSON.stringify(job))) return state;
+                return {
+                  pendingPastOrderSyncQueue: currentQueue.filter((entry) => entry.id !== job.id),
+                  pastOrders: normalizePastOrders([
+                    completedOrder,
+                    ...state.pastOrders.filter(
+                      (row) => row.id !== job.localPastOrderId && row.id !== completedOrder.id
+                    ),
+                  ]),
+                };
+              });
             } catch (error: any) {
+              if (requestGeneration !== orderRequestGeneration) return;
               if (isMissingTableError(error, 'past_orders')) tableFlags.pastOrdersTableAvailable = false;
               if (isMissingTableError(error, 'past_order_items')) tableFlags.pastOrderItemsTableAvailable = false;
               retryError = error?.message || 'Pending sync failed.';
             }
 
             if (retryError) {
-              nextQueue.push({
-                ...job,
-                existingPastOrderId: persistedPastOrderId || job.existingPastOrderId,
-                retryCount: job.retryCount + 1,
-                lastError: retryError,
+              set((state) => {
+                const currentQueue = normalizePendingPastOrderSyncQueue(state.pendingPastOrderSyncQueue);
+                if (!currentQueue.some((entry) => JSON.stringify(entry) === JSON.stringify(job))) return state;
+                return {
+                  pendingPastOrderSyncQueue: currentQueue.map((entry) => entry.id === job.id ? {
+                    ...entry,
+                    existingPastOrderId: persistedPastOrderId || job.existingPastOrderId,
+                    retryCount: job.retryCount + 1,
+                    lastError: retryError,
+                  } : entry),
+                  pastOrders: normalizePastOrders(state.pastOrders.map((row) =>
+                    row.id === job.localPastOrderId ? {
+                      ...row,
+                      syncStatus: 'pending_sync',
+                      pendingSyncJobId: job.id,
+                      syncError: retryError,
+                    } : row
+                  )),
+                };
               });
-              nextPastOrders = normalizePastOrders(
-                nextPastOrders.map((row) =>
-                  row.id === job.localPastOrderId
-                    ? {
-                        ...row,
-                        syncStatus: 'pending_sync',
-                        pendingSyncJobId: job.id,
-                        syncError: retryError,
-                      }
-                    : row
-                )
-              );
             }
           }
-
-          set({
-            pendingPastOrderSyncQueue: normalizePendingPastOrderSyncQueue(nextQueue),
-            pastOrders: nextPastOrders,
-          });
 
           const userId =
             typeof managerId === 'string' && managerId.trim().length > 0 ? managerId : null;
           if (userId) {
             await get().fetchPastOrders(userId);
+            if (requestGeneration !== orderRequestGeneration) return;
           }
         } finally {
-          set({ isPastOrderSyncing: false });
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isPastOrderSyncing: false });
+          }
         }
       },
 
       fetchPastOrders: async (managerId) => {
+        const requestGeneration = orderRequestGeneration;
         let remotePastOrders: PastOrder[] | null = null;
         if (tableFlags.pastOrdersTableAvailable !== false) {
           const { data, error } = await (supabase as any)
@@ -1380,6 +1452,7 @@ export const useOrderStore = create<OrderState>()(
             .select('id,supplier_id,supplier_name,created_by,created_at,payload,message_text,share_method')
             .order('created_at', { ascending: false })
             .limit(500);
+          if (requestGeneration !== orderRequestGeneration) return [];
 
           if (error) {
             if (isMissingTableError(error, 'past_orders')) {
@@ -1400,6 +1473,7 @@ export const useOrderStore = create<OrderState>()(
             .select('past_order_id')
             .in('past_order_id', ids)
             .limit(12000);
+          if (requestGeneration !== orderRequestGeneration) return [];
 
           if (error) {
             if (isMissingTableError(error, 'past_order_items')) {
@@ -1439,6 +1513,7 @@ export const useOrderStore = create<OrderState>()(
       },
 
       fetchPastOrderById: async (pastOrderId, managerId) => {
+        const requestGeneration = orderRequestGeneration;
         const normalizedPastOrderId =
           typeof pastOrderId === 'string' && pastOrderId.trim().length > 0 ? pastOrderId.trim() : '';
         if (!normalizedPastOrderId) return null;
@@ -1450,6 +1525,7 @@ export const useOrderStore = create<OrderState>()(
             .select('*')
             .eq('id', normalizedPastOrderId)
             .maybeSingle();
+          if (requestGeneration !== orderRequestGeneration) return null;
 
           if (error) {
             if (isMissingTableError(error, 'past_orders')) {
@@ -1483,6 +1559,7 @@ export const useOrderStore = create<OrderState>()(
             .select('*')
             .eq('past_order_id', normalizedPastOrderId)
             .order('ordered_at', { ascending: true });
+          if (requestGeneration !== orderRequestGeneration) return null;
 
           if (error) {
             if (isMissingTableError(error, 'past_order_items')) {
@@ -1504,6 +1581,7 @@ export const useOrderStore = create<OrderState>()(
       },
 
       loadFulfillmentData: async (managerId, locationIds) => {
+        const requestGeneration = orderRequestGeneration;
         perfMark('loadFulfillmentData');
         const userId =
           typeof managerId === 'string' && managerId.trim().length > 0
@@ -1521,8 +1599,10 @@ export const useOrderStore = create<OrderState>()(
         set({ isFulfillmentLoading: true });
         try {
           await get().flushPendingPastOrderSync(userId);
+          if (requestGeneration !== orderRequestGeneration) return;
 
           const nextPastOrders = await get().fetchPastOrders(userId);
+          if (requestGeneration !== orderRequestGeneration) return;
           let nextOrderLaterQueue = get().orderLaterQueue;
 
           if (tableFlags.orderLaterItemsTableAvailable !== false) {
@@ -1549,6 +1629,7 @@ export const useOrderStore = create<OrderState>()(
               const { data, error } = await baseQuery()
                 .in('location_id', normalizedLocationIds)
                 .limit(800);
+              if (requestGeneration !== orderRequestGeneration) return;
               if (error) {
                 hadError = true;
                 if (isMissingTableError(error, 'order_later_items')) {
@@ -1567,6 +1648,7 @@ export const useOrderStore = create<OrderState>()(
                   .eq('created_by', userId)
                   .is('location_id', null)
                   .limit(200);
+                if (requestGeneration !== orderRequestGeneration) return;
                 if (unassignedError) {
                   hadError = true;
                   if (!isMissingTableError(unassignedError, 'order_later_items')) {
@@ -1582,6 +1664,7 @@ export const useOrderStore = create<OrderState>()(
               const { data, error } = await baseQuery()
                 .eq('created_by', userId)
                 .limit(600);
+              if (requestGeneration !== orderRequestGeneration) return;
               if (error) {
                 hadError = true;
                 if (isMissingTableError(error, 'order_later_items')) {
@@ -1621,6 +1704,10 @@ export const useOrderStore = create<OrderState>()(
               itemName: row.itemName,
               scheduledAt: row.scheduledAt,
             });
+            if (requestGeneration !== orderRequestGeneration) {
+              await cancelOrderLaterNotification(notificationId);
+              return;
+            }
 
             if (!notificationId) continue;
 
@@ -1633,7 +1720,9 @@ export const useOrderStore = create<OrderState>()(
                   .from('order_later_items')
                   .update({ notification_id: notificationId })
                   .eq('id', row.id);
+                if (requestGeneration !== orderRequestGeneration) return;
               } catch {
+                if (requestGeneration !== orderRequestGeneration) return;
                 // Best-effort sync only.
               }
             }
@@ -1643,12 +1732,15 @@ export const useOrderStore = create<OrderState>()(
             set({ orderLaterQueue: normalizeOrderLaterQueue(queueSnapshot) });
           }
         } finally {
-          set({ isFulfillmentLoading: false });
-          perfMeasure('loadFulfillmentData');
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isFulfillmentLoading: false });
+            perfMeasure('loadFulfillmentData');
+          }
         }
       },
 
       fetchPendingFulfillmentOrders: async (locationIds): Promise<PendingFulfillmentDataResult> => {
+        const requestGeneration = orderRequestGeneration;
         perfMark('fetchPendingFulfillmentOrders');
         set({ isFulfillmentLoading: true });
         try {
@@ -1669,11 +1761,14 @@ export const useOrderStore = create<OrderState>()(
             includeInventoryAudit: __DEV__,
             locationIds,
           });
+          if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
           set({ orders: result.orders });
           return result;
         } finally {
-          set({ isFulfillmentLoading: false });
-          perfMeasure('fetchPendingFulfillmentOrders');
+          if (requestGeneration === orderRequestGeneration) {
+            set({ isFulfillmentLoading: false });
+            perfMeasure('fetchPendingFulfillmentOrders');
+          }
         }
       },
 
@@ -1831,6 +1926,7 @@ export const useOrderStore = create<OrderState>()(
       },
 
       createOrderLaterItem: async (input) => {
+        const requestGeneration = orderRequestGeneration;
         const createdAt = new Date().toISOString();
         const scheduledAt = toIsoString(input.scheduledAt);
         const payload = toJsonObject(input.payload);
@@ -1908,6 +2004,7 @@ export const useOrderStore = create<OrderState>()(
               .in('source_order_item_id', normalizedSourceOrderItemIds)
               .order('created_at', { ascending: false })
               .limit(1);
+            if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
 
             if (sourceOrderItemError) {
               if (isMissingTableError(sourceOrderItemError, 'order_later_items')) {
@@ -1928,6 +2025,7 @@ export const useOrderStore = create<OrderState>()(
                 .overlaps('original_order_item_ids', normalizedSourceOrderItemIds)
                 .order('created_at', { ascending: false })
                 .limit(1);
+              if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
 
               if (overlapError) {
                 if (isMissingTableError(overlapError, 'order_later_items')) {
@@ -1987,6 +2085,7 @@ export const useOrderStore = create<OrderState>()(
             .insert(insertPayloadWithExtended)
             .select('*')
             .single();
+          if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
 
           if (
             error &&
@@ -2016,6 +2115,7 @@ export const useOrderStore = create<OrderState>()(
               .insert(legacyPayload)
               .select('*')
               .single());
+            if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
           }
 
           if (error) {
@@ -2065,6 +2165,10 @@ export const useOrderStore = create<OrderState>()(
           itemName: orderLaterItem.itemName,
           scheduledAt: orderLaterItem.scheduledAt,
         });
+        if (requestGeneration !== orderRequestGeneration) {
+          await cancelOrderLaterNotification(notificationId);
+          throw new Error('Your session changed before this action completed. Please try again.');
+        }
 
         if (notificationId) {
           orderLaterItem = { ...orderLaterItem, notificationId };
@@ -2075,7 +2179,9 @@ export const useOrderStore = create<OrderState>()(
                 .from('order_later_items')
                 .update({ notification_id: notificationId })
                 .eq('id', orderLaterItem.id);
+              if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
             } catch {
+              if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
               // Best-effort sync only.
             }
           }
@@ -2095,16 +2201,22 @@ export const useOrderStore = create<OrderState>()(
       },
 
       updateOrderLaterItemSchedule: async (itemId, scheduledAt) => {
+        const requestGeneration = orderRequestGeneration;
         const current = get().orderLaterQueue.find((item) => item.id === itemId);
         if (!current) return null;
 
         await cancelOrderLaterNotification(current.notificationId);
+        if (requestGeneration !== orderRequestGeneration) return null;
         const normalizedScheduledAt = toIsoString(scheduledAt);
         const nextNotificationId = await scheduleOrderLaterNotification({
           orderLaterItemId: current.id,
           itemName: current.itemName,
           scheduledAt: normalizedScheduledAt,
         });
+        if (requestGeneration !== orderRequestGeneration) {
+          await cancelOrderLaterNotification(nextNotificationId);
+          return null;
+        }
 
         const updatedItem: OrderLaterItem = {
           ...current,
@@ -2126,6 +2238,7 @@ export const useOrderStore = create<OrderState>()(
               notification_id: nextNotificationId,
             })
             .eq('id', itemId);
+          if (requestGeneration !== orderRequestGeneration) return null;
 
           if (error) {
             if (isMissingTableError(error, 'order_later_items')) {
@@ -2148,10 +2261,12 @@ export const useOrderStore = create<OrderState>()(
       },
 
       removeOrderLaterItem: async (itemId) => {
+        const requestGeneration = orderRequestGeneration;
         const existing = get().orderLaterQueue.find((item) => item.id === itemId);
         if (!existing) return;
 
         await cancelOrderLaterNotification(existing.notificationId);
+        if (requestGeneration !== orderRequestGeneration) return;
 
         set((state) => ({
           orderLaterQueue: state.orderLaterQueue.filter((item) => item.id !== itemId),
@@ -2166,6 +2281,7 @@ export const useOrderStore = create<OrderState>()(
               notification_id: null,
             })
             .eq('id', itemId);
+          if (requestGeneration !== orderRequestGeneration) return;
 
           if (error) {
             if (isMissingTableError(error, 'order_later_items')) {
@@ -2180,6 +2296,7 @@ export const useOrderStore = create<OrderState>()(
       },
 
       moveOrderLaterItemToSupplierDraft: async (itemId, supplierId, locationGroup, options) => {
+        const requestGeneration = orderRequestGeneration;
         const normalizedItemId =
           typeof itemId === 'string' && itemId.trim().length > 0 ? itemId.trim() : '';
         if (!normalizedItemId) {
@@ -2213,6 +2330,7 @@ export const useOrderStore = create<OrderState>()(
 
           if (shouldRestoreSourceOrderItems) {
             const restored = await get().markOrderItemsStatus(normalizedSourceOrderItemIds, 'pending');
+            if (requestGeneration !== orderRequestGeneration) return null;
             if (!restored) {
               throw new Error(
                 'This item was already updated on another device. Pull to refresh and try again.'
@@ -2225,6 +2343,7 @@ export const useOrderStore = create<OrderState>()(
                 normalizedSourceOrderItemIds,
                 normalizedSupplierId
               );
+              if (requestGeneration !== orderRequestGeneration) return null;
               if (!overrideUpdated && __DEV__) {
                 console.warn(
                   '[OrderStore] moveOrderLaterItemToSupplierDraft: unable to set supplier override for restored source order items.'
@@ -2271,6 +2390,7 @@ export const useOrderStore = create<OrderState>()(
           }
 
           await cancelOrderLaterNotification(queuedItem.notificationId);
+          if (requestGeneration !== orderRequestGeneration) return null;
 
           set((state) => ({
             orderLaterQueue: state.orderLaterQueue.filter((item) => item.id !== normalizedItemId),
@@ -2288,6 +2408,7 @@ export const useOrderStore = create<OrderState>()(
                 notification_id: null,
               })
               .eq('id', normalizedItemId);
+            if (requestGeneration !== orderRequestGeneration) return null;
 
             if (error) {
               if (isMissingTableError(error, 'order_later_items')) {
@@ -2302,11 +2423,14 @@ export const useOrderStore = create<OrderState>()(
 
           return draftItem;
         } finally {
-          orderLaterMoveInFlightIds.delete(normalizedItemId);
+          if (requestGeneration === orderRequestGeneration) {
+            orderLaterMoveInFlightIds.delete(normalizedItemId);
+          }
         }
       },
 
       getLastOrderedQuantities: async ({ supplierId, managerId, items, forceRefresh }) => {
+        const requestGeneration = orderRequestGeneration;
         const normalizedItems = Array.from(
           new Map(
             items
@@ -2365,6 +2489,7 @@ export const useOrderStore = create<OrderState>()(
           .in('unit', units)
           .order('ordered_at', { ascending: false })
           .limit(Math.min(2500, Math.max(600, normalizedItems.length * 120)));
+        if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
 
         if (error) {
           if (isMissingTableError(error, 'past_order_items')) {
@@ -2434,6 +2559,7 @@ export const useOrderStore = create<OrderState>()(
       },
 
       markOrderItemsStatus: async (orderItemIds, status) => {
+        const requestGeneration = orderRequestGeneration;
         const normalizedIds = Array.from(
           new Set(
             orderItemIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
@@ -2456,6 +2582,7 @@ export const useOrderStore = create<OrderState>()(
             }
 
             const { data, error } = await updateQuery.select('id');
+            if (requestGeneration !== orderRequestGeneration) return false;
 
             if (error) {
               if (isMissingColumnError(error, 'status')) {
@@ -2526,18 +2653,21 @@ export const useOrderStore = create<OrderState>()(
 
           return true;
         } catch (error) {
+          if (requestGeneration !== orderRequestGeneration) return false;
           console.error('markOrderItemsStatus failed:', error);
           return false;
         }
       },
 
       setSupplierOverride: async (orderItemIds, supplierId) => {
+        const requestGeneration = orderRequestGeneration;
         if (orderItemIds.length === 0) return true;
         try {
           const { error } = await supabase
             .from('order_items')
             .update({ supplier_override_id: supplierId } as any)
             .in('id', orderItemIds);
+          if (requestGeneration !== orderRequestGeneration) return false;
           if (error) throw error;
 
           set((state) => {
@@ -2561,18 +2691,21 @@ export const useOrderStore = create<OrderState>()(
           });
           return true;
         } catch (error) {
+          if (requestGeneration !== orderRequestGeneration) return false;
           console.error('setSupplierOverride failed:', error);
           return false;
         }
       },
 
       clearSupplierOverride: async (orderItemIds) => {
+        const requestGeneration = orderRequestGeneration;
         if (orderItemIds.length === 0) return true;
         try {
           const { error } = await supabase
             .from('order_items')
             .update({ supplier_override_id: null } as any)
             .in('id', orderItemIds);
+          if (requestGeneration !== orderRequestGeneration) return false;
           if (error) throw error;
 
           set((state) => {
@@ -2596,12 +2729,14 @@ export const useOrderStore = create<OrderState>()(
           });
           return true;
         } catch (error) {
+          if (requestGeneration !== orderRequestGeneration) return false;
           console.error('clearSupplierOverride failed:', error);
           return false;
         }
       },
 
       finalizeSupplierOrder: async (input) => {
+        const requestGeneration = orderRequestGeneration;
         const consumedDraftItemIds = Array.from(
           new Set(
             (input.consumedDraftItemIds || [])
@@ -2609,6 +2744,7 @@ export const useOrderStore = create<OrderState>()(
           )
         );
         const nextPastOrder = await get().createPastOrder(input);
+        if (requestGeneration !== orderRequestGeneration) throw new Error('Your session changed before this action completed. Please try again.');
 
         set((state) => {
           const draftRemovalSet = new Set(consumedDraftItemIds);

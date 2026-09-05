@@ -22,12 +22,15 @@ interface ModuleStoreState {
   reset: () => void;
 }
 
+let latestLoadId = 0;
+
 export const useModuleStore = create<ModuleStoreState>((set, get) => ({
   userId: null,
   fetched: null,
   status: 'idle',
 
   load: async (userId: string) => {
+    const loadId = ++latestLoadId;
     const sameUser = get().userId === userId;
     set({
       userId,
@@ -38,18 +41,21 @@ export const useModuleStore = create<ModuleStoreState>((set, get) => ({
 
     try {
       const states = await getMyModules();
-      if (get().userId !== userId) return; // user changed mid-flight
+      if (get().userId !== userId || loadId !== latestLoadId) return; // user changed mid-flight
       set({ fetched: states, status: 'ready' });
     } catch (error) {
       console.error('[moduleStore] Failed to load module access:', error);
-      if (get().userId !== userId) return;
+      if (get().userId !== userId || loadId !== latestLoadId) return;
       // Keep last-known data if we have it; with none, consumers fall back to
       // role defaults (see resolveEffectiveModules) so nobody is locked out.
       set({ status: 'error' });
     }
   },
 
-  reset: () => set({ userId: null, fetched: null, status: 'idle' }),
+  reset: () => {
+    latestLoadId += 1;
+    set({ userId: null, fetched: null, status: 'idle' });
+  },
 }));
 
 // Refcounted realtime subscription shared by every layout/guard that needs

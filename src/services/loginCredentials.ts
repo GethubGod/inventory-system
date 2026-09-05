@@ -57,35 +57,32 @@ interface FunctionErrorBody {
 
 async function getFunctionErrorBody(error: unknown): Promise<FunctionErrorBody> {
   if (error && typeof error === 'object' && 'context' in error) {
-    const context = (error as { context?: any }).context;
-    if (context) {
-      if (
-        typeof context === 'object' &&
-        !(context instanceof Response) &&
-        typeof context.error === 'string'
-      ) {
-        return { message: context.error, code: readFailureCode(context.code) };
+    const context: unknown = error.context;
+    if (context && typeof context === 'object') {
+      if ('error' in context && typeof context.error === 'string') {
+        return { message: context.error, code: readFailureCode('code' in context ? context.code : null) };
       }
-      if (typeof context.json === 'function') {
+      if ('json' in context && typeof context.json === 'function') {
         try {
-          const payload = await context.json();
-          if (typeof payload?.error === 'string') {
-            return { message: payload.error, code: readFailureCode(payload?.code) };
+          const payload: unknown = await context.json();
+          if (payload && typeof payload === 'object' && 'error' in payload && typeof payload.error === 'string') {
+            return { message: payload.error, code: readFailureCode('code' in payload ? payload.code : null) };
           }
         } catch {
-          // body already consumed or not JSON — fall through
+          // The response body may have already been consumed.
         }
       }
     }
   }
 
   if (error && typeof error === 'object' && 'message' in error) {
-    const message = (error as { message?: unknown }).message;
-    if (
-      typeof message === 'string' &&
-      !message.toLowerCase().includes('edge function returned a non-2xx')
-    ) {
-      return { message, code: null };
+    const message = error.message;
+    if (typeof message === 'string') {
+      const normalized = message.toLowerCase();
+      if (normalized.includes('failed to send a request') || normalized.includes('network request failed') || normalized.includes('failed to fetch')) {
+        return { message: 'Unable to connect. Check your connection and try again.', code: null };
+      }
+      if (!normalized.includes('edge function')) return { message, code: null };
     }
   }
 
@@ -104,6 +101,21 @@ function friendlyRpcMessage(error: { message?: string }, fallback: string): stri
     return message;
   }
   return fallback;
+}
+
+/** Reads public credential metadata only. A missing identity is a legacy email account. */
+export async function getMyCredentialKind(userId: string): Promise<CredentialKind | null> {
+  if (!userId) throw new Error('Sign in again to change your sign-in details.');
+  const { data, error } = await supabase
+    .from('login_identities')
+    .select('credential_kind')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw new Error('Unable to load your sign-in settings. Check your connection and try again.');
+  if (!data) return null;
+  const kind: unknown = data.credential_kind;
+  if (kind !== 'pin' && kind !== 'password') throw new Error('Unable to read your sign-in settings. Contact support.');
+  return kind;
 }
 
 /**

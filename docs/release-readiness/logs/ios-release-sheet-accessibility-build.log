@@ -1,0 +1,22 @@
+Full original log preserved in ios-release-sheet-accessibility-build.log.gz.
+
+ExtractAppIntentsMetadata (in target 'Babytuna' from project 'Babytuna')
+    cd /Users/david/Babytuna\ Systems/smelter/.worktrees/production-readiness/ios
+    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --module-name Babytuna --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneSimulator.platform/Developer/SDKs/iPhoneSimulator26.2.sdk --xcode-version 17C52 --platform-family iOS --deployment-target 15.1 --bundle-identifier com.babytuna.systems --output /tmp/smelter-release-derived/Build/Products/Release-iphonesimulator/Babytuna.app --target-triple arm64-apple-ios15.1-simulator --target-triple x86_64-apple-ios15.1-simulator --binary-file /tmp/smelter-release-derived/Build/Products/Release-iphonesimulator/Babytuna.app/Babytuna --dependency-file /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Objects-normal/arm64/Babytuna_dependency_info.dat --dependency-file /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Objects-normal/x86_64/Babytuna_dependency_info.dat --stringsdata-file /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --stringsdata-file /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Objects-normal/x86_64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Objects-normal/arm64/Babytuna.SwiftFileList --source-file-list /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Objects-normal/x86_64/Babytuna.SwiftFileList --metadata-file-list /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Babytuna.DependencyMetadataFileList --static-metadata-file-list /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Babytuna.DependencyStaticMetadataFileList --swift-const-vals-list /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Objects-normal/arm64/Babytuna.SwiftConstValuesFileList --swift-const-vals-list /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Objects-normal/x86_64/Babytuna.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization
+2026-09-05 00:46:12.063 appintentsmetadataprocessor[14845:5304793] Starting appintentsmetadataprocessor export
+2026-09-05 00:46:12.069 appintentsmetadataprocessor[14845:5304793] warning: Metadata extraction skipped. No AppIntents.framework dependency found.
+
+CodeSign /tmp/smelter-release-derived/Build/Products/Release-iphonesimulator/Babytuna.app (in target 'Babytuna' from project 'Babytuna')
+    cd /Users/david/Babytuna\ Systems/smelter/.worktrees/production-readiness/ios
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --entitlements /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Babytuna.app.xcent --timestamp\=none --generate-entitlement-der /tmp/smelter-release-derived/Build/Products/Release-iphonesimulator/Babytuna.app
+/tmp/smelter-release-derived/Build/Products/Release-iphonesimulator/Babytuna.app: replacing existing signature
+
+Validate /tmp/smelter-release-derived/Build/Products/Release-iphonesimulator/Babytuna.app (in target 'Babytuna' from project 'Babytuna')
+    cd /Users/david/Babytuna\ Systems/smelter/.worktrees/production-readiness/ios
+    builtin-validationUtility /tmp/smelter-release-derived/Build/Products/Release-iphonesimulator/Babytuna.app -validate-for-store -shallow-bundle -infoplist-subpath Info.plist
+
+** BUILD SUCCEEDED **
+

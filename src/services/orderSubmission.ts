@@ -179,14 +179,9 @@ export async function submitOrder(req: SubmitOrderRequest): Promise<SubmitOrderR
       detail = await response.text().catch(() => '');
     }
 
-    // Log full error for debugging
-    console.error('[OrderSubmission] RPC failed', {
-      status: response.status,
-      elapsed,
-      detail,
-      fullBody,
-      orderId: req.orderId,
-    });
+    if (__DEV__) {
+      console.error('[OrderSubmission] RPC failed', { status: response.status, elapsed, detail });
+    }
 
     if (response.status === 401) {
       throw new OrderSubmissionError(
@@ -217,7 +212,7 @@ export async function submitOrder(req: SubmitOrderRequest): Promise<SubmitOrderR
 
   const data = await response.json();
   if (!data?.id) {
-    console.error('[OrderSubmission] RPC returned no data', { data, elapsed });
+    if (__DEV__) console.error('[OrderSubmission] RPC returned no data', { elapsed });
     throw new OrderSubmissionError(
       'Order may not have been saved. Please check your orders before retrying.',
       true,
@@ -225,13 +220,13 @@ export async function submitOrder(req: SubmitOrderRequest): Promise<SubmitOrderR
     );
   }
 
-  console.log('[OrderSubmission] success', {
-    orderId: data.id,
-    orderNumber: data.order_number,
-    itemCount: data.order_items?.length ?? 0,
-    isExisting: data.is_existing,
-    elapsed,
-  });
+  if (__DEV__) {
+    console.log('[OrderSubmission] success', {
+      itemCount: data.order_items?.length ?? 0,
+      isExisting: data.is_existing,
+      elapsed,
+    });
+  }
 
   // ── Map response to app types ──
   const order = mapRpcResponseToOrder(data, req.userId, req.locationId);

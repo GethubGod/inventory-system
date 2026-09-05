@@ -1,0 +1,451 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-04 23:40:55.473 Df Babytuna[78517:4e95ce] [com.apple.xpc:connection] [0x104404280] activating connection: mach=true listener=false peer=false name=com.apple.cfprefsd.daemon
+2026-09-04 23:40:55.476 Df Babytuna[78517:4e95ce] [com.apple.UserNotifications:Connections] [com.babytuna.systems] Creating a user notification center
+2026-09-04 23:40:55.483 A  Babytuna[78517:4e95d8] (CoreFoundation) Loading Preferences From User Session CFPrefsD
+2026-09-04 23:40:55.485 Df Babytuna[78517:4e95d9] [com.apple.BoardServices:XPCErrors] [C:1] Alloc com.apple.frontboard.systemappservices
+2026-09-04 23:40:55.485 Df Babytuna[78517:4e95ce] (libMobileGestalt.dylib) No persisted cache on this platform.
+2026-09-04 23:40:55.485 Df Babytuna[78517:4e95d9] [com.apple.xpc:connection] [0x104405de0] activating connection: mach=false listener=false peer=false name=(anonymous)
+2026-09-04 23:40:55.489 Df Babytuna[78517:4e95d7] [com.apple.UIKit:BackgroundTask] Creating new assertion because there is no existing background assertion.
+2026-09-04 23:40:55.491 Df Babytuna[78517:4e95d7] [com.apple.UIKit:BackgroundTask] Creating new background assertion
+2026-09-04 23:40:55.491 Df Babytuna[78517:4e95d7] [com.apple.UIKit:BackgroundTask] Created new background assertion <BKSProcessAssertion: 0x600002109270>
+2026-09-04 23:40:55.491 Df Babytuna[78517:4e95d7] [com.apple.runningboard:connection] Initializing connection
+2026-09-04 23:40:55.491 Df Babytuna[78517:4e95d7] [com.apple.runningboard:process] Removing all cached process handles
+2026-09-04 23:40:55.491 Df Babytuna[78517:4e95da] [com.apple.runningboard:connection] Sending handshake request attempt #1 to server
+2026-09-04 23:40:55.491 Df Babytuna[78517:4e95da] [com.apple.runningboard:connection] Creating connection to com.apple.runningboard
+2026-09-04 23:40:55.491 Df Babytuna[78517:4e95da] [com.apple.xpc:connection] [0x1045062a0] activating connection: mach=true listener=false peer=false name=com.apple.runningboard
+2026-09-04 23:40:55.492 A  Babytuna[78517:4e95d9] (RunningBoardServices) didChangeInheritances
+2026-09-04 23:40:55.492 Df Babytuna[78517:4e95da] [com.apple.runningboard:connection] Handshake succeeded
+2026-09-04 23:40:55.492 Df Babytuna[78517:4e95da] [com.apple.runningboard:connection] Identity resolved as app<com.babytuna.systems((null))>
+2026-09-04 23:40:55.492 Df Babytuna[78517:4e95ce] [com.apple.UIKit:Application] Deactivation reason added: 10; deactivation reasons: 0 -> 1024; animating application lifecycle event: 0
+2026-09-04 23:40:55.492 Df Babytuna[78517:4e95d7] [com.apple.UIKit:BackgroundTask] Incrementing reference count for background assertion <BKSProcessAssertion: 0x600002109270>
+2026-09-04 23:40:55.492 Df Babytuna[78517:4e95ce] [com.apple.BoardServices:Injection] activating monitor for service com.apple.frontboard.open
+2026-09-04 23:40:55.493 Df Babytuna[78517:4e95ce] [com.apple.BoardServices:Injection] activating monitor for service com.apple.frontboard.workspace-service
+2026-09-04 23:40:55.493 Df Babytuna[78517:4e95d7] [com.apple.UIKit:BackgroundTask] Created background task <_UIBackgroundTaskInfo: 0x600001706040>: taskID = 1, taskName = Launch Background Task for Coalescing, creationTime = 148714 (elapsed = 0).
+2026-09-04 23:40:55.493 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension _UIApplicationSceneKeyboardSettings on FBSSceneSettings
+2026-09-04 23:40:55.493 Df Babytuna[78517:4e95ce] [com.apple.FrontBoard:Common] FBSWorkspace registering source: com.apple.frontboard.systemappservices
+2026-09-04 23:40:55.494 Df Babytuna[78517:4e95ce] [com.apple.FrontBoard:Common] FBSWorkspace connected to endpoint : <BSServiceConnectionEndpoint: 0x60000021cb00; target: com.apple.frontboard.systemappservices; service: com.apple.frontboard.workspace-service>
+2026-09-04 23:40:55.494 Df Babytuna[78517:4e95ce] [com.apple.FrontBoard:Common] <FBSWorkspaceScenesClient:0x6000030001b0 com.apple.frontboard.systemappservices> attempting immediate handshake from activate
+2026-09-04 23:40:55.494 Df Babytuna[78517:4e95ce] [com.apple.FrontBoard:Common] <FBSWorkspaceScenesClient:0x6000030001b0 com.apple.frontboard.systemappservices> sent handshake
+2026-09-04 23:40:55.495 Df Babytuna[78517:4e95ce] [com.apple.runningboard:general] Added observer for process assertions expiration warning: <_RBSExpirationWarningClient: 0x60000021cec0>
+2026-09-04 23:40:55.496 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneOcclusionSettings> on FBSSceneSettings
+2026-09-04 23:40:55.496 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneInterfaceProtectionSettings> on FBSSceneSettings
+2026-09-04 23:40:55.496 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension _UISceneLayoutPreferencesHostSettingsExtension on FBSSceneSettings
+2026-09-04 23:40:55.497 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension _UISceneSafeAreaSettingsExtension on FBSSceneSettings
+2026-09-04 23:40:55.498 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension _UISceneLayoutPreferenceClientSettingsExtension on FBSSceneClientSettings
+2026-09-04 23:40:55.498 Df Babytuna[78517:4e95ce] [com.apple.UIKit:UIScreen] Evaluated capturing state as 0 on <UIScreen: 0x103f05540> for initial
+2026-09-04 23:40:55.498 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UIHomeAffordanceHostSceneSettings> on FBSSceneSettings
+2026-09-04 23:40:55.499 Df Babytuna[78517:4e95ce] [com.apple.UIKit:UIScreen] Evaluated capturing state as 0 on <UIScreen: 0x103f05540> for CADisplay KVO
+2026-09-04 23:40:55.499 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension _UISystemShellSceneHostingEnvironmentSettings on FBSSceneSettings
+2026-09-04 23:40:55.500 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension _UISceneRenderingEnvironmentSettings on FBSSceneSettings
+2026-09-04 23:40:55.500 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneRenderingEnvironmentClientSettings> on FBSSceneClientSettings
+2026-09-04 23:40:55.500 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneTransitioningHostSettings> on FBSSceneSettings
+2026-09-04 23:40:55.500 Df Babytuna[78517:4e95ce] [com.apple.Accessibility:AXSupportCommon] Read CategoryName: per-app = 1, category name = (null)
+2026-09-04 23:40:55.501 Df Babytuna[78517:4e95ce] [com.apple.Accessibility:AXSupportCommon] Read CategoryName: per-app = 0, category name = (null)
+2026-09-04 23:40:55.501 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneFocusSystemSettings> on FBSSceneSettings
+2026-09-04 23:40:55.501 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension _UISceneOrientationSettingsExtension on FBSSceneSettings
+2026-09-04 23:40:55.501 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension _UISceneOrientationClientSettingsExtension on FBSSceneClientSettings
+2026-09-04 23:40:55.501 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension _UISceneWindowingControlClientSettings on FBSSceneClientSettings
+2026-09-04 23:40:55.502 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneHostingContentSizePreferenceClientSettings> on FBSSceneClientSettings
+2026-09-04 23:40:55.502 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension _UISceneHostingTraitCollectionPropagationSettings on FBSSceneSettings
+2026-09-04 23:40:55.503 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneHostingSheetPresentationSettings> on FBSSceneSettings
+2026-09-04 23:40:55.503 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneHostingSheetPresentationClientSettings> on FBSSceneClientSettings
+2026-09-04 23:40:55.503 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneHostingEventDeferringSettings> on FBSSceneSettings
+2026-09-04 23:40:55.504 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <UIKit__UITypedKeyValueSceneSettings> on FBSSceneSettings
+2026-09-04 23:40:55.504 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <UIKit__UITypedKeyValueSceneSettings> on FBSSceneClientSettings
+2026-09-04 23:40:55.504 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneHostingViewControllerPreferencePropagationClientSettings> on FBSSceneClientSettings
+2026-09-04 23:40:55.504 Df Babytuna[78517:4e95d7] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneZoomTransitionSettings> on FBSSceneSettings
+2026-09-04 23:40:55.504 Df Babytuna[78517:4e95d8] [com.apple.FrontBoard:SceneExtension] Realizing settings extension FBSSceneSettingsCore on FBSSceneSettings
+2026-09-04 23:40:55.505 Df Babytuna[78517:4e95d8] [com.apple.FrontBoard:SceneExtension] Realizing settings extension FBSSceneClientSettingsCore on FBSSceneClientSettings
+2026-09-04 23:40:55.522 Df Babytuna[78517:4e95d8] [com.apple.FrontBoard:SceneExtension] UIMutableApplicationSceneSettings setting counterpart class: UIApplicationSceneSettings
+2026-09-04 23:40:55.523 Df Babytuna[78517:4e95d8] [com.apple.FrontBoard:SceneExtension] UIMutableApplicationSceneClientSettings setting counterpart class: UIApplicationSceneClientSettings
+2026-09-04 23:40:55.523 Df Babytuna[78517:4e95d8] [com.apple.FrontBoard:SceneExtension] Realizing settings extension FBSSceneTransitionContextCore on FBSSceneTransitionContext
+2026-09-04 23:40:55.547 A  Babytuna[78517:4e95d8] (CoreFoundation) Updating Key-Value Observers Of Preferences
+2026-09-04 23:40:55.563 Df Babytuna[78517:4e95ce] [com.apple.dt.xctest:Default] Registering for test daemon availability notify post.
+2026-09-04 23:40:55.563 Df Babytuna[78517:4e95ce] [com.apple.dt.xctest:Default] notify_get_state check indicated test daemon not ready.
+2026-09-04 23:40:55.563 Df Babytuna[78517:4e95ce] [com.apple.dt.xctest:Default] notify_get_state check indicated test daemon not ready.
+2026-09-04 23:40:55.563 Df Babytuna[78517:4e95ce] [com.apple.dt.xctest:Default] notify_get_state check indicated test daemon not ready.
+2026-09-04 23:40:55.564 Df Babytuna[78517:4e95ce] [com.apple.UIKit:UpdateScheduler] Selected display: name=LCD (PurpleMain), id=1
+2026-09-04 23:40:55.567 Df Babytuna[78517:4e95ce] [com.apple.UIKit:Application] Deactivation reason added: 5; deactivation reasons: 1024 -> 1056; animating application lifecycle event: 1
+2026-09-04 23:40:55.567 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Not push traits update to screen for new style 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.598 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Should send trait collection or coordinate space update, interface style 1 -> 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.600 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Not push traits update to screen for new style 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.600 Df Babytuna[78517:4e95ce] [com.apple.UIKit:HomeAffordanceObservation] Initializing: <_UIHomeAffordanceSceneNotifier: 0x60000291c4d0>; with scene: <UIWindowScene: 0x104309de0>
+2026-09-04 23:40:55.600 Df Babytuna[78517:4e95ce] [com.apple.BacklightServices:scenes] 0x600000c30f30 setDelegate:<0x600000c31050 _UIBacklightEnvironment> hasDelegate:YES for environment:sceneID:com.babytuna.systems-default
+2026-09-04 23:40:55.601 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Not push traits update to screen for new style 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.601 Df Babytuna[78517:4e95ce] [com.apple.UIKit:EventDeferring] [0x60000291cd90] Initialized with scene: <UIWindowScene: 0x104309de0>; behavior: <_UIEventDeferringBehavior_iOS: 0x6000002359a0>; availableForProcess: 1, systemShellManagesKeyboardFocus: 1
+2026-09-04 23:40:55.601 Df Babytuna[78517:4e95ce] [com.apple.BoardServices:XPCErrors] [C:2] Alloc com.apple.backboard.hid-services.xpc
+2026-09-04 23:40:55.601 Df Babytuna[78517:4e95ce] [com.apple.xpc:connection] [0x10430aea0] activating connection: mach=false listener=false peer=false name=(anonymous)
+2026-09-04 23:40:55.602 Df Babytuna[78517:4e95df] [com.apple.BackBoard:EventDelivery] BKSHIDEventObserver - connection activation
+2026-09-04 23:40:55.602 Df Babytuna[78517:4e95ce] [com.apple.BackBoard:EventDelivery] policyStatus:<BKSHIDEventDeliveryPolicyObserver: 0x600002624720; process scope; status: target> was:none
+2026-09-04 23:40:55.602 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyWindow] Setting default evaluation strategy for UIUserInterfaceIdiomPhone to LastOneWins
+2026-09-04 23:40:55.602 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyWindow] Scene target of keyboard event deferring environment did change: 1; scene: UIWindowScene: 0x104309de0; scene identity: com.apple.frontboard.systemappservices/FBSceneManager:sceneID%3Acom.babytuna.systems-default
+2026-09-04 23:40:55.602 Df Babytuna[78517:4e95ce] [com.apple.UIKit:EventDeferring] [0x60000291cd90] Scene target of event deferring environments did update: scene: 0x104309de0; current systemShellManagesKeyboardFocus: 1; systemShellManagesKeyboardFocusForScene: 1; eligibleForRecordRemoval: 1;
+2026-09-04 23:40:55.602 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyWindow] Scene became target of keyboard event deferring environment: UIWindowScene: 0x104309de0; scene identity: com.apple.frontboard.systemappservices/FBSceneManager:sceneID%3Acom.babytuna.systems-default
+2026-09-04 23:40:55.602 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyWindow] Stack[KeyWindow] 0x600000c314a0: Taking no further action for migration from LastOneWins -> SystemShellManaged as there are no scenes
+2026-09-04 23:40:55.602 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyWindow] Setting default evaluation strategy for UIUserInterfaceIdiomPhone to SystemShellManaged
+2026-09-04 23:40:55.602 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyWindow] Key window needs update: 0; currentKeyWindowScene: 0x0; evaluatedKeyWindowScene: 0x104309de0; currentApplicationKeyWindow: 0x0; evaluatedApplicationKeyWindow: 0x0; reason: UIWindowScene: 0x104309de0: Window scene became target of keyboard environment
+2026-09-04 23:40:55.602 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Not push traits update to screen for new style 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.603 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Not push traits update to screen for new style 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.603 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Not push traits update to screen for new style 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.603 F  Babytuna[78517:4e95ce] [com.apple.runtime-issues:UIKit App Config] `UIScene` lifecycle will soon be required. Failure to adopt will result in an assert in the future.
+2026-09-04 23:40:55.603 A  Babytuna[78517:4e95ce] (libsystem_trace.dylib) Activity for state dumps
+2026-09-04 23:40:55.604 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Not push traits update to screen for new style 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.604 Df Babytuna[78517:4e95ce] [com.apple.UIKit:AppLifecycle] sceneOfRecord: sceneID: sceneID:com.babytuna.systems-default  persistentID: 4B2AE613-A12C-49B6-AEC8-6FECEB2DE858
+2026-09-04 23:40:55.605 Df Babytuna[78517:4e95ce] [com.apple.UIKit:Application] Ignoring already applied deactivation reason: 5; deactivation reasons: 1056
+2026-09-04 23:40:55.605 Df Babytuna[78517:4e95ce] [com.apple.UIKit:Application] Deactivation reason added: 11; deactivation reasons: 1056 -> 3104; animating application lifecycle event: 1
+2026-09-04 23:40:55.605 Df Babytuna[78517:4e95ce] [com.apple.KeyboardArbiter:Client] startConnection
+2026-09-04 23:40:55.606 Df Babytuna[78517:4e95ce] [com.apple.xpc:connection] [0x10430be10] activating connection: mach=true listener=false peer=false name=com.apple.UIKit.KeyboardManagement.hosted
+2026-09-04 23:40:55.606 Df Babytuna[78517:4e95ce] (UIKitCore) You've implemented -[<UIApplicationDelegate> application:performFetchWithCompletionHandler:], but you still need to add "fetch" to the list of your supported UIBackgroundModes in your Info.plist.
+2026-09-04 23:40:55.606 Df Babytuna[78517:4e95ce] (UIKitCore) You've implemented -[<UIApplicationDelegate> application:didReceiveRemoteNotification:fetchCompletionHandler:], but you still need to add "remote-notification" to the list of your supported UIBackgroundModes in your Info.plist.
+2026-09-04 23:40:55.606 Df Babytuna[78517:4e95ce] (React) _setUpFeatureFlags called with release level 2
+2026-09-04 23:40:55.635 Df Babytuna[78517:4e95d9] [com.apple.network:] networkd_settings_read_from_file initialized networkd settings by reading plist directly
+2026-09-04 23:40:55.635 Df Babytuna[78517:4e95d9] [com.apple.network:] networkd_settings_read_from_file initialized networkd settings by reading plist directly
+2026-09-04 23:40:55.637 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Task <E9743E2E-2B8C-4456-A39A-5629BD0C05EC>.<1> resuming, timeouts(60.0, 604800.0) qos(0x19) voucher(<OS_voucher: 0x6000021052c0>) activity(00000000-0000-0000-0000-000000000000)
+2026-09-04 23:40:55.637 A  Babytuna[78517:4e95d7] (CoreFoundation) Loading Preferences From User Session CFPrefsD
+2026-09-04 23:40:55.645 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Initializing NSHTTPCookieStorage singleton
+2026-09-04 23:40:55.645 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Initializing CFHTTPCookieStorage singleton
+2026-09-04 23:40:55.645 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Creating default cookie storage with process/bundle identifier
+2026-09-04 23:40:55.645 A  Babytuna[78517:4e95d7] (libsystem_containermanager.dylib) container_system_group_path_for_identifier
+2026-09-04 23:40:55.645 Df Babytuna[78517:4e95d7] [com.apple.containermanager:xpc] Requesting container lookup; class = 13, identifier = com.apple.nsurlsessiond, group_identifier = systemgroup.com.apple.nsurlstoragedresources, create = 1, temp = 0, euid = 502, uid = 502
+2026-09-04 23:40:55.645 A  Babytuna[78517:4e95d7] (libsystem_containermanager.dylib) container_query_t
+2026-09-04 23:40:55.645 Df Babytuna[78517:4e95d7] [com.apple.containermanager:xpc] Query; euid = 502, uid = 502, class = 13, identifier = [com.apple.nsurlsessiond](1), flags = 900000003
+2026-09-04 23:40:55.646 Df Babytuna[78517:4e95d7] [com.apple.containermanager:unspecified] _container_query_get_result_at_index: success
+2026-09-04 23:40:55.646 A  Babytuna[78517:4e95d7] (libsystem_containermanager.dylib) container_copy_object
+2026-09-04 23:40:55.646 Df Babytuna[78517:4e95d7] [com.apple.containermanager:unspecified] container_system_group_path_for_identifier: success
+2026-09-04 23:40:55.647 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Initializing AlternativeServices Storage singleton
+2026-09-04 23:40:55.647 Df Babytuna[78517:4e95d7] [com.apple.FileURL:default] kExcludedFromBackupXattrName set on path: /Users/david/Library/Developer/CoreSimulator/Devices/EF05F833-2AC4-4383-8688-36C51B956BCF/data/Containers/Data/Application/4718C22D-A873-406B-8136-372015356E43/Library/HTTPStorages/com.babytuna.systems
+2026-09-04 23:40:55.649 Df Babytuna[78517:4e95da] [com.apple.CFNetwork:Default] Garbage collection for alternative services
+2026-09-04 23:40:55.649 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Connection 0: creating secure tcp or quic connection
+2026-09-04 23:40:55.651 Df Babytuna[78517:4e95ce] [com.apple.UIKit:Orientation] <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858) Scene updated orientation preferences: none -> ( Pu )
+2026-09-04 23:40:55.653 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyWindow] Key window API is scene-level: YES
+2026-09-04 23:40:55.653 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyWindow] UIWindowScene: 0x104309de0: Window became key in scene: UIWindow: 0x10452f250; contextId: 0x78FD80BC: reason: UIWindowScene: 0x104309de0: Window requested to become key in scene: 0x10452f250
+2026-09-04 23:40:55.653 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyWindow] Key window needs update: 1; currentKeyWindowScene: 0x0; evaluatedKeyWindowScene: 0x104309de0; currentApplicationKeyWindow: 0x0; evaluatedApplicationKeyWindow: 0x10452f250; reason: UIWindowScene: 0x104309de0: Window requested to become key in scene: 0x10452f250
+2026-09-04 23:40:55.653 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyWindow] Window did become application key: UIWindow: 0x10452f250; contextId: 0x78FD80BC; scene identity: com.apple.frontboard.systemappservices/FBSceneManager:sceneID%3Acom.babytuna.systems-default
+2026-09-04 23:40:55.653 Df Babytuna[78517:4e95ce] [com.apple.UIKit:EventDeferring] [0x60000291cd90] Begin local event deferring requested for token: 0x600002625e00; environments: 1; reason: UIWindowScene: 0x104309de0: Begin event deferring in keyboardFocus for window: 0x10452f250
+2026-09-04 23:40:55.654 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Connection 1: enabling TLS
+2026-09-04 23:40:55.654 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Connection 1: starting, TC(0x0)
+2026-09-04 23:40:55.654 Df Babytuna[78517:4e95da] [com.apple.BackBoard:EventDelivery] BKSHIDEventDeliveryManager - connection activation
+2026-09-04 23:40:55.654 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1 06C3F69D-8DE9-4C6E-8F45-56706F707DC0 Hostname#2f29762c:443 quic-connection, url: https://u.expo.dev/fd32384c-3175-4fef-81b4-1321513b386e, definite, attribution: developer, context: com.apple.CFNetwork.NSURLSession.{99FC4E98-A1C8-42E4-8FF0-566F72F6DAA3}{(null)}{Y}{2}{0x0} (private), proc: CF6F27E8-C6D2-3524-89CB-AD4D2227F2AC, delegated upid: 0] start
+2026-09-04 23:40:55.654 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1 Hostname#2f29762c:443 initial parent-flow ((null))] event: path:start @0.000s
+2026-09-04 23:40:55.655 Df Babytuna[78517:4e95d9] [com.apple.BackBoard:EventDelivery] policyStatus:<BKSHIDEventDeliveryPolicyObserver: 0x600002624720; token: com.apple.frontboard.systemappservices/FBSceneManager:sceneID%3Acom.babytuna.systems-default; status: ancestor> was:target
+2026-09-04 23:40:55.655 Df Babytuna[78517:4e95ce] [com.apple.UIKit:Application] Deactivation reason removed: 10; deactivation reasons: 3104 -> 2080; animating application lifecycle event: 1
+2026-09-04 23:40:55.655 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1 Hostname#2f29762c:443 waiting parent-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: path:satisfied @0.001s, uuid: EA20C1FB-5275-48A7-8516-DEF34AD5D678
+2026-09-04 23:40:55.656 Df Babytuna[78517:4e95ce] [com.apple.UIKit:Application] Deactivation reason added: 12; deactivation reasons: 2080 -> 6176; animating application lifecycle event: 1
+2026-09-04 23:40:55.656 Df Babytuna[78517:4e95ce] [com.apple.UIKit:Application] Deactivation reason removed: 11; deactivation reasons: 6176 -> 4128; animating application lifecycle event: 1
+2026-09-04 23:40:55.656 Df Babytuna[78517:4e95ce] [com.apple.FrontBoard:SceneExtension] Realizing settings extension <_UISceneIntelligenceSupportSettings> on FBSSceneSettings
+2026-09-04 23:40:55.656 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1 Hostname#2f29762c:443 in_progress parent-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:start_connect @0.001s
+2026-09-04 23:40:55.656 Df Babytuna[78517:4e95d7] [com.apple.network:connection] nw_connection_report_state_with_handler_on_nw_queue [C1] reporting state preparing
+2026-09-04 23:40:55.656 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1 Hostname#2f29762c:443 in_progress parent-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:start_child @0.002s
+2026-09-04 23:40:55.656 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1.1 Hostname#2f29762c:443 initial path ((null))] event: path:start @0.002s
+2026-09-04 23:40:55.656 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1.1 Hostname#2f29762c:443 waiting path (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: path:satisfied @0.002s, uuid: EA20C1FB-5275-48A7-8516-DEF34AD5D678
+2026-09-04 23:40:55.656 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1.1 Hostname#2f29762c:443 in_progress transform (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: transform:start @0.002s
+2026-09-04 23:40:55.656 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1.1.1 Hostname#2f29762c:443 initial path ((null))] event: path:start @0.002s
+2026-09-04 23:40:55.656 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1.1.1 Hostname#2f29762c:443 waiting path (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: path:satisfied @0.002s, uuid: EC040538-6AE5-4A4A-A57B-9A65D76CE40B
+2026-09-04 23:40:55.657 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1.1.1 Hostname#2f29762c:443 in_progress resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: resolver:start_dns @0.002s
+2026-09-04 23:40:55.657 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Not push traits update to screen for new style 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.657 Df Babytuna[78517:4e95d9] [com.apple.UIIntelligenceSupport:xpc] establishing connection to agent
+2026-09-04 23:40:55.657 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Task <E9743E2E-2B8C-4456-A39A-5629BD0C05EC>.<1> setting up Connection 1
+2026-09-04 23:40:55.657 Df Babytuna[78517:4e95d9] [com.apple.xpc:session] [0x600002117430] Session created.
+2026-09-04 23:40:55.657 Df Babytuna[78517:4e95d9] [com.apple.xpc:session] [0x600002117430] Session created from connection [0x104413ab0]
+2026-09-04 23:40:55.657 Df Babytuna[78517:4e95d9] [com.apple.xpc:connection] [0x104413ab0] activating connection: mach=true listener=false peer=false name=com.apple.uiintelligencesupport.agent
+2026-09-04 23:40:55.657 Df Babytuna[78517:4e95d9] [com.apple.xpc:session] [0x600002117430] Session activated
+2026-09-04 23:40:55.659 Df Babytuna[78517:4e95ce] [com.apple.xpc:connection] [0x104518540] activating connection: mach=true listener=false peer=false name=com.apple.IOSurface.Remote
+2026-09-04 23:40:55.666 Df Babytuna[78517:4e95ce] [com.apple.xpc:connection] [0x10430c210] activating connection: mach=true listener=false peer=false name=com.apple.lsd.mapdb
+2026-09-04 23:40:55.666 A  Babytuna[78517:4e95d7] (RunningBoardServices) didChangeInheritances
+2026-09-04 23:40:55.673 A  Babytuna[78517:4e95d9] (RunningBoardServices) didChangeInheritances
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.network:activity] Create activity from XPC object <nw_activity 50:1 [1DA71BE8-1874-4725-B50C-BC7112D9B8F2] (reporting strategy default)>
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.network:activity] Create activity from XPC object <nw_activity 50:2 [C736C44C-0A3D-472A-8AF6-EE1D248A7D86] (reporting strategy default)>
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.network:activity] Set activity <nw_activity 50:1 [1DA71BE8-1874-4725-B50C-BC7112D9B8F2] (reporting strategy default)> as the global parent
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.UIKit:BackgroundTask] Ending background task with UIBackgroundTaskIdentifier: 1
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.UIKit:BackgroundTask] Ending task with identifier 1 and description: <_UIBackgroundTaskInfo: 0x600001706040>: taskID = 1, taskName = Launch Background Task for Coalescing, creationTime = 148714 (elapsed = 0), _expireHandler: (null)
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.UIKit:BackgroundTask] Decrementing reference count for assertion <BKSProcessAssertion: 0x600002109270> (used by background task with identifier 1: <_UIBackgroundTaskInfo: 0x600001706040>: taskID = 1, taskName = Launch Background Task for Coalescing, creationTime = 148714 (elapsed = 0))
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.UIKit:BackgroundTask] Will invalidate assertion: <BKSProcessAssertion: 0x600002109270> for task identifier: 1
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.UIKit:EventBus] Event Timing Profile for Touch: not found, path="/System/Library/EventTimingProfiles/Sim.Touch.plist"
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.UIKit:EventBus] Event Timing Profile for Pencil: not found, path="/System/Library/EventTimingProfiles/Sim.Pencil.plist"
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.UIKit:UpdateScheduler] Target list changed: <CADisplay:LCD PurpleMain>
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.UIKit:AppLifecycle] sceneOfRecord: sceneID: sceneID:com.babytuna.systems-default  persistentID: 4B2AE613-A12C-49B6-AEC8-6FECEB2DE858
+2026-09-04 23:40:55.686 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Not push traits update to screen for new style 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.695 Df Babytuna[78517:4e95d7] [com.apple.network:connection] nw_endpoint_resolver_update [C1.1.1 Hostname#2f29762c:443 in_progress resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Adding endpoint handler for IPv6#9ec641b0.443
+2026-09-04 23:40:55.695 Df Babytuna[78517:4e95d7] [com.apple.network:connection] nw_endpoint_resolver_update [C1.1.1 Hostname#2f29762c:443 in_progress resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Adding endpoint handler for IPv6#1cc45d79.443
+2026-09-04 23:40:55.695 Df Babytuna[78517:4e95d7] [com.apple.network:connection] nw_endpoint_resolver_update [C1.1.1 Hostname#2f29762c:443 in_progress resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Adding endpoint handler for IPv4#fd62f926:443
+2026-09-04 23:40:55.695 Df Babytuna[78517:4e95d7] [com.apple.network:connection] nw_endpoint_resolver_update [C1.1.1 Hostname#2f29762c:443 in_progress resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Adding endpoint handler for IPv4#cd460ffd:443
+2026-09-04 23:40:55.695 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1.1.1 Hostname#2f29762c:443 in_progress resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: resolver:receive_dns @0.041s
+2026-09-04 23:40:55.695 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1.1.1.1 IPv6#9ec641b0.443 initial path ((null))] event: path:start @0.041s
+2026-09-04 23:40:55.695 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1.1.1.1 IPv6#9ec641b0.443 waiting path (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: path:satisfied @0.041s, uuid: D7B3804A-2B02-447B-8DDB-C90A54479525
+2026-09-04 23:40:55.696 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1.1.1.1 IPv6#9ec641b0.443 in_progress socket-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:start_connect @0.042s
+2026-09-04 23:40:55.716 Df Babytuna[78517:4e95d7] [com.apple.network:connection] nw_socket_handle_socket_event [C1.1.1.1:3] Socket received CONNECTED event
+2026-09-04 23:40:55.736 Df Babytuna[78517:4e95d9] [com.apple.launchservices:db] NotifyToken::RegisterDispatch(com.apple.LaunchServices.database) fired for session key LSSessionKey(system: 0 uid: 502)
+2026-09-04 23:40:55.738 Sd Babytuna[78517:0] (79E72B83-2384-3A91-8EE7-4315E85E9A91) IOHIDManager State
+{
+    DispatchQueue = 0;
+    RunLoop = 1;
+    createOptions = 0;
+    isOpen = 0;
+    openOptions = 0;
+}
+2026-09-04 23:40:55.738 Df Babytuna[78517:4e95d7] [com.apple.network:connection] nw_flow_connected [C1.1.1.1 IPv6#9ec641b0.443 in_progress socket-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Transport protocol connected (socket)
+2026-09-04 23:40:55.738 Df Babytuna[78517:4e95d7] [com.apple.network:connection] [C1.1.1.1 IPv6#9ec641b0.443 in_progress socket-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:finish_transport @0.084s
+2026-09-04 23:40:55.738 Df Babytuna[78517:4e95d7] [com.apple.network:boringssl] boringssl_session_apply_protocol_options_for_transport_block_invoke_2(2323) [C1.1.1.1:2][0x103f0ed90] TLS configured [min_version(0x0303) max_version(0x0304) name(redacted) tickets(false) false_start(false) enforce_ev(false) enforce_ats(false) ats_non_pfs_ciphersuite_allowed(false) ech(false) pqtls(true), pake(false)]
+2026-09-04 23:40:55.739 Df Babytuna[78517:4e95d7] [com.apple.network:boringssl] boringssl_context_info_handler(2390) [C1.1.1.1:2][0x103f0ed90] Client handshake started
+2026-09-04 23:40:55.739 Df Babytuna[78517:4e95d7] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS client enter_early_data
+2026-09-04 23:40:55.739 Df Babytuna[78517:4e95d7] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS client read_server_hello
+2026-09-04 23:40:55.756 Df Babytuna[78517:4e95ce] [com.apple.UIKit:EventDeferring] [0x60000291cd90] Scene target of event deferring environments did update: scene: 0x104309de0; current systemShellManagesKeyboardFocus: 1; systemShellManagesKeyboardFocusForScene: 1; eligibleForRecordRemoval: 1;
+2026-09-04 23:40:55.756 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyWindow] Scene became target of keyboard event deferring environment: UIWindowScene: 0x104309de0; scene identity: com.apple.frontboard.systemappservices/FBSceneManager:sceneID%3Acom.babytuna.systems-default
+2026-09-04 23:40:55.757 Df Babytuna[78517:4e95ce] [com.apple.FrontBoard:SceneExtension] Realizing settings extension SBUISecureRenderingSettingsExtension on FBSSceneSettings
+2026-09-04 23:40:55.759 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Not push traits update to screen for new style 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.759 Df Babytuna[78517:4e95ce] [com.apple.UIKit:InterfaceStyle] Not push traits update to screen for new style 1, <UIWindowScene: 0x104309de0> (4B2AE613-A12C-49B6-AEC8-6FECEB2DE858)
+2026-09-04 23:40:55.759 Df Babytuna[78517:4e95ce] [com.apple.UIKit:AppLifecycle] sceneOfRecord: sceneID: sceneID:com.babytuna.systems-default  persistentID: 4B2AE613-A12C-49B6-AEC8-6FECEB2DE858
+2026-09-04 23:40:55.759 Df Babytuna[78517:4e95ce] [com.apple.UIKit:Application] Deactivation reason removed: 12; deactivation reasons: 4128 -> 32; animating application lifecycle event: 1
+2026-09-04 23:40:55.759 Df Babytuna[78517:4e95ce] [com.apple.KeyboardArbiter:Client] Send setDeactivating: N (-DeactivationReason:SuspendedEventsOnly)
+2026-09-04 23:40:55.759 Df Babytuna[78517:4e95ce] [com.apple.UIKit:Application] Deactivation reason removed: 5; deactivation reasons: 32 -> 0; animating application lifecycle event: 0
+2026-09-04 23:40:55.760 Df Babytuna[78517:4e95ce] [com.apple.KeyboardArbiter:Client] startConnection
+2026-09-04 23:40:55.761 Df Babytuna[78517:4e95ce] (UIKitCore) Unbalanced calls to begin/end appearance transitions for <UIViewController: 0x10430e840>.
+2026-09-04 23:40:55.761 Df Babytuna[78517:4e95ce] [com.apple.KeyboardArbiter:Client] handleKeyboardChange: set currentKeyboard:N (wasKeyboard:N)
+2026-09-04 23:40:55.762 Df Babytuna[78517:4e95ce] [com.apple.UIKit:KeyboardArbiterClientLog] isWritingToolsHandlingKeyboardTracking:Y (WT ready:Y, Arbiter ready:Y)
+2026-09-04 23:40:55.763 Df Babytuna[78517:4e95df] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client read_hello_retry_request
+2026-09-04 23:40:55.763 Df Babytuna[78517:4e95df] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client read_server_hello
+2026-09-04 23:40:55.763 Df Babytuna[78517:4e95df] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client read_encrypted_extensions
+2026-09-04 23:40:55.763 Df Babytuna[78517:4e95df] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client read_certificate_request
+2026-09-04 23:40:55.763 Df Babytuna[78517:4e95df] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client read_server_certificate
+2026-09-04 23:40:55.763 Df Babytuna[78517:4e95df] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client read_server_certificate_verify
+2026-09-04 23:40:55.763 Df Babytuna[78517:4e95df] [com.apple.network:boringssl] boringssl_context_evaluate_trust_async(1833) [C1.1.1.1:2][0x103f0ed90] Performing external trust evaluation
+2026-09-04 23:40:55.763 A  Babytuna[78517:4e95df] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:55.763 A  Babytuna[78517:4e95df] (Security) SecKeyCopyAttributes
+2026-09-04 23:40:55.763 A  Babytuna[78517:4e95df] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:55.763 Df Babytuna[78517:4e95df] [com.apple.network:boringssl] boringssl_context_evaluate_trust_async_external(1818) [C1.1.1.1:2][0x103f0ed90] Asyncing for external verify block
+2026-09-04 23:40:55.763 Df Babytuna[78517:4e95df] [com.apple.CFNetwork:Default] Connection 1: asked to evaluate TLS Trust
+2026-09-04 23:40:55.767 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Task <E9743E2E-2B8C-4456-A39A-5629BD0C05EC>.<1> auth completion disp=1 cred=0x0
+2026-09-04 23:40:55.767 Df Babytuna[78517:4e95d7] [com.apple.securityd:trust] (Trust 0x6000035006e0) No pending evals, starting
+2026-09-04 23:40:55.767 A  Babytuna[78517:4e95d7] (Security) SecTrustEvaluateIfNecessaryFastAsync
+2026-09-04 23:40:55.767 Df Babytuna[78517:4e95d7] [com.apple.securityd:keychain] System Keychain Always Supported set via feature flag to disabled
+2026-09-04 23:40:55.768 Df Babytuna[78517:4e95d7] [com.apple.xpc:connection] [0x103f0ff70] activating connection: mach=true listener=false peer=false name=com.apple.trustd
+2026-09-04 23:40:55.768 Df Babytuna[78517:4e95d7] [com.apple.securityd:xpc] user sessions enabled, targeting 502
+2026-09-04 23:40:55.768 Df Babytuna[78517:4e95d7] [com.apple.xpc:connection] [0x103f10080] activating connection: mach=true listener=false peer=false name=com.apple.trustd
+2026-09-04 23:40:55.768 Df Babytuna[78517:4e95d7] [com.apple.securityd:trust] (Trust 0x6000035006e0) Completed async eval kickoff
+2026-09-04 23:40:55.779 Df Babytuna[78517:4e95d7] [com.apple.securityd:trust] (Trust 0x6000035006e0) trustd returned 4
+2026-09-04 23:40:55.779 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] System Trust Evaluation yielded status(0)
+2026-09-04 23:40:55.779 Df Babytuna[78517:4e95d7] [com.apple.securityd:trust] (Trust 0x600003520210) No pending evals, starting
+2026-09-04 23:40:55.779 A  Babytuna[78517:4e95d7] (Security) SecTrustEvaluateIfNecessaryFastAsync
+2026-09-04 23:40:55.779 Df Babytuna[78517:4e95d7] [com.apple.securityd:xpc] user sessions enabled, targeting 502
+2026-09-04 23:40:55.779 Df Babytuna[78517:4e95d7] [com.apple.xpc:connection] [0x103f10190] activating connection: mach=true listener=false peer=false name=com.apple.trustd
+2026-09-04 23:40:55.779 Df Babytuna[78517:4e95d7] [com.apple.securityd:trust] (Trust 0x600003520210) Completed async eval kickoff
+2026-09-04 23:40:55.779 Df Babytuna[78517:4e95d7] [com.apple.xpc:connection] [0x103f10080] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+2026-09-04 23:40:55.780 Df Babytuna[78517:4e95d8] [com.apple.securityd:trust] (Trust 0x600003520210) trustd returned 4
+2026-09-04 23:40:55.780 Df Babytuna[78517:4e95d8] [com.apple.CFNetwork:Default] Connection 1: TLS Trust result 0
+2026-09-04 23:40:55.780 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] boringssl_context_evaluate_trust_async_external_block_invoke_3(1773) [C1.1.1.1:2][0x103f0ed90] Returning from external verify block with result: true
+2026-09-04 23:40:55.780 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] boringssl_context_certificate_verify_callback(2014) [C1.1.1.1:2][0x103f0ed90] Certificate verification result: OK
+2026-09-04 23:40:55.780 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client read_server_finished
+2026-09-04 23:40:55.780 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client send_end_of_early_data
+2026-09-04 23:40:55.780 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client send_client_encrypted_extensions
+2026-09-04 23:40:55.780 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client send_client_certificate
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client complete_second_flight
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS 1.3 client done
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS client finish_client_handshake
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C1.1.1.1:2][0x103f0ed90] Client handshake state: TLS client done
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] boringssl_context_info_handler(2396) [C1.1.1.1:2][0x103f0ed90] Client handshake done
+2026-09-04 23:40:55.781 A  Babytuna[78517:4e95d8] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:55.781 A  Babytuna[78517:4e95d8] (Security) SecKeyCopyAttributes
+2026-09-04 23:40:55.781 A  Babytuna[78517:4e95d8] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:boringssl] nw_protocol_boringssl_signal_connected(895) [C1.1.1.1:2][0x103f0ed90] TLS connected [server(0) version(0x0304) ciphersuite(TLS_AES_256_GCM_SHA384) group(0x11ec) signature_alg(0x0403) alpn(h2) resumed(0) offered_ticket(0) in_early_data(0) early_data_accepted(0) false_started(0) ocsp_received(0) sct_received(0) connect_time(42ms) flight_time(25ms) rtt(25ms) write_stalls(0) read_stalls(2) pake(0x0000)]
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:connection] nw_flow_connected [C1.1.1.1 IPv6#9ec641b0.443 in_progress socket-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Output protocol connected (CFNetworkConnection-2683313838)
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:connection] [C1.1.1.1 IPv6#9ec641b0.443 ready socket-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:child_finish_connect @0.127s
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:connection] [C1.1.1 Hostname#2f29762c:443 ready resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:child_finish_connect @0.127s
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:connection] [C1.1 Hostname#2f29762c:443 ready transform (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:child_finish_connect @0.127s
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:connection] nw_flow_connected [C1 IPv6#9ec641b0.443 in_progress parent-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Output protocol connected (endpoint_flow)
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:connection] [C1 IPv6#9ec641b0.443 ready parent-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:finish_connect @0.127s
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.network:connection] nw_connection_report_state_with_handler_on_nw_queue [C1] reporting state ready
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.xpc:connection] [0x103f10190] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.CFNetwork:Default] Connection 1: connected successfully
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.CFNetwork:Default] Connection 1: TLS handshake complete
+2026-09-04 23:40:55.781 Df Babytuna[78517:4e95d8] [com.apple.CFNetwork:Default] Connection 1: ready C(N) E(N)
+2026-09-04 23:40:55.782 Df Babytuna[78517:4e95d8] [com.apple.network:connection] [C1] event: client:connection_reused @0.127s
+2026-09-04 23:40:55.782 Df Babytuna[78517:4e95d8] [com.apple.network:connection] nw_protocol_socket_notify [C1.1.1.1:3] nw_protocol_notification_type_connection_idle is false
+2026-09-04 23:40:55.782 A  Babytuna[78517:4e95d9] (RunningBoardServices) didChangeInheritances
+2026-09-04 23:40:55.785 Df Babytuna[78517:4e95d8] [com.apple.CFNetwork:Default] Task <E9743E2E-2B8C-4456-A39A-5629BD0C05EC>.<1> now using Connection 1
+2026-09-04 23:40:55.785 Df Babytuna[78517:4e95d8] [com.apple.CFNetwork:Default] Task <E9743E2E-2B8C-4456-A39A-5629BD0C05EC>.<1> sent request, body N 0
+2026-09-04 23:40:55.798 A  Babytuna[78517:4e95df] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:55.798 A  Babytuna[78517:4e95df] (Security) SecKeyCopyAttributes
+2026-09-04 23:40:55.798 A  Babytuna[78517:4e95df] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:55.798 A  Babytuna[78517:4e95df] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:55.798 A  Babytuna[78517:4e95df] (Security) SecKeyCopyAttributes
+2026-09-04 23:40:55.798 A  Babytuna[78517:4e95df] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:55.871 Df Babytuna[78517:4e95df] [com.apple.CFNetwork:Default] Task <E9743E2E-2B8C-4456-A39A-5629BD0C05EC>.<1> received response, status 400 content K
+2026-09-04 23:40:55.871 Df Babytuna[78517:4e95df] [com.apple.CFNetwork:Default] Task <E9743E2E-2B8C-4456-A39A-5629BD0C05EC>.<1> done using Connection 1
+2026-09-04 23:40:55.871 Df Babytuna[78517:4e95df] [com.apple.network:connection] [C1] event: client:connection_idle @0.217s
+2026-09-04 23:40:55.871 Df Babytuna[78517:4e95df] [com.apple.network:connection] nw_protocol_socket_notify [C1.1.1.1:3] nw_protocol_notification_type_connection_idle is true
+2026-09-04 23:40:55.871 A  Babytuna[78517:4e95df] (Security) SecTrustEvaluateIfNecessary
+2026-09-04 23:40:55.871 Df Babytuna[78517:4e95df] [com.apple.securityd:xpc] user sessions enabled, targeting 502
+2026-09-04 23:40:55.871 Df Babytuna[78517:4e95df] [com.apple.xpc:connection] [0x104411770] activating connection: mach=true listener=false peer=false name=com.apple.trustd
+2026-09-04 23:40:55.873 Df Babytuna[78517:4e95df] [com.apple.xpc:connection] [0x104411770] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+2026-09-04 23:40:55.873 Df Babytuna[78517:4e95df] [com.apple.CFNetwork:Default] Task <E9743E2E-2B8C-4456-A39A-5629BD0C05EC>.<1> response ended
+2026-09-04 23:40:55.873 Df Babytuna[78517:4e95d8] [com.apple.CFNetwork:Summary] Task <E9743E2E-2B8C-4456-A39A-5629BD0C05EC>.<1> summary for task success {transaction_duration_ms=230, response_status=400, connection=1, protocol="h2", domain_lookup_duration_ms=39, connect_duration_ms=85, secure_connection_duration_ms=42, private_relay=false, request_start_ms=142, request_duration_ms=0, response_start_ms=228, response_duration_ms=1, request_bytes=410, request_throughput_kbps=30915, response_bytes=481, response_throughput_kbps=2028, cache_hit=false}
+2026-09-04 23:40:55.873 Df Babytuna[78517:4e95d8] [com.apple.CoreAnalytics:client] No XPC connection in Simulator
+2026-09-04 23:40:55.873 Df Babytuna[78517:4e95df] [com.apple.CFNetwork:Default] Task <E9743E2E-2B8C-4456-A39A-5629BD0C05EC>.<1> finished successfully
+2026-09-04 23:40:55.890 E  Babytuna[78517:4e95df] [dev.expo.modules:expo-updates] 🟠 {"code":"Unknown","message":"HTTP response error 400: \134"channel-name\134": Required. The headers \134"expo-runtime-version\134", \134"expo-channel-name\134", and \134"expo-platform\134" are required. They can also be set with the query parameters \134"runtime-version\134", \134"channel-name\134", and \134"platform\134". Learn more: https:\134/\134/expo.fyi\134/eas-update-missing-headers","level":"error","stacktrace":["Babytuna                            0x0000000102b75b3c $s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_ + 688","Babytuna                            0x0000000102b3dbd8 $s9EXUpdates14FileDownloaderC12downloadData33_75774A0A231786B0DCB0D3DA50F03832LL11withRequest13progressBlock07successP005errorP0y10Foundation10URLRequestV_ySdcSgyAJ0E0VSg_So13NSURLResponseCtcyAA12UpdatesErrorOctFyAP_ARSgs0W0_pSgtYbcfU_TATm + 32","Babytuna                           <…>
+2026-09-04 23:40:55.894 E  Babytuna[78517:4e95d8] [dev.expo.modules:expo-updates] 🟠 {"message":"AppController appLoaderTask didFinishBackgroundUpdateWithStatus=Error: HTTP response error 400: \134"channel-name\134": Required. The headers \134"expo-runtime-version\134", \134"expo-channel-name\134", and \134"expo-platform\134" are required. They can also be set with the query parameters \134"runtime-version\134", \134"channel-name\134", and \134"platform\134". Learn more: https:\134/\134/expo.fyi\134/eas-update-missing-headers","code":"UpdateFailedToLoad","stacktrace":["Babytuna                            0x0000000102b96260 $s9EXUpdates16StartupProcedureC13appLoaderTask_35didFinishBackgroundUpdateWithStatus6update5erroryAA03AppeF0C_AA0ijL0OAA0J0CSgs5Error_pSgtFTf4dnnnn_n + 836","Babytuna                            0x0000000102b94330 $s9EXUpdates16StartupProcedureC13appLoaderTask_35didFinishBackgroundUpdateWithStatus6update5erroryAA03AppeF0C_AA0ijL0OAA0J0CSgs5Error_pSgtFTo + 104","Babytuna                            0x0000000102b4c36c $s9EXUpdates13AppLoaderTaskC25didFinishBackgroundUpdate019_3339434A583F8B1F65J12D05F1E075305LL10w<…>
+2026-09-04 23:40:56.136 Df Babytuna[78517:4e95ce] [com.apple.Accessibility:AXCommon] Read Per-App on Init: Smart invert = (null)
+2026-09-04 23:40:56.144 Df Babytuna[78517:4e95d9] [com.apple.xpc:connection] [0x103f11ae0] activating connection: mach=true listener=false peer=false name=com.apple.fontservicesd
+2026-09-04 23:40:56.178 Df Babytuna[78517:4e95ce] [com.apple.network:path] nw_path_evaluator_start [D3BE57DB-B0DB-4197-B2EA-FEC8677114DD <NULL> generic, attribution: developer]
+	path: satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown
+2026-09-04 23:40:56.181 A  Babytuna[78517:4e95d9] (Security) SecItemCopyMatching_ios
+2026-09-04 23:40:56.184 Df Babytuna[78517:4e95d9] [com.apple.securityd:secitemratelimit] Not internal release, disabling SIRL
+2026-09-04 23:40:56.185 Df Babytuna[78517:4e95da] [com.apple.FileURL:default] kExcludedFromBackupXattrName set on path: /Users/david/Library/Developer/CoreSimulator/Devices/EF05F833-2AC4-4383-8688-36C51B956BCF/data/Containers/Data/Application/4718C22D-A873-406B-8136-372015356E43/Library/Application Support/com.babytuna.systems/RCTAsyncLocalStorage_V1
+2026-09-04 23:40:56.186 Df Babytuna[78517:4e95d9] [com.apple.securityd:thread-local-client-debug] SecSecurityClientGet new thread!
+2026-09-04 23:40:56.186 Df Babytuna[78517:4e95d9] [com.apple.xpc:connection] [0x104420460] activating connection: mach=true listener=false peer=false name=com.apple.securityd
+2026-09-04 23:40:56.198 Df Babytuna[78517:4e95ce] [com.apple.network:activity] <nw_activity 50:1 [1DA71BE8-1874-4725-B50C-BC7112D9B8F2] (global parent) (reporting strategy default) complete (reason success)> complete with reason 2 (success), duration 1311ms
+2026-09-04 23:40:56.203 Df Babytuna[78517:4e95ce] [com.apple.network:activity] <nw_activity 50:2 [C736C44C-0A3D-472A-8AF6-EE1D248A7D86] (reporting strategy default) complete (reason success)> complete with reason 2 (success), duration 1315ms
+2026-09-04 23:40:56.203 Df Babytuna[78517:4e95ce] [com.apple.network:activity] Unsetting the global parent activity <nw_activity 50:1 [1DA71BE8-1874-4725-B50C-BC7112D9B8F2] (global parent) (reporting strategy default) complete (reason success)>
+2026-09-04 23:40:56.203 Df Babytuna[78517:4e95ce] [com.apple.network:activity] Unset the global parent activity
+2026-09-04 23:40:56.221 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] { [Error: Calling the 'getValueWithKeyAsync' function has failed
+→ Caused by: A required entitlement isn't present.] code: 'ERR_KEY_CHAIN' }
+2026-09-04 23:40:56.221 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Task <21C173FC-EFD6-4295-97FE-4A17F201927A>.<1> resuming, timeouts(0.0, 604800.0) qos(0x19) voucher((null)) activity(00000000-0000-0000-0000-000000000000)
+2026-09-04 23:40:56.222 A  Babytuna[78517:4e95da] (Security) SecItemCopyMatching_ios
+2026-09-04 23:40:56.249 Df Babytuna[78517:4e95da] [com.apple.securityd:thread-local-client-debug] SecSecurityClientGet new thread!
+2026-09-04 23:40:56.249 Df Babytuna[78517:4e95d7] [com.apple.CFNetwork:Default] Task <C0CA716D-DA3D-474A-93BE-8F14EA08B166>.<2> resuming, timeouts(0.0, 604800.0) qos(0x19) voucher((null)) activity(00000000-0000-0000-0000-000000000000)
+2026-09-04 23:40:56.250 Df Babytuna[78517:4e95d9] [com.apple.CFNetwork:Default] Connection 0: creating secure tcp or quic connection
+2026-09-04 23:40:56.250 Df Babytuna[78517:4e95d9] [com.apple.CFNetwork:Default] Task <C0CA716D-DA3D-474A-93BE-8F14EA08B166>.<2> waiting for setup of Connection 2
+2026-09-04 23:40:56.250 Df Babytuna[78517:4e95d9] [com.apple.CFNetwork:Default] Connection 2: enabling TLS
+2026-09-04 23:40:56.250 Df Babytuna[78517:4e95d9] [com.apple.CFNetwork:Default] Connection 2: starting, TC(0x0)
+2026-09-04 23:40:56.250 Df Babytuna[78517:4e95d9] [com.apple.network:connection] [C2 2DDEF3C0-1081-4119-A242-AD0AF82538F6 Hostname#0fc5b184:443 quic-connection, url: https://clients3.google.com/generate_204, definite, attribution: developer, context: com.apple.CFNetwork.NSURLSession.{03341629-435C-4662-A389-A6B1AA36A027}{(null)}{Y}{2}{0x0} (private), proc: CF6F27E8-C6D2-3524-89CB-AD4D2227F2AC, delegated upid: 0] start
+2026-09-04 23:40:56.250 Df Babytuna[78517:4e95d9] [com.apple.network:connection] [C2 Hostname#0fc5b184:443 initial parent-flow ((null))] event: path:start @0.000s
+2026-09-04 23:40:56.250 A  Babytuna[78517:4e95da] (Security) SecItemCopyMatching_ios
+2026-09-04 23:40:56.251 Df Babytuna[78517:4e95d9] [com.apple.network:connection] [C2 Hostname#0fc5b184:443 waiting parent-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: path:satisfied @0.000s, uuid: C9CE2044-B7FF-46CC-8DE0-7F348C9FC481
+2026-09-04 23:40:56.251 Df Babytuna[78517:4e95d9] [com.apple.network:connection] [C2 Hostname#0fc5b184:443 in_progress parent-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:start_connect @0.000s
+2026-09-04 23:40:56.251 Df Babytuna[78517:4e95d9] [com.apple.network:connection] nw_connection_report_state_with_handler_on_nw_queue [C2] reporting state preparing
+2026-09-04 23:40:56.251 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Auto refresh tick failed with error. This is likely a transient error.', { [Error: Calling the 'getValueWithKeyAsync' function has failed
+→ Caused by: A required entitlement isn't present.] code: 'ERR_KEY_CHAIN' }
+2026-09-04 23:40:56.251 Df Babytuna[78517:4e95d9] [com.apple.network:connection] [C2 Hostname#0fc5b184:443 in_progress parent-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:start_child @0.000s
+2026-09-04 23:40:56.251 Df Babytuna[78517:4e95d9] [com.apple.network:connection] [C2.1 Hostname#0fc5b184:443 initial path ((null))] event: path:start @0.000s
+2026-09-04 23:40:56.251 Df Babytuna[78517:4e95d9] [com.apple.network:connection] [C2.1 Hostname#0fc5b184:443 waiting path (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: path:satisfied @0.000s, uuid: C9CE2044-B7FF-46CC-8DE0-7F348C9FC481
+2026-09-04 23:40:56.251 Df Babytuna[78517:4e95d9] [com.apple.network:connection] [C2.1 Hostname#0fc5b184:443 in_progress transform (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: transform:start @0.000s
+2026-09-04 23:40:56.251 Df Babytuna[78517:4e95d9] [com.apple.network:connection] [C2.1.1 Hostname#0fc5b184:443 initial path ((null))] event: path:start @0.000s
+2026-09-04 23:40:56.251 Df Babytuna[78517:4e95d9] [com.apple.network:connection] [C2.1.1 Hostname#0fc5b184:443 waiting path (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: path:satisfied @0.000s, uuid: 664BB231-3673-4389-8043-BB5C19BA998A
+2026-09-04 23:40:56.251 Df Babytuna[78517:4e95d9] [com.apple.network:connection] [C2.1.1 Hostname#0fc5b184:443 in_progress resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: resolver:start_dns @0.000s
+2026-09-04 23:40:56.252 Df Babytuna[78517:4e95d9] [com.apple.CFNetwork:Default] Task <21C173FC-EFD6-4295-97FE-4A17F201927A>.<1> setting up Connection 2
+2026-09-04 23:40:56.257 Df Babytuna[78517:4e95da] [com.apple.network:connection] nw_endpoint_resolver_update [C2.1.1 Hostname#0fc5b184:443 in_progress resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Adding endpoint handler for IPv6#8e6e55fc.443
+2026-09-04 23:40:56.257 Df Babytuna[78517:4e95da] [com.apple.network:connection] nw_endpoint_resolver_update [C2.1.1 Hostname#0fc5b184:443 in_progress resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Adding endpoint handler for IPv4#341c413d:443
+2026-09-04 23:40:56.257 Df Babytuna[78517:4e95da] [com.apple.network:connection] [C2.1.1 Hostname#0fc5b184:443 in_progress resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: resolver:receive_dns @0.007s
+2026-09-04 23:40:56.257 Df Babytuna[78517:4e95da] [com.apple.network:connection] [C2.1.1.1 IPv6#8e6e55fc.443 initial path ((null))] event: path:start @0.007s
+2026-09-04 23:40:56.258 Df Babytuna[78517:4e95da] [com.apple.network:connection] [C2.1.1.1 IPv6#8e6e55fc.443 waiting path (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: path:satisfied @0.007s, uuid: 3ED5F830-EB1D-4287-8D06-09A34795FFBB
+2026-09-04 23:40:56.258 Df Babytuna[78517:4e95da] [com.apple.network:connection] [C2.1.1.1 IPv6#8e6e55fc.443 in_progress socket-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:start_connect @0.007s
+2026-09-04 23:40:56.263 A  Babytuna[78517:4e95da] (Security) SecItemCopyMatching_ios
+2026-09-04 23:40:56.266 A  Babytuna[78517:4e95da] (Security) SecItemCopyMatching_ios
+2026-09-04 23:40:56.268 A  Babytuna[78517:4e95df] (Security) SecItemCopyMatching_ios
+2026-09-04 23:40:56.268 Df Babytuna[78517:4e95df] [com.apple.securityd:thread-local-client-debug] SecSecurityClientGet new thread!
+2026-09-04 23:40:56.268 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Auto refresh tick failed with error. This is likely a transient error.', { [Error: Calling the 'getValueWithKeyAsync' function has failed
+→ Caused by: A required entitlement isn't present.] code: 'ERR_KEY_CHAIN' }
+2026-09-04 23:40:56.268 E  Babytuna[78517:4e95eb] [com.facebook.react.log:javascript] 'Failed to initialize auth state:', { [Error: Calling the 'getValueWithKeyAsync' function has failed
+→ Caused by: A required entitlement isn't present.] code: 'ERR_KEY_CHAIN' }
+2026-09-04 23:40:56.272 Df Babytuna[78517:4e95da] [com.apple.network:connection] nw_socket_handle_socket_event [C2.1.1.1:3] Socket received CONNECTED event
+2026-09-04 23:40:56.275 Df Babytuna[78517:4e95da] [com.apple.network:connection] nw_flow_connected [C2.1.1.1 IPv6#8e6e55fc.443 in_progress socket-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Transport protocol connected (socket)
+2026-09-04 23:40:56.275 Df Babytuna[78517:4e95da] [com.apple.network:connection] [C2.1.1.1 IPv6#8e6e55fc.443 in_progress socket-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:finish_transport @0.024s
+2026-09-04 23:40:56.275 Df Babytuna[78517:4e95da] [com.apple.network:boringssl] boringssl_session_apply_protocol_options_for_transport_block_invoke_2(2323) [C2.1.1.1:2][0x103f5e490] TLS configured [min_version(0x0303) max_version(0x0304) name(redacted) tickets(false) false_start(false) enforce_ev(false) enforce_ats(false) ats_non_pfs_ciphersuite_allowed(false) ech(false) pqtls(true), pake(false)]
+2026-09-04 23:40:56.275 Df Babytuna[78517:4e95da] [com.apple.network:boringssl] boringssl_context_info_handler(2390) [C2.1.1.1:2][0x103f5e490] Client handshake started
+2026-09-04 23:40:56.275 Df Babytuna[78517:4e95da] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS client enter_early_data
+2026-09-04 23:40:56.276 Df Babytuna[78517:4e95da] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS client read_server_hello
+2026-09-04 23:40:56.302 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client read_hello_retry_request
+2026-09-04 23:40:56.302 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client read_server_hello
+2026-09-04 23:40:56.302 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client read_encrypted_extensions
+2026-09-04 23:40:56.302 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client read_certificate_request
+2026-09-04 23:40:56.302 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client read_server_certificate
+2026-09-04 23:40:56.302 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client read_server_certificate_verify
+2026-09-04 23:40:56.303 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_evaluate_trust_async(1833) [C2.1.1.1:2][0x103f5e490] Performing external trust evaluation
+2026-09-04 23:40:56.303 A  Babytuna[78517:4e95de] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:56.303 A  Babytuna[78517:4e95de] (Security) SecKeyCopyAttributes
+2026-09-04 23:40:56.303 A  Babytuna[78517:4e95de] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:56.303 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_evaluate_trust_async_external(1818) [C2.1.1.1:2][0x103f5e490] Asyncing for external verify block
+2026-09-04 23:40:56.303 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Connection 2: asked to evaluate TLS Trust
+2026-09-04 23:40:56.303 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Task <21C173FC-EFD6-4295-97FE-4A17F201927A>.<1> auth completion disp=1 cred=0x0
+2026-09-04 23:40:56.303 Df Babytuna[78517:4e95d9] [com.apple.securityd:trust] (Trust 0x600003516890) No pending evals, starting
+2026-09-04 23:40:56.303 A  Babytuna[78517:4e95d9] (Security) SecTrustEvaluateIfNecessaryFastAsync
+2026-09-04 23:40:56.303 Df Babytuna[78517:4e95d9] [com.apple.securityd:xpc] user sessions enabled, targeting 502
+2026-09-04 23:40:56.303 Df Babytuna[78517:4e95d9] [com.apple.xpc:connection] [0x1044085f0] activating connection: mach=true listener=false peer=false name=com.apple.trustd
+2026-09-04 23:40:56.303 Df Babytuna[78517:4e95d9] [com.apple.securityd:trust] (Trust 0x600003516890) Completed async eval kickoff
+2026-09-04 23:40:56.305 Df Babytuna[78517:4e95d9] [com.apple.securityd:trust] (Trust 0x600003516890) trustd returned 4
+2026-09-04 23:40:56.305 Df Babytuna[78517:4e95d9] [com.apple.CFNetwork:Default] System Trust Evaluation yielded status(0)
+2026-09-04 23:40:56.305 Df Babytuna[78517:4e95d9] [com.apple.securityd:trust] (Trust 0x60000350d290) No pending evals, starting
+2026-09-04 23:40:56.305 A  Babytuna[78517:4e95d9] (Security) SecTrustEvaluateIfNecessaryFastAsync
+2026-09-04 23:40:56.305 Df Babytuna[78517:4e95d9] [com.apple.securityd:xpc] user sessions enabled, targeting 502
+2026-09-04 23:40:56.305 Df Babytuna[78517:4e95d9] [com.apple.xpc:connection] [0x103f6d6b0] activating connection: mach=true listener=false peer=false name=com.apple.trustd
+2026-09-04 23:40:56.305 Df Babytuna[78517:4e95d9] [com.apple.securityd:trust] (Trust 0x60000350d290) Completed async eval kickoff
+2026-09-04 23:40:56.305 Df Babytuna[78517:4e95d9] [com.apple.xpc:connection] [0x1044085f0] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+2026-09-04 23:40:56.306 E  Babytuna[78517:4e95da] [com.apple.coreui:framework] CoreUI: CUIThemeStore: No theme registered with id=0
+2026-09-04 23:40:56.306 F  Babytuna[78517:4e95da] [com.apple.coreui:framework] CoreUI: CUIThemeStore: No theme registered with id=0
+2026-09-04 23:40:56.306 A  Babytuna[78517:4e95da] (libsystem_trace.dylib) Activity for state dumps
+2026-09-04 23:40:56.306 Df Babytuna[78517:4e95de] [com.apple.securityd:trust] (Trust 0x60000350d290) trustd returned 4
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Connection 2: TLS Trust result 0
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_evaluate_trust_async_external_block_invoke_3(1773) [C2.1.1.1:2][0x103f5e490] Returning from external verify block with result: true
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_certificate_verify_callback(2014) [C2.1.1.1:2][0x103f5e490] Certificate verification result: OK
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client read_server_finished
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client send_end_of_early_data
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client send_client_encrypted_extensions
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client send_client_certificate
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client complete_second_flight
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS 1.3 client done
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95ce] [PrototypeTools:domain] Not observing PTDefaults on customer install.
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS client finish_client_handshake
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2407) [C2.1.1.1:2][0x103f5e490] Client handshake state: TLS client done
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] boringssl_context_info_handler(2396) [C2.1.1.1:2][0x103f5e490] Client handshake done
+2026-09-04 23:40:56.312 A  Babytuna[78517:4e95de] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:56.312 A  Babytuna[78517:4e95de] (Security) SecKeyCopyAttributes
+2026-09-04 23:40:56.312 A  Babytuna[78517:4e95de] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:boringssl] nw_protocol_boringssl_signal_connected(895) [C2.1.1.1:2][0x103f5e490] TLS connected [server(0) version(0x0304) ciphersuite(TLS_AES_256_GCM_SHA384) group(0x11ec) signature_alg(0x0403) alpn(h2) resumed(0) offered_ticket(0) in_early_data(0) early_data_accepted(0) false_started(0) ocsp_received(0) sct_received(0) connect_time(37ms) flight_time(26ms) rtt(26ms) write_stalls(0) read_stalls(2) pake(0x0000)]
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:connection] nw_flow_connected [C2.1.1.1 IPv6#8e6e55fc.443 in_progress socket-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Output protocol connected (CFNetworkConnection-2683313838)
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:connection] [C2.1.1.1 IPv6#8e6e55fc.443 ready socket-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:child_finish_connect @0.062s
+2026-09-04 23:40:56.312 Df Babytuna[78517:4e95de] [com.apple.network:connection] [C2.1.1 Hostname#0fc5b184:443 ready resolver (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:child_finish_connect @0.062s
+2026-09-04 23:40:56.313 Df Babytuna[78517:4e95de] [com.apple.network:connection] [C2.1 Hostname#0fc5b184:443 ready transform (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:child_finish_connect @0.062s
+2026-09-04 23:40:56.313 Df Babytuna[78517:4e95de] [com.apple.network:connection] nw_flow_connected [C2 IPv6#8e6e55fc.443 in_progress parent-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] Output protocol connected (endpoint_flow)
+2026-09-04 23:40:56.313 Df Babytuna[78517:4e95de] [com.apple.network:connection] [C2 IPv6#8e6e55fc.443 ready parent-flow (satisfied (Path is satisfied), interface: en0[802.11], uses wifi, LQM: unknown)] event: flow:finish_connect @0.062s
+2026-09-04 23:40:56.313 Df Babytuna[78517:4e95de] [com.apple.network:connection] nw_connection_report_state_with_handler_on_nw_queue [C2] reporting state ready
+2026-09-04 23:40:56.313 Df Babytuna[78517:4e95de] [com.apple.xpc:connection] [0x103f6d6b0] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+2026-09-04 23:40:56.313 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Connection 2: connected successfully
+2026-09-04 23:40:56.313 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Connection 2: TLS handshake complete
+2026-09-04 23:40:56.313 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Connection 2: ready C(N) E(N)
+2026-09-04 23:40:56.313 Df Babytuna[78517:4e95de] [com.apple.network:connection] [C2] event: client:connection_reused @0.062s
+2026-09-04 23:40:56.319 Df Babytuna[78517:4e95de] [com.apple.network:connection] nw_protocol_socket_notify [C2.1.1.1:3] nw_protocol_notification_type_connection_idle is false
+2026-09-04 23:40:56.319 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Task <21C173FC-EFD6-4295-97FE-4A17F201927A>.<1> now using Connection 2
+2026-09-04 23:40:56.319 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Task <C0CA716D-DA3D-474A-93BE-8F14EA08B166>.<2> now using Connection 2
+2026-09-04 23:40:56.319 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Task <21C173FC-EFD6-4295-97FE-4A17F201927A>.<1> sent request, body N 0
+2026-09-04 23:40:56.319 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Task <C0CA716D-DA3D-474A-93BE-8F14EA08B166>.<2> sent request, body N 0
+2026-09-04 23:40:56.335 A  Babytuna[78517:4e95d7] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:56.335 A  Babytuna[78517:4e95d7] (Security) SecKeyCopyAttributes
+2026-09-04 23:40:56.335 A  Babytuna[78517:4e95d7] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:56.335 A  Babytuna[78517:4e95d7] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:56.335 A  Babytuna[78517:4e95d7] (Security) SecKeyCopyAttributes
+2026-09-04 23:40:56.335 A  Babytuna[78517:4e95d7] (Security) SecKeyCopyPublicBytes
+2026-09-04 23:40:56.336 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Task <21C173FC-EFD6-4295-97FE-4A17F201927A>.<1> received response, status 204 content U
+2026-09-04 23:40:56.336 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Task <C0CA716D-DA3D-474A-93BE-8F14EA08B166>.<2> received response, status 204 content U
+2026-09-04 23:40:56.336 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Task <21C173FC-EFD6-4295-97FE-4A17F201927A>.<1> done using Connection 2
+2026-09-04 23:40:56.336 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Task <C0CA716D-DA3D-474A-93BE-8F14EA08B166>.<2> done using Connection 2
+2026-09-04 23:40:56.336 Df Babytuna[78517:4e95de] [com.apple.network:connection] [C2] event: client:connection_idle @0.085s
+2026-09-04 23:40:56.336 Df Babytuna[78517:4e95de] [com.apple.network:connection] nw_protocol_socket_notify [C2.1.1.1:3] nw_protocol_notification_type_connection_idle is true
+2026-09-04 23:40:56.336 A  Babytuna[78517:4e95de] (Security) SecTrustEvaluateIfNecessary
+2026-09-04 23:40:56.336 Df Babytuna[78517:4e95de] [com.apple.securityd:xpc] user sessions enabled, targeting 502
+2026-09-04 23:40:56.336 Df Babytuna[78517:4e95de] [com.apple.xpc:connection] [0x103f6e0d0] activating connection: mach=true listener=false peer=false name=com.apple.trustd
+2026-09-04 23:40:56.338 Df Babytuna[78517:4e95de] [com.apple.xpc:connection] [0x103f6e0d0] invalidated because the current process cancelled the connection by calling xpc_connection_cancel()
+2026-09-04 23:40:56.343 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Task <21C173FC-EFD6-4295-97FE-4A17F201927A>.<1> response ended
+2026-09-04 23:40:56.343 Df Babytuna[78517:4e95de] [com.apple.CFNetwork:Default] Task <C0CA716D-DA3D-474A-93BE-8F14EA08B166>.<2> response ended
+2026-09-04 23:40:56.343 Df Babytuna[78517:4e95da] [com.apple.CFNetwork:Summary] Task <21C173FC-EFD6-4295-97FE-4A17F201927A>.<1> summary for task success {transaction_duration_ms=93, response_status=204, connection=2, protocol="h2", domain_lookup_duration_ms=7, connect_duration_ms=55, secure_connection_duration_ms=37, private_relay=false, request_start_ms=69, request_duration_ms=0, response_start_ms=85, response_duration_ms=7, request_bytes=138, request_throughput_kbps=13801, response_bytes=114, response_throughput_kbps=123, cache_hit=false}
+2026-09-04 23:40:56.343 Df Babytuna[78517:4e95da] [com.apple.CFNetwork:Default] Task <21C173FC-EFD6-4295-97FE-4A17F201927A>.<1> finished successfully
+2026-09-04 23:40:56.343 Df Babytuna[78517:4e95da] [com.apple.CFNetwork:Summary] Task <C0CA716D-DA3D-474A-93BE-8F14EA08B166>.<2> summary for task success {transaction_duration_ms=93, response_status=204, connection=2, reused=1, reused_after_ms=0, request_start_ms=69, request_duration_ms=0, response_start_ms=85, response_duration_ms=7, request_bytes=40, request_throughput_kbps=3598, response_bytes=38, response_throughput_kbps=40, cache_hit=false}
+2026-09-04 23:40:56.343 Df Babytuna[78517:4e95da] [com.apple.CFNetwork:Default] Task <C0CA716D-DA3D-474A-93BE-8F14EA08B166>.<2> finished successfully
+2026-09-04 23:40:56.412 Sd Babytuna[78517:0] (79E72B83-2384-3A91-8EE7-4315E85E9A91) IOHIDManager State
+{
+    DispatchQueue = 0;
+    RunLoop = 1;
+    createOptions = 0;
+    isOpen = 0;
+    openOptions = 0;
+}
+2026-09-04 23:40:56.423 Df Babytuna[78517:4e95ce] [com.apple.BackBoard:Display] [FBSDisplaySource 1-1] silently connecting raw configuration: <FBSDisplayConfiguration: 0x600003d52490; Main; mode: "440x956@3x 60Hz p3 SDR">
+2026-09-04 23:40:56.653 A  Babytuna[78517:4e95d7] (RunningBoardServices) didChangeInheritances
+2026-09-04 23:41:00.203 Df Babytuna[78517:4e95ce] (libMobileGestalt.dylib) Property isp[camera-front] found {length = 4, bytes = 0x01000000}
+2026-09-04 23:41:00.204 A  Babytuna[78517:4e95ce] (CoreFoundation) Updating Key-Value Observers Of Preferences
+2026-09-04 23:41:00.215 A  Babytuna[78517:4e95ce] (libsystem_containermanager.dylib) container_system_group_path_for_identifier
+2026-09-04 23:41:00.215 Df Babytuna[78517:4e95ce] [com.apple.containermanager:xpc] Requesting container lookup; class = 13, identifier = (null), group_identifier = systemgroup.com.apple.configurationprofiles, create = 1, temp = 0, euid = 502, uid = 502
+2026-09-04 23:41:00.215 A  Babytuna[78517:4e95ce] (libsystem_containermanager.dylib) container_query_t
+2026-09-04 23:41:00.215 Df Babytuna[78517:4e95ce] [com.apple.containermanager:xpc] Query; euid = 502, uid = 502, class = 13, identifier = [(null)](0), flags = 900000003
+2026-09-04 23:41:00.216 Df Babytuna[78517:4e95ce] [com.apple.containermanager:unspecified] _container_query_get_result_at_index: success
+2026-09-04 23:41:00.216 A  Babytuna[78517:4e95ce] (libsystem_containermanager.dylib) container_copy_object
+2026-09-04 23:41:00.216 Df Babytuna[78517:4e95ce] [com.apple.containermanager:unspecified] container_system_group_path_for_identifier: success
+2026-09-04 23:41:00.216 Df Babytuna[78517:4e95ce] [com.apple.ManagedConfiguration:MC] Got system group container path from MCM for systemgroup.com.apple.configurationprofiles: /Users/david/Library/Developer/CoreSimulator/Devices/EF05F833-2AC4-4383-8688-36C51B956BCF/data/Containers/Shared/SystemGroup/systemgroup.com.apple.configurationprofiles

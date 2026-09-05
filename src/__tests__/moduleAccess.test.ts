@@ -261,6 +261,31 @@ describe('module store', () => {
     });
   });
 
+  it('does not restore revoked modules when an older request finishes last', async () => {
+    let resolveOlder: (value: unknown) => void = () => {};
+    mockGetMyModules.mockReturnValueOnce(new Promise((resolve) => { resolveOlder = resolve; }));
+    const older = useModuleStore.getState().load('user-1');
+    mockGetMyModules.mockResolvedValueOnce([{ key: 'fulfillment', enabled: false }]);
+    await useModuleStore.getState().load('user-1');
+    resolveOlder([{ key: 'fulfillment', enabled: true }]);
+    await older;
+
+    expect(useModuleStore.getState().fetched).toEqual([{ key: 'fulfillment', enabled: false }]);
+  });
+
+  it('ignores an old request after reset and sign-in by the same user', async () => {
+    let resolveOlder: (value: unknown) => void = () => {};
+    mockGetMyModules.mockReturnValueOnce(new Promise((resolve) => { resolveOlder = resolve; }));
+    const older = useModuleStore.getState().load('user-1');
+    useModuleStore.getState().reset();
+    mockGetMyModules.mockResolvedValueOnce([{ key: 'fulfillment', enabled: false }]);
+    await useModuleStore.getState().load('user-1');
+    resolveOlder([{ key: 'fulfillment', enabled: true }]);
+    await older;
+
+    expect(useModuleStore.getState().fetched).toEqual([{ key: 'fulfillment', enabled: false }]);
+  });
+
   it('subscribes once, reloads on realtime changes, and tears down on last release', async () => {
     const unsubscribe = jest.fn();
     let realtimeCallback: () => void = () => {};

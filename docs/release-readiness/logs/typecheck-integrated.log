@@ -1,0 +1,4 @@
+
+> babytuna@2.2 typecheck
+> tsc --noEmit
+

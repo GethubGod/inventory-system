@@ -63,8 +63,9 @@ export default function RootLayout() {
     // 5c push reliability: renew the device push token registration when the
     // app foregrounds. Fire-and-forget — must never block UI or surface errors.
     const refreshPushTokenInBackground = () => {
-      const userId = useAuthStore.getState().session?.user?.id;
-      if (!userId) return;
+      const { session: currentSession, isLoading: authIsLoading } = useAuthStore.getState();
+      const userId = currentSession?.user?.id;
+      if (!userId || authIsLoading) return;
       refreshCurrentDevicePushTokenIfStale(userId).catch((error) => {
         console.warn("[push] Stale token refresh failed", error);
       });

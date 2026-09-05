@@ -2,12 +2,17 @@
 // sign-in exchange (edge fn -> verifyOtp -> store hydration).
 
 const invoke = jest.fn();
+const identityMaybeSingle = jest.fn();
+const identityEq = jest.fn(() => ({ maybeSingle: identityMaybeSingle }));
+const identitySelect = jest.fn(() => ({ eq: identityEq }));
+const from = jest.fn(() => ({ select: identitySelect }));
 const verifyOtp = jest.fn();
 const rpc = jest.fn();
 const adoptExternalSession = jest.fn();
 
 jest.mock('@/lib/supabase', () => ({
   supabase: {
+    from,
     functions: { invoke: (...args: unknown[]) => invoke(...args) },
     auth: { verifyOtp: (...args: unknown[]) => verifyOtp(...args) },
     rpc: (...args: unknown[]) => rpc(...args),
@@ -22,6 +27,7 @@ jest.mock('@/store/authStore', () => ({
 
 import {
   getLoginFailureCode,
+  getMyCredentialKind,
   isValidPassword,
   isValidPin,
   LoginCredentialError,
@@ -121,3 +127,33 @@ describe('resetUserCredential', () => {
     await expect(resetUserCredential('user-1', '12')).rejects.toThrow('4 digits');
   });
 });
+
+
+describe('credential editor selection', () => {
+  it.each(['pin', 'password'] as const)('uses the stored %s name credential', async (kind) => {
+    identityMaybeSingle.mockResolvedValue({ data: { credential_kind: kind }, error: null });
+    await expect(getMyCredentialKind('user-1')).resolves.toBe(kind);
+    expect(identitySelect).toHaveBeenCalledWith('credential_kind');
+    expect(identityEq).toHaveBeenCalledWith('user_id', 'user-1');
+  });
+
+  it('uses the legacy email editor only when the identity is absent', async () => {
+    identityMaybeSingle.mockResolvedValue({ data: null, error: null });
+    await expect(getMyCredentialKind('legacy-user')).resolves.toBeNull();
+  });
+
+  it('does not fall back to the wrong credential editor on an offline lookup', async () => {
+    identityMaybeSingle.mockResolvedValue({ data: null, error: { message: 'Network request failed' } });
+    await expect(getMyCredentialKind('user-1')).rejects.toThrow('Unable to load your sign-in settings');
+  });
+});
+
+
+it.each(['Failed to send a request to the Edge Function', 'Network request failed', 'Failed to fetch'])(
+  'explains connectivity errors without server implementation details: %s',
+  async (message) => {
+    invoke.mockResolvedValue({ data: null, error: { message } });
+    await expect(signInWithName('Nate', '4321')).rejects.toThrow('Unable to connect. Check your connection and try again.');
+    expect(verifyOtp).not.toHaveBeenCalled();
+  },
+);

@@ -1,0 +1,1596 @@
+
+> babytuna@2.2 test:ci
+> jest --runInBand --watchman=false
+
+PASS src/__tests__/quickOrderParser.test.ts
+  ● Console
+
+    console.warn
+      parse-order qa-handler error Error: GEMINI_API_KEY is not configured
+          at callGeminiForQa (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/qa-handler.ts:116:22)
+          at answerProductQuestion (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/qa-handler.ts:154:23)
+          at buildProductQuestionResponse (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/orchestrator.ts:1802:47)
+          at parseQuickOrder (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/orchestrator.ts:294:18)
+          at /Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/process-message.ts:277:69
+          at QuickOrderTimer.measureAsync (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/timing.ts:42:20)
+          at processQuickOrderMessage (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/process-message.ts:277:19)
+
+      167 |     };
+      168 |   } catch (error) {
+    > 169 |     console.warn('parse-order qa-handler error', error);
+          |             ^
+      170 |     return {
+      171 |       status: 'qa_answer',
+      172 |       assistantMessage: "I couldn't process that question. Try rephrasing.",
+
+      at answerProductQuestion (supabase/functions/parse-order/qa-handler.ts:169:13)
+      at buildProductQuestionResponse (supabase/functions/parse-order/orchestrator.ts:1802:20)
+      at parseQuickOrder (supabase/functions/parse-order/orchestrator.ts:294:12)
+      at QuickOrderTimer.measureAsync (supabase/functions/parse-order/timing.ts:42:14)
+      at processQuickOrderMessage (supabase/functions/parse-order/process-message.ts:277:7)
+      at src/__tests__/quickOrderParser.test.ts:4249:20
+
+    console.warn
+      parse-order qa-handler error Error: GEMINI_API_KEY is not configured
+          at callGeminiForQa (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/qa-handler.ts:116:22)
+          at answerProductQuestion (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/qa-handler.ts:154:23)
+          at buildProductQuestionResponse (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/orchestrator.ts:1802:47)
+          at parseQuickOrder (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/orchestrator.ts:294:18)
+          at /Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/process-message.ts:277:69
+          at QuickOrderTimer.measureAsync (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/timing.ts:42:20)
+          at processQuickOrderMessage (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/process-message.ts:277:19)
+
+      167 |     };
+      168 |   } catch (error) {
+    > 169 |     console.warn('parse-order qa-handler error', error);
+          |             ^
+      170 |     return {
+      171 |       status: 'qa_answer',
+      172 |       assistantMessage: "I couldn't process that question. Try rephrasing.",
+
+      at answerProductQuestion (supabase/functions/parse-order/qa-handler.ts:169:13)
+      at buildProductQuestionResponse (supabase/functions/parse-order/orchestrator.ts:1802:20)
+      at parseQuickOrder (supabase/functions/parse-order/orchestrator.ts:294:12)
+      at QuickOrderTimer.measureAsync (supabase/functions/parse-order/timing.ts:42:14)
+      at processQuickOrderMessage (supabase/functions/parse-order/process-message.ts:277:7)
+      at src/__tests__/quickOrderParser.test.ts:4249:20
+
+    console.warn
+      parse-order qa-handler error Error: GEMINI_API_KEY is not configured
+          at callGeminiForQa (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/qa-handler.ts:116:22)
+          at answerProductQuestion (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/qa-handler.ts:154:23)
+          at buildProductQuestionResponse (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/orchestrator.ts:1802:47)
+          at parseQuickOrder (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/orchestrator.ts:294:18)
+          at /Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/process-message.ts:277:69
+          at QuickOrderTimer.measureAsync (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/timing.ts:42:20)
+          at processQuickOrderMessage (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/process-message.ts:277:19)
+
+      167 |     };
+      168 |   } catch (error) {
+    > 169 |     console.warn('parse-order qa-handler error', error);
+          |             ^
+      170 |     return {
+      171 |       status: 'qa_answer',
+      172 |       assistantMessage: "I couldn't process that question. Try rephrasing.",
+
+      at answerProductQuestion (supabase/functions/parse-order/qa-handler.ts:169:13)
+      at buildProductQuestionResponse (supabase/functions/parse-order/orchestrator.ts:1802:20)
+      at parseQuickOrder (supabase/functions/parse-order/orchestrator.ts:294:12)
+      at QuickOrderTimer.measureAsync (supabase/functions/parse-order/timing.ts:42:14)
+      at processQuickOrderMessage (supabase/functions/parse-order/process-message.ts:277:7)
+      at src/__tests__/quickOrderParser.test.ts:4249:20
+
+    console.warn
+      parse-order qa-handler error Error: GEMINI_API_KEY is not configured
+          at callGeminiForQa (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/qa-handler.ts:116:22)
+          at answerProductQuestion (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/qa-handler.ts:154:23)
+          at buildProductQuestionResponse (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/orchestrator.ts:1802:47)
+          at parseQuickOrder (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/orchestrator.ts:294:18)
+          at /Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/process-message.ts:277:69
+          at QuickOrderTimer.measureAsync (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/timing.ts:42:20)
+          at processQuickOrderMessage (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/process-message.ts:277:19)
+
+      167 |     };
+      168 |   } catch (error) {
+    > 169 |     console.warn('parse-order qa-handler error', error);
+          |             ^
+      170 |     return {
+      171 |       status: 'qa_answer',
+      172 |       assistantMessage: "I couldn't process that question. Try rephrasing.",
+
+      at answerProductQuestion (supabase/functions/parse-order/qa-handler.ts:169:13)
+      at buildProductQuestionResponse (supabase/functions/parse-order/orchestrator.ts:1802:20)
+      at parseQuickOrder (supabase/functions/parse-order/orchestrator.ts:294:12)
+      at QuickOrderTimer.measureAsync (supabase/functions/parse-order/timing.ts:42:14)
+      at processQuickOrderMessage (supabase/functions/parse-order/process-message.ts:277:7)
+      at src/__tests__/quickOrderParser.test.ts:4249:20
+
+PASS src/__tests__/quickOrderRestructure.test.ts
+PASS src/__tests__/quickOrderVoice.test.ts
+PASS src/__tests__/quickOrderComposerBar.test.ts
+  ● Console
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:180:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:180:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      19 |
+      20 |   const reset = useCallback(() => {
+    > 21 |     setAmplitudes(new Array(size).fill(0));
+         |     ^
+      22 |   }, [size]);
+      23 |
+      24 |   return { amplitudes, pushAmplitude, reset };
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at src/hooks/useAmplitudeBuffer.ts:21:5
+      at src/features/ordering/QuickOrderComposerBar.tsx:351:64
+      at Object.react-stack-bottom-frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14062:20)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:1574:13)
+      at commitHookEffectListMount (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8376:29)
+      at commitHookPassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8465:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9782:13)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9897:11)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9794:11)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11528:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2082:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:566:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:859:10)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:180:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      201 |
+      202 |     renderer.act(() => {
+    > 203 |       component.update(
+          |                 ^
+      204 |         React.createElement(QuickOrderComposerBar, {
+      205 |           onSubmit: jest.fn(),
+      206 |           isSending: false,
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.update (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14669:13)
+      at src/__tests__/quickOrderComposerBar.test.ts:203:17
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:202:14)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:232:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:232:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      19 |
+      20 |   const reset = useCallback(() => {
+    > 21 |     setAmplitudes(new Array(size).fill(0));
+         |     ^
+      22 |   }, [size]);
+      23 |
+      24 |   return { amplitudes, pushAmplitude, reset };
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at src/hooks/useAmplitudeBuffer.ts:21:5
+      at src/features/ordering/QuickOrderComposerBar.tsx:351:64
+      at Object.react-stack-bottom-frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14062:20)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:1574:13)
+      at commitHookEffectListMount (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8376:29)
+      at commitHookPassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8465:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9782:13)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9897:11)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9794:11)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11528:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2082:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:566:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:859:10)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:232:23)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:251:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:251:23)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:282:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:282:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      309 |     // Unmount so the waveform's metering interval is cleared (no leaked timer).
+      310 |     renderer.act(() => {
+    > 311 |       component.unmount();
+          |                 ^
+      312 |     });
+      313 |   });
+      314 | });
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.unmount (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14674:14)
+      at src/__tests__/quickOrderComposerBar.test.ts:311:17
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:310:14)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:368:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:368:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      19 |
+      20 |   const reset = useCallback(() => {
+    > 21 |     setAmplitudes(new Array(size).fill(0));
+         |     ^
+      22 |   }, [size]);
+      23 |
+      24 |   return { amplitudes, pushAmplitude, reset };
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at src/hooks/useAmplitudeBuffer.ts:21:5
+      at src/features/ordering/QuickOrderComposerBar.tsx:351:64
+      at Object.react-stack-bottom-frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14062:20)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:1574:13)
+      at commitHookEffectListMount (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8376:29)
+      at commitHookPassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8465:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9782:13)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9897:11)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9794:11)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11528:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2082:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:566:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:859:10)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:368:23)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:373:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:373:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      19 |
+      20 |   const reset = useCallback(() => {
+    > 21 |     setAmplitudes(new Array(size).fill(0));
+         |     ^
+      22 |   }, [size]);
+      23 |
+      24 |   return { amplitudes, pushAmplitude, reset };
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at src/hooks/useAmplitudeBuffer.ts:21:5
+      at src/features/ordering/QuickOrderComposerBar.tsx:351:64
+      at Object.react-stack-bottom-frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14062:20)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:1574:13)
+      at commitHookEffectListMount (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8376:29)
+      at commitHookPassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8465:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9782:13)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9897:11)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9794:11)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11528:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2082:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:566:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:859:10)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:373:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      162 |
+      163 |   const handleChangeText = useCallback((next: string) => {
+    > 164 |     setText(next);
+          |     ^
+      165 |     if (next.length > 0) setPillsDismissed(true);
+      166 |   }, []);
+      167 |
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at Object.onChangeText (src/features/ordering/QuickOrderComposerBar.tsx:164:5)
+      at src/__tests__/quickOrderComposerBar.test.ts:377:21
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:376:14)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      163 |   const handleChangeText = useCallback((next: string) => {
+      164 |     setText(next);
+    > 165 |     if (next.length > 0) setPillsDismissed(true);
+          |                          ^
+      166 |   }, []);
+      167 |
+      168 |   // Drop preview/reorder text into the composer (and focus it) when the parent
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at Object.onChangeText (src/features/ordering/QuickOrderComposerBar.tsx:165:26)
+      at src/__tests__/quickOrderComposerBar.test.ts:377:21
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:376:14)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      162 |
+      163 |   const handleChangeText = useCallback((next: string) => {
+    > 164 |     setText(next);
+          |     ^
+      165 |     if (next.length > 0) setPillsDismissed(true);
+      166 |   }, []);
+      167 |
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at Object.onChangeText (src/features/ordering/QuickOrderComposerBar.tsx:164:5)
+      at src/__tests__/quickOrderComposerBar.test.ts:382:36
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:381:14)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      134 |     }
+      135 |     if (text.length === 0 && !awaitingPrefillRef.current) {
+    > 136 |       setPillsDismissed(false);
+          |       ^
+      137 |     }
+      138 |   }, [hasSuggestionPills, text]);
+      139 |   const showSuggestionPills =
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at src/features/ordering/QuickOrderComposerBar.tsx:136:7
+      at Object.react-stack-bottom-frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14062:20)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:1574:13)
+      at commitHookEffectListMount (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8376:29)
+      at commitHookPassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8465:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9782:13)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9897:11)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9794:11)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11528:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2082:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:566:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:859:10)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:381:14)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:390:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:390:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      19 |
+      20 |   const reset = useCallback(() => {
+    > 21 |     setAmplitudes(new Array(size).fill(0));
+         |     ^
+      22 |   }, [size]);
+      23 |
+      24 |   return { amplitudes, pushAmplitude, reset };
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at src/hooks/useAmplitudeBuffer.ts:21:5
+      at src/features/ordering/QuickOrderComposerBar.tsx:351:64
+      at Object.react-stack-bottom-frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14062:20)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:1574:13)
+      at commitHookEffectListMount (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8376:29)
+      at commitHookPassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8465:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9782:13)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9897:11)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9794:11)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11528:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2082:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:566:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:859:10)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:390:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      154 |   const handleSuggestionPillPress = useCallback(
+      155 |     (id: string) => {
+    > 156 |       setPillsDismissed(true);
+          |       ^
+      157 |       awaitingPrefillRef.current = true;
+      158 |       onSuggestionPillPress?.(id);
+      159 |     },
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at src/features/ordering/QuickOrderComposerBar.tsx:156:7
+      at Object.onPress (src/features/ordering/ComposerSuggestionPills.tsx:58:15)
+      at src/__tests__/quickOrderComposerBar.test.ts:396:21
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:395:14)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      361 |   ) {
+      362 |     renderer.act(() => {
+    > 363 |       component.update(React.createElement(QuickOrderComposerBar, props));
+          |                 ^
+      364 |     });
+      365 |   }
+      366 |
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.update (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14669:13)
+      at src/__tests__/quickOrderComposerBar.test.ts:363:17
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at rerender (src/__tests__/quickOrderComposerBar.test.ts:362:14)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:403:5)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      174 |     lastPrefillNonceRef.current = prefillNonce;
+      175 |     awaitingPrefillRef.current = false;
+    > 176 |     setText(prefillText);
+          |     ^
+      177 |     requestAnimationFrame(() => inputRef.current?.focus());
+      178 |   }, [prefillNonce, prefillText]);
+      179 |
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at src/features/ordering/QuickOrderComposerBar.tsx:176:5
+      at Object.react-stack-bottom-frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14062:20)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:1574:13)
+      at commitHookEffectListMount (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8376:29)
+      at commitHookPassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8465:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9782:13)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9897:11)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9794:11)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11528:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2082:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:566:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:859:10)
+      at rerender (src/__tests__/quickOrderComposerBar.test.ts:362:14)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:403:5)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:409:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      122 |   let component!: renderer.ReactTestRenderer;
+      123 |   renderer.act(() => {
+    > 124 |     component = renderer.create(
+          |                          ^
+      125 |       React.createElement(QuickOrderComposerBar, {
+      126 |         onSubmit: jest.fn(),
+      127 |         isSending: false,
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerBar.test.ts:124:26
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:409:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      19 |
+      20 |   const reset = useCallback(() => {
+    > 21 |     setAmplitudes(new Array(size).fill(0));
+         |     ^
+      22 |   }, [size]);
+      23 |
+      24 |   return { amplitudes, pushAmplitude, reset };
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at src/hooks/useAmplitudeBuffer.ts:21:5
+      at src/features/ordering/QuickOrderComposerBar.tsx:351:64
+      at Object.react-stack-bottom-frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14062:20)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:1574:13)
+      at commitHookEffectListMount (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8376:29)
+      at commitHookPassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8465:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9782:13)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9897:11)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9794:11)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11528:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2082:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:566:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:859:10)
+      at renderComposer (src/__tests__/quickOrderComposerBar.test.ts:123:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:409:23)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      154 |   const handleSuggestionPillPress = useCallback(
+      155 |     (id: string) => {
+    > 156 |       setPillsDismissed(true);
+          |       ^
+      157 |       awaitingPrefillRef.current = true;
+      158 |       onSuggestionPillPress?.(id);
+      159 |     },
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at src/features/ordering/QuickOrderComposerBar.tsx:156:7
+      at Object.onPress (src/features/ordering/ComposerSuggestionPills.tsx:58:15)
+      at src/__tests__/quickOrderComposerBar.test.ts:415:22
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:414:14)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      361 |   ) {
+      362 |     renderer.act(() => {
+    > 363 |       component.update(React.createElement(QuickOrderComposerBar, props));
+          |                 ^
+      364 |     });
+      365 |   }
+      366 |
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.update (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14669:13)
+      at src/__tests__/quickOrderComposerBar.test.ts:363:17
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at rerender (src/__tests__/quickOrderComposerBar.test.ts:362:14)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:420:5)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      361 |   ) {
+      362 |     renderer.act(() => {
+    > 363 |       component.update(React.createElement(QuickOrderComposerBar, props));
+          |                 ^
+      364 |     });
+      365 |   }
+      366 |
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.update (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14669:13)
+      at src/__tests__/quickOrderComposerBar.test.ts:363:17
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at rerender (src/__tests__/quickOrderComposerBar.test.ts:362:14)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:421:5)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      147 |     if (prevSendingRef.current && !isSending) {
+      148 |       awaitingPrefillRef.current = false;
+    > 149 |       if (text.length === 0) setPillsDismissed(false);
+          |                              ^
+      150 |     }
+      151 |     prevSendingRef.current = isSending;
+      152 |   }, [isSending, text]);
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at dispatchSetStateInternal (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4148:13)
+      at dispatchSetState (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:4107:7)
+      at src/features/ordering/QuickOrderComposerBar.tsx:149:30
+      at Object.react-stack-bottom-frame (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14062:20)
+      at runWithFiberInDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:1574:13)
+      at commitHookEffectListMount (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8376:29)
+      at commitHookPassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:8465:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9782:13)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9897:11)
+      at recursivelyTraversePassiveMountEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9756:11)
+      at commitPassiveMountOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:9794:11)
+      at flushPendingEffects (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11528:11)
+      at performWorkOnRootViaSchedulerTask (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:2082:11)
+      at flushActQueue (../../node_modules/react/cjs/react.development.js:566:34)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:859:10)
+      at rerender (src/__tests__/quickOrderComposerBar.test.ts:362:14)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerBar.test.ts:421:5)
+
+PASS src/__tests__/orderChecklist.test.ts
+PASS src/__tests__/cartHelpers.test.ts
+(node:33887) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS src/__tests__/authStore.signOut.test.ts
+PASS src/__tests__/pastOrderHelpers.test.ts
+PASS src/__tests__/simpleOrderRestructure.test.ts
+PASS src/__tests__/sendAllMessage.test.ts
+PASS src/__tests__/simpleOrderSelection.test.ts
+PASS src/__tests__/quickOrderQuantityFlow.test.ts
+PASS src/__tests__/orderSubmission.test.ts
+PASS src/__tests__/authStore.authFlow.test.ts
+  ● Console
+
+    console.warn
+      Identity repair RPC is unavailable in this environment. Continuing with client-side auth hydration fallback. {
+        code: 'PGRST202',
+        message: 'Function ensure_current_user_identity not found'
+      }
+
+      255 |
+      256 |   warnedIdentityRepairRpcUnavailable = true;
+    > 257 |   console.warn(
+          |           ^
+      258 |     'Identity repair RPC is unavailable in this environment. Continuing with client-side auth hydration fallback.',
+      259 |     error
+      260 |   );
+
+      at markIdentityRepairRpcUnavailable (src/store/authStore.ts:257:11)
+      at repairUserRecord (src/store/authStore.ts:1010:15)
+      at hydrateAuthenticatedSession (src/store/authStore.ts:1126:22)
+      at Object.signIn (src/store/authStore.ts:1403:18)
+      at Object.<anonymous> (src/__tests__/authStore.authFlow.test.ts:233:5)
+
+    console.warn
+      Failed to reset one or more user-scoped stores. Jest encountered an unexpected token
+      
+      Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.
+      
+      Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.
+      
+      By default "node_modules" folder is ignored by transformers.
+      
+      Here's what you can do:
+       • If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.
+       • If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript
+       • To have some of your "node_modules" files transformed, you can specify a custom "transformIgnorePatterns" in your config.
+       • If you need a custom transformation specify a "transform" option in your config.
+       • If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the "moduleNameMapper" config option.
+      
+      You'll find more details and examples of these config options in the docs:
+      https://jestjs.io/docs/configuration
+      For information about custom transformations, see:
+      https://jestjs.io/docs/code-transformation
+      
+      Details:
+      
+      /Users/david/Babytuna Systems/smelter/node_modules/react-native/index.js:27
+      import typeof * as ReactNativePublicAPI from './index.js.flow';
+      ^^^^^^
+      
+      SyntaxError: Cannot use import statement outside a module
+          at new Script (node:vm:118:7)
+          at Runtime.createScriptFromCode (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1505:14)
+          at Runtime._execModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1399:25)
+          at Runtime._loadModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1022:12)
+          at Runtime.requireModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:882:12)
+          at Runtime.requireModuleOrMock (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1048:21)
+          at Object.<anonymous> (/Users/david/Babytuna Systems/smelter/node_modules/@react-native-community/netinfo/lib/commonjs/index.ts:11:1)
+          at Runtime._execModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1439:24)
+          at Runtime._loadModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1022:12)
+          at Runtime.requireModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:882:12)
+          at Runtime.requireModuleOrMock (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1048:21)
+          at Object.<anonymous> (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/orderStore.ts:6:1)
+          at Runtime._execModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1439:24)
+          at Runtime._loadModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1022:12)
+          at Runtime.requireModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:882:12)
+          at Runtime.requireModuleOrMock (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1048:21)
+          at /Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts:415:59
+          at async Promise.all (index 0)
+          at /Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts:562:11
+          at clearUserScopedClientState (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts:585:5)
+          at hydrateAuthenticatedSession (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts:1059:11)
+          at Object.signIn (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts:1403:18)
+          at Object.<anonymous> (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/authStore.authFlow.test.ts:275:5)
+
+      578 |       ]);
+      579 |     } catch (error) {
+    > 580 |       console.warn('Failed to reset one or more user-scoped stores.', error);
+          |               ^
+      581 |     }
+      582 |   })();
+      583 |
+
+      at src/store/authStore.ts:580:15
+      at clearUserScopedClientState (src/store/authStore.ts:585:5)
+      at hydrateAuthenticatedSession (src/store/authStore.ts:1059:11)
+      at Object.signIn (src/store/authStore.ts:1403:18)
+      at Object.<anonymous> (src/__tests__/authStore.authFlow.test.ts:275:5)
+
+    console.warn
+      Using locally-resolved profile; DB record could not be loaded.
+
+      1113 |             updated_at: new Date().toISOString(),
+      1114 |           };
+    > 1115 |           console.warn('Using locally-resolved profile; DB record could not be loaded.');
+           |                   ^
+      1116 |           set({ profile: fallbackProfile });
+      1117 |           profile = fallbackProfile;
+      1118 |         }
+
+      at hydrateAuthenticatedSession (src/store/authStore.ts:1115:19)
+      at Object.signIn (src/store/authStore.ts:1403:18)
+      at Object.<anonymous> (src/__tests__/authStore.authFlow.test.ts:275:5)
+
+    console.warn
+      Failed to reset one or more user-scoped stores. Jest encountered an unexpected token
+      
+      Jest failed to parse a file. This happens e.g. when your code or its dependencies use non-standard JavaScript syntax, or when Jest is not configured to support such syntax.
+      
+      Out of the box Jest supports Babel, which will be used to transform your files into valid JS based on your Babel configuration.
+      
+      By default "node_modules" folder is ignored by transformers.
+      
+      Here's what you can do:
+       • If you are trying to use ECMAScript Modules, see https://jestjs.io/docs/ecmascript-modules for how to enable it.
+       • If you are trying to use TypeScript, see https://jestjs.io/docs/getting-started#using-typescript
+       • To have some of your "node_modules" files transformed, you can specify a custom "transformIgnorePatterns" in your config.
+       • If you need a custom transformation specify a "transform" option in your config.
+       • If you simply want to mock your non-JS modules (e.g. binary assets) you can stub them out with the "moduleNameMapper" config option.
+      
+      You'll find more details and examples of these config options in the docs:
+      https://jestjs.io/docs/configuration
+      For information about custom transformations, see:
+      https://jestjs.io/docs/code-transformation
+      
+      Details:
+      
+      /Users/david/Babytuna Systems/smelter/node_modules/react-native/index.js:27
+      import typeof * as ReactNativePublicAPI from './index.js.flow';
+      ^^^^^^
+      
+      SyntaxError: Cannot use import statement outside a module
+          at new Script (node:vm:118:7)
+          at Runtime.createScriptFromCode (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1505:14)
+          at Runtime._execModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1399:25)
+          at Runtime._loadModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1022:12)
+          at Runtime.requireModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:882:12)
+          at Runtime.requireModuleOrMock (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1048:21)
+          at Object.<anonymous> (/Users/david/Babytuna Systems/smelter/node_modules/@react-native-community/netinfo/lib/commonjs/index.ts:11:1)
+          at Runtime._execModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1439:24)
+          at Runtime._loadModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1022:12)
+          at Runtime.requireModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:882:12)
+          at Runtime.requireModuleOrMock (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1048:21)
+          at Object.<anonymous> (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/orderStore.ts:6:1)
+          at Runtime._execModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1439:24)
+          at Runtime._loadModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1022:12)
+          at Runtime.requireModule (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:882:12)
+          at Runtime.requireModuleOrMock (/Users/david/Babytuna Systems/smelter/node_modules/jest-runtime/build/index.js:1048:21)
+          at /Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts:415:59
+          at async Promise.all (index 0)
+          at /Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts:562:11
+          at clearUserScopedClientState (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts:585:5)
+          at clearSignedOutClientStateForTransition (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts:628:11)
+          at resetSignedOutClientState (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts:655:9)
+          at Object.initialize (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts:1317:13)
+          at Object.<anonymous> (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/authStore.authFlow.test.ts:296:5)
+
+      578 |       ]);
+      579 |     } catch (error) {
+    > 580 |       console.warn('Failed to reset one or more user-scoped stores.', error);
+          |               ^
+      581 |     }
+      582 |   })();
+      583 |
+
+      at src/store/authStore.ts:580:15
+      at clearUserScopedClientState (src/store/authStore.ts:585:5)
+      at clearSignedOutClientStateForTransition (src/store/authStore.ts:628:11)
+      at resetSignedOutClientState (src/store/authStore.ts:655:9)
+      at Object.initialize (src/store/authStore.ts:1317:13)
+      at Object.<anonymous> (src/__tests__/authStore.authFlow.test.ts:296:5)
+
+PASS src/__tests__/employeeChecklistMeta.test.ts
+  ● Console
+
+    console.warn
+      [Checklist] Order sent but its note/unit metadata failed to save. Error: meta down
+          at Object.<anonymous> (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/employeeChecklistMeta.test.ts:243:52)
+          at Promise.then.completed (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/utils.js:298:28)
+          at new Promise (<anonymous>)
+          at callAsyncCircusFn (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/utils.js:231:10)
+          at _callCircusTest (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/run.js:316:40)
+          at _runTest (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/run.js:252:3)
+          at _runTestsForDescribeBlock (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/run.js:126:9)
+          at _runTestsForDescribeBlock (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/run.js:121:9)
+          at run (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/run.js:71:3)
+          at runAndTransformResultsToJestFormat (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)
+          at jestAdapter (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)
+          at runTestInternal (/Users/david/Babytuna Systems/smelter/node_modules/jest-runner/build/runTest.js:367:16)
+          at runTest (/Users/david/Babytuna Systems/smelter/node_modules/jest-runner/build/runTest.js:444:34)
+
+      741 |       // The order itself went through; surface the metadata failure without
+      742 |       // pretending the send failed.
+    > 743 |       console.warn('[Checklist] Order sent but its note/unit metadata failed to save.', metaError);
+          |               ^
+      744 |     }
+      745 |   }
+      746 |
+
+      at sendChecklistOrder (src/services/orderChecklist.ts:743:15)
+      at Object.<anonymous> (src/__tests__/employeeChecklistMeta.test.ts:245:5)
+
+PASS src/__tests__/moduleAccess.test.ts
+  ● Console
+
+    console.error
+      [moduleStore] Failed to load module access: Error: network down
+          at Object.<anonymous> (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/moduleAccess.test.ts:210:40)
+          at Promise.then.completed (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/utils.js:298:28)
+          at new Promise (<anonymous>)
+          at callAsyncCircusFn (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/utils.js:231:10)
+          at _callCircusTest (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/run.js:316:40)
+          at _runTest (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/run.js:252:3)
+          at _runTestsForDescribeBlock (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/run.js:126:9)
+          at _runTestsForDescribeBlock (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/run.js:121:9)
+          at run (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/run.js:71:3)
+          at runAndTransformResultsToJestFormat (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapterInit.js:122:21)
+          at jestAdapter (/Users/david/Babytuna Systems/smelter/node_modules/jest-circus/build/legacy-code-todo-rewrite/jestAdapter.js:79:19)
+          at runTestInternal (/Users/david/Babytuna Systems/smelter/node_modules/jest-runner/build/runTest.js:367:16)
+          at runTest (/Users/david/Babytuna Systems/smelter/node_modules/jest-runner/build/runTest.js:444:34)
+
+      42 |       set({ fetched: states, status: 'ready' });
+      43 |     } catch (error) {
+    > 44 |       console.error('[moduleStore] Failed to load module access:', error);
+         |               ^
+      45 |       if (get().userId !== userId) return;
+      46 |       // Keep last-known data if we have it; with none, consumers fall back to
+      47 |       // role defaults (see resolveEffectiveModules) so nobody is locked out.
+
+      at Object.load (src/store/moduleStore.ts:44:15)
+      at Object.<anonymous> (src/__tests__/moduleAccess.test.ts:212:5)
+
+    console.error
+      [moduleStore] Failed to load module access: Error: flaky
+          at Object.<anonymous> (/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/moduleAccess.test.ts:227:44)
+
+      42 |       set({ fetched: states, status: 'ready' });
+      43 |     } catch (error) {
+    > 44 |       console.error('[moduleStore] Failed to load module access:', error);
+         |               ^
+      45 |       if (get().userId !== userId) return;
+      46 |       // Keep last-known data if we have it; with none, consumers fall back to
+      47 |       // role defaults (see resolveEffectiveModules) so nobody is locked out.
+
+      at Object.load (src/store/moduleStore.ts:44:15)
+      at Object.<anonymous> (src/__tests__/moduleAccess.test.ts:228:5)
+
+PASS src/__tests__/quickOrderListCard.test.ts
+  ● Console
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      80 |     let component!: renderer.ReactTestRenderer;
+      81 |     renderer.act(() => {
+    > 82 |       component = renderer.create(
+         |                            ^
+      83 |         React.createElement(QuickOrderListCard, {
+      84 |           items: [
+      85 |             {
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderListCard.test.ts:82:28
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderListCard.test.ts:81:14)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      80 |     let component!: renderer.ReactTestRenderer;
+      81 |     renderer.act(() => {
+    > 82 |       component = renderer.create(
+         |                            ^
+      83 |         React.createElement(QuickOrderListCard, {
+      84 |           items: [
+      85 |             {
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderListCard.test.ts:82:28
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderListCard.test.ts:81:14)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      127 |     let component!: renderer.ReactTestRenderer;
+      128 |     renderer.act(() => {
+    > 129 |       component = renderer.create(
+          |                            ^
+      130 |         React.createElement(QuickOrderListCard, {
+      131 |           items: [
+      132 |             {
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderListCard.test.ts:129:28
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderListCard.test.ts:128:14)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      127 |     let component!: renderer.ReactTestRenderer;
+      128 |     renderer.act(() => {
+    > 129 |       component = renderer.create(
+          |                            ^
+      130 |         React.createElement(QuickOrderListCard, {
+      131 |           items: [
+      132 |             {
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderListCard.test.ts:129:28
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderListCard.test.ts:128:14)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      170 |     let component!: renderer.ReactTestRenderer;
+      171 |     renderer.act(() => {
+    > 172 |       component = renderer.create(
+          |                            ^
+      173 |         React.createElement(QuickOrderListCard, {
+      174 |           items: [
+      175 |             {
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderListCard.test.ts:172:28
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderListCard.test.ts:171:14)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      170 |     let component!: renderer.ReactTestRenderer;
+      171 |     renderer.act(() => {
+    > 172 |       component = renderer.create(
+          |                            ^
+      173 |         React.createElement(QuickOrderListCard, {
+      174 |           items: [
+      175 |             {
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderListCard.test.ts:172:28
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderListCard.test.ts:171:14)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      206 |     let component!: renderer.ReactTestRenderer;
+      207 |     renderer.act(() => {
+    > 208 |       component = renderer.create(
+          |                            ^
+      209 |         React.createElement(QuickOrderListCard, {
+      210 |           items: [
+      211 |             {
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderListCard.test.ts:208:28
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderListCard.test.ts:207:14)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      206 |     let component!: renderer.ReactTestRenderer;
+      207 |     renderer.act(() => {
+    > 208 |       component = renderer.create(
+          |                            ^
+      209 |         React.createElement(QuickOrderListCard, {
+      210 |           items: [
+      211 |             {
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderListCard.test.ts:208:28
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at Object.<anonymous> (src/__tests__/quickOrderListCard.test.ts:207:14)
+
+PASS src/__tests__/quickOrderHistorySuggestions.test.ts
+PASS src/__tests__/screenshotImports.test.ts
+PASS src/__tests__/receiveDeliveryLineState.test.ts
+PASS src/__tests__/fulfillmentEligibility.test.ts
+PASS src/__tests__/holidayTemplates.test.ts
+PASS src/__tests__/supplierDraftHelpers.test.ts
+PASS src/__tests__/quickOrderComposerPills.test.ts
+  ● Console
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      47 |   let r!: renderer.ReactTestRenderer;
+      48 |   renderer.act(() => {
+    > 49 |     r = renderer.create(
+         |                  ^
+      50 |       React.createElement(ComposerSuggestionPills, {
+      51 |         pills: PILLS,
+      52 |         onPress: () => {},
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerPills.test.ts:49:18
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderPills (src/__tests__/quickOrderComposerPills.test.ts:48:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerPills.test.ts:95:18)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      47 |   let r!: renderer.ReactTestRenderer;
+      48 |   renderer.act(() => {
+    > 49 |     r = renderer.create(
+         |                  ^
+      50 |       React.createElement(ComposerSuggestionPills, {
+      51 |         pills: PILLS,
+      52 |         onPress: () => {},
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerPills.test.ts:49:18
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderPills (src/__tests__/quickOrderComposerPills.test.ts:48:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerPills.test.ts:95:18)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      47 |   let r!: renderer.ReactTestRenderer;
+      48 |   renderer.act(() => {
+    > 49 |     r = renderer.create(
+         |                  ^
+      50 |       React.createElement(ComposerSuggestionPills, {
+      51 |         pills: PILLS,
+      52 |         onPress: () => {},
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerPills.test.ts:49:18
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderPills (src/__tests__/quickOrderComposerPills.test.ts:48:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerPills.test.ts:129:18)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      47 |   let r!: renderer.ReactTestRenderer;
+      48 |   renderer.act(() => {
+    > 49 |     r = renderer.create(
+         |                  ^
+      50 |       React.createElement(ComposerSuggestionPills, {
+      51 |         pills: PILLS,
+      52 |         onPress: () => {},
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerPills.test.ts:49:18
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderPills (src/__tests__/quickOrderComposerPills.test.ts:48:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerPills.test.ts:129:18)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      47 |   let r!: renderer.ReactTestRenderer;
+      48 |   renderer.act(() => {
+    > 49 |     r = renderer.create(
+         |                  ^
+      50 |       React.createElement(ComposerSuggestionPills, {
+      51 |         pills: PILLS,
+      52 |         onPress: () => {},
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerPills.test.ts:49:18
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderPills (src/__tests__/quickOrderComposerPills.test.ts:48:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerPills.test.ts:139:18)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      47 |   let r!: renderer.ReactTestRenderer;
+      48 |   renderer.act(() => {
+    > 49 |     r = renderer.create(
+         |                  ^
+      50 |       React.createElement(ComposerSuggestionPills, {
+      51 |         pills: PILLS,
+      52 |         onPress: () => {},
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerPills.test.ts:49:18
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderPills (src/__tests__/quickOrderComposerPills.test.ts:48:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerPills.test.ts:139:18)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      47 |   let r!: renderer.ReactTestRenderer;
+      48 |   renderer.act(() => {
+    > 49 |     r = renderer.create(
+         |                  ^
+      50 |       React.createElement(ComposerSuggestionPills, {
+      51 |         pills: PILLS,
+      52 |         onPress: () => {},
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerPills.test.ts:49:18
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderPills (src/__tests__/quickOrderComposerPills.test.ts:48:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerPills.test.ts:148:18)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      47 |   let r!: renderer.ReactTestRenderer;
+      48 |   renderer.act(() => {
+    > 49 |     r = renderer.create(
+         |                  ^
+      50 |       React.createElement(ComposerSuggestionPills, {
+      51 |         pills: PILLS,
+      52 |         onPress: () => {},
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerPills.test.ts:49:18
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderPills (src/__tests__/quickOrderComposerPills.test.ts:48:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerPills.test.ts:148:18)
+
+    console.error
+      react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+
+      47 |   let r!: renderer.ReactTestRenderer;
+      48 |   renderer.act(() => {
+    > 49 |     r = renderer.create(
+         |                  ^
+      50 |       React.createElement(ComposerSuggestionPills, {
+      51 |         pills: PILLS,
+      52 |         onPress: () => {},
+
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14598:17)
+      at src/__tests__/quickOrderComposerPills.test.ts:49:18
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderPills (src/__tests__/quickOrderComposerPills.test.ts:48:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerPills.test.ts:153:18)
+
+    console.error
+      The current testing environment is not configured to support act(...)
+
+      47 |   let r!: renderer.ReactTestRenderer;
+      48 |   renderer.act(() => {
+    > 49 |     r = renderer.create(
+         |                  ^
+      50 |       React.createElement(ComposerSuggestionPills, {
+      51 |         pills: PILLS,
+      52 |         onPress: () => {},
+
+      at isConcurrentActEnvironment (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10243:17)
+      at warnIfUpdatesNotWrappedWithActDEV (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:11798:7)
+      at scheduleUpdateOnFiber (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:10326:9)
+      at updateContainerImpl (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12382:10)
+      at updateContainer (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:12326:7)
+      at Object.<anonymous>.process.env.NODE_ENV.exports.create (../../node_modules/react-test-renderer/cjs/react-test-renderer.development.js:14630:7)
+      at src/__tests__/quickOrderComposerPills.test.ts:49:18
+      at Object.<anonymous>.process.env.NODE_ENV.exports.act (../../node_modules/react/cjs/react.development.js:789:22)
+      at renderPills (src/__tests__/quickOrderComposerPills.test.ts:48:12)
+      at Object.<anonymous> (src/__tests__/quickOrderComposerPills.test.ts:153:18)
+
+PASS src/__tests__/simpleOrderCatalogSearch.test.ts
+PASS src/__tests__/sendAllQueue.test.ts
+PASS src/__tests__/simpleOrderReminderRule.test.ts
+PASS src/__tests__/simpleOrderDirectSend.test.ts
+PASS src/__tests__/quickOrderContextNotes.test.ts
+PASS src/__tests__/quickOrderCart.test.ts
+PASS src/__tests__/simpleOrderRecentOrders.test.ts
+PASS src/__tests__/inventoryStore.test.ts
+PASS src/__tests__/loginCredentials.test.ts
+PASS src/__tests__/userModules.test.ts
+PASS src/__tests__/orderReceiving.test.ts
+PASS src/__tests__/supplierContacts.test.ts
+PASS src/__tests__/inviteJoin.test.ts
+PASS src/__tests__/quickOrderUiHelpers.test.ts
+PASS src/__tests__/onboardingStore.test.ts
+PASS src/__tests__/quickOrderStatePersistence.test.ts
+PASS src/__tests__/teamService.test.ts
+PASS src/__tests__/orderItemFreshness.test.ts
+PASS src/__tests__/invitePreview.test.ts
+PASS src/__tests__/employeeReminders.test.ts
+PASS src/__tests__/quickOrderChatLayout.test.ts
+PASS src/__tests__/orderStoreFulfillment.test.ts
+PASS src/__tests__/orderSendMode.test.ts
+PASS src/__tests__/inventoryUnits.test.ts
+PASS src/__tests__/useAuthGuard.test.ts
+PASS src/__tests__/notificationService.test.ts
+PASS src/__tests__/apiClient.deleteSelf.test.ts
+PASS src/__tests__/quickOrderWelcome.test.ts
+PASS src/__tests__/supplierSendLink.test.ts
+PASS src/__tests__/quickOrderComposer.test.ts
+PASS src/__tests__/invoiceScans.test.ts
+PASS src/__tests__/stockCheckV2.test.ts
+PASS src/__tests__/invitesAccept.test.ts
+PASS src/__tests__/orderPreview.test.ts
+PASS src/__tests__/employeeDefaults.test.ts
+PASS src/__tests__/googleSheetsSync.test.ts
+
+Test Suites: 1 skipped, 60 passed, 60 of 61 total
+Tests:       14 skipped, 929 passed, 943 total
+Snapshots:   0 total
+Time:        10.098 s
+Ran all test suites.

@@ -1,0 +1,636 @@
+[
+  {
+    "file": "app/(auth)/complete-profile.tsx",
+    "route": "(auth)/complete-profile",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(auth)/invite-hello.tsx",
+    "route": "(auth)/invite-hello",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(auth)/login.tsx",
+    "route": "(auth)/login",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-legacy-login-fixed.png",
+      "Before fix accessibility grouped the whole form. Final native tree exposes Email/Password fields, Show password, Forgot password, Sign in and Sign Up separately. Legacy authentication/reset mutations remain unverified."
+    ]
+  },
+  {
+    "file": "app/(auth)/ready.tsx",
+    "route": "(auth)/ready",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(auth)/secure-password.tsx",
+    "route": "(auth)/secure-password",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(auth)/secure-pin.tsx",
+    "route": "(auth)/secure-pin",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(auth)/secure.tsx",
+    "route": "(auth)/secure",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(auth)/sign-in.tsx",
+    "route": "(auth)/sign-in",
+    "status": "Partial",
+    "evidence": [
+      "e2e/07-manager-login-result.png",
+      "e2e/27-employee-checklist.png",
+      "Manager and employee name/PIN sign-in succeeded on local backend. Recovery and all failure modes not exhausted."
+    ]
+  },
+  {
+    "file": "app/(auth)/signup.tsx",
+    "route": "(auth)/signup",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-legacy-signup.png",
+      "Legacy account creation form renders. No account created and no invitation accepted."
+    ]
+  },
+  {
+    "file": "app/(auth)/welcome.tsx",
+    "route": "(auth)/welcome",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-final-welcome.png",
+      "Final Release sign-out returns to branded welcome with readable legal links. Invitation acceptance remains unverified."
+    ]
+  },
+  {
+    "file": "app/(manager)/browse.tsx",
+    "route": "(manager)/browse",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-browse.png",
+      "Four seeded inventory items, units and categories render. No add action performed."
+    ]
+  },
+  {
+    "file": "app/(manager)/cart.tsx",
+    "route": "(manager)/cart",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-cart-explicit.png",
+      "Explicit manager route renders the empty cart. Sending remains unverified."
+    ]
+  },
+  {
+    "file": "app/(manager)/employee-reminders-delivery.tsx",
+    "route": "(manager)/employee-reminders-delivery",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-employee-reminders-delivery.png",
+      "Empty delivery history renders. Actual push delivery unverified."
+    ]
+  },
+  {
+    "file": "app/(manager)/employee-reminders-recurring.tsx",
+    "route": "(manager)/employee-reminders-recurring",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-employee-reminders-recurring.png",
+      "Empty rules screen renders. No rule created."
+    ]
+  },
+  {
+    "file": "app/(manager)/employee-reminders-settings.tsx",
+    "route": "(manager)/employee-reminders-settings",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-employee-reminders-settings.png",
+      "Three configuration fields render. No save attempted."
+    ]
+  },
+  {
+    "file": "app/(manager)/employee-reminders.tsx",
+    "route": "(manager)/employee-reminders",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-employee-reminders.png",
+      "Two local employees and reminder states render. No reminder sent."
+    ]
+  },
+  {
+    "file": "app/(manager)/export-fish-order.tsx",
+    "route": "(manager)/export-fish-order",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-export-invalid-fixed.png",
+      "Missing order details now show honest error and no Copy/Share. Valid local fixture payload renders in root-export-valid-fixture.png; no external share performed. 16 focused regression tests pass."
+    ]
+  },
+  {
+    "file": "app/(manager)/fulfillment-confirmation.tsx",
+    "route": "(manager)/fulfillment-confirmation",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(manager)/fulfillment-history-detail.tsx",
+    "route": "(manager)/fulfillment-history-detail",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(manager)/fulfillment-history.tsx",
+    "route": "(manager)/fulfillment-history",
+    "status": "Partial",
+    "evidence": [
+      "e2e/24-manager-fulfillment-history-empty.png",
+      "Empty history rendered; populated history and detail unverified."
+    ]
+  },
+  {
+    "file": "app/(manager)/fulfillment-send-all.tsx",
+    "route": "(manager)/fulfillment-send-all",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(manager)/fulfillment.tsx",
+    "route": "(manager)/fulfillment",
+    "status": "Partial",
+    "evidence": [
+      "e2e/22-manager-fulfillment.png",
+      "e2e/23-manager-fulfillment-expanded.png",
+      "Pending groups and expanded items rendered. Supplier fixture unresolved; sending not exercised.",
+      "e2e/root-employee-manager-guard.png confirms employee deep-link guard."
+    ]
+  },
+  {
+    "file": "app/(manager)/index.tsx",
+    "route": "(manager)/index",
+    "status": "Partial",
+    "evidence": [
+      "e2e/20-manager-home.png",
+      "Manager home rendered with local fixtures."
+    ]
+  },
+  {
+    "file": "app/(manager)/inventory.tsx",
+    "route": "(manager)/inventory",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-inventory.png",
+      "Four local inventory items and freshness counts render. No counts changed."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/access-codes.tsx",
+    "route": "(manager)/manager-settings/access-codes",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-manager-settings-access-codes.png",
+      "Masked access-code fields render. No secret changed."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/export-format.tsx",
+    "route": "(manager)/manager-settings/export-format",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-export-format-active.png",
+      "Rendered with manager view active and local fixture data. Read-only checks; no configuration, access or business record changes."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/profile.tsx",
+    "route": "(manager)/manager-settings/profile",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-profile-active.png",
+      "Rendered with manager view active and local fixture data. Read-only checks; no configuration, access or business record changes.",
+      "e2e/root-manager-credential-final.png",
+      "Original credential modal failure retested successfully on final build. No credential submitted."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/quick-order-config.tsx",
+    "route": "(manager)/manager-settings/quick-order-config",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-quick-order-config-active.png",
+      "Rendered with manager view active and local fixture data. Read-only checks; no configuration, access or business record changes."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/supplier-contacts.tsx",
+    "route": "(manager)/manager-settings/supplier-contacts",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-supplier-contacts-active.png",
+      "Rendered with manager view active and local fixture data. Read-only checks; no configuration, access or business record changes."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/team-defaults.tsx",
+    "route": "(manager)/manager-settings/team-defaults",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-team-defaults-active.png",
+      "Rendered with manager view active and local fixture data. Read-only checks; no configuration, access or business record changes."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/team-invite-link.tsx",
+    "route": "(manager)/manager-settings/team-invite-link",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-invite-invalid-fixed.png",
+      "Native missing-parameter state repaired; no Copy/Send. Back to Team verified. Valid link behavior covered by focused tests; actual creation, delivery and acceptance remain unverified."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/team-invite.tsx",
+    "route": "(manager)/manager-settings/team-invite",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-team-invite.png",
+      "Invitation form renders with current choices. No invitation created."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/team-member.tsx",
+    "route": "(manager)/manager-settings/team-member",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-team-member.png",
+      "Existing local employee details and module states render. No changes or reset attempted."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/team-preview.tsx",
+    "route": "(manager)/manager-settings/team-preview",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-team-preview.png",
+      "Read-only preview renders current local employee modules."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/team.tsx",
+    "route": "(manager)/manager-settings/team",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-team-active.png",
+      "Rendered with manager view active and local fixture data. Read-only checks; no configuration, access or business record changes."
+    ]
+  },
+  {
+    "file": "app/(manager)/manager-settings/user-management.tsx",
+    "route": "(manager)/manager-settings/user-management",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-user-management-active.png",
+      "Rendered with manager view active and local fixture data. Read-only checks; no configuration, access or business record changes."
+    ]
+  },
+  {
+    "file": "app/(manager)/orders/pending.tsx",
+    "route": "(manager)/orders/pending",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-orders-pending.png",
+      "Empty pending review queue renders."
+    ]
+  },
+  {
+    "file": "app/(manager)/orders.tsx",
+    "route": "(manager)/orders",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-manager-orders-explicit.png",
+      "Explicit manager route renders three local orders with status counts. Canonical /orders screenshot is employee My Orders and is not manager evidence. No status changed."
+    ]
+  },
+  {
+    "file": "app/(manager)/past-orders/[id].tsx",
+    "route": "(manager)/past-orders/[id]",
+    "status": "Shared implementation",
+    "evidence": [
+      "Source alias of app/(manager)/fulfillment-history-detail.tsx. This alias deep link was not independently exercised."
+    ]
+  },
+  {
+    "file": "app/(manager)/past-orders/index.tsx",
+    "route": "(manager)/past-orders/index",
+    "status": "Shared implementation",
+    "evidence": [
+      "Source alias of app/(manager)/fulfillment-history.tsx. This alias deep link was not independently exercised."
+    ]
+  },
+  {
+    "file": "app/(manager)/profile.tsx",
+    "route": "(manager)/profile",
+    "status": "Partial",
+    "evidence": [
+      "e2e/19-manager-settings.png",
+      "Settings overview rendered."
+    ]
+  },
+  {
+    "file": "app/(manager)/quick-order.tsx",
+    "route": "(manager)/quick-order",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(manager)/voice.tsx",
+    "route": "(manager)/voice",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(tabs)/cart.tsx",
+    "route": "(tabs)/cart",
+    "status": "Partial",
+    "evidence": [
+      "e2e/12-manager-cart-empty.png",
+      "Empty cart rendered in shared ordering flow. Populated cart checkout not verified."
+    ]
+  },
+  {
+    "file": "app/(tabs)/draft.tsx",
+    "route": "(tabs)/draft",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(tabs)/history.tsx",
+    "route": "(tabs)/history",
+    "status": "Partial",
+    "evidence": [
+      "e2e/13-manager-history-empty.png",
+      "Empty checklist history rendered. Reorder not verified."
+    ]
+  },
+  {
+    "file": "app/(tabs)/index.tsx",
+    "route": "(tabs)/index",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(tabs)/inventory-browse.tsx",
+    "route": "(tabs)/inventory-browse",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(tabs)/orders.tsx",
+    "route": "(tabs)/orders",
+    "status": "Shared implementation",
+    "evidence": [
+      "Source alias of app/orders/history.tsx. This alias deep link was not independently exercised."
+    ]
+  },
+  {
+    "file": "app/(tabs)/past-checks.tsx",
+    "route": "(tabs)/past-checks",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-past-checks.png",
+      "Empty completed-check history rendered."
+    ]
+  },
+  {
+    "file": "app/(tabs)/profile.tsx",
+    "route": "(tabs)/profile",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/(tabs)/quick-order.tsx",
+    "route": "(tabs)/quick-order",
+    "status": "Blocked",
+    "evidence": [
+      "e2e/21-manager-quick-order-filled.png",
+      "Text entry retained. Send blocked by automatic approval review; local parser catalog fixture also needs qo_items."
+    ]
+  },
+  {
+    "file": "app/(tabs)/receive-delivery.tsx",
+    "route": "(tabs)/receive-delivery",
+    "status": "Partial",
+    "evidence": [
+      "e2e/18-manager-receive-empty.png",
+      "Empty receipt state rendered. Delivery mutation not verified."
+    ]
+  },
+  {
+    "file": "app/(tabs)/settings.tsx",
+    "route": "(tabs)/settings",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-employee-manager-guard.png",
+      "Employee settings rendered after rejecting manager fulfillment deep link."
+    ]
+  },
+  {
+    "file": "app/(tabs)/simple-order.tsx",
+    "route": "(tabs)/simple-order",
+    "status": "Partial",
+    "evidence": [
+      "e2e/10-manager-order-sent.png",
+      "e2e/27-employee-checklist.png",
+      "Manager checklist submission produced a matching local submitted order. Employee checklist rendered. Further writes await permission."
+    ]
+  },
+  {
+    "file": "app/(tabs)/stock-check-list.tsx",
+    "route": "(tabs)/stock-check-list",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-stock-list.png",
+      "Local stock station renders. No counts saved or submitted."
+    ]
+  },
+  {
+    "file": "app/(tabs)/stock-check.tsx",
+    "route": "(tabs)/stock-check",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-stock-home.png",
+      "Two seeded areas rendered with three unchecked items. No count submitted."
+    ]
+  },
+  {
+    "file": "app/(tabs)/voice.tsx",
+    "route": "(tabs)/voice",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/index.tsx",
+    "route": "index",
+    "status": "Partial",
+    "evidence": [
+      "e2e/06-signed-welcome.png",
+      "e2e/27-employee-checklist.png",
+      "Launch routing worked for signed-out and restored employee session."
+    ]
+  },
+  {
+    "file": "app/inventory-browse.tsx",
+    "route": "inventory-browse",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  },
+  {
+    "file": "app/join.tsx",
+    "route": "join",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-join-missing-token.png",
+      "Missing-token deep link returns to welcome. Valid invitation lifecycle remains unverified."
+    ]
+  },
+  {
+    "file": "app/orders/[id].tsx",
+    "route": "orders/[id]",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-order-detail.png",
+      "Actual locally submitted checklist order loads by ID with matching item quantity, employee and location. No status action pressed."
+    ]
+  },
+  {
+    "file": "app/orders/history.tsx",
+    "route": "orders/history",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-order-history.png",
+      "Local employee submitted order rendered with item and note counts. Detail/filter mutations not exhausted."
+    ]
+  },
+  {
+    "file": "app/settings/about-support.tsx",
+    "route": "settings/about-support",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-about-support.png",
+      "Version 2.3 and support/privacy actions render. Public destinations not verified."
+    ]
+  },
+  {
+    "file": "app/settings/display-accessibility.tsx",
+    "route": "settings/display-accessibility",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-display-accessibility.png",
+      "Current settings and preview render. Whole-app large-text and physical VoiceOver testing remain."
+    ]
+  },
+  {
+    "file": "app/settings/notifications-debug.tsx",
+    "route": "settings/notifications-debug",
+    "status": "Pass",
+    "evidence": [
+      "e2e/root-debug-redirect.png",
+      "Direct native deep link redirects to Notifications in Release. Diagnostic contents are not exposed."
+    ]
+  },
+  {
+    "file": "app/settings/notifications.tsx",
+    "route": "settings/notifications",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-notifications.png",
+      "Preferences render; physical delivery and server token ownership remain unverified."
+    ]
+  },
+  {
+    "file": "app/settings/profile.tsx",
+    "route": "settings/profile",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-credential-accessible-final.png",
+      "Shared credential sheet opens after asynchronous identity lookup. Separate accessible fields/buttons and Cancel verified. No new credential saved."
+    ]
+  },
+  {
+    "file": "app/settings/quick-search.tsx",
+    "route": "settings/quick-search",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-quick-search.png",
+      "Search field and empty prompt render. Search-result selection remains unverified."
+    ]
+  },
+  {
+    "file": "app/settings/reminders.tsx",
+    "route": "settings/reminders",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-reminders.png",
+      "Preset and empty custom reminder states render. Scheduling not verified."
+    ]
+  },
+  {
+    "file": "app/settings/stock-settings.tsx",
+    "route": "settings/stock-settings",
+    "status": "Partial",
+    "evidence": [
+      "e2e/root-stock-settings.png",
+      "Stock settings render; preference writes not changed."
+    ]
+  },
+  {
+    "file": "app/suspended.tsx",
+    "route": "suspended",
+    "status": "Not exercised",
+    "evidence": [
+      "No direct runtime evidence recorded for this route. Source inspection and shared unit tests do not establish an end-to-end pass."
+    ]
+  }
+]

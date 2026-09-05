@@ -85,11 +85,11 @@ async function fetchActiveInventory(): Promise<{ catalog: CatalogItem[]; usedSer
 
   const supabaseUrl = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '').trim();
   const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim();
-  const fallbackKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? '';
+  const fallbackKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY ?? '';
   const supabaseKey = (serviceRoleKey || fallbackKey).trim();
 
   if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Missing Supabase URL/key. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY, or SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
+    throw new Error('Missing Supabase URL/key. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY, or SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.');
   }
 
   const supabase = createClient(supabaseUrl, supabaseKey, {
@@ -119,8 +119,7 @@ async function fetchActiveInventory(): Promise<{ catalog: CatalogItem[]; usedSer
   test('recognizes every active inventory item by exact name and simple variants', async () => {
     const { catalog, usedServiceRoleKey } = await fetchActiveInventory();
     if (catalog.length === 0 && !usedServiceRoleKey) {
-      console.warn('No inventory rows were visible with the public Supabase key. Set SUPABASE_SERVICE_ROLE_KEY to run the live recognition audit locally.');
-      return;
+      throw new Error('Inventory recognition audit is blocked: no inventory rows are visible with the public key. Run against an authorized local fixture or supply a server-only audit credential. Zero rows cannot prove recognition.');
     }
 
     expect(catalog.length).toBeGreaterThan(0);

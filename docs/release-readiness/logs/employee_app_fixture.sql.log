@@ -1,0 +1,83 @@
+BEGIN
+INSERT 0 2
+INSERT 0 2
+INSERT 0 1
+INSERT 0 3
+INSERT 0 1
+INSERT 0 2
+              set_config              
+--------------------------------------
+ 44444444-1111-4111-8111-111111111111
+(1 row)
+
+ save_my_checklist_default 
+---------------------------
+                         2
+(1 row)
+
+DO
+ save_my_checklist_default 
+---------------------------
+                         1
+(1 row)
+
+DO
+              set_config              
+--------------------------------------
+ 44444444-2222-4111-8111-222222222222
+(1 row)
+
+ save_my_checklist_default 
+---------------------------
+                         1
+(1 row)
+
+DO
+ set_config 
+------------
+ 
+(1 row)
+
+INSERT 0 1
+INSERT 0 1
+              set_config              
+--------------------------------------
+ 44444444-1111-4111-8111-111111111111
+(1 row)
+
+ set_my_order_meta 
+-------------------
+ 
+(1 row)
+
+DO
+              set_config              
+--------------------------------------
+ 44444444-2222-4111-8111-222222222222
+(1 row)
+
+DO
+ set_config 
+------------
+ 
+(1 row)
+
+INSERT 0 2
+              set_config              
+--------------------------------------
+ 44444444-1111-4111-8111-111111111111
+(1 row)
+
+ update_my_display_name 
+------------------------
+ 
+(1 row)
+
+DO
+DO
+                      result                      
+--------------------------------------------------
+ PASS: employee_app_fixture assertions all passed
+(1 row)
+
+ROLLBACK

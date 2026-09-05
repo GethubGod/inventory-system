@@ -1,0 +1,14 @@
+
+> babytuna@2.2 test:ci
+> jest --runInBand --watchman=false --runTestsByPath src/__tests__/authStore.signOut.test.ts src/__tests__/changePassword.test.ts
+
+PASS src/__tests__/changePassword.test.ts
+(node:73150) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+PASS src/__tests__/authStore.signOut.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       12 passed, 12 total
+Snapshots:   0 total
+Time:        1.683 s
+Ran all test suites within paths "src/__tests__/authStore.signOut.test.ts", "src/__tests__/changePassword.test.ts".

@@ -7,11 +7,20 @@ const mockAsyncStorage = {
 
 const clearSupabaseStoredSessionMock = jest.fn(async () => undefined);
 const signOutMock = jest.fn();
+const clearDeviceNotificationsMock = jest.fn();
+const deactivateCurrentDevicePushTokenMock = jest.fn();
+jest.mock('@/services/notificationService', () => ({
+  clearDeviceNotifications: clearDeviceNotificationsMock,
+  deactivateCurrentDevicePushToken: deactivateCurrentDevicePushTokenMock,
+}));
 const getSessionMock = jest.fn(async () => ({ data: { session: null } }));
 const setSessionMock = jest.fn();
 const refreshSessionMock = jest.fn();
 const onAuthStateChangeMock = jest.fn();
 const removeChannelMock = jest.fn();
+
+const invalidatePendingOrderRequestsMock = jest.fn();
+const invalidatePendingStockRequestsMock = jest.fn();
 
 const orderStoreMock = {
   getInitialState: jest.fn(() => ({})),
@@ -93,14 +102,20 @@ jest.mock('@/lib/supabase', () => ({
   clearSupabaseStoredSession: clearSupabaseStoredSessionMock,
 }));
 
-jest.mock('../store/orderStore', () => ({ useOrderStore: orderStoreMock }));
+jest.mock('../store/orderStore', () => ({ useOrderStore: orderStoreMock, invalidatePendingOrderRequests: invalidatePendingOrderRequestsMock }));
 jest.mock('../store/draftStore', () => ({ useDraftStore: draftStoreMock }));
 jest.mock('../store/inventoryStore', () => ({ useInventoryStore: inventoryStoreMock }));
-jest.mock('../store/stockStore', () => ({ useStockStore: stockStoreMock }));
+jest.mock('../store/stockStore', () => ({ useStockStore: stockStoreMock, invalidatePendingStockRequests: invalidatePendingStockRequestsMock }));
 jest.mock('../store/fulfillmentStore', () => ({ useFulfillmentStore: fulfillmentStoreMock }));
 jest.mock('../store/tunaSpecialistStore', () => ({ useTunaSpecialistStore: tunaSpecialistStoreMock }));
 
+/* eslint-disable import/first -- Mock factories reference initialized bindings before the subject loads. */
 import { useAuthStore } from '../store/authStore';
+import { useSettingsStore } from '../store/settingsStore';
+import { useSimpleOrderUiStore } from '../store/simpleOrderUiStore';
+import { getCached, setCache } from '../lib/queryCache';
+import { getHomeInsights, setHomeInsights } from '../features/home/homeInsightsCache';
+/* eslint-enable import/first */
 
 async function flushMicrotasks(iterations = 8) {
   for (let index = 0; index < iterations; index += 1) {
@@ -122,6 +137,8 @@ describe('useAuthStore sign-out flow', () => {
 
     authChangeCallback = null;
     signOutMock.mockResolvedValue({ error: null });
+    clearDeviceNotificationsMock.mockResolvedValue(undefined);
+    deactivateCurrentDevicePushTokenMock.mockResolvedValue(undefined);
     getSessionMock.mockResolvedValue({ data: { session: null } });
     setSessionMock.mockResolvedValue({ data: { session: null }, error: null });
     refreshSessionMock.mockResolvedValue({ data: { session: null }, error: null });
@@ -175,7 +192,7 @@ describe('useAuthStore sign-out flow', () => {
 
     const signOutPromise = useAuthStore.getState().signOut();
 
-    jest.advanceTimersByTime(5_000);
+    await jest.advanceTimersByTimeAsync(10_000);
 
     await expect(signOutPromise).resolves.toBeUndefined();
 
@@ -188,10 +205,75 @@ describe('useAuthStore sign-out flow', () => {
     expect(state.viewMode).toBe('employee');
     expect(mockAsyncStorage.removeItem).toHaveBeenCalledWith('babytuna-auth');
     expect(mockAsyncStorage.multiRemove).toHaveBeenCalled();
+    expect(invalidatePendingOrderRequestsMock).toHaveBeenCalledTimes(1);
+    expect(invalidatePendingStockRequestsMock).toHaveBeenCalledTimes(1);
+    expect(invalidatePendingOrderRequestsMock.mock.invocationCallOrder[0])
+      .toBeLessThan(orderStoreMock.setState.mock.invocationCallOrder[0]);
+    expect(invalidatePendingStockRequestsMock.mock.invocationCallOrder[0])
+      .toBeLessThan(stockStoreMock.setState.mock.invocationCallOrder[0]);
     expect(clearSupabaseStoredSessionMock).toHaveBeenCalledTimes(1);
 
     jest.runOnlyPendingTimers();
     await Promise.resolve();
+  });
+
+  test('deactivates the departing device before invalidating its session', async () => {
+    useAuthStore.setState({ session: { user: { id: 'employee-1' } } as any });
+    signOutMock.mockImplementation(async () => {
+      expect(deactivateCurrentDevicePushTokenMock).toHaveBeenCalledWith('employee-1');
+      return { error: null };
+    });
+    await useAuthStore.getState().signOut();
+    expect(clearDeviceNotificationsMock).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().session).toBeNull();
+  });
+
+  test('still signs out locally when notification cleanup is offline', async () => {
+    useAuthStore.setState({ session: { user: { id: 'employee-1' } } as any });
+    deactivateCurrentDevicePushTokenMock.mockRejectedValue(new Error('Network request failed'));
+    clearDeviceNotificationsMock.mockRejectedValue(new Error('Native notifications unavailable'));
+    await expect(useAuthStore.getState().signOut()).resolves.toBeUndefined();
+    expect(signOutMock).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState().session).toBeNull();
+  });
+
+  test('finishes logout after a stuck notification request and expires late device cleanup', async () => {
+    useAuthStore.setState({ session: { user: { id: 'employee-1' } } as any });
+    let canClear: (() => boolean) | undefined;
+    clearDeviceNotificationsMock.mockImplementation((shouldClear: () => boolean) => {
+      canClear = shouldClear;
+      return new Promise(() => {});
+    });
+    const logout = useAuthStore.getState().signOut();
+    await jest.advanceTimersByTimeAsync(5_000);
+    await expect(logout).resolves.toBeUndefined();
+    expect(canClear?.()).toBe(false);
+    expect(useAuthStore.getState().session).toBeNull();
+    expect(useAuthStore.getState().isLoading).toBe(false);
+  });
+
+  test('clears personal settings, staged reorders, and cached supplier data on sign-out', async () => {
+    useSettingsStore.getState().setAvatarUri('file:///private/employee-avatar.jpg');
+    useSettingsStore.getState().addReminder({
+      name: 'Employee private reminder',
+      message: 'Private reminder',
+      repeatType: 'daily',
+      time: '09:00',
+      selectedDays: [1],
+      enabled: true,
+    });
+    useSimpleOrderUiStore.getState().setPendingReorder({ items: [], sourceLabel: 'Previous employee order' });
+    setCache('supplier-lookup', { supplier: 'Previous account supplier' });
+    setHomeInsights('employee-a', 'location-1', { predictedItems: [], reorderOrder: null, activeReminder: null, cachedAt: Date.now() });
+
+    await useAuthStore.getState().signOut();
+
+    expect(useSettingsStore.getState().avatarUri).toBeNull();
+    expect(useSettingsStore.getState().reminders).toEqual(useSettingsStore.getInitialState().reminders);
+    expect(useSimpleOrderUiStore.getState().consumePendingReorder()).toBeNull();
+    expect(getCached('supplier-lookup')).toBeNull();
+    expect(getHomeInsights('employee-a', 'location-1')).toBeUndefined();
+    expect(mockAsyncStorage.multiRemove).toHaveBeenCalledWith(expect.arrayContaining(['app-settings']));
   });
 
   test('ignores the SIGNED_OUT auth event triggered by an explicit sign out', async () => {

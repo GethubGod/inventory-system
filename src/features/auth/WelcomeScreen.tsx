@@ -79,6 +79,7 @@ export default function WelcomeScreen() {
               PASTE YOUR INVITE LINK
             </Text>
             <TextInput
+              accessibilityLabel="Invite link"
               value={linkInput}
               onChangeText={(value) => {
                 setLinkInput(value);
@@ -110,6 +111,8 @@ export default function WelcomeScreen() {
             ) : null}
             <AuthPrimaryButton label="Continue" onPress={handleContinue} />
             <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Back"
               onPress={() => {
                 setShowPaste(false);
                 setLinkInput('');

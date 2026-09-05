@@ -1,0 +1,5 @@
+Timestamp               Ty Process[PID:TID]
+2026-09-05 00:33:50.685 E  Babytuna[8241:508845] [com.apple.network:connection] nw_connection_copy_connected_local_endpoint_block_invoke [C1] Connection has no local endpoint
+2026-09-05 00:33:50.685 E  Babytuna[8241:508845] [com.apple.network:connection] nw_connection_copy_connected_local_endpoint_block_invoke [C1] Connection has no local endpoint
+2026-09-05 00:34:11.064 E  Babytuna[8241:508857] [com.apple.coreui:framework] CoreUI: CUIThemeStore: No theme registered with id=0
+2026-09-05 00:35:08.366 E  Babytuna[8241:508834] [com.apple.UIKit:Presentation] Attempt to present <RCTFabricModalHostViewController: 0x1071d8e00> on <UIViewController: 0x103b14a30> (from <RNSScreen: 0x1070ca800>) while a presentation is in progress.

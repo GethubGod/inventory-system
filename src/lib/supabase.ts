@@ -215,6 +215,18 @@ export const supabase = createClient(resolvedSupabaseUrl, resolvedSupabasePublic
   },
 }) as any;
 
+/** An isolated, in-memory session for credential verification and update only. */
+export function createCredentialClient() {
+  return createClient(resolvedSupabaseUrl, resolvedSupabasePublicKey, {
+    auth: {
+      storageKey: `${supabaseAuthStorageKey}-credential-check`,
+      autoRefreshToken: false,
+      persistSession: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
 export async function clearSupabaseStoredSession() {
   await Promise.all([
     ExpoSecureStoreAdapter.removeItem(supabaseAuthStorageKey),

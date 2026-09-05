@@ -1,0 +1,217 @@
+
+> babytuna@2.2 lint
+> eslint .
+
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/app/(manager)/inventory.tsx
+  23:8   warning  '/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/types/index.ts' imported multiple times  import/no-duplicates
+  24:66  warning  '/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/types/index.ts' imported multiple times  import/no-duplicates
+  51:10  warning  'getCategoryEmoji' is defined but never used                                                                        @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/apiClient.deleteSelf.test.ts
+  23:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/authStore.authFlow.test.ts
+  104:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/authStore.signOut.test.ts
+  103:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/employeeChecklistMeta.test.ts
+  37:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/employeeDefaults.test.ts
+  6:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/employeeReminders.test.ts
+  16:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/holidayTemplates.test.ts
+  13:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/inventoryStore.test.ts
+  28:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/invitesAccept.test.ts
+  13:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/invoiceScans.test.ts
+  11:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/loginCredentials.test.ts
+  23:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/notificationService.test.ts
+  25:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/onboardingStore.test.ts
+  22:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/orderChecklist.test.ts
+  32:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/orderReceiving.test.ts
+  10:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/orderSendMode.test.ts
+  11:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/pastOrderHelpers.test.ts
+  14:1  warning  Import in body of module; reorder to top  import/first
+  26:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/quickOrderComposerBar.test.ts
+   6:17  warning  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  45:17  warning  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  85:17  warning  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/quickOrderComposerPills.test.ts
+   6:17  warning  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  26:17  warning  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/quickOrderListCard.test.ts
+   6:17  warning  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  28:17  warning  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+  35:17  warning  A `require()` style import is forbidden  @typescript-eslint/no-require-imports
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/quickOrderVoice.test.ts
+  13:1  warning  Import in body of module; reorder to top  import/first
+  14:1  warning  Import in body of module; reorder to top  import/first
+  18:1  warning  Import in body of module; reorder to top  import/first
+  19:1  warning  Import in body of module; reorder to top  import/first
+  20:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/receiveDeliveryLineState.test.ts
+  8:1  warning  Import in body of module; reorder to top  import/first
+  9:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/screenshotImports.test.ts
+  17:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/simpleOrderRecentOrders.test.ts
+  11:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/stockCheckV2.test.ts
+  8:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/supplierDraftHelpers.test.ts
+  13:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/teamService.test.ts
+   6:1  warning  Import in body of module; reorder to top  import/first
+  13:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/__tests__/useAuthGuard.test.ts
+  5:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/components/CategoryFilter.tsx
+  2:15  warning  'ItemCategory' is defined but never used      @typescript-eslint/no-unused-vars
+  3:10  warning  'getCategoryLabel' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/components/ItemActionSheet.tsx
+  10:31  warning  '/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/theme/design.ts' imported multiple times  import/no-duplicates
+  15:8   warning  '/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/theme/design.ts' imported multiple times  import/no-duplicates
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/components/ui/GlassSurface.tsx
+  3:24  warning  '/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/theme/design.ts' imported multiple times  import/no-duplicates
+  9:8   warning  '/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/theme/design.ts' imported multiple times  import/no-duplicates
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/constants/theme.ts
+  18:1  warning  Import in body of module; reorder to top  import/first
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/features/browse/BrowseItemRow.tsx
+  469:5  warning  React Hook useCallback has a missing dependency: 'item'. Either include it or remove the dependency array  react-hooks/exhaustive-deps
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/features/cart/CartScreenView.tsx
+  190:9  warning  'selectedLocation' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/features/fulfillment/components/FulfillmentExpandedSupplierItems.tsx
+  3:10  warning  'Ionicons' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/features/fulfillment/components/FulfillmentOrderLaterCard.tsx
+  8:3  warning  'glassHairlineWidth' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/features/fulfillment/components/FulfillmentSuppliersCard.tsx
+  8:3  warning  'glassHairlineWidth' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/features/ordering/NeedsInputActionButtons.tsx
+  4:10  warning  'colors' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/features/ordering/quickOrderQuantityFlow.ts
+  63:23  warning  Array type using 'ReadonlyArray<T>' is forbidden. Use 'readonly T[]' instead  @typescript-eslint/array-type
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/features/ordering/quickOrderWelcome.ts
+  49:13  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/services/employeeReminders.ts
+  186:10  warning  'daysSince' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/services/orderChecklist.ts
+  632:74  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/services/stockCheckV2.ts
+  544:27  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/services/userManagement.ts
+  40:10  warning  'normalizeRole' is defined but never used                 @typescript-eslint/no-unused-vars
+  44:10  warning  'extractErrorMessage' is defined but never used           @typescript-eslint/no-unused-vars
+  58:16  warning  'selectManagedProfiles' is defined but never used         @typescript-eslint/no-unused-vars
+  93:16  warning  'updateSuspensionWithFallback' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/authStore.ts
+  411:16  warning  'upsertProfileResilient' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/helpers/pastOrderHelpers.ts
+   3:17  warning  'UnitType' is defined but never used             @typescript-eslint/no-unused-vars
+  20:3   warning  'normalizeSupplierId' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/helpers/supplierDraftHelpers.ts
+  5:3  warning  'FulfillmentLocationGroup' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/src/store/inventoryStore.ts
+  5:15  warning  'KnownItemCategory' is defined but never used      @typescript-eslint/no-unused-vars
+  5:34  warning  'KnownSupplierCategory' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/_shared/invites.ts
+  85:14  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/_shared/loginNames.test.ts
+  4:16  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/_shared/tips.ts
+  184:12  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/index.ts
+  2075:10  warning  'safeParseFailureResponse' is defined but never used  @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/mock-parser.ts
+   27:22  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+  206:13  warning  'bestMatch' is assigned a value but never used               @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/process-message.ts
+  673:10  warning  'applyAllowedUnitRulesToCatalog' is defined but never used  @typescript-eslint/no-unused-vars
+  791:10  warning  'isShortItemQuantityMessage' is defined but never used      @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/parse-order/safety-engine.ts
+  115:10  warning  'evaluateParsedItem' is defined but never used        @typescript-eslint/no-unused-vars
+  145:10  warning  'buildParserClarification' is defined but never used  @typescript-eslint/no-unused-vars
+  231:10  warning  'evaluateOperation' is defined but never used         @typescript-eslint/no-unused-vars
+  372:10  warning  'buildSafetyClarification' is defined but never used  @typescript-eslint/no-unused-vars
+  408:10  warning  'warningFromDecision' is defined but never used       @typescript-eslint/no-unused-vars
+  420:10  warning  'warningFromOperation' is defined but never used      @typescript-eslint/no-unused-vars
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/tip-entries/index.ts
+  59:17  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+  96:32  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/tip-entry-auth/index.ts
+  73:32  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+
+/Users/david/Babytuna Systems/smelter/.worktrees/production-readiness/supabase/functions/tip-voice-parse/index.ts
+  206:11  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+  207:15  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+  304:42  warning  Array type using 'Array<T>' is forbidden. Use 'T[]' instead  @typescript-eslint/array-type
+
+✖ 91 problems (0 errors, 91 warnings)
+  0 errors and 50 warnings potentially fixable with the `--fix` option.
+

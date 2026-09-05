@@ -1,0 +1,50 @@
+BEGIN
+INSERT 0 2
+INSERT 0 2
+INSERT 0 2
+INSERT 0 3
+INSERT 0 1
+INSERT 0 2
+              set_config              
+--------------------------------------
+ 61000000-0000-4000-8000-000000000001
+(1 row)
+
+SET
+       generate_order_checklist       
+--------------------------------------
+ 42c5a6cd-2680-4cba-b674-54c8db5f98e6
+(1 row)
+
+RESET
+              set_config              
+--------------------------------------
+ 71000000-0000-4000-8000-000000000001
+(1 row)
+
+SET
+INSERT 0 1
+INSERT 0 3
+RESET
+              set_config              
+--------------------------------------
+ 61000000-0000-4000-8000-000000000001
+(1 row)
+
+SET
+DO
+ fixture_date | overlay_row_count |                                     adjustments                                      
+--------------+-------------------+--------------------------------------------------------------------------------------
+ 2026-12-23   |                 0 | 
+ 2026-12-24   |                 3 | add:Holiday Fixture Nori, set_qty:Holiday Fixture Salmon, scale:Holiday Fixture Tuna
+ 2026-12-27   |                 0 | 
+(3 rows)
+
+       item_name        | unit | adjustment_kind | quantity |  template_name   
+------------------------+------+-----------------+----------+------------------
+ Holiday Fixture Nori   | pack | add             |        3 | Fixture New Year
+ Holiday Fixture Salmon | case | set_qty         |        8 | Fixture New Year
+ Holiday Fixture Tuna   | case | scale           |      1.5 | Fixture New Year
+(3 rows)
+
+ROLLBACK

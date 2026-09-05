@@ -1,0 +1,22 @@
+Full original log preserved in ios-release-build-signed-simulator.log.gz.
+
+
+CodeSign /tmp/smelter-release-derived/Build/Products/Release-iphonesimulator/Babytuna.app (in target 'Babytuna' from project 'Babytuna')
+    cd /Users/david/Babytuna\ Systems/smelter/.worktrees/production-readiness/ios
+    
+    Signing Identity:     "Sign to Run Locally"
+    
+    /usr/bin/codesign --force --sign - --entitlements /tmp/smelter-release-derived/Build/Intermediates.noindex/Babytuna.build/Release-iphonesimulator/Babytuna.build/Babytuna.app.xcent --timestamp\=none --generate-entitlement-der /tmp/smelter-release-derived/Build/Products/Release-iphonesimulator/Babytuna.app
+
+Validate /tmp/smelter-release-derived/Build/Products/Release-iphonesimulator/Babytuna.app (in target 'Babytuna' from project 'Babytuna')
+    cd /Users/david/Babytuna\ Systems/smelter/.worktrees/production-readiness/ios
+    builtin-validationUtility /tmp/smelter-release-derived/Build/Products/Release-iphonesimulator/Babytuna.app -validate-for-store -shallow-bundle -infoplist-subpath Info.plist
+
+note: Run script build phase '[CP-User] [RNDeps] Replace React Native Dependencies for the right configuration, if needed' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'ReactNativeDependencies' from project 'Pods')
+note: Run script build phase '[Expo] Configure project' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'Babytuna' from project 'Babytuna')
+note: Run script build phase 'Bundle React Native code and images' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'Babytuna' from project 'Babytuna')
+note: Run script build phase '[CP-User] [RNDeps] Replace React Native Core for the right configuration, if needed' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'React-Core-prebuilt' from project 'Pods')
+note: Run script build phase '[CP-User] Generate app.config for prebuilt Constants.manifest' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'EXConstants' from project 'Pods')
+note: Run script build phase '[CP-User] Generate updates resources for expo-updates' will be run during every build because the option to run the script phase "Based on dependency analysis" is unchecked. (in target 'EXUpdates' from project 'Pods')
+** BUILD SUCCEEDED **
+

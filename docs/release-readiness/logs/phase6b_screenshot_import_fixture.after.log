@@ -1,0 +1,44 @@
+BEGIN
+GRANT
+INSERT 0 2
+INSERT 0 2
+INSERT 0 2
+INSERT 0 1
+INSERT 0 2
+INSERT 0 5
+INSERT 0 5
+INSERT 0 2
+              set_config              
+--------------------------------------
+ 60000000-0000-4000-8000-000000000001
+(1 row)
+
+SET
+       generate_order_checklist       
+--------------------------------------
+ d79877a1-a0c7-4088-a525-15265b2d9bfd
+(1 row)
+
+DO
+RESET
+INSERT 0 1
+INSERT 0 1
+              set_config              
+--------------------------------------
+ 70000000-0000-4000-8000-000000000001
+(1 row)
+
+SET
+       merge_screenshot_import        
+--------------------------------------
+ d79877a1-a0c7-4088-a525-15265b2d9bfd
+(1 row)
+
+DO
+   item_name    | staleness_bucket | recommended_qty | generation_source 
+----------------+------------------+-----------------+-------------------
+ Fixture Tuna   | frequent         |               7 | import
+ Fixture Salmon | occasional       |               3 | import
+(2 rows)
+
+ROLLBACK

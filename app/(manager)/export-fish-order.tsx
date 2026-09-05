@@ -10,70 +10,54 @@ import {
   Share,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as Clipboard from 'expo-clipboard';
 import { colors } from '@/constants';
 import { ManagerScaleContainer } from '@/components/ManagerScaleContainer';
-
-// For multi-item orders from a single location
-interface FishItemOrder {
-  itemId: string;
-  itemName: string;
-  quantity: number;
-  unit: string;
-}
-
-// Legacy: For single item across multiple locations
-interface LocationQuantity {
-  name: string;
-  shortCode: string;
-  quantity: number;
-}
-
-function firstParam(value: string | string[] | undefined): string {
-  return Array.isArray(value) ? value[0] ?? '' : value ?? '';
-}
-
-function parseJsonArrayParam<T>(value: string | string[] | undefined): T[] {
-  const raw = firstParam(value);
-  if (!raw) return [];
-
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
-  } catch {
-    return [];
-  }
-}
+import { EmptyStateCard } from '@/components/EmptyStateCard';
+import { parseFishOrderExportParams, type FishOrderExport, type FishOrderExportParams, type FishItemOrder, type LocationQuantity } from '@/features/fulfillment/fishOrderExportParams';
 
 export default function ExportFishOrderScreen() {
-  const params = useLocalSearchParams<{
-    // New multi-item format
-    locationName?: string | string[];
-    locationShortCode?: string | string[];
-    fishItems?: string | string[]; // JSON array of FishItemOrder
-    // Legacy single item format
-    fishItemId?: string | string[];
-    fishItemName?: string | string[];
-    fishItemQuantity?: string | string[];
-    fishItemUnit?: string | string[];
-    fishItemLocations?: string | string[];
-  }>();
+  const params = useLocalSearchParams<FishOrderExportParams>();
+  const order = parseFishOrderExportParams(params);
 
-  // Detect which format is being used
-  const isMultiItemFormat = firstParam(params.fishItems).length > 0;
+  if (!order) {
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: true, title: 'Fish Order', headerBackTitle: 'Back' }} />
+        <SafeAreaView className="flex-1 bg-gray-50" edges={['bottom']}>
+          <ManagerScaleContainer>
+            <View style={{ padding: 16 }}>
+              <EmptyStateCard
+                icon="receipt-outline"
+                title="No fish order to export"
+                message="Order details are missing or invalid. Go back and select an order with quantities to export."
+                actionLabel="Go Back"
+                onPressAction={() => {
+                  if (router.canGoBack()) router.back();
+                  else router.replace('/(manager)');
+                }}
+              />
+            </View>
+          </ManagerScaleContainer>
+        </SafeAreaView>
+      </>
+    );
+  }
 
-  // Parse params for multi-item format
-  const locationName = firstParam(params.locationName) || 'Location';
-  const locationShortCode = firstParam(params.locationShortCode) || '??';
-  const initialFishItems = parseJsonArrayParam<FishItemOrder>(params.fishItems);
+  return <FishOrderExportEditor key={JSON.stringify(order)} order={order} />;
+}
 
-  // Parse params for legacy single-item format
-  const legacyItemName = firstParam(params.fishItemName) || 'Fish Item';
-  const legacyItemUnit = firstParam(params.fishItemUnit) || 'case';
-  const legacyLocations = parseJsonArrayParam<LocationQuantity>(params.fishItemLocations);
+function FishOrderExportEditor({ order }: { order: FishOrderExport }) {
+  const isMultiItemFormat = order.format === 'multi';
+  const locationName = order.format === 'multi' ? order.locationName : '';
+  const locationShortCode = order.format === 'multi' ? order.locationShortCode : '';
+  const initialFishItems = order.format === 'multi' ? order.items : [];
+  const legacyItemName = order.format === 'legacy' ? order.itemName : '';
+  const legacyItemUnit = order.format === 'legacy' ? order.unit : '';
+  const legacyLocations = order.format === 'legacy' ? order.locations : [];
 
   // Editable state for multi-item format
   const [fishItems, setFishItems] = useState<FishItemOrder[]>(
@@ -93,8 +77,11 @@ export default function ExportFishOrderScreen() {
     return locationQuantities.reduce((sum, loc) => sum + loc.quantity, 0);
   }, [isMultiItemFormat, fishItems, locationQuantities]);
 
+  const canExport = totalQuantity > 0 && Number.isFinite(totalQuantity);
+
   // Update quantity for a fish item (multi-item format)
   const updateFishItemQuantity = useCallback((index: number, newQuantity: number) => {
+    if (!Number.isFinite(newQuantity)) return;
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -107,6 +94,7 @@ export default function ExportFishOrderScreen() {
 
   // Update quantity for a location (legacy format)
   const updateQuantity = useCallback((index: number, newQuantity: number) => {
+    if (!Number.isFinite(newQuantity)) return;
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
@@ -157,15 +145,17 @@ export default function ExportFishOrderScreen() {
 
   // Handle copy to clipboard
   const handleCopyToClipboard = useCallback(async () => {
+    if (!canExport) return;
     await Clipboard.setStringAsync(messageText);
     if (Platform.OS !== 'web') {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
     Alert.alert('Copied!', 'Order copied to clipboard');
-  }, [messageText]);
+  }, [canExport, messageText]);
 
   // Handle share
   const handleShare = useCallback(async () => {
+    if (!canExport) return;
     if (Platform.OS !== 'web') {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
@@ -178,10 +168,10 @@ export default function ExportFishOrderScreen() {
       if (result.action === Share.sharedAction) {
         Alert.alert('Shared!', 'Order has been shared');
       }
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to share');
+    } catch (error: unknown) {
+      Alert.alert('Error', error instanceof Error ? error.message : 'Failed to share');
     }
-  }, [messageText]);
+  }, [canExport, messageText]);
 
   return (
     <>
@@ -377,7 +367,7 @@ export default function ExportFishOrderScreen() {
             }}
           >
             <Text className="text-gray-700 text-sm leading-6 font-mono">
-              {messageText}
+              {canExport ? messageText : 'Set a quantity greater than zero before exporting.'}
             </Text>
           </View>
         </ScrollView>
@@ -388,6 +378,9 @@ export default function ExportFishOrderScreen() {
             {/* Copy to Clipboard */}
             <TouchableOpacity
               className="flex-1 bg-gray-100 rounded-xl py-4 flex-row items-center justify-center"
+              disabled={!canExport}
+              accessibilityState={{ disabled: !canExport }}
+              style={{ opacity: canExport ? 1 : 0.5 }}
               onPress={handleCopyToClipboard}
               activeOpacity={0.8}
             >
@@ -398,6 +391,9 @@ export default function ExportFishOrderScreen() {
             {/* Share */}
             <TouchableOpacity
               className="flex-1 bg-primary-500 rounded-xl py-4 flex-row items-center justify-center"
+              disabled={!canExport}
+              accessibilityState={{ disabled: !canExport }}
+              style={{ opacity: canExport ? 1 : 0.5 }}
               onPress={handleShare}
               activeOpacity={0.8}
             >

@@ -1,0 +1,10 @@
+
+> babytuna@2.2 verify:submit-order-rpc
+> node scripts/verify-submit-order-rpc.js
+
+submit_order_rpc 8-parameter contract resolved and rejected the unauthenticated probe. This does not verify order submission.
+{
+  "status": 401,
+  "code": "42501",
+  "message": "permission denied for function submit_order_rpc"
+}

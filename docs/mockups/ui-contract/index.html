@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smelter UI contract: tokens, primitives, variants for approval</title>
+<style>
+  :root {
+    /* Confirmed tips colourway (docs/employee-onboarding-redesign.md) */
+    --page:#F5F5F4; --card:#FFFFFF; --well:#EDEDEC; --hair:rgba(0,0,0,0.06); --hair2:rgba(0,0,0,0.12);
+    --accent:#E84D38; --tint:#FBEAE7; --alert:#C03520; --alert-bg:#FBE7E7;
+    --ink:#1A1A1A; --ink2:#5F5F5F; --ink3:#9C9890; --disabled:#C9C5BC;
+    --good:#22883E; --good-bg:#E6F4EA; --warn:#B45309; --warn-bg:#FFF4DC;
+    /* Auth (black) palette */
+    --auth-bg:#000000; --auth-text:#FFFFFF; --auth-dim:rgba(255,255,255,0.55); --auth-well:rgba(255,255,255,0.09); --auth-well-border:rgba(255,255,255,0.18);
+    --font:-apple-system,BlinkMacSystemFont,"SF Pro Text",Inter,"Segoe UI",sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#EAE9E6;color:var(--ink);font:15px/1.5 var(--font)}
+  header.top{background:#111;color:#fff;padding:36px 32px 28px}
+  header.top h1{margin:0 0 6px;font-size:26px;letter-spacing:-0.01em}
+  header.top p{margin:0;color:rgba(255,255,255,.65);font-size:13.5px;max-width:900px}
+  nav.toc{position:sticky;top:0;z-index:9;background:rgba(234,233,230,.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--hair2);padding:10px 32px;font-size:13px}
+  nav.toc a{color:var(--ink2);text-decoration:none;margin-right:16px}
+  nav.toc a:hover{color:var(--accent)}
+  main{max-width:1180px;margin:0 auto;padding:24px 32px 80px}
+  section{margin-top:44px}
+  h2{font-size:22px;margin:0 0 4px}
+  h3{font-size:16px;margin:26px 0 8px}
+  p.lead{color:var(--ink2);margin:0 0 12px}
+  .box{background:var(--card);border:1px solid var(--hair2);border-radius:14px;padding:16px 18px;margin:12px 0}
+  .explain{border-left:4px solid var(--disabled);background:#FAFAF9;padding:10px 16px;border-radius:8px;margin:12px 0;font-size:14px;color:var(--ink2)}
+  .explain b{color:var(--ink)}
+  .rec{border-left:4px solid var(--accent);background:var(--tint);padding:12px 16px;border-radius:8px;margin:12px 0}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--hair2);border-radius:12px;overflow:hidden;font-size:13.5px;margin:10px 0}
+  th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--hair);vertical-align:top}
+  th{background:#FAFAF9;font-size:12px;text-transform:uppercase;letter-spacing:.03em;color:var(--ink2)}
+  tr:last-child td{border-bottom:0}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:var(--well);padding:1px 5px;border-radius:4px}
+  pre{background:#1C1C1E;color:#F2F2F2;padding:14px 16px;border-radius:10px;overflow-x:auto;font-size:12.5px;line-height:1.5}
+  pre code{background:transparent;padding:0;color:inherit}
+  .swatches{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px}
+  .sw{border:1px solid var(--hair2);border-radius:10px;overflow:hidden;background:var(--card);font-size:12px}
+  .sw .c{height:52px}
+  .sw .n{padding:6px 8px}
+  .sw .n b{display:block;font-size:12.5px}
+  .row{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+  .grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+  .variant{background:var(--card);border:1px solid var(--hair2);border-radius:14px;padding:14px}
+  .variant.pick{border-color:var(--accent);box-shadow:0 0 0 2px var(--tint)}
+  .variant h4{margin:0 0 4px;font-size:15px}
+  .variant p{margin:4px 0 10px;font-size:13px;color:var(--ink2)}
+  .tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:var(--well);color:var(--ink2);margin-left:6px;vertical-align:middle}
+  .tag.rec{background:var(--tint);color:var(--accent)}
+  .controls{display:flex;gap:18px;flex-wrap:wrap;align-items:center;background:var(--card);border:1px solid var(--hair2);border-radius:12px;padding:12px 16px;margin:12px 0;position:sticky;top:44px;z-index:8}
+  .controls label{font-size:13px;color:var(--ink2);margin-right:4px}
+  .controls button{font:600 13px var(--font);padding:7px 12px;border-radius:999px;border:1px solid var(--hair2);background:#fff;color:var(--ink);cursor:pointer}
+  .controls button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+  /* ---------- Phone frame and primitives (the contract, rendered) ---------- */
+  .phone{width:330px;height:660px;border-radius:38px;background:#111;padding:10px;flex:0 0 auto;box-shadow:0 12px 30px rgba(0,0,0,.18)}
+  .screen{width:100%;height:100%;border-radius:30px;background:var(--page);overflow:hidden;position:relative;font-family:var(--font);display:flex;flex-direction:column}
+  .screen.auth{background:var(--auth-bg);color:var(--auth-text)}
+  .status{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;font-size:12px;font-weight:600}
+  .screen.auth .status{color:#fff}
+  .content{flex:1;overflow:hidden;padding:0 16px}
+  .caption{font-size:12px;color:var(--ink2);margin-top:8px;text-align:center;max-width:330px}
+  .cap-row{display:flex;flex-direction:column;align-items:center}
+
+  /* ScreenHeader */
+  .hdr{padding:4px 16px 10px}
+  .hdr .t-root{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.15}
+  .hdr .t-push{font-size:20px;font-weight:700;letter-spacing:-.01em}
+  .hdr .sub{font-size:13px;color:var(--ink2);margin-top:2px}
+  .hdr .line{display:flex;align-items:center;gap:12px}
+  .hdr .grow{flex:1}
+  .back{width:40px;height:40px;border-radius:999px;background:var(--well);display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .back svg{width:18px;height:18px;stroke:var(--ink);stroke-width:2.2;fill:none}
+  .back.plain{background:transparent;width:28px}
+  .hdr-action{font-size:14px;font-weight:600;color:var(--accent);background:var(--tint);padding:7px 12px;border-radius:999px}
+  .hdr-icon{width:40px;height:40px;border-radius:999px;background:var(--card);border:1px solid var(--hair2);display:flex;align-items:center;justify-content:center}
+  .hdr-icon svg{width:18px;height:18px;stroke:var(--ink);stroke-width:2;fill:none}
+  /* H2 compact centred */
+  .hdr.h2{display:flex;align-items:center;height:48px;padding:0 12px}
+  .hdr.h2 .t-c{flex:1;text-align:center;font-size:17px;font-weight:600}
+  .hdr.h2 .spacer{width:40px}
+  /* H3 large with chevron above */
+  .hdr.h3 .chev{font-size:13px;font-weight:600;color:var(--accent);display:flex;align-items:center;gap:3px;margin-bottom:6px}
+  .hdr.h3 .chev svg{width:12px;height:12px;stroke:var(--accent);stroke-width:2.6;fill:none}
+
+  /* Buttons */
+  .btn{display:flex;align-items:center;justify-content:center;height:50px;border-radius:999px;font-size:16px;font-weight:600;padding:0 20px}
+  .btn.primary{background:var(--accent);color:#fff}
+  .btn.secondary{background:var(--card);border:1px solid var(--hair2);color:var(--ink)}
+  .btn.destructive{background:var(--alert-bg);color:var(--alert)}
+  .btn.small{height:34px;font-size:13.5px;padding:0 14px;display:inline-flex}
+  .btn.disabled{background:var(--disabled);color:#fff}
+  .auth .btn.secondary{background:transparent;border-color:rgba(255,255,255,.35);color:#fff}
+  /* Chips and segments */
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{height:32px;padding:0 13px;border-radius:999px;border:1px solid var(--hair2);background:var(--card);font-size:13px;font-weight:600;color:var(--ink2);display:inline-flex;align-items:center;gap:6px}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .chip .cnt{font-size:11px;background:rgba(0,0,0,.06);padding:1px 6px;border-radius:999px}
+  .chip.on .cnt{background:rgba(255,255,255,.25)}
+  .seg{display:flex;background:var(--well);border-radius:999px;padding:3px}
+  .seg span{flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--ink2);padding:7px 0;border-radius:999px}
+  .seg span.on{background:var(--accent);color:#fff}
+  /* Status pills */
+  .pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;letter-spacing:.02em;padding:3px 9px;border-radius:999px}
+  .pill.submitted{background:var(--warn-bg);color:var(--warn)} .pill.processing{background:var(--well);color:var(--ink)}
+  .pill.fulfilled{background:var(--good-bg);color:var(--good)} .pill.cancelled{background:var(--alert-bg);color:var(--alert)} .pill.draft{background:var(--well);color:var(--ink3)}
+  .pill i{width:6px;height:6px;border-radius:99px;background:currentColor;display:inline-block}
+  /* Cards, rows, labels */
+  .card{background:var(--card);border:1px solid var(--hair);border-radius:16px;padding:12px 14px;margin-bottom:10px}
+  .lbl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin:10px 0 6px}
+  .listrow{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--hair)}
+  .listrow:last-child{border-bottom:0}
+  .listrow .ic{width:32px;height:32px;border-radius:10px;background:var(--well);display:flex;align-items:center;justify-content:center}
+  .listrow .ic svg{width:16px;height:16px;stroke:var(--ink2);stroke-width:2;fill:none}
+  .listrow .t{flex:1;font-size:15px;font-weight:600}
+  .listrow .s{font-size:12.5px;color:var(--ink2);font-weight:400;display:block}
+  .listrow .chev{color:var(--ink3);font-size:18px}
+  .input{height:48px;border-radius:12px;background:var(--well);display:flex;align-items:center;padding:0 14px;font-size:15px;color:var(--ink3)}
+  .auth .input{background:var(--auth-well);border:1px solid var(--auth-well-border);color:var(--auth-dim)}
+  .auth .lbl{color:var(--auth-dim)}
+  .stepper{display:inline-flex;align-items:center;background:var(--well);border-radius:999px;height:30px}
+  .stepper span{width:30px;text-align:center;font-weight:700;font-size:14px}
+  .stepper b{font-size:14px;min-width:22px;text-align:center}
+  .check{width:22px;height:22px;border-radius:99px;border:2px solid var(--disabled);flex:0 0 auto}
+  .check.on{background:var(--accent);border-color:var(--accent)}
+  /* Empty state, loading */
+  .empty{display:flex;flex-direction:column;align-items:center;text-align:center;padding:36px 20px;gap:8px}
+  .empty .ico{width:56px;height:56px;border-radius:99px;background:var(--well);display:flex;align-items:center;justify-content:center}
+  .empty .ico svg{width:24px;height:24px;stroke:var(--ink2);stroke-width:2;fill:none}
+  .empty b{font-size:15px} .empty span{font-size:13.5px;color:var(--ink2)}
+  .spinner{width:22px;height:22px;border-radius:99px;border:2.5px solid var(--well);border-top-color:var(--accent);display:inline-block}
+  /* Sheet */
+  .sheet{position:absolute;left:0;right:0;bottom:0;background:var(--card);border-radius:24px 24px 0 0;padding:8px 16px 18px;box-shadow:0 -10px 30px rgba(0,0,0,.12)}
+  .sheet .handle{width:36px;height:4px;border-radius:99px;background:var(--disabled);margin:0 auto 12px}
+  .sheet h5{margin:0 0 10px;font-size:17px}
+  .scrim{position:absolute;inset:0;background:rgba(0,0,0,.3)}
+  /* Tab bar */
+  .tabwrap{position:absolute;left:0;right:0;bottom:14px;display:flex;justify-content:center;pointer-events:none}
+  .tabbar{display:flex;align-items:center;gap:2px;padding:6px;border-radius:999px;background:var(--card);border:1px solid var(--hair);box-shadow:0 10px 28px rgba(20,18,14,.14)}
+  .tab{display:flex;align-items:center;gap:6px;padding:10px 14px;border-radius:999px;color:#8A8781;font-size:13px;font-weight:600;position:relative}
+  .tab svg{width:20px;height:20px;stroke:currentColor;stroke-width:2;fill:none}
+  .tab.on{background:var(--tint);color:var(--accent)}
+  .tab .lab{display:none}
+  .tab .badge{position:absolute;top:4px;left:26px;min-width:15px;height:15px;border-radius:99px;background:var(--accent);color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;padding:0 3px}
+  /* variants: t1 active label only (default), t2 all labels, t3 icons only */
+  .tabbar.t1 .tab.on .lab{display:inline}
+  .tabbar.t2 .tab{flex-direction:column;gap:3px;padding:8px 12px;font-size:10.5px}
+  .tabbar.t2 .tab .lab{display:inline}
+  .tabbar.t2 .tab .badge{left:22px;top:2px}
+  .tabbar.t3 .tab{padding:10px 15px}
+  .tabbar.t3 .tab.on::after{content:"";position:absolute;bottom:4px;left:50%;transform:translateX(-50%);width:4px;height:4px;border-radius:99px;background:var(--accent)}
+  .tabbar .divider{width:1px;height:22px;background:var(--hair2);margin:0 4px}
+  /* live variant switch for reference screens */
+  [data-h] .hdr.v{display:none}
+  [data-h="h1"] .hdr.v.h1, [data-h="h2"] .hdr.v.h2, [data-h="h3"] .hdr.v.h3{display:block}
+  [data-h="h2"] .hdr.v.h2{display:flex}
+  .refs{display:flex;gap:18px;flex-wrap:wrap;justify-content:center}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" stroke-linecap="round"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2" stroke-linecap="round"/></symbol>
+  <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6" stroke-linecap="round"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 01-1 1h-5v-6H9v6H4a1 1 0 01-1-1z" stroke-linejoin="round"/></symbol>
+  <symbol id="i-flash" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z" stroke-linejoin="round"/></symbol>
+  <symbol id="i-clip" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 11h6M9 15h4" stroke-linecap="round"/></symbol>
+  <symbol id="i-bag" viewBox="0 0 24 24"><path d="M6 8h12l1 12H5z" stroke-linejoin="round"/><path d="M9 8a3 3 0 016 0" stroke-linecap="round"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="18" cy="12" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4" stroke-linecap="round"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 0112 0v5l2 2H4z" stroke-linejoin="round"/><path d="M10 20a2 2 0 004 0" stroke-linecap="round"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 13l2-8h12l2 8v6H4z" stroke-linejoin="round"/><path d="M4 13h5l1 2h4l1-2h5" stroke-linejoin="round"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M3 11l18-8-8 18-2-8z" stroke-linejoin="round"/></symbol>
+</svg>
+
+<header class="top">
+  <h1>Smelter UI contract</h1>
+  <p>Tokens, primitives and two choices for your approval. Once you pick a header variant and a tab bar variant, this file becomes the ticket for the primitives build (#32) and the four sweeps (#33 to #36). Every screen in the app will be rebuilt from these pieces only, and a lint rule will refuse anything else.</p>
+</header>
+<nav class="toc">
+  <a href="#approve">How to approve</a><a href="#tokens">1. Tokens</a><a href="#prims">2. Primitives</a><a href="#header">3. Header variants</a><a href="#tabs">4. Tab bar variants</a><a href="#refs">5. Reference screens</a><a href="#rules">6. Rules for sweeps</a><a href="#api">7. Component API</a>
+</nav>
+<main>
+
+<section id="approve">
+  <h2>How to approve</h2>
+  <p class="lead">Two picks, then a comment on GitHub issue #31. Everything else is fixed by decisions you already made.</p>
+  <div class="box">
+    <ol>
+      <li><b>Header.</b> Pick H1, H2 or H3 in section 3. Recommended: H1.</li>
+      <li><b>Tab bar labels.</b> Pick T1, T2 or T3 in section 4. The floating pill itself is decided (decision 7). Recommended: T1.</li>
+      <li>Use the switches in section 5 to see any combination on the four reference screens.</li>
+      <li>Comment on #31, for example: <code>H1 + T1, go</code>. Add changes as bullets if you want anything different.</li>
+    </ol>
+  </div>
+  <div class="explain"><b>What this file is and is not.</b> It is a rendered contract in plain HTML, not the app. The reference screens are close likenesses, not pixel copies. The point is that every colour, size, radius and component you see here is the complete list the app is allowed to use after the sweeps. If a screen needs something not on this list, the sweep agent files an issue instead of inventing it.</div>
+</section>
+
+<section id="tokens">
+  <h2>1. Tokens</h2>
+  <p class="lead">One palette, one type scale, one radius scale, one spacing grid. These replace the 80 hard-coded colours, 17 font sizes and 16 radii found in the audit. The colours are the tips colourway you confirmed in August; nothing new is introduced.</p>
+
+  <h3>Colour, daily work surfaces</h3>
+  <div class="swatches">
+    <div class="sw"><div class="c" style="background:#F5F5F4"></div><div class="n"><b>page</b>#F5F5F4</div></div>
+    <div class="sw"><div class="c" style="background:#FFFFFF;border-bottom:1px solid #eee"></div><div class="n"><b>card</b>#FFFFFF</div></div>
+    <div class="sw"><div class="c" style="background:#EDEDEC"></div><div class="n"><b>well</b>#EDEDEC inputs, tracks, icon tiles</div></div>
+    <div class="sw"><div class="c" style="background:#fff;border-bottom:1px solid rgba(0,0,0,.06)"></div><div class="n"><b>hairline</b>rgba(0,0,0,0.06)</div></div>
+    <div class="sw"><div class="c" style="background:#E84D38"></div><div class="n"><b>accent</b>#E84D38 the only action colour</div></div>
+    <div class="sw"><div class="c" style="background:#FBEAE7"></div><div class="n"><b>tint</b>#FBEAE7 selected, active</div></div>
+    <div class="sw"><div class="c" style="background:#C03520"></div><div class="n"><b>alert</b>#C03520 destructive, errors</div></div>
+    <div class="sw"><div class="c" style="background:#1A1A1A"></div><div class="n"><b>ink</b>#1A1A1A titles, body</div></div>
+    <div class="sw"><div class="c" style="background:#5F5F5F"></div><div class="n"><b>ink2</b>#5F5F5F secondary text</div></div>
+    <div class="sw"><div class="c" style="background:#9C9890"></div><div class="n"><b>ink3</b>#9C9890 captions, placeholders</div></div>
+    <div class="sw"><div class="c" style="background:#C9C5BC"></div><div class="n"><b>disabled</b>#C9C5BC</div></div>
+    <div class="sw"><div class="c" style="background:#22883E"></div><div class="n"><b>good</b>#22883E status only</div></div>
+    <div class="sw"><div class="c" style="background:#B45309"></div><div class="n"><b>warning</b>#B45309 status only</div></div>
+  </div>
+  <p class="explain"><b>Gone:</b> blue as an action colour (Order detail), tan Suspend, pink Delete Account, peach segment tracks, and every screen-local grey. Status colours (good, warning, alert) are reserved for status pills and inline validation. They never colour a button. Category tints for inventory (fish, produce, dry) stay as a separate reserved set for item icons only.</p>
+
+  <h3>Colour, auth surfaces (black, unchanged rule: setup and sign-in are black, daily work is page)</h3>
+  <div class="swatches">
+    <div class="sw"><div class="c" style="background:#000"></div><div class="n"><b>auth.bg</b>#000000</div></div>
+    <div class="sw"><div class="c" style="background:#fff;border-bottom:1px solid #eee"></div><div class="n"><b>auth.text</b>#FFFFFF</div></div>
+    <div class="sw"><div class="c" style="background:#000;position:relative"><div style="position:absolute;inset:12px;background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.18);border-radius:8px"></div></div><div class="n"><b>auth.well</b>white 9% on black, border 18%</div></div>
+    <div class="sw"><div class="c" style="background:#000;color:rgba(255,255,255,.55);display:flex;align-items:center;justify-content:center;font-size:13px">dim text</div><div class="n"><b>auth.dim</b>white 55%</div></div>
+    <div class="sw"><div class="c" style="background:#E84D38"></div><div class="n"><b>accent</b>same #E84D38</div></div>
+  </div>
+  <p class="explain"><b>Change from today:</b> the legacy login and signup screens currently float a white card on black. Under the contract they use the same black fields as name/PIN sign-in. One auth look instead of four.</p>
+
+  <h3>Type scale (five sizes, three weights)</h3>
+  <table>
+    <tr><th>Token</th><th>Size / weight</th><th>Use</th><th>Replaces</th></tr>
+    <tr><td><code>type.display</code></td><td style="font-size:28px;font-weight:700;letter-spacing:-.02em">28 / 700</td><td>Root screen titles (Checklist, Home, Fulfillment, Settings)</td><td>21, 22, 23, 28, 31, 34, 44</td></tr>
+    <tr><td><code>type.title</code></td><td style="font-size:20px;font-weight:700">20 / 700</td><td>Pushed screen titles, sheet titles, big numbers in stat rows</td><td>17, 18, 20, 21</td></tr>
+    <tr><td><code>type.body</code></td><td style="font-size:15px">15 / 400 or 600</td><td>Item names, row titles, inputs, buttons (600)</td><td>14, 15, 16, 17</td></tr>
+    <tr><td><code>type.secondary</code></td><td style="font-size:13px;color:#5F5F5F">13 / 400 or 600</td><td>Row subtitles, chips, tab labels, helper text</td><td>12, 13, 14</td></tr>
+    <tr><td><code>type.caption</code></td><td style="font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#9C9890">11 / 700 caps</td><td>Section labels, status pills, badges</td><td>9, 10, 11, 12</td></tr>
+  </table>
+  <p class="explain">Weights 500, 800 and 900 are removed. The "Bigger text" accessibility setting keeps scaling these five tokens through the existing <code>useScaledStyles</code> hook, so the scale is honoured everywhere instead of on the few screens that opted in.</p>
+
+  <h3>Radius and spacing</h3>
+  <table>
+    <tr><th>Token</th><th>Value</th><th>Use</th></tr>
+    <tr><td><code>radius.pill</code></td><td>999</td><td>Buttons, chips, segments, tab bar, badges, avatars</td></tr>
+    <tr><td><code>radius.card</code></td><td>16</td><td>Cards, list groups, stat tiles</td></tr>
+    <tr><td><code>radius.control</code></td><td>12</td><td>Inputs, icon tiles, small thumbnails</td></tr>
+    <tr><td><code>radius.sheet</code></td><td>24</td><td>Bottom sheet top corners only</td></tr>
+    <tr><td><code>space.*</code></td><td>4, 8, 12, 16, 20, 24, 32</td><td>Screen padding 16, card padding 12 to 14, row gap 10, section gap 20</td></tr>
+  </table>
+</section>
+
+<section id="prims">
+  <h2>2. Primitives</h2>
+  <p class="lead">Nine components. Every screen composes these and nothing else. Each is shown as it will render, with what it does and what it replaces.</p>
+
+  <div class="grid3">
+    <div class="variant">
+      <h4>Button <span class="tag">4 variants</span></h4>
+      <p>primary for the one main action on a screen, secondary for the alternative, destructive for delete and suspend, small for inline actions such as Add and Remind. Full width in forms, hugging in rows. Loading state shows a spinner in place of the label; disabled uses the disabled token.</p>
+      <div style="display:flex;flex-direction:column;gap:8px;max-width:280px">
+        <div class="btn primary">Send order</div>
+        <div class="btn secondary">Continue later</div>
+        <div class="btn destructive">Delete account</div>
+        <div><span class="btn small primary">Add</span> <span class="btn small secondary">Remind</span> <span class="btn small disabled">Create link</span></div>
+      </div>
+      <p><b>Replaces:</b> blue Mark as Processing, tan Suspend, pink Delete, peach disabled, rounded-rectangle Send All, six one-off button files.</p>
+    </div>
+    <div class="variant">
+      <h4>Chip and Segment <span class="tag">2 components</span></h4>
+      <p>Chip filters a list (multi or single select, optional count). Segment picks exactly one of two to four options. Chips scroll horizontally; segments fill the width.</p>
+      <div class="chips" style="margin-bottom:10px"><span class="chip on">All <span class="cnt">3</span></span><span class="chip">Submitted</span><span class="chip">Fulfilled</span><span class="chip">Cancelled</span></div>
+      <div class="seg" style="max-width:280px"><span class="on">Sushi</span><span>Poki &amp; Pho</span><span>Both</span></div>
+      <p><b>Replaces:</b> six chip and segment looks (outlined pills, status-coloured chips, outlined tabs, peach track, outlined red boxes, grey track).</p>
+    </div>
+    <div class="variant">
+      <h4>StatusPill <span class="tag">reserved colours</span></h4>
+      <p>The only place status colours appear. Always a dot plus a word, never colour alone. Five states, fixed mapping.</p>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span class="pill submitted"><i></i>Submitted</span><span class="pill processing"><i></i>Processing</span><span class="pill fulfilled"><i></i>Fulfilled</span><span class="pill cancelled"><i></i>Cancelled</span><span class="pill draft"><i></i>Draft</span></div>
+      <p><b>Replaces:</b> amber pill, orange dot plus text, tan pill, and the two <code>statusStyles</code> and <code>statusColors</code> token sets.</p>
+    </div>
+    <div class="variant">
+      <h4>ScreenHeader <span class="tag">your pick, section 3</span></h4>
+      <p>One component with two modes: root (a tab screen, no back) and pushed (has back). Optional subtitle and one right action slot. It owns safe-area padding so screens stop doing it themselves.</p>
+      <div style="background:var(--page);border-radius:12px;padding:6px 0">
+        <div class="hdr"><div class="line"><div class="grow"><div class="t-root">Checklist</div></div><span class="hdr-action">Fixture Sushi</span></div></div>
+        <div class="hdr"><div class="line"><div class="back"><svg><use href="#i-back"/></svg></div><div class="grow"><div class="t-push">Invite someone</div><div class="sub">They set up their own app from the link</div></div></div></div>
+      </div>
+      <p><b>Replaces:</b> 8 header layouts, 37 hand-drawn back buttons, 7 header components.</p>
+    </div>
+    <div class="variant">
+      <h4>TabBar <span class="tag">your pick, section 4</span></h4>
+      <p>The floating pill from the employee app, extended to manager. Same component, different tab list per role. Badge on Cart or Fulfillment. The divider plus dots on the Order tab stays.</p>
+      <div style="display:flex;justify-content:center;padding:10px 0"><div class="tabbar t1"><div class="tab on"><svg><use href="#i-list"/></svg><span class="lab">Order</span></div><div class="tab"><svg><use href="#i-clock"/></svg><span class="lab">History</span></div><div class="tab"><svg><use href="#i-person"/></svg><span class="lab">Settings</span></div><div class="divider"></div><div class="tab"><svg><use href="#i-dots"/></svg></div></div></div>
+      <p><b>Replaces:</b> the attached manager tab bar with labels; the two <code>_layout</code> files stop configuring their own bars.</p>
+    </div>
+    <div class="variant">
+      <h4>Sheet <span class="tag">BottomSheetShell</span></h4>
+      <p>Handle, title, content, primary action. Scrim at 30%. Every modal in the app is this: quantity, note, confirm order, station picker, credential editor, reminders.</p>
+      <div style="position:relative;height:150px;background:var(--page);border-radius:12px;overflow:hidden"><div class="scrim"></div><div class="sheet"><div class="handle"></div><h5>Add a note</h5><div class="input">Anything the manager should know</div><div class="btn primary" style="margin-top:10px;height:44px">Save note</div></div></div>
+      <p><b>Replaces:</b> 23 sheet and modal implementations, of which 5 host their own native Modal.</p>
+    </div>
+    <div class="variant">
+      <h4>EmptyState and Loading</h4>
+      <p>EmptyState: icon in a well circle, one bold line, one plain line, optional secondary button. Loading: one spinner size, centred, or inline in a button. Error states use EmptyState with an alert icon and a Retry button.</p>
+      <div class="empty" style="padding:16px"><div class="ico"><svg><use href="#i-inbox"/></svg></div><b>No orders yet</b><span>Orders you send appear here.</span></div>
+      <div style="text-align:center"><span class="spinner"></span></div>
+      <p><b>Replaces:</b> six empty-state styles and 27 raw spinners.</p>
+    </div>
+    <div class="variant">
+      <h4>ListRow and Card</h4>
+      <p>ListRow: optional icon tile, title, subtitle, right slot (chevron, toggle, value, stepper). Rows group inside a Card. This is the settings, team, inventory and order list building block.</p>
+      <div class="card" style="margin:0">
+        <div class="listrow"><div class="ic"><svg><use href="#i-bell"/></svg></div><div class="t">Order reminders<span class="s">Not set</span></div><span class="chev">›</span></div>
+        <div class="listrow"><div class="check on"></div><div class="t">Fixture Salmon<span class="s">fillet, usually 2</span></div><span class="stepper"><span>–</span><b>2</b><span>+</span></span></div>
+      </div>
+      <p><b>Replaces:</b> per-screen row layouts with different paddings, icon sizes and hairlines.</p>
+    </div>
+    <div class="variant">
+      <h4>Input and SectionLabel</h4>
+      <p>Input: 48 high, well background, control radius, placeholder in ink3, error line in alert below. SectionLabel: caption token in ink3, 10 above, 6 below.</p>
+      <div class="lbl">Name</div><div class="input">First name, like on the schedule</div>
+      <p><b>Replaces:</b> the auth wells, white bordered inputs, and search fields that each set their own height and radius.</p>
+    </div>
+  </div>
+</section>
+
+<section id="header">
+  <h2>3. Header variants <span class="tag">pick one</span></h2>
+  <p class="lead">The same pushed screen (Invite someone) and root screen (Checklist) in each variant.</p>
+  <div class="grid3">
+    <div class="variant pick">
+      <h4>H1 Large root, circle-back pushed <span class="tag rec">recommended</span></h4>
+      <p>Root tab screens get a 28 display title with the action on the right. Pushed screens get a 40 well circle back button and a 20 title beside it, subtitle under. This is what the best current screens (My Orders, Team, Invite) already do, so the sweeps change less.</p>
+      <div style="background:var(--page);border-radius:12px;padding:6px 0">
+        <div class="hdr"><div class="line"><div class="grow"><div class="t-root">Checklist</div></div><span class="hdr-action">Fixture Sushi</span></div></div>
+        <div class="hdr"><div class="line"><div class="back"><svg><use href="#i-back"/></svg></div><div class="grow"><div class="t-push">Invite someone</div><div class="sub">They set up their own app from the link</div></div></div></div>
+      </div>
+    </div>
+    <div class="variant">
+      <h4>H2 Compact centred everywhere</h4>
+      <p>Every screen, root or pushed, has a 48 bar: back on the left, 17 title centred, action on the right. Feels like stock iOS. Costs vertical room on root screens and makes long titles wrap or truncate.</p>
+      <div style="background:var(--page);border-radius:12px;padding:6px 0">
+        <div class="hdr h2"><div class="spacer"></div><div class="t-c">Checklist</div><span class="hdr-action" style="font-size:12px">Sushi</span></div>
+        <div class="hdr h2"><div class="back plain"><svg><use href="#i-back"/></svg></div><div class="t-c">Invite someone</div><div class="spacer"></div></div>
+      </div>
+    </div>
+    <div class="variant">
+      <h4>H3 Large everywhere, chevron above</h4>
+      <p>Pushed screens also use the 28 display title, with a small accent Back link above it. Very readable, matches Apple large-title style, but pushes content down and looks heavy on dense manager screens.</p>
+      <div style="background:var(--page);border-radius:12px;padding:6px 0">
+        <div class="hdr"><div class="line"><div class="grow"><div class="t-root">Checklist</div></div><span class="hdr-action">Fixture Sushi</span></div></div>
+        <div class="hdr h3"><div class="chev"><svg><use href="#i-back"/></svg>Team</div><div class="t-root">Invite someone</div><div class="sub">They set up their own app from the link</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="tabs">
+  <h2>4. Tab bar variants <span class="tag">pick one</span></h2>
+  <p class="lead">The pill is decided. The choice is how labels appear. Employee (Order, History, Settings) and manager (Home, Quick, Fulfillment with badge, Settings) shown for each.</p>
+  <div class="grid3">
+    <div class="variant pick">
+      <h4>T1 Active label only <span class="tag rec">recommended</span></h4>
+      <p>Inactive tabs are icons; the active tab expands with tint and its label. This is the employee pill as built and confirmed. Compact enough for five manager tabs.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:center;padding:8px 0">
+        <div class="tabbar t1"><div class="tab on"><svg><use href="#i-list"/></svg><span class="lab">Order</span></div><div class="tab"><svg><use href="#i-clock"/></svg><span class="lab">History</span></div><div class="tab"><svg><use href="#i-person"/></svg><span class="lab">Settings</span></div><div class="divider"></div><div class="tab"><svg><use href="#i-dots"/></svg></div></div>
+        <div class="tabbar t1"><div class="tab on"><svg><use href="#i-home"/></svg><span class="lab">Home</span></div><div class="tab"><svg><use href="#i-flash"/></svg><span class="lab">Quick</span></div><div class="tab"><svg><use href="#i-clip"/></svg><span class="lab">Fulfillment</span><span class="badge">2</span></div><div class="tab"><svg><use href="#i-person"/></svg><span class="lab">Settings</span></div></div>
+      </div>
+    </div>
+    <div class="variant">
+      <h4>T2 All labels</h4>
+      <p>Every tab shows icon over a small label. Most discoverable for new staff, widest pill, and the manager bar with five tabs gets crowded on smaller phones.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:center;padding:8px 0">
+        <div class="tabbar t2"><div class="tab on"><svg><use href="#i-list"/></svg><span class="lab">Order</span></div><div class="tab"><svg><use href="#i-clock"/></svg><span class="lab">History</span></div><div class="tab"><svg><use href="#i-person"/></svg><span class="lab">Settings</span></div><div class="divider"></div><div class="tab"><svg><use href="#i-dots"/></svg></div></div>
+        <div class="tabbar t2"><div class="tab on"><svg><use href="#i-home"/></svg><span class="lab">Home</span></div><div class="tab"><svg><use href="#i-flash"/></svg><span class="lab">Quick</span></div><div class="tab"><svg><use href="#i-clip"/></svg><span class="lab">Fulfillment</span><span class="badge">2</span></div><div class="tab"><svg><use href="#i-person"/></svg><span class="lab">Settings</span></div></div>
+      </div>
+    </div>
+    <div class="variant">
+      <h4>T3 Icons only</h4>
+      <p>No labels, tint plus a dot marks the active tab. Smallest and cleanest, but staff have to learn the icons, and VoiceOver users get labels anyway.</p>
+      <div style="display:flex;flex-direction:column;gap:10px;align-items:center;padding:8px 0">
+        <div class="tabbar t3"><div class="tab on"><svg><use href="#i-list"/></svg></div><div class="tab"><svg><use href="#i-clock"/></svg></div><div class="tab"><svg><use href="#i-person"/></svg></div><div class="divider"></div><div class="tab"><svg><use href="#i-dots"/></svg></div></div>
+        <div class="tabbar t3"><div class="tab on"><svg><use href="#i-home"/></svg></div><div class="tab"><svg><use href="#i-flash"/></svg></div><div class="tab"><svg><use href="#i-clip"/></svg><span class="badge">2</span></div><div class="tab"><svg><use href="#i-person"/></svg></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="refs">
+  <h2>5. Reference screens</h2>
+  <p class="lead">Welcome, sign-in, employee checklist, manager fulfillment. Use the switches to see any header and tab bar combination. The auth screens have no header or tab bar and are shown for the colour and button rules.</p>
+  <div class="controls">
+    <span><label>Header</label><button class="hv on" data-v="h1">H1</button> <button class="hv" data-v="h2">H2</button> <button class="hv" data-v="h3">H3</button></span>
+    <span><label>Tab bar</label><button class="tv on" data-v="t1">T1</button> <button class="tv" data-v="t2">T2</button> <button class="tv" data-v="t3">T3</button></span>
+    <span id="combo" style="font-size:13px;color:var(--ink2)">Showing H1 + T1</span>
+  </div>
+  <div class="refs" id="refs-root" data-h="h1" data-t="t1">
+
+    <div class="cap-row"><div class="phone"><div class="screen auth">
+      <div class="status"><span>9:41</span><span>●●● ▲</span></div>
+      <div class="content" style="display:flex;flex-direction:column;justify-content:center;gap:10px">
+        <div style="text-align:center;margin-bottom:46px"><div style="display:inline-block;width:56px;height:56px;border-radius:99px;background:#d9d9d9;vertical-align:middle;margin-right:10px"></div><span style="font-size:40px;font-weight:700;color:var(--accent);letter-spacing:-.03em;vertical-align:middle">smelter</span></div>
+        <div class="btn primary">I have an invite link</div>
+        <div class="btn secondary">Sign in</div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:var(--auth-dim);padding:0 0 22px">Terms · Privacy policy</div>
+    </div></div><div class="caption">Welcome. Black, two actions, legal links. Unchanged from the confirmed spec.</div></div>
+
+    <div class="cap-row"><div class="phone"><div class="screen auth">
+      <div class="status"><span>9:41</span><span>●●● ▲</span></div>
+      <div class="content" style="padding-top:60px">
+        <div style="font-size:28px;font-weight:700;letter-spacing:-.02em;margin-bottom:18px">Sign in</div>
+        <div class="lbl">Name</div><div class="input">Your name</div>
+        <div class="lbl">PIN or password</div><div class="input">••••</div>
+        <div class="btn primary" style="margin-top:18px">Sign in</div>
+        <div style="text-align:center;font-size:12.5px;color:var(--auth-dim);margin-top:14px">Forgot it? Ask the manager for a reset.</div>
+        <div style="text-align:center;font-size:12.5px;color:var(--auth-dim);margin-top:40px">Have an email account instead? <span style="color:#fff;font-weight:600">Use email</span></div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:var(--auth-dim);padding:0 0 22px">Terms · Privacy policy</div>
+    </div></div><div class="caption">Sign-in. The legacy email form becomes a link here and reuses the same black fields, replacing the white floating card.</div></div>
+
+    <div class="cap-row"><div class="phone"><div class="screen">
+      <div class="status"><span>9:41</span><span>●●● ▲</span></div>
+      <div class="hdr v h1"><div class="line"><div class="grow"><div class="t-root">Checklist</div></div><span class="hdr-action">● Fixture Sushi ▾</span></div></div>
+      <div class="hdr v h2"><div class="spacer"></div><div class="t-c">Checklist</div><span class="hdr-action" style="font-size:12px">Sushi ▾</span></div>
+      <div class="hdr v h3"><div class="line"><div class="grow"><div class="t-root">Checklist</div></div><span class="hdr-action">● Fixture Sushi ▾</span></div></div>
+      <div class="content">
+        <div class="lbl">Fish &amp; seafood</div>
+        <div class="card"><div class="listrow"><div class="check on"></div><div class="t">Fixture Salmon<span class="s">fillet, usually 2</span></div><span class="stepper"><span>–</span><b>2</b><span>+</span></span></div>
+        <div class="listrow"><div class="check"></div><div class="t">Fixture Tuna<span class="s">loin, usually 1</span></div><span class="stepper"><span>–</span><b>0</b><span>+</span></span></div></div>
+        <div class="lbl">Dry goods</div>
+        <div class="card"><div class="listrow"><div class="check on"></div><div class="t">Fixture Rice<span class="s">bag, usually 1</span></div><span class="stepper"><span>–</span><b>1</b><span>+</span></span></div>
+        <div class="listrow"><div class="check"></div><div class="t">Fixture Nori<span class="s">pack, usually 2</span></div><span class="stepper"><span>–</span><b>0</b><span>+</span></span></div></div>
+        <div class="card" style="display:flex;align-items:center;gap:10px;position:absolute;left:16px;right:16px;bottom:86px;margin:0"><div class="input" style="flex:1;height:40px;font-size:14px"><svg style="width:16px;height:16px;stroke:var(--ink3);stroke-width:2;fill:none;margin-right:8px"><use href="#i-search"/></svg>Add item</div><div style="width:40px;height:40px;border-radius:99px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700">↑</div></div>
+      </div>
+      <div class="tabwrap"><div class="tabbar tref"><div class="tab on"><svg><use href="#i-list"/></svg><span class="lab">Order</span></div><div class="tab"><svg><use href="#i-clock"/></svg><span class="lab">History</span></div><div class="tab"><svg><use href="#i-person"/></svg><span class="lab">Settings</span></div><div class="divider"></div><div class="tab"><svg><use href="#i-dots"/></svg></div></div></div>
+    </div></div><div class="caption">Employee checklist (root screen). The real SimpleOrderScreen, recoloured only, as you decided in August.</div></div>
+
+    <div class="cap-row"><div class="phone"><div class="screen">
+      <div class="status"><span>9:41</span><span>●●● ▲</span></div>
+      <div class="hdr v h1"><div class="line"><div class="grow"><div class="t-root">Fulfillment</div></div><span class="hdr-action">History</span></div></div>
+      <div class="hdr v h2"><div class="spacer"></div><div class="t-c">Fulfillment</div><span class="hdr-action" style="font-size:12px">History</span></div>
+      <div class="hdr v h3"><div class="line"><div class="grow"><div class="t-root">Fulfillment</div></div><span class="hdr-action">History</span></div></div>
+      <div class="content">
+        <div class="chips" style="margin-bottom:10px"><span class="chip on">Pending <span class="cnt">2</span></span><span class="chip">Order later</span><span class="chip">Sent</span></div>
+        <div class="card"><div class="lbl" style="margin-top:0">Order notes</div><div style="font-size:14px">E2E Employee · FS<span style="display:block;color:var(--ink2);font-size:13px">Local E2E pending order</span></div></div>
+        <div class="card">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><b style="font-size:15px">Suppliers</b><span class="pill fulfilled"><i></i>1 ready</span></div>
+          <div class="btn primary" style="height:44px;font-size:15px;margin-bottom:8px"><svg style="width:16px;height:16px;stroke:#fff;stroke-width:2;fill:none;margin-right:8px"><use href="#i-send"/></svg>Send all (1 supplier)</div>
+          <div class="listrow"><div class="ic"><svg><use href="#i-bag"/></svg></div><div class="t">Unresolved supplier<span class="s">2 items · 0 remaining</span></div><span class="btn small primary">Order</span></div>
+        </div>
+        <div class="card"><div style="display:flex;align-items:center;justify-content:space-between"><b style="font-size:15px">Order later</b></div>
+          <div class="empty" style="padding:14px 0 4px"><div class="ico" style="width:44px;height:44px"><svg><use href="#i-clock"/></svg></div><b>No pending items</b><span>Items scheduled for a future order appear here.</span></div></div>
+      </div>
+      <div class="tabwrap"><div class="tabbar tref"><div class="tab"><svg><use href="#i-home"/></svg><span class="lab">Home</span></div><div class="tab"><svg><use href="#i-flash"/></svg><span class="lab">Quick</span></div><div class="tab on"><svg><use href="#i-clip"/></svg><span class="lab">Fulfillment</span><span class="badge">2</span></div><div class="tab"><svg><use href="#i-person"/></svg><span class="lab">Settings</span></div></div></div>
+    </div></div><div class="caption">Manager fulfillment (root screen). Same chrome as the employee side: pill tab bar, display title, chips, one primary button per card.</div></div>
+
+  </div>
+</section>
+
+<section id="rules">
+  <h2>6. Rules for the sweep agents</h2>
+  <p class="lead">These go verbatim into issues #33 to #36. They are what stops the drift from coming back.</p>
+  <div class="box">
+    <ol>
+      <li><b>No literals.</b> No hex colour, rgba, numeric <code>fontSize</code>, numeric <code>borderRadius</code>, or <code>fontWeight</code> other than 400, 600, 700 outside <code>src/theme</code> and <code>src/components/ui</code>. The ESLint rule from #32 fails on any of these.</li>
+      <li><b>No raw hosts.</b> No <code>ActivityIndicator</code>, <code>Modal</code>, or hand-drawn back button. Use Loading, Sheet, ScreenHeader.</li>
+      <li><b>One primary per screen.</b> One primary Button visible at a time. Everything else is secondary or small.</li>
+      <li><b>Status colours are for StatusPill only.</b> Never on a button, chip, or title.</li>
+      <li><b>No behaviour change.</b> A sweep changes how a screen looks, not what it does. If a behaviour bug is found, file an issue and keep going.</li>
+      <li><b>Copy.</b> No em-dashes, no emoji, short sentences.</li>
+      <li><b>Evidence.</b> Every PR carries a before and after screenshot for each screen from the pinned simulator, and the lint rule count for its folders reads zero.</li>
+      <li><b>Ownership.</b> A sweep touches only the folders listed in its issue. Shared components live in #32 and are changed there, never in a sweep.</li>
+      <li><b>Missing piece.</b> If a screen needs a component not in section 2, stop, file an issue against #32, and use the nearest existing primitive in the meantime.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="api">
+  <h2>7. Component API sketch</h2>
+  <p class="lead">What #32 builds. Names are final so the sweeps can be written against them before the build merges.</p>
+<pre><code>// src/theme/tokens.ts (replaces the duplicate sets in design.ts)
+export const color = { page, card, well, hairline, accent, tint, alert, ink, ink2, ink3, disabled, good, goodBg, warning, warningBg, alertBg }
+export const auth  = { bg, text, dim, well, wellBorder }
+export const type  = { display: 28, title: 20, body: 15, secondary: 13, caption: 11 }
+export const radius = { pill: 999, card: 16, control: 12, sheet: 24 }
+export const space = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 8: 32 }
+
+// src/components/ui
+&lt;ScreenHeader mode="root" | "pushed" title subtitle? right? onBack? /&gt;
+&lt;TabBar tabs={[{ name, label, icon, badge? }]} active onPress quickActions? /&gt;
+&lt;Button variant="primary" | "secondary" | "destructive" | "small" label onPress loading? disabled? icon? /&gt;
+&lt;Chip label selected count? onPress /&gt;      &lt;Segment options value onChange /&gt;
+&lt;StatusPill status="draft" | "submitted" | "processing" | "fulfilled" | "cancelled" /&gt;
+&lt;Sheet visible title onClose primary? children /&gt;          // wraps BottomSheetShell
+&lt;EmptyState icon title body? action? /&gt;    &lt;Loading size="screen" | "inline" /&gt;
+&lt;ListRow icon? title subtitle? right? onPress? /&gt;   &lt;Card&gt;   &lt;Input label? error? .../&gt;   &lt;SectionLabel&gt;</code></pre>
+</section>
+
+<p style="font-size:12.5px;color:var(--ink2);margin-top:40px">Prepared 2026-09-05 from the confirmed redesign spec, the employee-app mockup and the release-readiness screenshots. Approve on GitHub issue #31.</p>
+</main>
+<script>
+  const root=document.getElementById('refs-root'), combo=document.getElementById('combo');
+  const state={h:'h1',t:'t1'};
+  function apply(){
+    root.dataset.h=state.h;
+    document.querySelectorAll('#refs-root .tabbar.tref').forEach(b=>{b.classList.remove('t1','t2','t3');b.classList.add(state.t)});
+    combo.textContent='Showing '+state.h.toUpperCase()+' + '+state.t.toUpperCase();
+    document.querySelectorAll('.hv').forEach(b=>b.classList.toggle('on',b.dataset.v===state.h));
+    document.querySelectorAll('.tv').forEach(b=>b.classList.toggle('on',b.dataset.v===state.t));
+  }
+  document.querySelectorAll('.hv').forEach(b=>b.onclick=()=>{state.h=b.dataset.v;apply()});
+  document.querySelectorAll('.tv').forEach(b=>b.onclick=()=>{state.t=b.dataset.v;apply()});
+  apply();
+</script>
+</body>
+</html>

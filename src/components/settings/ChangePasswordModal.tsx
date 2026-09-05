@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -14,7 +14,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, hairline, radii } from '@/theme/design';
-import { supabase } from '@/lib/supabase';
+import { changeEmailPassword } from '@/services/changePassword';
+import { getMyCredentialKind, type CredentialKind } from '@/services/loginCredentials';
+import { useAuthStore } from '@/store/authStore';
+import { ChangeCredentialSheet } from './ChangeCredentialSheet';
 import { useScaledStyles } from '@/hooks/useScaledStyles';
 
 interface ChangePasswordModalProps {
@@ -22,10 +25,43 @@ interface ChangePasswordModalProps {
   onClose: () => void;
 }
 
-export function ChangePasswordModal({
-  visible,
-  onClose,
-}: ChangePasswordModalProps) {
+export function ChangePasswordModal({ visible, onClose }: ChangePasswordModalProps) {
+  const userId = useAuthStore((state) => state.session?.user.id ?? null);
+  const [identity, setIdentity] = useState<{ userId: string; kind: CredentialKind | null } | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!visible || !userId) return;
+    let active = true;
+    setIdentity(null);
+    setLoadError(null);
+    void getMyCredentialKind(userId).then(
+      (kind) => { if (active) setIdentity({ userId, kind }); },
+      (error: unknown) => { if (active) setLoadError(error instanceof Error ? error.message : 'Unable to load your sign-in settings.'); },
+    );
+    return () => { active = false; };
+  }, [userId, visible]);
+
+  const isResolving = !identity || identity.userId !== userId;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      {!visible ? null : isResolving ? (
+        <View style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: colors.white, borderRadius: radii.card, padding: 24, gap: 16 }}>
+            {loadError || !userId ? <Text>{loadError ?? 'Sign in again to change your sign-in details.'}</Text> : <ActivityIndicator accessibilityLabel="Loading sign-in settings" />}
+            <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Close sign-in settings" style={{ minHeight: 44, justifyContent: 'center' }}><Text>Close</Text></TouchableOpacity>
+          </View>
+        </View>
+      ) : identity.kind ? (
+        <ChangeCredentialSheet visible presentation="embedded" onClose={onClose} initialKind={identity.kind} />
+      ) : (
+        <EmailPasswordContent onClose={onClose} />
+      )}
+    </Modal>
+  );
+}
+
+function EmailPasswordContent({ onClose }: Pick<ChangePasswordModalProps, 'onClose'>) {
   const ds = useScaledStyles();
 
   const [currentPassword, setCurrentPassword] = useState('');
@@ -35,6 +71,8 @@ export function ChangePasswordModal({
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const operation = useRef<AbortController | null>(null);
+  useEffect(() => () => operation.current?.abort(), []);
 
   const resetForm = () => {
     setCurrentPassword('');
@@ -46,6 +84,7 @@ export function ChangePasswordModal({
   };
 
   const handleClose = () => {
+    operation.current?.abort();
     resetForm();
     onClose();
   };
@@ -67,35 +106,26 @@ export function ChangePasswordModal({
       return;
     }
 
+    if (isLoading) return;
+    const controller = new AbortController();
+    operation.current = controller;
     setIsLoading(true);
 
     try {
-      // Update password via Supabase Auth
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
-      if (error) {
-        throw error;
-      }
+      await changeEmailPassword(currentPassword, newPassword, controller.signal);
+      if (controller.signal.aborted) return;
 
       Alert.alert('Success', 'Your password has been updated', [
         { text: 'OK', onPress: handleClose },
       ]);
-    } catch (error: any) {
-      Alert.alert('Error', error.message || 'Failed to update password');
+    } catch (error: unknown) {
+      if (!controller.signal.aborted) Alert.alert('Error', error instanceof Error ? error.message : 'Failed to update password');
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) setIsLoading(false);
     }
   };
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={handleClose}
-    >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         className="flex-1"
@@ -273,6 +303,5 @@ export function ChangePasswordModal({
           </Pressable>
         </Pressable>
       </KeyboardAvoidingView>
-    </Modal>
   );
 }

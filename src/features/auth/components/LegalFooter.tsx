@@ -25,6 +25,8 @@ export function LegalFooter() {
       }}
     >
       <TouchableOpacity
+        accessibilityRole="link"
+        accessibilityLabel="Terms of service"
         onPress={() => openLegalUrl(TERMS_URL)}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
       >
@@ -40,6 +42,8 @@ export function LegalFooter() {
       </TouchableOpacity>
       <Text style={{ fontSize: 11, color: authTheme.legal }}>·</Text>
       <TouchableOpacity
+        accessibilityRole="link"
+        accessibilityLabel="Privacy policy"
         onPress={() => openLegalUrl(PRIVACY_URL)}
         hitSlop={{ top: 10, bottom: 10, left: 6, right: 10 }}
       >

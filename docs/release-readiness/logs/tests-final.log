@@ -1,0 +1,22 @@
+Full original log preserved in tests-final.log.gz.
+
+PASS src/__tests__/invitesAccept.test.ts
+PASS src/__tests__/employeeDefaults.test.ts
+PASS src/__tests__/teamService.test.ts
+PASS src/__tests__/supplierSendLink.test.ts
+PASS src/__tests__/quickOrderUiHelpers.test.ts
+PASS src/__tests__/quickOrderComposer.test.ts
+PASS src/__tests__/quickOrderChatLayout.test.ts
+PASS src/__tests__/orderItemFreshness.test.ts
+PASS src/__tests__/invoiceScans.test.ts
+PASS src/__tests__/inviteJoin.test.ts
+PASS src/__tests__/googleSheetsSync.test.ts
+PASS src/__tests__/quickOrderWelcome.test.ts
+PASS src/__tests__/orderPreview.test.ts
+PASS src/__tests__/invitePreview.test.ts
+
+Test Suites: 1 skipped, 67 passed, 67 of 68 total
+Tests:       14 skipped, 1031 passed, 1045 total
+Snapshots:   0 total
+Time:        4.052 s, estimated 5 s
+Ran all test suites.

@@ -11,6 +11,8 @@ import { colors, radii } from '@/theme/design';
 
 interface BottomSheetShellProps {
   visible: boolean;
+  /** Use inside an existing native Modal instead of presenting a second one. */
+  presentation?: 'modal' | 'embedded';
   onClose: () => void;
   children: React.ReactNode;
   horizontalPadding?: number;
@@ -19,6 +21,7 @@ interface BottomSheetShellProps {
 
 export function BottomSheetShell({
   visible,
+  presentation = 'modal',
   onClose,
   children,
   horizontalPadding,
@@ -78,9 +81,9 @@ export function BottomSheetShell({
     [animateClose, ds, translateY]
   );
 
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+  const content = (
       <Pressable
+        accessible={false}
         style={{ flex: 1, backgroundColor: colors.scrim, justifyContent: 'flex-end' }}
         onPress={onClose}
       >
@@ -95,7 +98,7 @@ export function BottomSheetShell({
             borderTopRightRadius: radii.card,
           }}
         >
-          <Pressable onPress={(event) => event.stopPropagation()}>
+          <Pressable accessible={false} onPress={(event) => event.stopPropagation()}>
             <View
               style={{ alignItems: 'center', paddingBottom: ds.spacing(12) }}
               {...panResponder.panHandlers}
@@ -113,6 +116,13 @@ export function BottomSheetShell({
           </Pressable>
         </Animated.View>
       </Pressable>
+  );
+
+  if (presentation === 'embedded') return visible ? content : null;
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      {content}
     </Modal>
   );
 }

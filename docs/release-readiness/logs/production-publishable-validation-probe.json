@@ -1,0 +1,16 @@
+[
+  {
+    "endpoint": "login-with-name",
+    "status": 400,
+    "body": "{\"error\":\"Invalid request body\"}",
+    "request": "Malformed JSON only; source rejects before database access",
+    "key_type": "active project publishable key"
+  },
+  {
+    "endpoint": "accept-invite",
+    "status": 400,
+    "body": "{\"error\":\"Invalid request body\"}",
+    "request": "Malformed JSON only; source rejects before database access",
+    "key_type": "active project publishable key"
+  }
+]

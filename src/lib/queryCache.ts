@@ -32,12 +32,13 @@ export function setCache<T>(key: string, data: T): void {
 /** Invalidate a specific cache key. */
 export function invalidateCache(key: string): void {
   cache.delete(key);
+  inflight.delete(key);
 }
 
 /** Invalidate all cache entries matching a prefix. */
 export function invalidateCachePrefix(prefix: string): void {
-  for (const key of cache.keys()) {
-    if (key.startsWith(prefix)) cache.delete(key);
+  for (const key of new Set([...cache.keys(), ...inflight.keys()])) {
+    if (key.startsWith(prefix)) invalidateCache(key);
   }
 }
 
@@ -61,11 +62,12 @@ export async function cachedFetch<T>(
 
   const promise = fetcher()
     .then((result) => {
-      setCache(key, result);
+      // Invalidated requests may still resolve, but must not restore old data.
+      if (inflight.get(key) === promise) setCache(key, result);
       return result;
     })
     .finally(() => {
-      inflight.delete(key);
+      if (inflight.get(key) === promise) inflight.delete(key);
     });
 
   inflight.set(key, promise);

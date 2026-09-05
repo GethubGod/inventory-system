@@ -1,8 +1,8 @@
-# Babytuna Systems Terms of Use
+# Smelter Terms of Use
 
 Effective August 21, 2026
 
-These Terms of Use govern access to Babytuna Systems, including its mobile app, web pages, and related services (the “Service”). Babytuna Systems is operated by the developer identified on its App Store listing (“Babytuna,” “we,” “us,” or “our”). By using the Service, you agree to these Terms. If your employer or another organization gave you access, you also agree to follow that organization’s rules. A separate written agreement with an organization controls if it conflicts with these Terms.
+These Terms of Use govern access to Smelter, the Babytuna Systems mobile app, web pages, and related services (the “Service”). Babytuna Systems is operated by the developer identified on its App Store listing (“Babytuna,” “we,” “us,” or “our”). By using the Service, you agree to these Terms. If your employer or another organization gave you access, you also agree to follow that organization’s rules. A separate written agreement with an organization controls if it conflicts with these Terms.
 
 ## 1. A workplace service
 
@@ -74,4 +74,4 @@ We may update these Terms as the Service changes. We will post the revised date 
 
 ## 15. Contact
 
-For account or workplace questions, contact your manager or organization administrator. For legal or Service questions, use the developer contact method available through the Babytuna Systems App Store listing or the Babytuna Systems website.
+For account or workplace questions, contact your manager or organization administrator. For legal or Service questions, use the developer contact method available through the Smelter App Store listing or the Babytuna Systems website.

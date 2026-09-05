@@ -1,0 +1,43 @@
+
+> babytuna@2.2 test:ci
+> jest --runInBand --watchman=false --runTestsByPath src/__tests__/authStore.signOut.test.ts src/__tests__/changePassword.test.ts
+
+FAIL src/__tests__/authStore.signOut.test.ts
+  ● Test suite failed to run
+
+    ReferenceError: Cannot access 'mockAsyncStorage' before initialization
+
+      75 | });
+      76 |
+    > 77 | jest.mock('@react-native-async-storage/async-storage', () => mockAsyncStorage);
+         |                                                              ^
+      78 | jest.mock('expo-auth-session', () => ({
+      79 |   makeRedirectUri: jest.fn(() => 'babytuna://auth/callback'),
+      80 | }));
+
+      at src/__tests__/authStore.signOut.test.ts:77:62
+      at Object.<anonymous> (src/store/authStore.ts:3:1)
+      at Object.<anonymous> (src/__tests__/authStore.signOut.test.ts:1:1)
+
+FAIL src/__tests__/changePassword.test.ts
+  ● Test suite failed to run
+
+    ReferenceError: Cannot access 'getUser' before initialization
+
+       5 | const updateUser = jest.fn();
+       6 | const signOut = jest.fn();
+    >  7 | jest.mock('@/lib/supabase', () => ({ supabase: { auth: { getUser, signInWithPassword, updateUser, signOut } } }));
+         |                                                          ^
+       8 |
+       9 | beforeEach(() => {
+      10 |   jest.clearAllMocks();
+
+      at src/__tests__/changePassword.test.ts:7:58
+      at Object.<anonymous> (src/services/changePassword.ts:1:1)
+      at Object.<anonymous> (src/__tests__/changePassword.test.ts:1:1)
+
+Test Suites: 2 failed, 2 total
+Tests:       0 total
+Snapshots:   0 total
+Time:        1.982 s
+Ran all test suites within paths "src/__tests__/authStore.signOut.test.ts", "src/__tests__/changePassword.test.ts".

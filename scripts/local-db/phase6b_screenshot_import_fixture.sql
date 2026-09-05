@@ -7,6 +7,11 @@
 
 begin;
 
+-- The DDL-only baseline omits this existing production grant. Restore it
+-- inside this rolled-back fixture so the manager read still exercises RLS.
+-- Verified read-only against production role_table_grants on 2026-09-05.
+grant select on public.historical_order_imports to authenticated;
+
 insert into auth.users (id, email)
 values
   ('60000000-0000-4000-8000-000000000001', 'phase6b-checklist@example.test'),

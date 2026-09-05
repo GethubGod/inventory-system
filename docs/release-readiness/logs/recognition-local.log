@@ -1,0 +1,27 @@
+
+> babytuna@2.2 audit:quick-order-recognition
+> node scripts/audit-quick-order-recognition.js
+
+FAIL src/__tests__/quickOrderInventoryAudit.test.ts
+  quick order active inventory recognition audit
+    ✕ recognizes every active inventory item by exact name and simple variants (31 ms)
+
+  ● quick order active inventory recognition audit › recognizes every active inventory item by exact name and simple variants
+
+    Inventory recognition audit is blocked: no inventory rows are visible with the public key. Run against an authorized local fixture or supply a server-only audit credential. Zero rows cannot prove recognition.
+
+      120 |     const { catalog, usedServiceRoleKey } = await fetchActiveInventory();
+      121 |     if (catalog.length === 0 && !usedServiceRoleKey) {
+    > 122 |       throw new Error('Inventory recognition audit is blocked: no inventory rows are visible with the public key. Run against an authorized local fixture or supply a server-only audit credential. Zero rows cannot prove recognition.');
+          |             ^
+      123 |     }
+      124 |
+      125 |     expect(catalog.length).toBeGreaterThan(0);
+
+      at Object.<anonymous> (src/__tests__/quickOrderInventoryAudit.test.ts:122:13)
+
+Test Suites: 1 failed, 1 total
+Tests:       1 failed, 1 total
+Snapshots:   0 total
+Time:        1.95 s
+Ran all test suites matching /src\/__tests__\/quickOrderInventoryAudit.test.ts/i.

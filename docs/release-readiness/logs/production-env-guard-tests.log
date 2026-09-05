@@ -1,0 +1,16 @@
+✔ accepts the expected HTTPS host and publishable key format (0.560416ms)
+✔ rejects a production build with unsafe or incorrect endpoint 127.0.0.1 (0.120542ms)
+✔ rejects a production build with unsafe or incorrect endpoint whrohvitvmcrmedepurd.supabase.co (0.054542ms)
+✔ rejects a production build with unsafe or incorrect endpoint another-project.supabase.co (0.046041ms)
+✔ rejects a production build with unsafe or incorrect endpoint whrohvitvmcrmedepurd.supabase.co (0.052ms)
+✔ rejects a production build with unsafe or incorrect endpoint whrohvitvmcrmedepurd.supabase.co (0.055584ms)
+✔ rejects missing, legacy and server-only keys without including their values (0.074875ms)
+✔ legacy anon fallback alone does not permit a production build (0.047334ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 41.134417

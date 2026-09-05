@@ -1,0 +1,13 @@
+
+> babytuna@2.2 audit:quick-order-recognition
+> node scripts/audit-quick-order-recognition.js
+
+PASS src/__tests__/quickOrderInventoryAudit.test.ts
+  quick order active inventory recognition audit
+    ✓ recognizes every active inventory item by exact name and simple variants (60 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       1 passed, 1 total
+Snapshots:   0 total
+Time:        1.576 s, estimated 2 s
+Ran all test suites matching /src\/__tests__\/quickOrderInventoryAudit.test.ts/i.

@@ -143,7 +143,7 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1, backgroundColor: AUTH_SCREEN_BACKGROUND }}
       >
-        <Pressable className="flex-1 px-6 pt-10 pb-8" onPress={Keyboard.dismiss}>
+        <Pressable accessible={false} className="flex-1 px-6 pt-10 pb-8" onPress={Keyboard.dismiss}>
           <View className="items-center mb-6">
             <AuthLogoHeader size={64} />
           </View>
@@ -175,6 +175,7 @@ export default function LoginScreen() {
                 <TextInput
                   className="text-gray-900"
                   style={AUTH_INPUT_TEXT_STYLE}
+                  accessibilityLabel="Email"
                   placeholder="Enter your email"
                   placeholderTextColor={colors.gray[400]}
                   value={email}
@@ -199,6 +200,7 @@ export default function LoginScreen() {
                 <TextInput
                   className="text-gray-900"
                   style={AUTH_INPUT_TEXT_STYLE}
+                  accessibilityLabel="Password"
                   placeholder="Enter your password"
                   placeholderTextColor={colors.gray[400]}
                   value={password}
@@ -212,6 +214,8 @@ export default function LoginScreen() {
                   onBlur={() => setFocusedInput(null)}
                 />
                 <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
                   onPress={() => setShowPassword(!showPassword)}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
@@ -225,7 +229,7 @@ export default function LoginScreen() {
             </View>
 
             <View className="mb-5 items-end">
-              <TouchableOpacity onPress={handleForgotPassword} disabled={isResettingPassword}>
+              <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: isResettingPassword, busy: isResettingPassword }} onPress={handleForgotPassword} disabled={isResettingPassword}>
                 <Text className="text-xs font-medium text-primary-500">
                   {isResettingPassword ? 'Sending reset link...' : 'Forgot password?'}
                 </Text>
@@ -269,6 +273,9 @@ export default function LoginScreen() {
                 isLoading ? 'bg-primary-300' : 'bg-primary-500'
               }`}
               style={{ height: 52 }}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in"
+              accessibilityState={{ disabled: isLoading, busy: isLoading }}
               onPress={handleLogin}
               disabled={isLoading}
               activeOpacity={0.8}
@@ -284,7 +291,7 @@ export default function LoginScreen() {
           <View className="flex-row justify-center mt-8">
             <Text className="text-gray-300 text-base">Don{"'"}t have an account? </Text>
             <Link href="/(auth)/signup" asChild>
-              <TouchableOpacity>
+              <TouchableOpacity accessibilityRole="link">
                 <Text className="text-primary-500 font-bold text-base">Sign Up</Text>
               </TouchableOpacity>
             </Link>
